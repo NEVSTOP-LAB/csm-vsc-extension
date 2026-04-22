@@ -1,0 +1,1 @@
+# csmlog-vsc-extension
