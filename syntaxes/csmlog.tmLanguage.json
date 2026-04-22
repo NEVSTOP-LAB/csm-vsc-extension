@@ -1,0 +1,469 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "CSMLog",
+  "scopeName": "source.csmlog",
+  "patterns": [
+    {
+      "include": "#config-line"
+    },
+    {
+      "include": "#log-line"
+    }
+  ],
+  "repository": {
+    "config-line": {
+      "comment": "Configuration lines at the beginning: - Key | Value",
+      "match": "^-\\s+([^|]+)\\s+\\|\\s+(.+)$",
+      "captures": {
+        "1": {
+          "name": "variable.other.config-key.csmlog"
+        },
+        "2": {
+          "name": "constant.other.config-value.csmlog"
+        }
+      }
+    },
+    "log-line": {
+      "patterns": [
+        {
+          "include": "#log-entry-error"
+        },
+        {
+          "include": "#log-entry-filelogger"
+        },
+        {
+          "include": "#log-entry-userlog"
+        },
+        {
+          "include": "#log-entry-lifecycle"
+        },
+        {
+          "include": "#log-entry-register"
+        },
+        {
+          "include": "#log-entry-interrupt"
+        },
+        {
+          "include": "#log-entry-message"
+        },
+        {
+          "include": "#log-entry-status"
+        },
+        {
+          "include": "#log-entry-filtered-state"
+        },
+        {
+          "include": "#log-entry-state"
+        },
+        {
+          "include": "#log-entry-other"
+        },
+        {
+          "include": "#log-argument-data-block"
+        },
+        {
+          "include": "#log-origin-with-detail"
+        },
+        {
+          "include": "#log-subscription-op"
+        },
+        {
+          "include": "#log-broadcast-target-with-op"
+        },
+        {
+          "include": "#log-argument-text"
+        },
+        {
+          "include": "#log-communication-operator"
+        },
+        {
+          "include": "#log-variable-reference"
+        },
+        {
+          "include": "#log-module-address"
+        },
+        {
+          "include": "#log-system-state"
+        }
+      ]
+    },
+    "log-origin-with-detail": {
+      "comment": "Origin direction marker <- followed by source module/message name (muted color)",
+      "match": "(<-)\\s+(.+)$",
+      "captures": {
+        "1": {
+          "name": "keyword.operator.direction.origin.csmlog"
+        },
+        "2": {
+          "name": "variable.other.log-origin.csmlog"
+        }
+      }
+    },
+    "log-entry-error": {
+      "comment": "Priority 1: Error events",
+      "match": "^(\\d{4}/\\d{2}/\\d{2}\\s+\\d{2}:\\d{2}:\\d{2}\\.\\d{3})(?:\\s+(\\[\\d{2}:\\d{2}:\\d{2}\\.\\d{3}\\]))?\\s+(\\[Error\\])\\s+([^|]+?)\\s+\\|",
+      "captures": {
+        "1": {
+          "name": "comment.line.timestamp.date.error.csmlog"
+        },
+        "2": {
+          "name": "comment.line.timestamp.time.error.csmlog"
+        },
+        "3": {
+          "name": "invalid.illegal.event-type.error.csmlog"
+        },
+        "4": {
+          "name": "entity.name.namespace.module.error.csmlog"
+        }
+      }
+    },
+    "log-entry-filelogger": {
+      "comment": "Priority 1.5: File logger entries — YYYY/MM/DD HH:MM:SS.mmm  message (two or more spaces after timestamp, no [event type]). Negative lookahead (?![) prevents matching normal log lines where [HH:MM:SS.mmm] or [EventType] follows the timestamp.",
+      "match": "^(\\d{4}/\\d{2}/\\d{2}\\s+\\d{2}:\\d{2}:\\d{2}\\.\\d{3})\\s{2,}(?!\\[)(.+)$",
+      "captures": {
+        "1": {
+          "name": "comment.line.timestamp.date.csmlog"
+        },
+        "2": {
+          "name": "string.other.log-message.filelogger.csmlog"
+        }
+      }
+    },
+    "log-entry-userlog": {
+      "comment": "Priority 2: User Log events. Relative timestamp [HH:MM:SS.mmm] is optional.",
+      "match": "^(\\d{4}/\\d{2}/\\d{2}\\s+\\d{2}:\\d{2}:\\d{2}\\.\\d{3})(?:\\s+(\\[\\d{2}:\\d{2}:\\d{2}\\.\\d{3}\\]))?\\s+(\\[User Log\\])\\s+([^|]+?)\\s+\\|",
+      "captures": {
+        "1": {
+          "name": "comment.line.timestamp.date.userlog.csmlog"
+        },
+        "2": {
+          "name": "comment.line.timestamp.time.userlog.csmlog"
+        },
+        "3": {
+          "name": "markup.changed.event-type.userlog.csmlog"
+        },
+        "4": {
+          "name": "entity.name.namespace.module.userlog.csmlog"
+        }
+      }
+    },
+    "log-entry-lifecycle": {
+      "comment": "Priority 3: Module Created/Destroyed events. Relative timestamp [HH:MM:SS.mmm] and module | content are optional (Module Destroyed may omit them)",
+      "match": "^(\\d{4}/\\d{2}/\\d{2}\\s+\\d{2}:\\d{2}:\\d{2}\\.\\d{3})(?:\\s+(\\[\\d{2}:\\d{2}:\\d{2}\\.\\d{3}\\]))?\\s+(\\[(?:Module Created|Module Destroyed)\\])(?:\\s+([^|]+?)(?:\\s+\\||$))?",
+      "captures": {
+        "1": {
+          "name": "comment.line.timestamp.date.lifecycle.csmlog"
+        },
+        "2": {
+          "name": "comment.line.timestamp.time.lifecycle.csmlog"
+        },
+        "3": {
+          "name": "keyword.control.event-type.lifecycle.csmlog"
+        },
+        "4": {
+          "name": "entity.name.namespace.module.lifecycle.csmlog"
+        }
+      }
+    },
+    "log-entry-register": {
+      "comment": "Priority 4: Register/Unregister events",
+      "match": "^(\\d{4}/\\d{2}/\\d{2}\\s+\\d{2}:\\d{2}:\\d{2}\\.\\d{3})(?:\\s+(\\[\\d{2}:\\d{2}:\\d{2}\\.\\d{3}\\]))?\\s+(\\[(?:Register|Unregister)\\])\\s+([^|]+?)\\s+\\|",
+      "captures": {
+        "1": {
+          "name": "comment.line.timestamp.date.register.csmlog"
+        },
+        "2": {
+          "name": "comment.line.timestamp.time.register.csmlog"
+        },
+        "3": {
+          "name": "storage.type.event-type.register.csmlog"
+        },
+        "4": {
+          "name": "entity.name.namespace.module.register.csmlog"
+        }
+      }
+    },
+    "log-entry-interrupt": {
+      "comment": "Priority 5: Interrupt events",
+      "match": "^(\\d{4}/\\d{2}/\\d{2}\\s+\\d{2}:\\d{2}:\\d{2}\\.\\d{3})(?:\\s+(\\[\\d{2}:\\d{2}:\\d{2}\\.\\d{3}\\]))?\\s+(\\[Interrupt\\])\\s+([^|]+?)\\s+\\|",
+      "captures": {
+        "1": {
+          "name": "comment.line.timestamp.date.interrupt.csmlog"
+        },
+        "2": {
+          "name": "comment.line.timestamp.time.interrupt.csmlog"
+        },
+        "3": {
+          "name": "keyword.control.event-type.interrupt.csmlog"
+        },
+        "4": {
+          "name": "entity.name.namespace.module.interrupt.csmlog"
+        }
+      }
+    },
+    "log-entry-message": {
+      "comment": "Priority 6: Sync/Async/No-Rep Async Message events",
+      "match": "^(\\d{4}/\\d{2}/\\d{2}\\s+\\d{2}:\\d{2}:\\d{2}\\.\\d{3})(?:\\s+(\\[\\d{2}:\\d{2}:\\d{2}\\.\\d{3}\\]))?\\s+(\\[(?:Sync Message|Async Message|No-Rep Async Message)\\])\\s+([^|]+?)\\s+\\|",
+      "captures": {
+        "1": {
+          "name": "comment.line.timestamp.date.message.csmlog"
+        },
+        "2": {
+          "name": "comment.line.timestamp.time.message.csmlog"
+        },
+        "3": {
+          "name": "keyword.other.event-type.message.csmlog"
+        },
+        "4": {
+          "name": "entity.name.namespace.module.message.csmlog"
+        }
+      }
+    },
+    "log-entry-status": {
+      "comment": "Priority 7: Status events",
+      "match": "^(\\d{4}/\\d{2}/\\d{2}\\s+\\d{2}:\\d{2}:\\d{2}\\.\\d{3})(?:\\s+(\\[\\d{2}:\\d{2}:\\d{2}\\.\\d{3}\\]))?\\s+(\\[Status\\])\\s+([^|]+?)\\s+\\|",
+      "captures": {
+        "1": {
+          "name": "comment.line.timestamp.date.status.csmlog"
+        },
+        "2": {
+          "name": "comment.line.timestamp.time.status.csmlog"
+        },
+        "3": {
+          "name": "entity.name.tag.event-type.status.csmlog"
+        },
+        "4": {
+          "name": "entity.name.namespace.module.status.csmlog"
+        }
+      }
+    },
+    "log-entry-filtered-state": {
+      "comment": "Priority 7.5: Filter-marker State Change events. Match <...> first as a special marker, then apply dedicated State Change highlighting.",
+      "match": "^(\\d{4}/\\d{2}/\\d{2}\\s+\\d{2}:\\d{2}:\\d{2}\\.\\d{3})(?:\\s+(\\[\\d{2}:\\d{2}:\\d{2}\\.\\d{3}\\]))?\\s*(<[^>]+>)\\s*(\\[State Change\\])\\s*([^|]+?)\\s*\\|",
+      "captures": {
+        "1": {
+          "name": "meta.log.event-type.state.csmlog"
+        },
+        "2": {
+          "name": "meta.log.event-type.state.csmlog"
+        },
+        "3": {
+          "name": "meta.log.event-type.state.csmlog"
+        },
+        "4": {
+          "name": "meta.log.event-type.state.csmlog"
+        },
+        "5": {
+          "name": "meta.log.event-type.state.module.csmlog"
+        }
+      }
+    },
+    "log-entry-state": {
+      "comment": "Priority 8: State Change events (standard format). Relative timestamp is optional; compact '[State Change]Module' format is supported.",
+      "match": "^(\\d{4}/\\d{2}/\\d{2}\\s+\\d{2}:\\d{2}:\\d{2}\\.\\d{3})(?:\\s+(\\[\\d{2}:\\d{2}:\\d{2}\\.\\d{3}\\]))?\\s*(\\[State Change\\])\\s*([^|]+?)\\s*\\|",
+      "captures": {
+        "1": {
+          "name": "meta.log.event-type.state.csmlog"
+        },
+        "2": {
+          "name": "meta.log.event-type.state.csmlog"
+        },
+        "3": {
+          "name": "meta.log.event-type.state.csmlog"
+        },
+        "4": {
+          "name": "meta.log.event-type.state.module.csmlog"
+        }
+      }
+    },
+    "log-argument-data-block": {
+      "comment": "Argument data block: {key:value;...} in log entries — CSM argument encoding, not CSMScript code. Prevents <Tag> inside args from matching CSMScript anchor pattern. Negative lookbehind excludes ${varname} variable references.",
+      "match": "(?<!\\$)\\{[^}]+\\}",
+      "name": "meta.log.argument-data.csmlog"
+    },
+    "log-entry-other": {
+      "comment": "Fallback: Other unknown event types (relative timestamp and pipe/content optional)",
+      "match": "^(\\d{4}/\\d{2}/\\d{2}\\s+\\d{2}:\\d{2}:\\d{2}\\.\\d{3})(?:\\s+(\\[\\d{2}:\\d{2}:\\d{2}\\.\\d{3}\\]))?\\s+(\\[[^\\]]+\\])(?:\\s+([^|]+?)(?:\\s+\\||$))?",
+      "captures": {
+        "1": {
+          "name": "comment.line.timestamp.date.other.csmlog"
+        },
+        "2": {
+          "name": "comment.line.timestamp.time.other.csmlog"
+        },
+        "3": {
+          "name": "support.type.event-type.other.csmlog"
+        },
+        "4": {
+          "name": "entity.name.namespace.module.other.csmlog"
+        }
+      }
+    },
+
+    "log-variable-reference": {
+      "comment": "Variable reference in log content: ${varname} or ${varname:default} — self-contained copy, no reference to csmscript grammar",
+      "patterns": [
+        {
+          "comment": "Variable with default value: ${varname:default}",
+          "match": "(\\$\\{)([^}:]+)(:)([^}]*)(\\})",
+          "captures": {
+            "1": { "name": "punctuation.definition.variable.csmscript" },
+            "2": { "name": "variable.other.csmscript" },
+            "3": { "name": "punctuation.separator.default.csmscript" },
+            "4": { "name": "markup.italic markup.underline string.unquoted.variable-default.csmscript" },
+            "5": { "name": "punctuation.definition.variable.csmscript" }
+          }
+        },
+        {
+          "comment": "Simple variable reference: ${varname}",
+          "match": "(\\$\\{)([^}]+)(\\})",
+          "captures": {
+            "1": { "name": "punctuation.definition.variable.csmscript" },
+            "2": { "name": "variable.other.csmscript" },
+            "3": { "name": "punctuation.definition.variable.csmscript" }
+          }
+        }
+      ]
+    },
+
+    "log-subscription-op": {
+      "comment": "Subscription operations in log content: -><register>, -><unregister>, -><register as interrupt/status> — self-contained copy",
+      "patterns": [
+        {
+          "comment": "Register with priority change: -><register as interrupt> or -><register as status>",
+          "match": "(-><)(register\\s+as\\s+(?:interrupt|status|Interrupt|Status))(>)",
+          "captures": {
+            "1": { "name": "keyword.operator.subscription.csmscript" },
+            "2": { "name": "keyword.control.subscription-type.csmscript" },
+            "3": { "name": "keyword.operator.subscription.csmscript" }
+          }
+        },
+        {
+          "comment": "Register or unregister subscription: -><register> or -><unregister>",
+          "match": "(-><)(register|unregister)(>)",
+          "captures": {
+            "1": { "name": "keyword.operator.subscription.csmscript" },
+            "2": { "name": "keyword.control.subscription.csmscript" },
+            "3": { "name": "keyword.operator.subscription.csmscript" }
+          }
+        }
+      ]
+    },
+
+    "log-broadcast-target-with-op": {
+      "comment": "Send operators with targets in log content: broadcast targets and module names — self-contained copy",
+      "patterns": [
+        {
+          "comment": "Interrupt broadcast target: -> <interrupt>",
+          "match": "(->)\\s*(<interrupt>)",
+          "captures": {
+            "1": { "name": "keyword.operator.async-call.csmscript" },
+            "2": { "name": "constant.language.interrupt-target.csmscript" }
+          }
+        },
+        {
+          "comment": "Normal broadcast targets: -> <status>, -> <broadcast>, -> <all>",
+          "match": "(->)\\s*(<(?:status|broadcast|all)>)",
+          "captures": {
+            "1": { "name": "keyword.operator.async-call.csmscript" },
+            "2": { "name": "constant.language.broadcast-target.csmscript" }
+          }
+        },
+        {
+          "comment": "Synchronous call with target module: -@ ModuleName",
+          "match": "(-@)\\s+([\\w][\\w\\-]*)",
+          "captures": {
+            "1": { "name": "keyword.operator.sync-call.csmscript" },
+            "2": { "name": "entity.name.namespace.module.csmscript" }
+          }
+        },
+        {
+          "comment": "Async no-reply with target module: ->| ModuleName",
+          "match": "(->\\|)\\s+([\\w][\\w\\-]*)",
+          "captures": {
+            "1": { "name": "keyword.operator.async-no-reply.csmscript" },
+            "2": { "name": "entity.name.namespace.module.csmscript" }
+          }
+        },
+        {
+          "comment": "Async call with target module: -> ModuleName",
+          "match": "(->)\\s+([\\w][\\w\\-]*)",
+          "captures": {
+            "1": { "name": "keyword.operator.async-call.csmscript" },
+            "2": { "name": "entity.name.namespace.module.csmscript" }
+          }
+        }
+      ]
+    },
+
+    "log-communication-operator": {
+      "comment": "Inter-module communication operators in log content — self-contained copy, no reference to csmscript grammar",
+      "patterns": [
+        {
+          "comment": "Async call without reply: ->|",
+          "name": "keyword.operator.async-no-reply.csmscript",
+          "match": "->\\|"
+        },
+        {
+          "comment": "Synchronous call: -@",
+          "name": "keyword.operator.sync-call.csmscript",
+          "match": "-@"
+        },
+        {
+          "comment": "Asynchronous call with reply: ->",
+          "name": "keyword.operator.async-call.csmscript",
+          "match": "->"
+        }
+      ]
+    },
+
+    "log-argument-text": {
+      "comment": "Arguments after >> separator in log content — self-contained, internal patterns reference csmlog repository only",
+      "begin": ">>\\s*",
+      "beginCaptures": {
+        "0": { "name": "keyword.operator.argument-separator.csmscript" }
+      },
+      "end": "(?=\\s*(?:-@|->\\|?|-><|=>|<-|$))",
+      "contentName": "markup.italic markup.underline string.unquoted.argument.csmscript",
+      "patterns": [
+        { "include": "#log-argument-key-pair" },
+        { "include": "#log-variable-reference" },
+        { "include": "#log-module-address" }
+      ]
+    },
+
+    "log-argument-key-pair": {
+      "comment": "Parameter key/value prefix inside argument text: key: or key2: in key:value;key2:value2;... (with or without surrounding braces)",
+      "match": "(?<![\\w.\\-])([A-Za-z_][A-Za-z0-9_.\\-]*)(:)",
+      "captures": {
+        "1": { "name": "variable.other.argument-key.csmlog" },
+        "2": { "name": "punctuation.separator.argument-key.csmlog" }
+      }
+    },
+
+    "log-module-address": {
+      "comment": "Module reference in log content: @ModuleName — self-contained copy",
+      "match": "(@)([\\w][\\w\\-]*)?",
+      "captures": {
+        "1": { "name": "punctuation.separator.module.csmscript" },
+        "2": { "name": "entity.name.label.module-address.csmscript" }
+      }
+    },
+
+    "log-system-state": {
+      "comment": "CSM framework built-in state names in log content — self-contained copy, no reference to csmscript grammar",
+      "patterns": [
+        {
+          "comment": "Multi-word system states",
+          "name": "support.constant.system-state.csmscript",
+          "match": "(?<![^\\s])(Async Message Posted|Async Response|Target Timeout Error|Target Error|Critical Error|No Target Error|Error Handler)(?=[\\s>]|$)"
+        },
+        {
+          "comment": "Single-word system state",
+          "name": "support.constant.system-state.csmscript",
+          "match": "\\b(Response)\\b"
+        }
+      ]
+    }
+  }
+}

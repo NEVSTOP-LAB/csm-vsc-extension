@@ -1,0 +1,18 @@
+{
+  "comments": {
+    "lineComment": "//"
+  },
+  "autoClosingPairs": [
+    { "open": "\"", "close": "\"", "notIn": ["comment"] },
+    { "open": "'", "close": "'", "notIn": ["comment"] },
+    { "open": "<", "close": ">", "notIn": ["comment", "string"] },
+    { "open": "${", "close": "}", "notIn": ["comment"] }
+  ],
+  "surroundingPairs": [
+    ["\"", "\""],
+    ["'", "'"],
+    ["<", ">"],
+    ["${", "}"]
+  ],
+  "wordPattern": "(-?\\d*\\.\\d\\w*)|([^\\s\\-<>@|/;:]+)"
+}

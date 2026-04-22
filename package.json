@@ -1,0 +1,594 @@
+{
+  "name": "csmscript-language-support",
+  "displayName": "CSMScript Language Support",
+  "description": "Language support for CSMScript in Visual Studio Code",
+  "version": "0.0.4",
+  "license": "AGPL-3.0-only",
+  "publisher": "NEVSTOP-LAB",
+  "icon": "images/icon.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/NEVSTOP-LAB/CSMScript-vsc-Support.git"
+  },
+  "bugs": {
+    "url": "https://github.com/NEVSTOP-LAB/CSMScript-vsc-Support/issues"
+  },
+  "homepage": "https://github.com/NEVSTOP-LAB/CSMScript-vsc-Support#readme",
+  "keywords": [
+    "csmscript",
+    "state machine",
+    "scripting language",
+    "syntax highlighting"
+  ],
+  "engines": {
+    "vscode": "^1.60.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "activationEvents": [],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "csmscript",
+        "aliases": [
+          "CSMScript"
+        ],
+        "extensions": [
+          ".csmscript"
+        ],
+        "configuration": "./language-configuration.json"
+      },
+      {
+        "id": "csmlog",
+        "aliases": [
+          "CSMLog"
+        ],
+        "extensions": [
+          ".csmlog"
+        ],
+        "configuration": "./language-configuration.json"
+      },
+      {
+        "id": "lvcsm",
+        "aliases": [
+          "LVCSM"
+        ],
+        "extensions": [
+          ".lvcsm"
+        ]
+      }
+    ],
+    "grammars": [
+      {
+        "language": "csmscript",
+        "scopeName": "source.csmscript",
+        "path": "./syntaxes/csmscript.tmLanguage.json"
+      },
+      {
+        "language": "csmlog",
+        "scopeName": "source.csmlog",
+        "path": "./syntaxes/csmlog.tmLanguage.json"
+      },
+      {
+        "language": "lvcsm",
+        "scopeName": "source.lvcsm",
+        "path": "./syntaxes/lvcsm.tmLanguage.json"
+      }
+    ],
+    "snippets": [
+      {
+        "language": "csmscript",
+        "path": "./snippets/csmscript.code-snippets"
+      }
+    ],
+    "commands": [
+      {
+        "command": "csmscript.showFlowVisualization",
+        "title": "CSMScript: Show Flow Visualization",
+        "category": "CSMScript"
+      }
+    ],
+    "menus": {
+      "editor/title": [
+        {
+          "command": "csmscript.showFlowVisualization",
+          "when": "editorLangId == csmscript",
+          "group": "navigation"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "csmscript.showFlowVisualization",
+          "when": "editorLangId == csmscript"
+        }
+      ]
+    },
+    "configurationDefaults": {
+      "[csmscript]": {
+        "editor.defaultFormatter": "NEVSTOP-LAB.csmscript-language-support",
+        "files.autoGuessEncoding": true
+      },
+      "[csmlog]": {
+        "editor.fontSize": 14,
+        "files.autoGuessEncoding": true
+      },
+      "[lvcsm]": {
+        "files.autoGuessEncoding": true
+      },
+      "editor.tokenColorCustomizations": {
+        "textMateRules": [
+          {
+            "scope": "comment.line.double-slash.csmscript",
+            "settings": {
+              "foreground": "#22863a",
+              "fontStyle": "italic"
+            }
+          },
+          {
+            "scope": [
+              "keyword.operator.sync-call.csmscript",
+              "keyword.operator.async-no-reply.csmscript",
+              "keyword.operator.async-call.csmscript"
+            ],
+            "settings": {
+              "foreground": "#d73a49",
+              "fontStyle": "bold"
+            }
+          },
+          {
+            "scope": "keyword.operator.argument-separator.csmscript",
+            "settings": {
+              "foreground": "#d73a49",
+              "fontStyle": "bold"
+            }
+          },
+          {
+            "scope": "keyword.operator.subscription.csmscript",
+            "settings": {
+              "foreground": "#d73a49",
+              "fontStyle": "bold"
+            }
+          },
+          {
+            "scope": "entity.name.label.module-address.csmscript",
+            "settings": {
+              "fontStyle": "bold"
+            }
+          },
+          {
+            "scope": "entity.name.namespace.module.csmscript",
+            "settings": {
+              "foreground": "#ca7601"
+            }
+          },
+          {
+            "scope": "string.unquoted.variable-default.csmscript",
+            "settings": {
+              "foreground": "#6a737d",
+              "fontStyle": "italic"
+            }
+          },
+          {
+            "scope": "string.unquoted.argument.csmscript",
+            "settings": {
+              "foreground": "#6a737d",
+              "fontStyle": "italic"
+            }
+          },
+          {
+            "scope": [
+              "variable.other.argument-key.csmlog",
+              "punctuation.separator.argument-key.csmlog"
+            ],
+            "settings": {
+              "foreground": "#6a737d",
+              "fontStyle": "bold italic underline"
+            }
+          },
+          {
+            "scope": [
+              "variable.other.csmscript",
+              "variable.other.assignment.csmscript"
+            ],
+            "settings": {
+              "foreground": "#e36209",
+              "fontStyle": "italic"
+            }
+          },
+          {
+            "scope": "punctuation.definition.variable.csmscript",
+            "settings": {
+              "foreground": "#e36209"
+            }
+          },
+          {
+            "scope": [
+              "keyword.control.flow.csmscript",
+              "keyword.control.include.csmscript",
+              "keyword.control.jump.csmscript",
+              "keyword.control.wait.csmscript",
+              "keyword.control.loop.csmscript",
+              "keyword.control.subscription.csmscript",
+              "keyword.control.subscription-type.csmscript"
+            ],
+            "settings": {
+              "foreground": "#d73a49",
+              "fontStyle": "bold"
+            }
+          },
+          {
+            "scope": "punctuation.definition.tag.csmscript",
+            "settings": {
+              "foreground": "#d73a49"
+            }
+          },
+          {
+            "scope": "entity.name.label.anchor.csmscript",
+            "settings": {
+              "foreground": "#0366d6",
+              "fontStyle": "bold"
+            }
+          },
+          {
+            "scope": [
+              "support.function.echo.csmscript",
+              "support.function.expression.csmscript",
+              "support.function.random.csmscript",
+              "support.function.dialog.csmscript",
+              "support.function.tagdb.csmscript",
+              "support.function.string-compare.csmscript"
+            ],
+            "settings": {
+              "foreground": "#6f42c1"
+            }
+          },
+          {
+            "scope": "support.constant.system-state.csmscript",
+            "settings": {
+              "foreground": "#005cc5",
+              "fontStyle": "italic"
+            }
+          },
+          {
+            "scope": [
+              "constant.language.broadcast-target.csmscript",
+              "constant.language.interrupt-target.csmscript"
+            ],
+            "settings": {
+              "foreground": "#005cc5",
+              "fontStyle": "bold"
+            }
+          },
+          {
+            "scope": [
+              "keyword.operator.return-save.csmscript",
+              "keyword.operator.conditional-jump.csmscript",
+              "keyword.operator.error-jump.csmscript",
+              "keyword.operator.range-in.csmscript",
+              "keyword.operator.range-not-in.csmscript",
+              "keyword.operator.assignment.csmscript"
+            ],
+            "settings": {
+              "foreground": "#d73a49"
+            }
+          },
+          {
+            "scope": "punctuation.separator.module.csmscript",
+            "settings": {
+              "foreground": "#6f42c1"
+            }
+          },
+          {
+            "scope": [
+              "keyword.other.auto-error.csmscript",
+              "keyword.other.ini-var.csmscript",
+              "keyword.other.tagdb.csmscript"
+            ],
+            "settings": {
+              "foreground": "#005cc5"
+            }
+          },
+          {
+            "scope": "entity.name.section.predef.csmscript",
+            "settings": {
+              "foreground": "#6f42c1",
+              "fontStyle": "bold"
+            }
+          },
+          {
+            "scope": [
+              "punctuation.separator.prefix.csmscript",
+              "punctuation.separator.default.csmscript"
+            ],
+            "settings": {
+              "foreground": "#6a737d"
+            }
+          },
+          {
+            "scope": "meta.expression.conditional-jump.csmscript",
+            "settings": {
+              "foreground": "#6a737d",
+              "fontStyle": "italic"
+            }
+          },
+          {
+            "scope": "punctuation.definition.section.csmscript",
+            "settings": {
+              "foreground": "#6f42c1"
+            }
+          },
+          {
+            "scope": "comment.line.timestamp.date.csmlog",
+            "settings": {
+              "foreground": "#6a737d",
+              "fontStyle": "italic"
+            }
+          },
+          {
+            "scope": "comment.line.timestamp.time.csmlog",
+            "settings": {
+              "foreground": "#7c8389"
+            }
+          },
+          {
+            "scope": [
+              "comment.line.timestamp.date.error.csmlog",
+              "comment.line.timestamp.time.error.csmlog"
+            ],
+            "settings": {
+              "foreground": "#d73a49"
+            }
+          },
+          {
+            "scope": [
+              "comment.line.timestamp.date.userlog.csmlog",
+              "comment.line.timestamp.time.userlog.csmlog"
+            ],
+            "settings": {
+              "foreground": "#e36209"
+            }
+          },
+          {
+            "scope": [
+              "comment.line.timestamp.date.lifecycle.csmlog",
+              "comment.line.timestamp.time.lifecycle.csmlog"
+            ],
+            "settings": {
+              "foreground": "#6f42c1"
+            }
+          },
+          {
+            "scope": [
+              "comment.line.timestamp.date.register.csmlog",
+              "comment.line.timestamp.time.register.csmlog"
+            ],
+            "settings": {
+              "foreground": "#a626a4"
+            }
+          },
+          {
+            "scope": [
+              "comment.line.timestamp.date.interrupt.csmlog",
+              "comment.line.timestamp.time.interrupt.csmlog"
+            ],
+            "settings": {
+              "foreground": "#ca7601"
+            }
+          },
+          {
+            "scope": [
+              "comment.line.timestamp.date.message.csmlog",
+              "comment.line.timestamp.time.message.csmlog"
+            ],
+            "settings": {
+              "foreground": "#0366d6"
+            }
+          },
+          {
+            "scope": [
+              "comment.line.timestamp.date.status.csmlog",
+              "comment.line.timestamp.time.status.csmlog"
+            ],
+            "settings": {
+              "foreground": "#17a2b8"
+            }
+          },
+          {
+            "scope": [
+              "comment.line.timestamp.date.other.csmlog",
+              "comment.line.timestamp.time.other.csmlog"
+            ],
+            "settings": {
+              "foreground": "#6a737d"
+            }
+          },
+          {
+            "scope": "entity.name.namespace.module.csmlog",
+            "settings": {
+              "foreground": "#00838f",
+              "fontStyle": "bold"
+            }
+          },
+          {
+            "scope": "entity.name.namespace.module.error.csmlog",
+            "settings": {
+              "foreground": "#d73a49",
+              "fontStyle": "underline"
+            }
+          },
+          {
+            "scope": "entity.name.namespace.module.userlog.csmlog",
+            "settings": {
+              "foreground": "#e36209",
+              "fontStyle": "underline"
+            }
+          },
+          {
+            "scope": "entity.name.namespace.module.lifecycle.csmlog",
+            "settings": {
+              "foreground": "#6f42c1",
+              "fontStyle": "underline"
+            }
+          },
+          {
+            "scope": "entity.name.namespace.module.register.csmlog",
+            "settings": {
+              "foreground": "#a626a4",
+              "fontStyle": "underline"
+            }
+          },
+          {
+            "scope": "entity.name.namespace.module.interrupt.csmlog",
+            "settings": {
+              "foreground": "#ca7601",
+              "fontStyle": "underline"
+            }
+          },
+          {
+            "scope": "entity.name.namespace.module.message.csmlog",
+            "settings": {
+              "foreground": "#0366d6",
+              "fontStyle": "underline"
+            }
+          },
+          {
+            "scope": "entity.name.namespace.module.status.csmlog",
+            "settings": {
+              "foreground": "#17a2b8",
+              "fontStyle": "underline"
+            }
+          },
+          {
+            "scope": "entity.name.namespace.module.other.csmlog",
+            "settings": {
+              "foreground": "#8b949e",
+              "fontStyle": "underline"
+            }
+          },
+          {
+            "scope": "meta.log.event-type.state.module.csmlog",
+            "settings": {
+              "fontStyle": "underline"
+            }
+          },
+          {
+            "scope": "variable.other.config-key.csmlog",
+            "settings": {
+              "foreground": "#586069"
+            }
+          },
+          {
+            "scope": "constant.other.config-value.csmlog",
+            "settings": {
+              "foreground": "#6f7d8c"
+            }
+          },
+          {
+            "scope": "keyword.operator.direction.origin.csmlog",
+            "settings": {
+              "foreground": "#58a6ff",
+              "fontStyle": "bold"
+            }
+          },
+          {
+            "scope": "variable.other.log-origin.csmlog",
+            "settings": {
+              "foreground": "#58a6ff",
+              "fontStyle": ""
+            }
+          },
+          {
+            "scope": "invalid.illegal.event-type.error.csmlog",
+            "settings": {
+              "foreground": "#d73a49",
+              "fontStyle": "bold"
+            }
+          },
+          {
+            "scope": "string.other.log-message.filelogger.csmlog",
+            "settings": {
+              "foreground": "#b91c1c",
+              "fontStyle": "bold"
+            }
+          },
+          {
+            "scope": "markup.changed.event-type.userlog.csmlog",
+            "settings": {
+              "foreground": "#e36209",
+              "fontStyle": "bold"
+            }
+          },
+          {
+            "scope": "keyword.control.event-type.lifecycle.csmlog",
+            "settings": {
+              "foreground": "#6f42c1",
+              "fontStyle": "bold"
+            }
+          },
+          {
+            "scope": "storage.type.event-type.register.csmlog",
+            "settings": {
+              "foreground": "#a626a4"
+            }
+          },
+          {
+            "scope": "keyword.control.event-type.interrupt.csmlog",
+            "settings": {
+              "foreground": "#ca7601"
+            }
+          },
+          {
+            "scope": "keyword.other.event-type.message.csmlog",
+            "settings": {
+              "foreground": "#0366d6"
+            }
+          },
+          {
+            "scope": "entity.name.tag.event-type.status.csmlog",
+            "settings": {
+              "foreground": "#17a2b8"
+            }
+          },
+          {
+            "scope": "support.type.event-type.other.csmlog",
+            "settings": {
+              "foreground": "#8b949e"
+            }
+          }
+        ]
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run package",
+    "compile": "npm run check-types && npm run lint && node esbuild.js",
+    "watch": "npm-run-all -p watch:*",
+    "watch:esbuild": "node esbuild.js --watch",
+    "watch:tsc": "tsc --noEmit --watch --project tsconfig.json",
+    "package": "npm run check-types && npm run lint && node esbuild.js --production",
+    "compile-tests": "tsc -p . --outDir out",
+    "watch-tests": "tsc -p . -w --outDir out",
+    "pretest": "npm run compile-tests && npm run compile && npm run lint",
+    "check-types": "tsc --noEmit",
+    "lint": "eslint src",
+    "test": "vscode-test"
+  },
+  "devDependencies": {
+    "@types/mocha": "^10.0.10",
+    "@types/node": "22.x",
+    "@types/vscode": "^1.60.0",
+    "@vscode/test-cli": "^0.0.12",
+    "@vscode/test-electron": "^2.5.2",
+    "esbuild": "^0.27.3",
+    "eslint": "^9.39.3",
+    "npm-run-all": "^4.1.5",
+    "semver": "^7.7.4",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.56.1"
+  },
+  "dependencies": {
+    "mermaid": "^11.4.1"
+  }
+}
