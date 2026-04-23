@@ -53,10 +53,6 @@ npm run compile-tests
 npm test
 ```
 
-## 已知限制
-
-- 当前版本不注册 `.csmscript` 语言。
-
 ## 问题反馈
 
 如遇到问题请到 [GitHub Issues](https://github.com/nevstop/csm-vsc-extension/issues) 反馈。
