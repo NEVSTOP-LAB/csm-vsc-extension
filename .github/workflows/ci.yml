@@ -158,15 +158,15 @@ jobs:
         id: version
         run: |
           YEAR=$(date -u +%Y)
-          MONTH=$(date -u +%m)
-          DAY=$(date -u +%d)
-          BUILD_VERSION="${YEAR}.${MONTH}.${DAY}.${{ github.run_number }}"
+          MONTH=$(date -u +%-m)
+          DAY=$(date -u +%-d)
+          BUILD_VERSION="${YEAR}.${MONTH}.${DAY}-${{ github.run_number }}"
           echo "build_version=${BUILD_VERSION}" >> "$GITHUB_OUTPUT"
 
       - name: 打包 VSIX（vsce package）
         # --no-dependencies：所有依赖均为 devDependencies，esbuild 已将运行时代码
         # 打包至 dist/extension.js，无需在 VSIX 中内嵌 node_modules
-        # 版本号格式为 年.月.日.build，例如 2026.04.23.4
+        # 版本号格式为 年.月.日-build（semver 预发布格式），例如 2026.4.23-42
         # --no-update-package-json：仅将版本号注入 VSIX 包，不修改 package.json
         run: npx @vscode/vsce@3.7.1 package ${{ steps.version.outputs.build_version }} --no-dependencies --no-update-package-json
 
@@ -210,12 +210,11 @@ jobs:
           node << 'JSEOF'
           const fs = require('fs');
           const pkg = JSON.parse(fs.readFileSync('./vsix-pkg.json', 'utf8'));
-          // 接受标准 semver 或 年.月.日.build 四段日期版本（如 2026.04.23.4）
-          // VS Code Marketplace 支持 major.minor.patch.build 四段版本号，不要求严格的 semver 格式
+          // 版本号须为有效 semver（如 2026.4.23-42）
+          // VS Code 扩展扫描器使用 semver 解析版本号，非法 semver 会导致"无法读取扩展"错误
           const semverPattern = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|[0-9A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|[0-9A-Za-z-][0-9A-Za-z-]*))*))?(?:\+([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$/;
-          const calverPattern = /^\d{4}\.\d{2}\.\d{2}\.\d+$/;
-          if (!semverPattern.test(pkg.version) && !calverPattern.test(pkg.version)) {
-            console.error('FAILED: version "' + pkg.version + '" is not valid semver or YYYY.MM.DD.build calver. VS Code cannot load this extension.');
+          if (!semverPattern.test(pkg.version)) {
+            console.error('FAILED: version "' + pkg.version + '" is not valid semver. VS Code cannot load this extension.');
             process.exit(1);
           }
           console.log('✓ 版本号合法: ' + pkg.version);
