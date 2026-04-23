@@ -4,6 +4,8 @@ on:
   push:
     branches:
       - main
+    tags:
+      - '**'
   pull_request:
     branches:
       - main
@@ -155,14 +157,16 @@ jobs:
       - name: 计算带 build number 的版本号
         id: version
         run: |
-          BASE_VERSION=$(node -p "require('./package.json').version")
-          BUILD_VERSION="${BASE_VERSION}-build.${{ github.run_number }}"
+          YEAR=$(date -u +%Y)
+          MONTH=$(date -u +%m)
+          DAY=$(date -u +%d)
+          BUILD_VERSION="${YEAR}.${MONTH}.${DAY}.${{ github.run_number }}"
           echo "build_version=${BUILD_VERSION}" >> "$GITHUB_OUTPUT"
 
       - name: 打包 VSIX（vsce package）
         # --no-dependencies：所有依赖均为 devDependencies，esbuild 已将运行时代码
         # 打包至 dist/extension.js，无需在 VSIX 中内嵌 node_modules
-        # 版本号（位置参数）使用 semver 预发布格式追加 build number，例如 0.0.3-build.42
+        # 版本号格式为 年.月.日.build，例如 2026.04.23.4
         # --no-update-package-json：仅将版本号注入 VSIX 包，不修改 package.json
         run: npx @vscode/vsce@3.7.1 package ${{ steps.version.outputs.build_version }} --no-dependencies --no-update-package-json
 
@@ -206,10 +210,13 @@ jobs:
           node << 'JSEOF'
           const fs = require('fs');
           const pkg = JSON.parse(fs.readFileSync('./vsix-pkg.json', 'utf8'));
+          // 接受标准 semver 或 年.月.日.build 四段日期版本（如 2026.04.23.4）
+          // VS Code Marketplace 支持四段版本号格式
           const semverPattern = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|[0-9A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|[0-9A-Za-z-][0-9A-Za-z-]*))*))?(?:\+([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$/;
+          const calverPattern = /^\d{4}\.\d{2}\.\d{2}\.\d+$/;
           // VS Code 扩展扫描器使用 semver 解析版本号，非法 semver 会导致"无法读取扩展"错误
-          if (!semverPattern.test(pkg.version)) {
-            console.error('FAILED: version "' + pkg.version + '" is not valid semver. VS Code cannot load this extension.');
+          if (!semverPattern.test(pkg.version) && !calverPattern.test(pkg.version)) {
+            console.error('FAILED: version "' + pkg.version + '" is not valid semver or calver (YYYY.MM.DD.build). VS Code cannot load this extension.');
             process.exit(1);
           }
           console.log('✓ 版本号合法: ' + pkg.version);
@@ -242,3 +249,25 @@ jobs:
           echo "✓ 主入口文件存在: $MAIN_IN_VSIX"
 
           echo "✓ VSIX 验证通过，可正常被 VS Code 加载"
+
+  publish-to-marketplace:
+    name: 发布到 VS Code Marketplace
+    runs-on: ubuntu-latest
+    needs: [build-vsix, validate-vsix]
+    if: startsWith(github.ref, 'refs/tags/')
+    steps:
+      - name: 安装 Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: 下载 VSIX Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.build-vsix.outputs.artifact_name }}
+
+      - name: 发布到 VS Code Marketplace
+        run: |
+          VSIX=$(ls *.vsix | head -1)
+          echo "发布 VSIX: $VSIX"
+          npx @vscode/vsce@3.7.1 publish --packagePath "$VSIX" --pat "${{ secrets.VSCE_PAT }}"
