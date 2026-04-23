@@ -631,7 +631,7 @@ Hover 和 Completion 能力通过 `src/extension.ts` 在运行时动态注册（
    - 整体和谐：配置行使用低饱和度颜色
 
 4. **默认编辑器设置** (`package.json` — `configurationDefaults`)
-   - `[csmlog]` 语言默认字号设为 12px（小于 VS Code 默认值），便于在单屏显示更多日志行
+   - `[csmlog]` 语言默认字号设为 14px，便于在单屏显示更多日志行
    - `[csmlog]` 默认开启 `files.autoGuessEncoding: true`，打开日志时自动识别 GBK/GB2312 等非 UTF-8 编码，减少乱码
    - 用户可通过 VS Code 设置 (`editor.fontSize`) 覆盖此默认值
    - `editor.tokenColorCustomizations.textMateRules` 为所有 csmlog 专属 scope 设置精确颜色，确保颜色效果不受用户所选主题影响（优先级高于活跃主题）

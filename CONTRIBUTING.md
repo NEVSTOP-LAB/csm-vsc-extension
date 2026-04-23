@@ -27,7 +27,7 @@ npm run compile
 npm run compile-tests
 
 # 运行无需 VS Code 的单元测试（Hover + Outline）
-npx mocha --ui tdd --timeout 10000 --require out/test/setup.js out/test/csmlogDocumentSymbolProvider.test.js out/test/csmlogHoverProvider.test.js
+npx mocha --ui tdd --timeout 10000 --require out/test/setup.js "out/test/csmlog*Provider.test.js"
 ```
 
 预期输出示例：`52 passing`
