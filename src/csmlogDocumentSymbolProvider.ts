@@ -4,7 +4,7 @@ import * as vscode from 'vscode';
 const CONFIG_REGEX = /^-\s+([^|]+?)\s+\|\s+.+$/;
 
 /** Matches a Module Created/Destroyed log line and captures the event type and module name. */
-const MODULE_LIFECYCLE_REGEX = /^\d{4}\/\d{2}\/\d{2}\s+\d{2}:\d{2}:\d{2}\.\d{3}\s+\[[\d:.]+\]\s+\[(Module Created|Module Destroyed)\]\s+(\S+)/;
+const MODULE_LIFECYCLE_REGEX = /^\d{4}\/\d{2}\/\d{2}\s+\d{2}:\d{2}:\d{2}\.\d{3}(?:\s+\[[\d:.]+\])?\s+\[(Module Created|Module Destroyed)\](?:\s+([^|]+?)(?:\s+\||$))?/;
 
 /** Matches a Logger system message: timestamp followed by `<label>`. */
 const LOGGER_MESSAGE_REGEX = /^\d{4}\/\d{2}\/\d{2}\s+\d{2}:\d{2}:\d{2}\.\d{3}\s+<([^>]+)>/;
@@ -53,7 +53,8 @@ export class CSMLogDocumentSymbolProvider implements vscode.DocumentSymbolProvid
                 const kind = moduleMatch[1] === 'Module Created'
                     ? vscode.SymbolKind.Constructor
                     : vscode.SymbolKind.Event;
-                entries.push({ lineIndex: i, name: `${moduleMatch[1]}: ${moduleMatch[2]}`, kind });
+                const moduleName = moduleMatch[2]?.trim() || '<unknown-module>';
+                entries.push({ lineIndex: i, name: `${moduleMatch[1]}: ${moduleName}`, kind });
                 continue;
             }
 

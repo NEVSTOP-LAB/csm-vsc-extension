@@ -143,6 +143,24 @@ suite('CSMLogDocumentSymbolProvider — module lifecycle', () => {
         assert.strictEqual(syms[0].kind, KIND_EVENT);
     });
 
+    test('Module lifecycle without relative timestamp is detected', () => {
+        const syms = getSymbols([
+            '2026/03/20 17:33:05.250 [Module Destroyed] AI',
+        ]);
+        assert.strictEqual(syms.length, 1);
+        assert.strictEqual(syms[0].name, 'Module Destroyed: AI');
+        assert.strictEqual(syms[0].kind, KIND_EVENT);
+    });
+
+    test('Module lifecycle without module name uses placeholder', () => {
+        const syms = getSymbols([
+            '2026/03/20 17:33:05.250 [Module Destroyed]',
+        ]);
+        assert.strictEqual(syms.length, 1);
+        assert.strictEqual(syms[0].name, 'Module Destroyed: <unknown-module>');
+        assert.strictEqual(syms[0].kind, KIND_EVENT);
+    });
+
     test('multiple modules in order', () => {
         const lines = [
             '2026/03/20 17:32:59.425 [17:32:59.425] [Module Created] AI |  > HAL-AI.vi:5990002',

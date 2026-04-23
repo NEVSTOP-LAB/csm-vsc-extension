@@ -21,47 +21,24 @@
 
 ## 1. 项目定位
 
-**CSMScript Language Support** 是一个 Visual Studio Code 语言扩展，为 **CSMScript**（Communicating State Machine Script）提供完整的编辑器支持。
+**csm-vsc-support** 是一个 Visual Studio Code 语言扩展，当前聚焦为 CSM 生态中的 `.csmlog` 与 `.lvcsm` 文件提供编辑器支持。
 
-### CSMScript 是什么？
+### 当前支持范围
 
-CSMScript 是 [NEVSTOP-LAB](https://github.com/NEVSTOP-LAB) 为 LabVIEW **Communicable State Machine（CSM）** 框架设计的领域特定脚本语言（DSL）。其语法以行为单位，格式如下：
+当前代码库中，扩展主要提供以下能力：
 
-```
-[当前状态] >> [参数] [操作符] [目标状态/模块] // 注释
-```
-
-核心语法特征：
-
-| 特征 | 示例 |
-|------|------|
-| 通信操作符（同步） | `State A -@ State B` |
-| 通信操作符（异步） | `State A -> State B` |
-| 控制流标签 | `<if ${condition}>` … `<end_if>` |
-| 变量引用 | `${varname}` 或 `${varname:default}` |
-| 返回值保存 | `=> result` |
-| 范围运算 | `∈ [1,10]` / `!∈ [1,10]` |
-| 条件跳转 | `?? <error_anchor>` / `?expr? <ok>` |
-| 内置命令 | `GOTO`、`WAIT 1000(ms)`、`EXPRESSION`、`RANDOM`…|
-| 引入文件 | `<include sub.csmscript>` |
+- `.csmlog`：语法高亮、悬停提示、大纲（Outline）
+- `.lvcsm`：基于 `source.ini` 的 INI 语法高亮
 
 ### 扩展提供的能力
 
 | 功能 | 状态 |
 |------|------|
-| 语言定义（`.csmscript` 文件关联） | ✅ |
-| 语法高亮（TextMate 语法） | ✅ |
-| 代码片段（Snippets） | ✅ |
-| 代码补全（IntelliSense） | ✅ |
-| 悬停提示（Hover） | ✅ |
-| 语法诊断（Diagnostics） | ✅ |
-| 代码格式化 | ✅ |
-| 流程可视化（控制流图 + 通讯泳道图，Mermaid Webview 面板） | ✅ |
-| .csmlog 文件支持（语法高亮 + 悬停提示） | ✅ |
-| .lvcsm 文件支持（独立 `lvcsm` 语言，语法 include `source.ini`，默认自动探测编码） | ✅ |
-| 状态机可视化 | 🔲 规划中 |
-
-流程可视化的流程图视图对 `<include xxx.csmscript>` 生成独立节点，展示引用路径并使用专用形状与配色，以便与普通指令块区分。
+| `.csmlog` 语法高亮 | ✅ |
+| `.csmlog` 悬停提示 | ✅ |
+| `.csmlog` Outline | ✅ |
+| `.lvcsm` 语言支持 | ✅ |
+| `.csmscript` 语言注册 | ❌（当前未注册） |
 
 ---
 

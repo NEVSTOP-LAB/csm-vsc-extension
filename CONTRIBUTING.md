@@ -6,8 +6,8 @@
 
 ```bash
 # 克隆仓库
-git clone https://github.com/NEVSTOP-LAB/CSMScript-vsc-Support.git
-cd CSMScript-vsc-Support
+git clone https://github.com/nevstop/csm-vsc-extension.git
+cd csm-vsc-extension
 
 # 安装依赖
 npm install
@@ -20,26 +20,17 @@ npm run compile
 
 ### 自动化单元测试（不需要 VS Code）
 
-语法高亮语法规则的单元测试（`grammar.test.ts`）可在命令行直接运行，无需启动 VS Code：
+当前仓库的 standalone 单元测试可在命令行直接运行，无需启动 VS Code：
 
 ```bash
 # 编译测试
 npm run compile-tests
 
-# 运行语法规则单元测试（334 个测试，涵盖所有 18 个语法模式）
-npx mocha --ui tdd out/test/grammar.test.js
+# 运行无需 VS Code 的单元测试（Hover + Outline）
+npx mocha --ui tdd --timeout 10000 --require out/test/setup.js out/test/csmlogDocumentSymbolProvider.test.js out/test/csmlogHoverProvider.test.js
 ```
 
-预期输出示例：
-
-```
-  Grammar – line-comment
-    ✔ entry has correct scope name
-    ✔ matches a full-line comment
-    ...
-
-  334 passing (xxx ms)
-```
+预期输出示例：`50 passing`
 
 ### 在 VS Code 中运行完整测试套件
 
@@ -68,12 +59,12 @@ npm run check-types   # TypeScript 类型检查
 1. 用 VS Code 打开本仓库根目录
 2. 按 **F5**（或选择菜单 *运行 → 启动调试*）
 3. VS Code 会自动打开一个新的 **Extension Development Host** 窗口，并加载本扩展
-4. 在新窗口中打开以下手动测试样例文件：
+4. 在新窗口中打开以下手动测试文件：
 
-   - `samples/manual-full-coverage.csmscript`（主样例：覆盖全部 18 个语法模式）
-   - `samples/include-sequence.csmscript`（被 include 的子样例）
+   - `src/test/fixtures/sample.csmlog`
+   - 任意 `.lvcsm` 文件（可新建）
 
-5. 验证各语法元素已正确高亮（注释、预定义区、变量引用、控制流标签、通信操作符、内建命令、订阅广播、系统状态常量等）
+5. 验证语法高亮、悬停与大纲行为是否符合预期
 6. 使用 **Scope Inspector** 检查任意 token 的作用域：
    - 打开命令面板（`Ctrl+Shift+P` / `Cmd+Shift+P`）
    - 搜索并运行 **"Developer: Inspect Editor Tokens and Scopes"**
@@ -90,7 +81,7 @@ vsce package
 
 # 在 VS Code 中安装生成的 .vsix 文件
 # 方式 1：命令行
-code --install-extension csmscript-language-support-*.vsix
+code --install-extension csm-vsc-support-*.vsix
 
 # 方式 2：在 VS Code 扩展面板中选择 "从 VSIX 安装..."
 ```
