@@ -30,40 +30,9 @@
 - ✅ 语法通过 `source.ini` 复用 INI 高亮规则
 - ✅ 默认开启 `files.autoGuessEncoding`，降低 GBK/GB2312 文件乱码风险
 
-## 使用方法
-
-### 查看 `.csmlog` 大纲
-
-打开 `.csmlog` 文件后，资源管理器侧边栏 **Outline** 会显示：
-
-- 配置项（`- Key | Value`）
-- 模块生命周期（`[Module Created]` / `[Module Destroyed]`）
-- Logger 系统消息（`<Logger Thread Exit>` 等）
-
-### 查看 Hover
-
-将鼠标悬停在 `.csmlog` 的事件类型、时间戳、配置键上可查看说明。
-
-## 开发命令
-
-```bash
-npm run lint
-npm run compile
-npm run compile-tests
-npm test
-```
-
 ## 问题反馈
 
 如遇到问题请到 [GitHub Issues](https://github.com/nevstop/csm-vsc-extension/issues) 反馈。
-
-## 更新日志
-
-详见 [CHANGELOG.md](CHANGELOG.md)
-
-## 贡献指南
-
-详见 [CONTRIBUTING.md](CONTRIBUTING.md)
 
 ## 许可证
 
