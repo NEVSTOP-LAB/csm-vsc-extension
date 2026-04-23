@@ -1,7 +1,7 @@
 # .csmlog 悬浮提示设计文档
 
 > 功能：.csmlog Hover Tooltip
-> 关联 Issue：[.csmlog 实现悬浮提示](https://github.com/nevstop/CSMScript-vsc-Support/issues/75)
+> 关联 Issue：[.csmlog 实现悬浮提示](https://github.com/nevstop/CSM-vsc-Support/issues/75)
 > 更新日期：2026-03-29
 > 状态：维护中
 > 依赖：[csmlog-support-design.md](./csmlog-support-design.md)
@@ -24,7 +24,7 @@
 
 - 在 `.csmlog` 中提供上下文敏感悬浮提示。
 - 解释关键字段：时间戳、事件类型、配置键、来源标记。
-- 对日志内容区的脚本片段复用 `CSMScriptHoverProvider`。
+- 对日志内容区的脚本片段复用 `CSMHoverProvider`。
 
 ### 2.2 包含
 
@@ -50,7 +50,7 @@
 3. 相对时间戳区域（可选）
 4. 事件类型区域
 5. 来源标记 `<-` 区域
-6. `|` 之后内容区（委托 `CSMScriptHoverProvider`）
+6. `|` 之后内容区（委托 `CSMHoverProvider`）
 
 若多个条件同时可命中，按上述顺序返回首个结果。
 
@@ -69,12 +69,12 @@
 
 ```ts
 export class CSMLogHoverProvider implements vscode.HoverProvider {
-  private readonly csmscriptHover = new CSMScriptHoverProvider();
+  private readonly csmHover = new CSMHoverProvider();
 
   provideHover(document: vscode.TextDocument, position: vscode.Position) {
     // 1) 判断是否配置行
     // 2) 判断字段区域（时间戳/事件类型/来源标记）
-    // 3) 内容区委托给 csmscriptHover
+    // 3) 内容区委托给 csmHover
     // 4) 无命中返回 undefined
   }
 }

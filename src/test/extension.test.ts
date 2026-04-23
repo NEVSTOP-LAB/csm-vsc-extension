@@ -315,28 +315,28 @@ Object.prototype.hasOwnProperty.call(lvcsmDefaults, 'files.autoGuessEncoding'),
 );
 });
 
-test('package.json does not register csmscript language', () => {
+test('package.json does not register csm language', () => {
 const pkgPath = path.resolve(__dirname, '../../package.json');
 const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));
 const languages: Array<{ id: string }> = pkg.contributes?.languages ?? [];
-const csmscriptLang = languages.find((l) => l.id === 'csmscript');
-assert.strictEqual(csmscriptLang, undefined, 'csmscript language should NOT be registered in package.json');
+const csmLang = languages.find((l) => l.id === 'csm');
+assert.strictEqual(csmLang, undefined, 'csm language should NOT be registered in package.json');
 });
 
-test('package.json does not register a csmscript grammar', () => {
+test('package.json does not register a csm grammar', () => {
 const pkgPath = path.resolve(__dirname, '../../package.json');
 const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));
 const grammars: Array<{ language?: string }> = pkg.contributes?.grammars ?? [];
-const csmscriptGrammar = grammars.find((g) => g.language === 'csmscript');
-assert.strictEqual(csmscriptGrammar, undefined, 'csmscript grammar should NOT be registered in package.json');
+const csmGrammar = grammars.find((g) => g.language === 'csm');
+assert.strictEqual(csmGrammar, undefined, 'csm grammar should NOT be registered in package.json');
 });
 
-test('package.json has no commands, menus, or snippets after csmscript removal', () => {
+test('package.json has no commands, menus, or snippets after csm removal', () => {
 const pkgPath = path.resolve(__dirname, '../../package.json');
 const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));
-assert.strictEqual(pkg.contributes?.commands, undefined, 'contributes.commands should not exist after csmscript removal');
-assert.strictEqual(pkg.contributes?.menus, undefined, 'contributes.menus should not exist after csmscript removal');
-assert.strictEqual(pkg.contributes?.snippets, undefined, 'contributes.snippets should not exist after csmscript removal');
+assert.strictEqual(pkg.contributes?.commands, undefined, 'contributes.commands should not exist after csm removal');
+assert.strictEqual(pkg.contributes?.menus, undefined, 'contributes.menus should not exist after csm removal');
+assert.strictEqual(pkg.contributes?.snippets, undefined, 'contributes.snippets should not exist after csm removal');
 });
 
 });

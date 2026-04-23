@@ -1,6 +1,6 @@
 # 代码库架构说明
 
-> 本文档以中文详细介绍 **CSMScript VSCode 支持** 扩展的仓库结构、技术选型和代码组织方式，帮助贡献者快速理解整个项目。
+> 本文档以中文详细介绍 **CSM VSCode 支持** 扩展的仓库结构、技术选型和代码组织方式，帮助贡献者快速理解整个项目。
 
 ---
 
@@ -38,7 +38,7 @@
 | `.csmlog` 悬停提示 | ✅ |
 | `.csmlog` Outline | ✅ |
 | `.lvcsm` 语言支持 | ✅ |
-| `.csmscript` 语言注册 | ❌（当前未注册） |
+| `.csm` 语言注册 | ❌（当前未注册） |
 
 ---
 
@@ -67,7 +67,7 @@ CSMSript-vsc-Support/
 │   │   └── vscode-extension-development-plan.md  # 开发计划（M0–M4 里程碑）
 │   ├── research/                         # 调研报告（5 篇）
 │   ├── ARCHITECTURE.md                   # 本文档
-│   ├── CSMScript_User_Manual.md          # CSMScript 语言规范手册
+│   ├── CSM_User_Manual.md          # CSM 语言规范手册
 │   ├── SWIMLANE_CHANGES.md               # 泳道图功能变更日志
 │   ├── hover-keyword-tracking.md         # Hover 关键字覆盖追踪表
 │   ├── images-guide.md                   # 扩展图标规格与替换指南
@@ -79,31 +79,31 @@ CSMSript-vsc-Support/
 │   └── icon.png                          # 扩展图标（128×128）
 │
 ├── samples/
-│   ├── manual-full-coverage.csmscript    # 手动测试样例（覆盖全部语法模式）
-│   ├── include-sequence.csmscript        # `<include>` 子样例
-│   └── swimlane-demo.csmscript           # 泳道图演示样例
+│   ├── manual-full-coverage.csm    # 手动测试样例（覆盖全部语法模式）
+│   ├── include-sequence.csm        # `<include>` 子样例
+│   └── swimlane-demo.csm           # 泳道图演示样例
 │
 ├── snippets/
-│   └── csmscript.code-snippets           # 代码片段定义
+│   └── csm.code-snippets           # 代码片段定义
 │
 ├── syntaxes/
-│   ├── csmscript.tmLanguage.json         # TextMate 语法规则
+│   ├── csm.tmLanguage.json         # TextMate 语法规则
 │   └── csmlog.tmLanguage.json            # .csmlog 文件语法规则
 │
 ├── src/                                  # TypeScript 源代码（见第 4 节）
 │   ├── extension.ts                      # 扩展入口
 │   ├── types.ts                          # 共享类型定义
 │   ├── hoverData.ts                      # 共享悬停数据库和查找逻辑
-│   ├── hoverProvider.ts                  # CSMScript 悬停文档提供者
+│   ├── hoverProvider.ts                  # CSM 悬停文档提供者
 │   ├── csmlogHoverProvider.ts            # .csmlog 悬停文档提供者
 │   ├── completionProvider.ts             # IntelliSense 补全提供者
 │   ├── diagnosticProvider.ts             # 语法诊断提供者
 │   ├── documentSymbolProvider.ts         # 大纲视图提供者
 │   ├── csmlogDocumentSymbolProvider.ts   # .csmlog 大纲视图提供者
 │   ├── formattingProvider.ts             # 代码格式化提供者
-│   ├── flowParser.ts                     # CSMScript → FlowGraph 解析器（流程图）
+│   ├── flowParser.ts                     # CSM → FlowGraph 解析器（流程图）
 │   ├── mermaidGenerator.ts               # FlowGraph → Mermaid flowchart 生成器
-│   ├── swimlaneParser.ts                 # CSMScript → SwimlaneGraph 解析器（通讯泳道图）
+│   ├── swimlaneParser.ts                 # CSM → SwimlaneGraph 解析器（通讯泳道图）
 │   ├── swimlaneGenerator.ts              # SwimlaneGraph → Mermaid sequenceDiagram 生成器
 │   ├── flowVisualizationPanel.ts         # 流程可视化 Webview 面板（流程图 + 泳道图）
 │   └── test/                             # 单元测试与集成测试
@@ -164,7 +164,7 @@ TypeScript 编译目标为 **ES2022**，模块解析模式为 **Node16**。
 
 ### 3.5 语法高亮
 
-TextMate 语法规则（`syntaxes/csmscript.tmLanguage.json`）是一个 **JSON 格式的 TextMate 语法文件**，通过正则表达式匹配 token 并分配 scope 名称，VS Code 据此进行颜色渲染。这是 VS Code 语言扩展中最常见的语法高亮方案，无需运行时代码。
+TextMate 语法规则（`syntaxes/csm.tmLanguage.json`）是一个 **JSON 格式的 TextMate 语法文件**，通过正则表达式匹配 token 并分配 scope 名称，VS Code 据此进行颜色渲染。这是 VS Code 语言扩展中最常见的语法高亮方案，无需运行时代码。
 
 ---
 
@@ -174,30 +174,30 @@ TextMate 语法规则（`syntaxes/csmscript.tmLanguage.json`）是一个 **JSON 
 
 扩展被激活时，VS Code 调用 `activate(context)` 函数。该函数负责：
 
-1. **注册 HoverProvider（CSMScript）** — 为 `.csmscript` 文件提供悬停文档说明
-2. **注册 HoverProvider（CSMLog）** — 为 `.csmlog` 文件提供日志字段悬停说明，并将内容区委托给 CSMScript HoverProvider
+1. **注册 HoverProvider（CSM）** — 为 `.csm` 文件提供悬停文档说明
+2. **注册 HoverProvider（CSMLog）** — 为 `.csmlog` 文件提供日志字段悬停说明，并将内容区委托给 CSM HoverProvider
 3. **注册 CompletionProvider** — 监听触发字符（`<` `[` `>` `$` `?`）并提供补全建议
 4. **注册 FormattingProvider** — 提供文档格式化功能（`Shift+Alt+F`）
-5. **注册流程可视化命令** — 注册 `csmscript.showFlowVisualization` 命令及编辑器标题栏按钮，调用 `FlowVisualizationPanel.createOrShow()`
-6. **注册 DocumentSymbolProvider** — 为 `.csmscript` 文件提供大纲视图（Outline），列出预定义段头（`[COMMAND_ALIAS]` 等，以 Array 图标（`[]`）显示）和锚点定义（`<entry>` 等，以 Function 图标显示）
+5. **注册流程可视化命令** — 注册 `csm.showFlowVisualization` 命令及编辑器标题栏按钮，调用 `FlowVisualizationPanel.createOrShow()`
+6. **注册 DocumentSymbolProvider** — 为 `.csm` 文件提供大纲视图（Outline），列出预定义段头（`[COMMAND_ALIAS]` 等，以 Array 图标（`[]`）显示）和锚点定义（`<entry>` 等，以 Function 图标显示）
 7. **创建 DiagnosticCollection** — 用于向编辑器报告语法错误
 8. **监听文档事件** — 在文档打开、修改、关闭时触发语法诊断
 
 ```
 activate(context)
- ├── registerHoverProvider('csmscript', CSMScriptHoverProvider)
+ ├── registerHoverProvider('csm', CSMHoverProvider)
  ├── registerHoverProvider('csmlog',    CSMLogHoverProvider)
- ├── registerCompletionItemProvider('csmscript', CSMScriptCompletionProvider, '<','[','>','$','?')
- ├── registerDocumentFormattingEditProvider('csmscript', CSMScriptFormattingProvider)
- ├── registerCommand('csmscript.showFlowVisualization', FlowVisualizationPanel.createOrShow)
- ├── registerDocumentSymbolProvider('csmscript', CSMScriptDocumentSymbolProvider)
- ├── createDiagnosticCollection('csmscript')
+ ├── registerCompletionItemProvider('csm', CSMCompletionProvider, '<','[','>','$','?')
+ ├── registerDocumentFormattingEditProvider('csm', CSMFormattingProvider)
+ ├── registerCommand('csm.showFlowVisualization', FlowVisualizationPanel.createOrShow)
+ ├── registerDocumentSymbolProvider('csm', CSMDocumentSymbolProvider)
+ ├── createDiagnosticCollection('csm')
  └── onDidOpen/Change/Close → updateDiagnostics()
 ```
 
-### 4.2 hoverProvider.ts — CSMScript 悬停文档
+### 4.2 hoverProvider.ts — CSM 悬停文档
 
-**核心类**：`CSMScriptHoverProvider`，实现 `vscode.HoverProvider` 接口。
+**核心类**：`CSMHoverProvider`，实现 `vscode.HoverProvider` 接口。
 
 **数据结构**：内部维护一张静态字典 `HOVER_DB: Record<string, HoverEntry>`，收录关键字条目，每条包含：
 - `summary`：关键字的简要说明
@@ -236,18 +236,18 @@ activate(context)
 | Zone 2 | 相对时间戳（事件源时间） | `CSMLOG_HOVER_DB['__TIMESTAMP_TIME__']` |
 | Zone 3 | 事件类型 `[EventType]` | `CSMLOG_HOVER_DB['[EVENT TYPE]']`（12 种） |
 | Zone 4 | 模块名 | 无悬停 |
-| Zone 5 | 日志内容（`\|` 之后） | 委托给 `CSMScriptHoverProvider` |
+| Zone 5 | 日志内容（`\|` 之后） | 委托给 `CSMHoverProvider` |
 
 **额外支持**：
 - 配置行键名（`PeriodicLog.Enable`、`PeriodicLog.Threshold(#/s)` 等）
 - File Logger 行（双空格格式，无事件类型）的时间戳悬停
 - 日志来源标记 `<-` 的悬停说明
 
-**委托关系**：`CSMLogHoverProvider` 持有 `CSMScriptHoverProvider` 实例，日志内容区（`|` 之后）的所有 CSMScript 语法（操作符、变量、命令）悬停均透传给后者处理，避免重复实现。
+**委托关系**：`CSMLogHoverProvider` 持有 `CSMHoverProvider` 实例，日志内容区（`|` 之后）的所有 CSM 语法（操作符、变量、命令）悬停均透传给后者处理，避免重复实现。
 
 ### 4.3 completionProvider.ts — 代码补全
 
-**核心类**：`CSMScriptCompletionProvider`，实现 `vscode.CompletionItemProvider` 接口。
+**核心类**：`CSMCompletionProvider`，实现 `vscode.CompletionItemProvider` 接口。
 
 **补全数据**：以多个静态数组存储 `CompletionDef` 对象，每个对象包含：
 - `label`：显示名称
@@ -269,7 +269,7 @@ activate(context)
 
 **`provideCompletionItems()`** 会先获取光标前的文本片段 `textBefore`，通过一组正则表达式判断当前所处的上下文（如行首、控制流块内、变量占位、通讯语句等），再从上述各类补全集合中过滤并返回合适的补全项；当前实现**未**使用 `context.triggerCharacter` 作为分发依据。
 
-> ⚠️ CSMScript 的 `wordPattern` 将 `<`、`>`、`-`、`@` 定义为单词分隔符（`$` 是单词字符），因此 insertText 需要特别处理以避免重复插入触发字符。
+> ⚠️ CSM 的 `wordPattern` 将 `<`、`>`、`-`、`@` 定义为单词分隔符（`$` 是单词字符），因此 insertText 需要特别处理以避免重复插入触发字符。
 
 ### 4.4 diagnosticProvider.ts — 语法诊断
 
@@ -279,20 +279,20 @@ activate(context)
 
 | 错误码 | 描述 | 检测方式 |
 |--------|------|---------|
-| `CSMSCRIPT001` | 未闭合的开标签（`<if>`/`<while>`/`<foreach>`） | 文件末尾栈非空 |
-| `CSMSCRIPT002` | 闭合标签不匹配（如 `<end_if>` 对应的不是 `<if>`） | 出栈时类型比对 |
-| `CSMSCRIPT003` | `<else>` 前没有对应的 `<if>` | 栈顶不是 `if` |
-| `CSMSCRIPT004` | `${...}` 变量引用未闭合 | 正则检测 `${` 无对应 `}` |
-| `CSMSCRIPT005` | `<include>` 缺少文件路径 | 正则检测空路径 |
-| `CSMSCRIPT006` | 范围检查与条件跳转在同一行冲突 | 同行同时检测 `∈` 和 `??` |
-| `CSMSCRIPT007` | 字符串比较与 `&&`/`\|\|` 混用 | 正则检测 |
-| `CSMSCRIPT008` | `EXPRESSION` 中使用了不支持的 `rnd()` | 正则检测 |
+| `CSM001` | 未闭合的开标签（`<if>`/`<while>`/`<foreach>`） | 文件末尾栈非空 |
+| `CSM002` | 闭合标签不匹配（如 `<end_if>` 对应的不是 `<if>`） | 出栈时类型比对 |
+| `CSM003` | `<else>` 前没有对应的 `<if>` | 栈顶不是 `if` |
+| `CSM004` | `${...}` 变量引用未闭合 | 正则检测 `${` 无对应 `}` |
+| `CSM005` | `<include>` 缺少文件路径 | 正则检测空路径 |
+| `CSM006` | 范围检查与条件跳转在同一行冲突 | 同行同时检测 `∈` 和 `??` |
+| `CSM007` | 字符串比较与 `&&`/`\|\|` 混用 | 正则检测 |
+| `CSM008` | `EXPRESSION` 中使用了不支持的 `rnd()` | 正则检测 |
 
 **`updateDiagnostics()`** 将 `analyzeDiagnostics()` 返回的诊断结果写入 `DiagnosticCollection`，在编辑器中以波浪线标注。
 
 ### 4.5 formattingProvider.ts — 代码格式化
 
-**核心函数**：`formatCSMScript(text, options): string`（纯函数，无副作用，便于单元测试）。
+**核心函数**：`formatCSM(text, options): string`（纯函数，无副作用，便于单元测试）。
 
 该函数逐行扫描文档，应用以下格式化规则：
 
@@ -307,22 +307,22 @@ activate(context)
 | 7. 控制流闭标签缩进 | `<end_if>`、`<end_while>`、`<end_do_while>`、`<end_foreach>` 先减少缩进级别，再放置 |
 | 8. 常规行缩进 | 其他所有行（命令、注释、键值对）放置在当前缩进级别 |
 
-**核心类**：`CSMScriptFormattingProvider`，实现 `vscode.DocumentFormattingEditProvider` 接口。
+**核心类**：`CSMFormattingProvider`，实现 `vscode.DocumentFormattingEditProvider` 接口。
 
 **工作流程**：
 1. 用户按下 `Shift+Alt+F` 或执行"格式化文档"命令
 2. `provideDocumentFormattingEdits()` 获取文档全文
-3. 调用 `formatCSMScript()` 生成格式化后的文本
+3. 调用 `formatCSM()` 生成格式化后的文本
 4. 返回 `TextEdit` 对象数组，VS Code 应用编辑
 
 ### 4.6 flowParser.ts / mermaidGenerator.ts / swimlaneParser.ts / swimlaneGenerator.ts / flowVisualizationPanel.ts — 可视化预览
 
-以下模块共同实现 `.csmscript` 文件的可视化预览功能，详见 [`docs/design/flow-visualization-design.md`](design/flow-visualization-design.md)。
+以下模块共同实现 `.csm` 文件的可视化预览功能，详见 [`docs/design/flow-visualization-design.md`](design/flow-visualization-design.md)。
 
 #### 数据流概览
 
 ```
-CSMScript 文档
+CSM 文档
     │
     ├─── [flowParser.ts] parseFlowGraph()
     │         ↓
@@ -363,7 +363,7 @@ VS Code Webview（工具栏含 ⇄ Swimlane / ⇄ Flowchart 切换按钮）
 
 **解析规则摘要**：
 
-| CSMScript 元素 | 转换结果 |
+| CSM 元素 | 转换结果 |
 |---------------|---------|
 | 连续普通语句 | 合并为单个 `block` 节点（空行强制创建新节点） |
 | `[SECTION]` 等 PREDEF 区 | 合并为 `predef` 节点（显示实际内容），置于 Start 之前 |
@@ -466,7 +466,7 @@ VS Code Webview（工具栏含 ⇄ Swimlane / ⇄ Flowchart 切换按钮）
 
 | 事件 | 触发动作 |
 |------|---------|
-| `window.onDidChangeActiveTextEditor` | 切换到 `.csmscript` 文件时更新预览 |
+| `window.onDidChangeActiveTextEditor` | 切换到 `.csm` 文件时更新预览 |
 | `workspace.onDidChangeTextDocument` | 编辑当前文档时实时更新预览 |
 | `panel.onDidChangeViewState` | 面板从隐藏变为可见时更新预览 |
 | `window.onDidChangeTextEditorSelection` | 光标行变化时将预览滚动并高亮到最近节点 |
@@ -520,18 +520,18 @@ VS Code 扩展通过 `contributes` 字段声明其能力，无需运行时注册
 ```jsonc
 "contributes": {
   "languages": [{
-    "id": "csmscript",          // 语言 ID
-    "extensions": [".csmscript"],
+    "id": "csm",          // 语言 ID
+    "extensions": [".csm"],
     "configuration": "./language-configuration.json"
   }],
   "grammars": [{
-    "language": "csmscript",
-    "scopeName": "source.csmscript",
-    "path": "./syntaxes/csmscript.tmLanguage.json"  // TextMate 语法
+    "language": "csm",
+    "scopeName": "source.csm",
+    "path": "./syntaxes/csm.tmLanguage.json"  // TextMate 语法
   }],
   "snippets": [{
-    "language": "csmscript",
-    "path": "./snippets/csmscript.code-snippets"     // 代码片段
+    "language": "csm",
+    "path": "./snippets/csm.code-snippets"     // 代码片段
   }]
 }
 ```
@@ -550,33 +550,33 @@ Hover 和 Completion 能力通过 `src/extension.ts` 在运行时动态注册（
 | 单词字符 | `wordPattern` 采用排除字符集：连续的"非空白且不在 `<>@\|/;:` 中"的字符被视为同一个单词，空白和 `<>@\|/;:` 等分隔符会打断单词 |
 | 折叠策略 | 基于缩进 |
 
-额外默认设置：`configurationDefaults` 中为 `[csmscript]` 开启 `files.autoGuessEncoding: true`，以便在打开 GBK/GB2312 等非 UTF-8 编码的 CSMScript 文件时自动识别编码。
+额外默认设置：`configurationDefaults` 中为 `[csm]` 开启 `files.autoGuessEncoding: true`，以便在打开 GBK/GB2312 等非 UTF-8 编码的 CSM 文件时自动识别编码。
 
-### 5.3 syntaxes/csmscript.tmLanguage.json — TextMate 语法
+### 5.3 syntaxes/csm.tmLanguage.json — TextMate 语法
 
 通过正则表达式将 token 映射到标准 TextMate scope 名称：
 
 | 规则名（repository key） | 覆盖语法 | Scope 示例 |
 |--------------------------|---------|-----------|
-| `line-comment` | `// 注释` | `comment.line.double-slash.csmscript` |
-| `predef-section` | `[COMMAND_ALIAS]` 等段头及键值对 | `entity.name.section.predef.csmscript` |
-| `variable-reference` | `${var}` / `${var:default}` | `variable.other.csmscript` |
-| `control-flow` | `<if>` / `<while>` / `<foreach>` 等（含 `<include>`） | `keyword.control.flow.csmscript` |
-| `anchor` | `<anchorName>` | `entity.name.label.anchor.csmscript` |
-| `return-value-save` | `=> varname` | `keyword.operator.csmscript` |
-| `range-operator` | `∈` / `!∈` | `keyword.operator.range-not-in.csmscript` |
-| `string-comparison-function` | 字符串比较函数 | `support.function.string-compare.csmscript` |
-| `conditional-jump` | `??` / `?expr?` | `keyword.control.csmscript` |
-| `builtin-command` | `GOTO`、`WAIT`、`ECHO` 等 | `keyword.control.jump.csmscript` 等 |
-| `subscription-op` | `-><register>` 等 | `keyword.operator.csmscript` |
-| `broadcast-target-with-op` | `<status>` / `<broadcast>` 等（含运算符） | `constant.language.csmscript` |
-| `communication-operator` | `->|`、`-@`、`->` | `keyword.operator.async-no-reply.csmscript` 等 |
-| `argument-separator` | `>>` | `keyword.operator.argument-separator.csmscript` |
-| `module-address` | `@ModuleName` | `punctuation.separator.module.csmscript` |
-| `state-prefix` | `API:`、`Macro:` | `keyword.other.api-prefix.csmscript` |
-| `system-state` | `Response`、`Error Handler` 等 | `support.constant.system-state.csmscript` |
+| `line-comment` | `// 注释` | `comment.line.double-slash.csm` |
+| `predef-section` | `[COMMAND_ALIAS]` 等段头及键值对 | `entity.name.section.predef.csm` |
+| `variable-reference` | `${var}` / `${var:default}` | `variable.other.csm` |
+| `control-flow` | `<if>` / `<while>` / `<foreach>` 等（含 `<include>`） | `keyword.control.flow.csm` |
+| `anchor` | `<anchorName>` | `entity.name.label.anchor.csm` |
+| `return-value-save` | `=> varname` | `keyword.operator.csm` |
+| `range-operator` | `∈` / `!∈` | `keyword.operator.range-not-in.csm` |
+| `string-comparison-function` | 字符串比较函数 | `support.function.string-compare.csm` |
+| `conditional-jump` | `??` / `?expr?` | `keyword.control.csm` |
+| `builtin-command` | `GOTO`、`WAIT`、`ECHO` 等 | `keyword.control.jump.csm` 等 |
+| `subscription-op` | `-><register>` 等 | `keyword.operator.csm` |
+| `broadcast-target-with-op` | `<status>` / `<broadcast>` 等（含运算符） | `constant.language.csm` |
+| `communication-operator` | `->|`、`-@`、`->` | `keyword.operator.async-no-reply.csm` 等 |
+| `argument-separator` | `>>` | `keyword.operator.argument-separator.csm` |
+| `module-address` | `@ModuleName` | `punctuation.separator.module.csm` |
+| `state-prefix` | `API:`、`Macro:` | `keyword.other.api-prefix.csm` |
+| `system-state` | `Response`、`Error Handler` 等 | `support.constant.system-state.csm` |
 
-### 5.4 snippets/csmscript.code-snippets — 代码片段
+### 5.4 snippets/csm.code-snippets — 代码片段
 
 每个片段包含：
 - `prefix`：触发词（用户键入后 VS Code 显示）
@@ -601,7 +601,7 @@ Hover 和 Completion 能力通过 `src/extension.ts` 在运行时动态注册（
    - File logger 行格式：`YYYY/MM/DD HH:MM:SS.mmm  信息内容`（时间戳后两个或更多空格，无事件类型括号）
    - 配置行格式：`- Key | Value`
    - 日志来源标记 `<-` 及其后的来源信息差异化着色
-   - 复用 `source.csmscript` 语法规则处理日志内容中的 CSMScript 代码
+   - 复用 `source.csm` 语法规则处理日志内容中的 CSM 代码
    - Scope 定义（按优先级排序）：
      - `comment.line.timestamp.date.csmlog` — 完整时间戳（日志处理时间）
      - `comment.line.timestamp.time.csmlog` — 相对时间戳（源时间，可选字段）
@@ -638,7 +638,7 @@ Hover 和 Completion 能力通过 `src/extension.ts` 在运行时动态注册（
 
 #### 功能范围
 
-- ✅ 语法高亮（时间戳、事件类型、模块名、CSMScript 代码）
+- ✅ 语法高亮（时间戳、事件类型、模块名、CSM 代码）
 - ✅ 悬停提示（见第 4.2.1 节 CSMLogHoverProvider）
 - ❌ 代码补全（日志文件不需要）
 - ❌ 语法检查（日志文件不需要）
@@ -723,7 +723,7 @@ npm test                 # 运行完整测试套件（需要 VS Code 环境）
 | `hoverProvider.test.ts` | 单元测试 | Hover 文档生成逻辑 |
 | `csmlogHoverProvider.test.ts` | 单元测试 | CSMLog 悬停区域解析逻辑 |
 | `completionProvider.test.ts` | 单元测试 | 补全项过滤与生成 |
-| `diagnosticProvider.test.ts` | 单元测试 | 诊断规则（CSMSCRIPT001–008）的各种触发场景 |
+| `diagnosticProvider.test.ts` | 单元测试 | 诊断规则（CSM001–008）的各种触发场景 |
 | `documentSymbolProvider.test.ts` | 单元测试 | 大纲符号提取逻辑（段头 + 锚点） |
 | `formattingProvider.test.ts` | 单元测试 | 各种格式化场景 |
 | `flowVisualization.test.ts` | 单元测试（无需 VS Code） | 流程图解析（锚点/GOTO/控制流/子图）+ Mermaid 代码生成 |
@@ -837,19 +837,19 @@ npm test   # 内部调用 vscode-test（见 .vscode-test.mjs）
 
 ### 语言规范
 
-`docs/CSMScript_User_Manual.md` 是 CSMScript 的官方语言手册，记录了全部语法规则、内置命令和使用示例，是开发 Hover 文档库和补全条目的主要参考来源。
+`docs/CSM_User_Manual.md` 是 CSM 的官方语言手册，记录了全部语法规则、内置命令和使用示例，是开发 Hover 文档库和补全条目的主要参考来源。
 
 ---
 
 ## 10. 数据流与各模块协作关系
 
 ```
-用户打开 .csmscript 文件
+用户打开 .csm 文件
          │
          ▼
   VS Code 激活扩展（activation event）
          │
-         ├─── TextMate 语法（syntaxes/csmscript.tmLanguage.json）
+         ├─── TextMate 语法（syntaxes/csm.tmLanguage.json）
          │         └→ 语法高亮（由 VS Code 内核处理，不经过扩展代码）
          │
          └─── extension.ts activate()
@@ -883,4 +883,4 @@ npm test   # 内部调用 vscode-test（见 .vscode-test.mjs）
 
 ---
 
-*本文档基于 CSMScript Language Support v0.0.3 编写。如有更新，请同步修改本文件。*
+*本文档基于 CSM Language Support v0.0.3 编写。如有更新，请同步修改本文件。*

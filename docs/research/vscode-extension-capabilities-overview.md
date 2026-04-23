@@ -1,7 +1,7 @@
 # VSCode 插件能力概览（Extension Capabilities Overview）
 
 > **来源：** [https://code.visualstudio.com/api/extension-capabilities/overview](https://code.visualstudio.com/api/extension-capabilities/overview)  
-> **目的：** 了解 VSCode 插件可以做什么，为 CSMScript 插件功能选型提供参考。
+> **目的：** 了解 VSCode 插件可以做什么，为 CSM 插件功能选型提供参考。
 
 ---
 
@@ -15,7 +15,7 @@
 6. [工作台扩展（Workbench Extensions）](#6-工作台扩展workbench-extensions)
 7. [调试支持（Debugging）](#7-调试支持debugging)
 8. [能力分类汇总表](#8-能力分类汇总表)
-9. [对 CSMScript 插件的启示](#9-对-csmscript-插件的启示)
+9. [对 CSM 插件的启示](#9-对-csm-插件的启示)
 
 ---
 
@@ -311,7 +311,7 @@ VSCode 提供两个层次的调试扩展接入方式：
 
 ## 8. 能力分类汇总表
 
-| 能力 | 实现方式 | 复杂度 | 对 CSMScript 的价值 |
+| 能力 | 实现方式 | 复杂度 | 对 CSM 的价值 |
 |------|---------|--------|---------------------|
 | 语法高亮 | TextMate Grammar（声明式） | ⭐⭐ | ⭐⭐⭐⭐⭐ 必做 |
 | 语言配置 | `.json` 配置文件（声明式） | ⭐ | ⭐⭐⭐⭐⭐ 必做 |
@@ -330,29 +330,29 @@ VSCode 提供两个层次的调试扩展接入方式：
 
 ---
 
-## 9. 对 CSMScript 插件的启示
+## 9. 对 CSM 插件的启示
 
-根据 Extension Capabilities Overview 的分类，为 CSMScript 语言支持插件建议以下**分阶段实施路径**：
+根据 Extension Capabilities Overview 的分类，为 CSM 语言支持插件建议以下**分阶段实施路径**：
 
 ### 第一阶段：最小可用插件（声明式，无代码）
 
-1. **语言定义** — 注册 CSMScript 语言 ID 和文件扩展名
+1. **语言定义** — 注册 CSM 语言 ID 和文件扩展名
 2. **语法高亮** — 编写 TextMate Grammar，高亮关键字、字符串、注释等
 3. **语言配置** — 配置括号、注释符号、自动缩进规则
-4. **代码片段** — 提供常用 CSMScript 代码模板
+4. **代码片段** — 提供常用 CSM 代码模板
 
 > 以上内容**无需编写 TypeScript 代码**，仅通过配置文件即可完成，适合快速发布 v0.1.0。
 
 ### 第二阶段：增强智能提示（编程式）
 
-5. **代码补全** — 补全 CSMScript 内置关键字、API、状态名称
+5. **代码补全** — 补全 CSM 内置关键字、API、状态名称
 6. **悬停提示** — 显示关键字或 API 的说明文档
 7. **代码诊断** — 基础语法错误检测
 
 ### 第三阶段：深度集成（可选）
 
-8. **跳转定义 / 查找引用** — 支持 CSMScript 状态机符号导航
-9. **代码格式化** — 统一 CSMScript 代码风格
+8. **跳转定义 / 查找引用** — 支持 CSM 状态机符号导航
+9. **代码格式化** — 统一 CSM 代码风格
 10. **语言服务器（LSP）** — 将语言逻辑迁移到独立 Language Server，提升性能与可维护性
 
 ---

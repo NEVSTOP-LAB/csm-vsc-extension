@@ -228,7 +228,7 @@ suite('CSMLogHoverProvider – log origin marker', () => {
     });
 });
 
-suite('CSMLogHoverProvider – CSMScript delegation', () => {
+suite('CSMLogHoverProvider – CSM delegation', () => {
     test('-> in log content triggers async-call hover', () => {
         // LINE_ASYNC_MSG: "... | API: Start >> -><interrupt> -> Measure"
         // The standalone '->' operator appears after '<interrupt>'

@@ -60,7 +60,7 @@ Subscription messages are rendered in purple (`rgba(147,112,219,0.15)`) to disti
 COMMAND_ALIAS definitions are now parsed and expanded automatically:
 
 **Input:**
-```csmscript
+```csm
 [COMMAND_ALIAS]
 ConnectDB = API: Connect >> ${host} -@ DatabaseModule => handle
 
@@ -153,7 +153,7 @@ Added comprehensive test coverage in `src/test/swimlaneVisualization.test.ts`:
 
 ## Example Output
 
-See `samples/swimlane-demo.csmscript` for a comprehensive demonstration file showcasing:
+See `samples/swimlane-demo.csm` for a comprehensive demonstration file showcasing:
 - CMD_ALIAS definitions and expansion
 - All message types (sync, async, fire-forget, subscribe/unsubscribe)
 - All control flow structures (if/else, while, foreach, do_while)
@@ -166,7 +166,7 @@ The implementation has been verified with:
 
 1. **Compilation**: ✓ All TypeScript compiles without errors
 2. **Test Suite**: ✓ All 32 swimlane tests pass
-3. **Demo File**: ✓ `swimlane-demo.csmscript` parses correctly
+3. **Demo File**: ✓ `swimlane-demo.csm` parses correctly
    - 14 participants detected
    - 26 messages parsed (14 sync, 4 async, 2 fire-forget, 6 subscribe/unsubscribe)
    - 8 control flow structures (4 if, 1 while, 2 foreach, 1 do_while)
@@ -179,7 +179,7 @@ The implementation has been verified with:
 2. `src/swimlaneGenerator.ts` - Enhanced rendering with control flow blocks
 3. `src/flowVisualizationPanel.ts` - Updated to use new `elements` API
 4. `src/test/swimlaneVisualization.test.ts` - Updated all tests + new test cases
-5. `samples/swimlane-demo.csmscript` - NEW: Comprehensive demo file
+5. `samples/swimlane-demo.csm` - NEW: Comprehensive demo file
 
 ## Breaking Changes
 

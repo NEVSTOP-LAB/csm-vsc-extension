@@ -1,6 +1,6 @@
-# CSMScript VSCode 插件开发计划
+# CSM VSCode 插件开发计划
 
-> 本文档记录为 **CSMScript**（一种面向状态机的领域特定脚本语言）开发并发布 VSCode 插件的全流程计划，涵盖调研、开发、测试、发布四个阶段。
+> 本文档记录为 **CSM**（一种面向状态机的领域特定脚本语言）开发并发布 VSCode 插件的全流程计划，涵盖调研、开发、测试、发布四个阶段。
 >
 > **相关文档：** [VSCode Marketplace 同类插件调研报告](../research/marketplace-similar-plugins-survey.md) — 状态机 DSL 类插件横向对比与技术选型建议。
 
@@ -8,8 +8,8 @@
 
 ## 速查：通用 VSCode 插件开发流程
 
-> 以下摘要**适用于任何 VSCode 插件的开发**，不局限于 CSMScript，可作为快速参考或入门概览。  
-> 具体到 CSMScript 的背景与目标，见 [§1 背景与目标](#1-背景与目标)；完整细节见各章节或 [VSCode Extension API](https://code.visualstudio.com/api)。
+> 以下摘要**适用于任何 VSCode 插件的开发**，不局限于 CSM，可作为快速参考或入门概览。  
+> 具体到 CSM 的背景与目标，见 [§1 背景与目标](#1-背景与目标)；完整细节见各章节或 [VSCode Extension API](https://code.visualstudio.com/api)。
 
 ### 开发四阶段
 
@@ -61,8 +61,8 @@
 | 项目 | 说明 |
 |------|------|
 | 仓库 | [NEVSTOP-LAB/CSMSript-vsc-Support](https://github.com/NEVSTOP-LAB/CSMSript-vsc-Support) |
-| 目标 | 开发一款可发布至 VSCode Marketplace 的插件，为 CSMScript 这门新的状态机脚本语言提供编辑器支持 |
-| 语言特点 | CSMScript 是面向状态机的领域特定脚本语言（DSL），核心概念包括状态（State）、迁移（Transition）和通信（Communication） |
+| 目标 | 开发一款可发布至 VSCode Marketplace 的插件，为 CSM 这门新的状态机脚本语言提供编辑器支持 |
+| 语言特点 | CSM 是面向状态机的领域特定脚本语言（DSL），核心概念包括状态（State）、迁移（Transition）和通信（Communication） |
 | 插件功能规划 | 语法高亮 → 代码片段 → IntelliSense → 状态机可视化预览 → 完整语言服务（分阶段交付，详见下方里程碑） |
 
 ---
@@ -81,7 +81,7 @@
 
 ### 2.2 确定插件功能范围
 
-根据 CSMScript 作为状态机脚本语言的特点，需要决定实现哪些功能。参考[同类插件调研报告](../research/marketplace-similar-plugins-survey.md)中推荐的分阶段策略，常见的语言支持类插件功能包括：
+根据 CSM 作为状态机脚本语言的特点，需要决定实现哪些功能。参考[同类插件调研报告](../research/marketplace-similar-plugins-survey.md)中推荐的分阶段策略，常见的语言支持类插件功能包括：
 
 | 功能 | VSCode 实现方式 | 参考文档 |
 |------|---------------|---------|
@@ -153,8 +153,8 @@ my-extension/
 
 ```jsonc
 {
-  "name": "csmscript-support",           // 插件 ID（唯一）
-  "displayName": "CSMScript Support",    // 显示名称
+  "name": "csm-support",           // 插件 ID（唯一）
+  "displayName": "CSM Support",    // 显示名称
   "description": "...",                   // 简短描述
   "version": "0.0.1",
   "publisher": "your-publisher-id",       // 发布者 ID（需在 Marketplace 注册）
@@ -180,7 +180,7 @@ my-extension/
 ### 3.3 核心开发任务拆解
 
 #### 任务 1：语言定义（必做）
-- 为 CSMScript 注册一种新语言（`id`、文件扩展名、注释符号等）
+- 为 CSM 注册一种新语言（`id`、文件扩展名、注释符号等）
 - **文档：** [Language Configuration Guide](https://code.visualstudio.com/api/language-extensions/language-configuration-guide)
 
 #### 任务 2：语法高亮（必做）
@@ -469,7 +469,7 @@ ovsx publish -p <open-vsx-token>
 
 ## 当前开发进度
 
-开发进度通过 [GitHub Issues](https://github.com/NEVSTOP-LAB/CSMScript-vsc-Support/issues) 追踪，按里程碑分组：
+开发进度通过 [GitHub Issues](https://github.com/NEVSTOP-LAB/CSM-vsc-Support/issues) 追踪，按里程碑分组：
 
 | 里程碑 | 目标 | 状态 |
 |--------|------|------|

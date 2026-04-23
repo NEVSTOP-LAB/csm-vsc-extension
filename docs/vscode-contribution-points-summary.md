@@ -82,7 +82,7 @@
 
 ---
 
-> 本文后续章节聚焦于**为新脚本语言（如 CSMScript）提供 VSCode 支持**所需的贡献点，以功能目标为主线进行组织。
+> 本文后续章节聚焦于**为新脚本语言（如 CSM）提供 VSCode 支持**所需的贡献点，以功能目标为主线进行组织。
 
 ---
 
@@ -108,10 +108,10 @@
 "contributes": {
   "languages": [
     {
-      "id": "csmscript",
-      "aliases": ["CSMScript", "csm"],
+      "id": "csm",
+      "aliases": ["CSM", "csm"],
       "extensions": [".csm"],
-      "firstLine": "^#!.*\\bcsmscript\\b",
+      "firstLine": "^#!.*\\bcsm\\b",
       "configuration": "./language-configuration.json"
     }
   ]
@@ -157,9 +157,9 @@
 "contributes": {
   "grammars": [
     {
-      "language": "csmscript",
-      "scopeName": "source.csmscript",
-      "path": "./syntaxes/csmscript.tmLanguage.json"
+      "language": "csm",
+      "scopeName": "source.csm",
+      "path": "./syntaxes/csm.tmLanguage.json"
     }
   ]
 }
@@ -171,14 +171,14 @@
 | `scopeName` | TextMate scope 根名，惯例为 `source.<langId>` |
 | `path` | `.tmLanguage.json` 文件路径 |
 
-> **提示：** 也可以不指定 `language`，单独注册 grammar（用于注入到其他语言，如在字符串中嵌入 CSMScript 语法）。
+> **提示：** 也可以不指定 `language`，单独注册 grammar（用于注入到其他语言，如在字符串中嵌入 CSM 语法）。
 
 `.tmLanguage.json` 的结构（简化示例）：
 
 ```json
 {
-  "name": "CSMScript",
-  "scopeName": "source.csmscript",
+  "name": "CSM",
+  "scopeName": "source.csm",
   "patterns": [
     { "include": "#keywords" },
     { "include": "#strings" },
@@ -187,16 +187,16 @@
   "repository": {
     "keywords": {
       "match": "\\b(if|else|while|return|function)\\b",
-      "name": "keyword.control.csmscript"
+      "name": "keyword.control.csm"
     },
     "strings": {
       "begin": "\"",
       "end": "\"",
-      "name": "string.quoted.double.csmscript"
+      "name": "string.quoted.double.csm"
     },
     "comments": {
       "match": "//.*$",
-      "name": "comment.line.double-slash.csmscript"
+      "name": "comment.line.double-slash.csm"
     }
   }
 }
@@ -226,8 +226,8 @@
 "contributes": {
   "snippets": [
     {
-      "language": "csmscript",
-      "path": "./snippets/csmscript.code-snippets"
+      "language": "csm",
+      "path": "./snippets/csm.code-snippets"
     }
   ]
 }
@@ -274,7 +274,7 @@ TextMate Grammar 基于正则，无法理解语言语义。如果插件实现了
     {
       "id": "stateVariable",
       "superType": "variable",
-      "description": "CSMScript 状态变量"
+      "description": "CSM 状态变量"
     }
   ]
 }
@@ -301,10 +301,10 @@ TextMate Grammar 基于正则，无法理解语言语义。如果插件实现了
 "contributes": {
   "semanticTokenScopes": [
     {
-      "language": "csmscript",
+      "language": "csm",
       "scopes": {
-        "stateVariable": ["variable.other.csmscript"],
-        "stateVariable.exported": ["variable.other.exported.csmscript"]
+        "stateVariable": ["variable.other.csm"],
+        "stateVariable.exported": ["variable.other.exported.csm"]
       }
     }
   ]
@@ -323,21 +323,21 @@ TextMate Grammar 基于正则，无法理解语言语义。如果插件实现了
 "contributes": {
   "commands": [
     {
-      "command": "csmscript.runFile",
-      "title": "Run CSMScript File",
+      "command": "csm.runFile",
+      "title": "Run CSM File",
       "icon": "$(play)",
-      "category": "CSMScript"
+      "category": "CSM"
     },
     {
-      "command": "csmscript.restartLanguageServer",
+      "command": "csm.restartLanguageServer",
       "title": "Restart Language Server",
-      "category": "CSMScript"
+      "category": "CSM"
     }
   ]
 }
 ```
 
-- `category`：命令面板中显示为 `CSMScript: Run CSMScript File`，便于归类和发现
+- `category`：命令面板中显示为 `CSM: Run CSM File`，便于归类和发现
 - `icon`：用于菜单/标题栏按钮
 
 ### 3.2 `menus` — 将命令显示到 UI
@@ -349,22 +349,22 @@ TextMate Grammar 基于正则，无法理解语言语义。如果插件实现了
   "menus": {
     "editor/title": [
       {
-        "command": "csmscript.runFile",
-        "when": "editorLangId == 'csmscript'",
+        "command": "csm.runFile",
+        "when": "editorLangId == 'csm'",
         "group": "navigation"
       }
     ],
     "editor/context": [
       {
-        "command": "csmscript.runFile",
-        "when": "editorLangId == 'csmscript'",
+        "command": "csm.runFile",
+        "when": "editorLangId == 'csm'",
         "group": "1_run@1"
       }
     ],
     "commandPalette": [
       {
-        "command": "csmscript.restartLanguageServer",
-        "when": "editorLangId == 'csmscript'"
+        "command": "csm.restartLanguageServer",
+        "when": "editorLangId == 'csm'"
       }
     ]
   }
@@ -383,22 +383,22 @@ TextMate Grammar 基于正则，无法理解语言语义。如果插件实现了
 **`when` 语言过滤常用写法：**
 
 ```
-editorLangId == 'csmscript'           // 当前文件是 CSMScript
+editorLangId == 'csm'           // 当前文件是 CSM
 resourceExtname == '.csm'             // 文件扩展名为 .csm（用于 explorer）
 ```
 
 ### 3.3 `keybindings` — 键盘快捷键
 
-为语言命令绑定快捷键，用 `when` 限定只在 CSMScript 文件中生效。
+为语言命令绑定快捷键，用 `when` 限定只在 CSM 文件中生效。
 
 ```json
 "contributes": {
   "keybindings": [
     {
-      "command": "csmscript.runFile",
+      "command": "csm.runFile",
       "key": "ctrl+f5",
       "mac": "cmd+f5",
-      "when": "editorLangId == 'csmscript'"
+      "when": "editorLangId == 'csm'"
     }
   ]
 }
@@ -406,31 +406,31 @@ resourceExtname == '.csm'             // 文件扩展名为 .csm（用于 explor
 
 ### 3.4 `configuration` — 插件设置
 
-声明用户可在设置 UI / `settings.json` 中调整的选项；代码通过 `vscode.workspace.getConfiguration('csmscript')` 读取。
+声明用户可在设置 UI / `settings.json` 中调整的选项；代码通过 `vscode.workspace.getConfiguration('csm')` 读取。
 
 ```json
 "contributes": {
   "configuration": {
-    "title": "CSMScript",
+    "title": "CSM",
     "properties": {
-      "csmscript.executablePath": {
+      "csm.executablePath": {
         "type": "string",
         "default": "",
-        "description": "CSMScript 解释器的路径（留空则使用 PATH）",
+        "description": "CSM 解释器的路径（留空则使用 PATH）",
         "scope": "machine-overridable"
       },
-      "csmscript.linting.enable": {
+      "csm.linting.enable": {
         "type": "boolean",
         "default": true,
         "description": "启用实时语法检查"
       },
-      "csmscript.formatting.indentSize": {
+      "csm.formatting.indentSize": {
         "type": "number",
         "default": 2,
         "minimum": 1,
         "description": "格式化缩进空格数"
       },
-      "csmscript.languageServer.trace": {
+      "csm.languageServer.trace": {
         "type": "string",
         "enum": ["off", "messages", "verbose"],
         "default": "off",
@@ -454,15 +454,15 @@ resourceExtname == '.csm'             // 文件扩展名为 .csm（用于 explor
 
 ### 3.5 `configurationDefaults` — 覆盖默认设置
 
-为 CSMScript 语言覆盖 VSCode 内置编辑器设置（如 Tab 大小、格式化器等）。
+为 CSM 语言覆盖 VSCode 内置编辑器设置（如 Tab 大小、格式化器等）。
 
 ```json
 "contributes": {
   "configurationDefaults": {
-    "[csmscript]": {
+    "[csm]": {
       "editor.tabSize": 2,
       "editor.insertSpaces": true,
-      "editor.defaultFormatter": "your-publisher.csmscript-support",
+      "editor.defaultFormatter": "your-publisher.csm-support",
       "editor.semanticHighlighting.enabled": true
     }
   }
@@ -475,18 +475,18 @@ resourceExtname == '.csm'             // 文件扩展名为 .csm（用于 explor
 
 ### 4.1 `taskDefinitions` — 自定义任务类型
 
-允许用户在 `.vscode/tasks.json` 中使用 CSMScript 专属任务类型，配合 `TaskProvider` 自动检测项目中的构建/运行任务。
+允许用户在 `.vscode/tasks.json` 中使用 CSM 专属任务类型，配合 `TaskProvider` 自动检测项目中的构建/运行任务。
 
 ```json
 "contributes": {
   "taskDefinitions": [
     {
-      "type": "csmscript",
+      "type": "csm",
       "required": ["script"],
       "properties": {
         "script": {
           "type": "string",
-          "description": "要执行的 CSMScript 文件路径"
+          "description": "要执行的 CSM 文件路径"
         },
         "args": {
           "type": "array",
@@ -502,23 +502,23 @@ resourceExtname == '.csm'             // 文件扩展名为 .csm（用于 explor
 
 ```json
 {
-  "type": "csmscript",
+  "type": "csm",
   "script": "build.csm",
   "args": ["--release"],
-  "label": "CSMScript: Build"
+  "label": "CSM: Build"
 }
 ```
 
 ### 4.2 `problemMatchers` — 错误输出解析
 
-解析 CSMScript 编译器 / 运行时在终端输出的错误信息，自动在编辑器中标注诊断（Problems 面板）。
+解析 CSM 编译器 / 运行时在终端输出的错误信息，自动在编辑器中标注诊断（Problems 面板）。
 
 ```json
 "contributes": {
   "problemMatchers": [
     {
-      "name": "csmscript",
-      "owner": "csmscript",
+      "name": "csm",
+      "owner": "csm",
       "fileLocation": ["relative", "${workspaceFolder}"],
       "pattern": {
         "regexp": "^(.+):(\\d+):(\\d+):\\s+(error|warning):\\s+(.+)$",
@@ -537,9 +537,9 @@ resourceExtname == '.csm'             // 文件扩展名为 .csm（用于 explor
 
 ```json
 {
-  "type": "csmscript",
+  "type": "csm",
   "script": "main.csm",
-  "problemMatcher": "$csmscript"
+  "problemMatcher": "$csm"
 }
 ```
 
@@ -551,7 +551,7 @@ resourceExtname == '.csm'             // 文件扩展名为 .csm（用于 explor
 "contributes": {
   "problemPatterns": [
     {
-      "name": "csmscript-multiline",
+      "name": "csm-multiline",
       "patterns": [
         {
           "regexp": "^(.+):(\\d+)$",
@@ -581,18 +581,18 @@ resourceExtname == '.csm'             // 文件扩展名为 .csm（用于 explor
 "contributes": {
   "debuggers": [
     {
-      "type": "csmscript",
-      "label": "CSMScript Debug",
+      "type": "csm",
+      "label": "CSM Debug",
       "program": "./out/debugAdapter.js",
       "runtime": "node",
-      "languages": ["csmscript"],
+      "languages": ["csm"],
       "configurationAttributes": {
         "launch": {
           "required": ["program"],
           "properties": {
             "program": {
               "type": "string",
-              "description": "要调试的 CSMScript 文件",
+              "description": "要调试的 CSM 文件",
               "default": "${file}"
             },
             "stopOnEntry": {
@@ -605,7 +605,7 @@ resourceExtname == '.csm'             // 文件扩展名为 .csm（用于 explor
       },
       "initialConfigurations": [
         {
-          "type": "csmscript",
+          "type": "csm",
           "request": "launch",
           "name": "调试当前文件",
           "program": "${file}"
@@ -613,10 +613,10 @@ resourceExtname == '.csm'             // 文件扩展名为 .csm（用于 explor
       ],
       "configurationSnippets": [
         {
-          "label": "CSMScript: Launch",
-          "description": "启动并调试 CSMScript 文件",
+          "label": "CSM: Launch",
+          "description": "启动并调试 CSM 文件",
           "body": {
-            "type": "csmscript",
+            "type": "csm",
             "request": "launch",
             "name": "${1:调试当前文件}",
             "program": "^\"\\${file}\""
@@ -635,7 +635,7 @@ resourceExtname == '.csm'             // 文件扩展名为 .csm（用于 explor
 ```json
 "contributes": {
   "breakpoints": [
-    { "language": "csmscript" }
+    { "language": "csm" }
   ]
 }
 ```
@@ -652,15 +652,15 @@ resourceExtname == '.csm'             // 文件扩展名为 .csm（用于 explor
 "contributes": {
   "iconThemes": [
     {
-      "id": "csmscript-icons",
-      "label": "CSMScript Icons",
-      "path": "./fileicons/csmscript-icon-theme.json"
+      "id": "csm-icons",
+      "label": "CSM Icons",
+      "path": "./fileicons/csm-icon-theme.json"
     }
   ]
 }
 ```
 
-`csmscript-icon-theme.json` 中按扩展名映射图标：
+`csm-icon-theme.json` 中按扩展名映射图标：
 
 ```json
 {
@@ -694,13 +694,13 @@ resourceExtname == '.csm'             // 文件扩展名为 .csm（用于 explor
 
 ## 语言插件最小可用 `package.json` 模板
 
-以下是为 CSMScript 提供基础语言支持的 `package.json` 骨架：
+以下是为 CSM 提供基础语言支持的 `package.json` 骨架：
 
 ```jsonc
 {
-  "name": "csmscript-support",
-  "displayName": "CSMScript Support",
-  "description": "VSCode support for CSMScript language",
+  "name": "csm-support",
+  "displayName": "CSM Support",
+  "description": "VSCode support for CSM language",
   "version": "0.1.0",
   "publisher": "nevstop-lab",
   "engines": { "vscode": "^1.85.0" },
@@ -708,25 +708,25 @@ resourceExtname == '.csm'             // 文件扩展名为 .csm（用于 explor
   "contributes": {
     // ① 语言注册（必做）
     "languages": [{
-      "id": "csmscript",
-      "aliases": ["CSMScript"],
+      "id": "csm",
+      "aliases": ["CSM"],
       "extensions": [".csm"],
       "configuration": "./language-configuration.json"
     }],
     // ② 语法高亮（必做）
     "grammars": [{
-      "language": "csmscript",
-      "scopeName": "source.csmscript",
-      "path": "./syntaxes/csmscript.tmLanguage.json"
+      "language": "csm",
+      "scopeName": "source.csm",
+      "path": "./syntaxes/csm.tmLanguage.json"
     }],
     // ③ 代码片段（推荐）
     "snippets": [{
-      "language": "csmscript",
-      "path": "./snippets/csmscript.code-snippets"
+      "language": "csm",
+      "path": "./snippets/csm.code-snippets"
     }],
     // ④ 覆盖默认编辑器设置（推荐）
     "configurationDefaults": {
-      "[csmscript]": {
+      "[csm]": {
         "editor.tabSize": 2,
         "editor.insertSpaces": true
       }
