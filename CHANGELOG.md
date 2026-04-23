@@ -18,6 +18,7 @@
   - 模块名缺失时使用 `<unknown-module>` 占位
 - 元数据：扩展名与 VSIX 产物命名统一为 `csm-vsc-support`
 - 文档：README / CONTRIBUTING / 架构说明同步到当前仓库能力（`.csmlog` + `.lvcsm`）
+- 文档：清理脚手架/占位符残留，`docs/quickstart.md`、`CONTRIBUTING.md`、`docs/images-guide.md` 与当前已发布扩展状态保持一致
 
 ## [0.0.4] - 2026-03-29
 

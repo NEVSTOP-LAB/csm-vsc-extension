@@ -2,16 +2,16 @@
 
 ## 当前图标
 
-当前的扩展图标是 **占位符图标**，用于项目开发阶段。
+当前使用的扩展图标文件为 [`images/icon.png`](../images/icon.png)，并已用于 Marketplace 发布版本。
 
 ### 图标文件
 
-- **PNG 格式**: [`images/icon.png`](icon.png) - 128x128 像素（推荐使用）
-- **SVG 格式**: [`images/icon.svg`](icon.svg) - 矢量格式（可选）
+- **PNG 格式**: [`images/icon.png`](../images/icon.png) - 128x128 像素（推荐使用）
+- **SVG 格式**: [`images/icon.svg`](../images/icon.svg) - 矢量格式（可选）
 
-### 占位符设计
+### 当前设计
 
-当前占位符图标包含：
+当前图标包含：
 - 蓝色渐变背景（#2196F3 → #1976D2）
 - 简化的状态机图形（3 个节点和连接线）
 - "CSM" 文字标识
@@ -36,9 +36,9 @@
    - 图标在缩小到不同尺寸时依然清晰
 
 2. **替换文件**
-   ```bash
-   # 备份占位符（可选）
-   mv images/icon.png images/icon-placeholder.png
+    ```bash
+   # 备份当前图标（可选）
+   mv images/icon.png images/icon-backup.png
    
    # 复制新图标
    cp /your/icon/path.png images/icon.png
@@ -83,5 +83,4 @@
 
 ---
 
-**最后更新**: 2026-03-06  
-**占位符版本**: 0.0.1
+**最后更新**: 2026-04-23
