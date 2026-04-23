@@ -1,7 +1,7 @@
 # 流程可视化预览设计文档
 
-> **功能：** CSM 流程可视化预览（流程图 + 通讯泳道图）
-> **关联 Issue：** [流程可视化预览](https://github.com/nevstop/CSM-vsc-Support/issues/74)
+> **功能：** CSMScript 流程可视化预览（流程图 + 通讯泳道图）
+> **关联 Issue：** [流程可视化预览](https://github.com/nevstop/CSMScript-vsc-Support/issues/74)
 > **创建日期：** 2026-03-25
 > **状态：** ✅ 已完成
 > **参考资料：** [Mermaid 官方文档](https://mermaid.js.org/)
@@ -26,16 +26,16 @@
 
 ### 1.1 目标
 
-- 为 CSM 文件提供类似 Markdown 预览的流程可视化功能
+- 为 CSMScript 文件提供类似 Markdown 预览的流程可视化功能
 - 使用 Mermaid 流程图清晰展示脚本执行流程
-- 支持实时更新（编辑 CSM 文件时自动刷新预览）
+- 支持实时更新（编辑 CSMScript 文件时自动刷新预览）
 - 正确处理控制流结构（if/else、while、foreach、do_while）
 - 使用虚线标识 GOTO 跳转，突出可能的执行路径
 
 ### 1.2 范围
 
 **包含：**
-- CSM 到 Mermaid flowchart 的转换逻辑
+- CSMScript 到 Mermaid flowchart 的转换逻辑
 - Webview 预览面板（side-by-side 布局）
 - 自动更新机制（监听文件编辑和切换）
 - 单元测试（14 个测试用例）
@@ -48,7 +48,7 @@
 
 ### 1.3 设计理念
 
-CSM 是基于状态机的脚本语言，流程可视化应：
+CSMScript 是基于状态机的脚本语言，流程可视化应：
 1. **简洁清晰**：避免节点过多，将连续语句合并为块
 2. **突出控制流**：if/while/foreach 等控制结构使用条件节点表示
 3. **标识跳转**：GOTO 使用虚线，区别于顺序执行的实线
@@ -60,8 +60,8 @@ CSM 是基于状态机的脚本语言，流程可视化应：
 
 ### 2.1 逐行转换原则
 
-采用逐行分析 CSM 并转换为 Mermaid 的策略，而非传统的 AST 构建方式。理由：
-- CSM 语法简单，逐行处理即可满足需求
+采用逐行分析 CSMScript 并转换为 Mermaid 的策略，而非传统的 AST 构建方式。理由：
+- CSMScript 语法简单，逐行处理即可满足需求
 - 避免复杂的解析器实现
 - 易于维护和调试
 
@@ -76,7 +76,7 @@ CSM 是基于状态机的脚本语言，流程可视化应：
 4. 遇到空行（将连续语句切分为独立块）
 
 **示例：**
-```csm
+```csmscript
 <entry>
 ECHO >> Step 1
 ECHO >> Step 2
@@ -105,7 +105,7 @@ ECHO >> Done
 
 ```
 src/
-├── flowParser.ts              # CSM → FlowGraph 转换
+├── flowParser.ts              # CSMScript → FlowGraph 转换
 │   ├── TextDocumentLike       # VS Code 文档抽象接口
 │   ├── FlowNode               # 流程图节点定义
 │   ├── FlowEdge               # 流程图边定义
@@ -128,7 +128,7 @@ src/
 ### 3.2 数据流
 
 ```
-CSM 文档
+CSMScript 文档
     ↓
 [flowParser.ts] parseFlowGraph()
     ↓
@@ -151,7 +151,7 @@ VS Code Webview 渲染
 
 ### 4.1 节点类型映射
 
-| CSM 元素 | FlowNode.type | 说明 |
+| CSMScript 元素 | FlowNode.type | 说明 |
 |---------------|---------------|------|
 | `<entry>`, `<cleanup>` | `anchor` | 锚点（跳转目标） |
 | `<if>`, `<while>`, `<foreach>`, `?expr? goto` | `condition` | 条件判断节点 |
@@ -177,7 +177,7 @@ VS Code Webview 渲染
 
 #### 4.3.1 if/else/end_if
 
-```csm
+```csmscript
 <if ${x}>0>
   ECHO >> Positive
 <else>
@@ -194,7 +194,7 @@ VS Code Webview 渲染
 
 #### 4.3.2 while/end_while
 
-```csm
+```csmscript
 <while ${counter}<5>
   ECHO >> Loop
 <end_while>
@@ -207,7 +207,7 @@ VS Code Webview 渲染
 
 #### 4.3.3 foreach/end_foreach
 
-```csm
+```csmscript
 <foreach station in ${stationList}>
   ECHO >> ${station}
 <end_foreach>
@@ -220,7 +220,7 @@ VS Code Webview 渲染
 
 #### 4.3.4 do_while/end_do_while
 
-```csm
+```csmscript
 <do_while>
   ECHO >> Do something
 <end_do_while ${condition}>
@@ -235,7 +235,7 @@ VS Code Webview 渲染
 
 #### 4.4.1 无条件 GOTO
 
-```csm
+```csmscript
 GOTO >> <cleanup>
 ```
 
@@ -245,7 +245,7 @@ GOTO >> <cleanup>
 
 #### 4.4.2 条件 GOTO
 
-```csm
+```csmscript
 ?${error}? goto >> <error_handler>
 ```
 
@@ -256,7 +256,7 @@ GOTO >> <cleanup>
 
 #### 4.4.3 错误条件 GOTO
 
-```csm
+```csmscript
 ?? goto >> <error_handler>
 ```
 
@@ -332,7 +332,7 @@ classDef block fill:#DDA0DD,stroke:#333,stroke-width:2px,color:#000;
 ### 6.2 自动更新机制
 
 监听以下事件触发 `_update()`：
-1. `window.onDidChangeActiveTextEditor` → 切换到另一个 CSM 文件时更新
+1. `window.onDidChangeActiveTextEditor` → 切换到另一个 CSMScript 文件时更新
 2. `workspace.onDidChangeTextDocument` → 编辑当前文件时实时更新
 3. `panel.onDidChangeViewState` → 面板从隐藏变为可见时更新
 4. `window.onDidChangeTextEditorSelection` → 光标行变化时，将预览图滚动并高亮到最近节点（蓝色发光效果）
@@ -446,7 +446,7 @@ function makeDoc(content: string): TextDocumentLike {
 
 ### 8.1 目标
 
-将 CSM 脚本中的模块间通讯指令转换为 Mermaid `sequenceDiagram`（序列图），直观展示：
+将 CSMScript 脚本中的模块间通讯指令转换为 Mermaid `sequenceDiagram`（序列图），直观展示：
 - 脚本执行引擎（**Engine**，位于最左侧泳道）与各目标模块的交互顺序
 - 不同通讯模式（同步/异步/fire-forget/订阅/广播）的区别
 - 所有涉及的模块参与者（按首次出现顺序排列）
@@ -454,7 +454,7 @@ function makeDoc(content: string): TextDocumentLike {
 ### 8.2 架构模块
 
 ```
-src/swimlaneParser.ts      # CSM → SwimlaneGraph 解析器
+src/swimlaneParser.ts      # CSMScript → SwimlaneGraph 解析器
 src/swimlaneGenerator.ts   # SwimlaneGraph → Mermaid sequenceDiagram 生成器
 ```
 
@@ -487,7 +487,7 @@ type MessageType =
 
 ### 8.4 解析规则（swimlaneParser.ts）
 
-解析器逐行扫描 CSM 文档，按以下优先级匹配模式：
+解析器逐行扫描 CSMScript 文档，按以下优先级匹配模式：
 
 | 优先级 | 模式 | 识别正则 | 生成消息类型 |
 |--------|------|---------|------------|
@@ -603,9 +603,9 @@ sequenceDiagram
 
 ### 8.8 完整示例（泳道图）
 
-**输入（CSM 片段）：**
+**输入（CSMScript 片段）：**
 
-```csm
+```csmscript
 API: Boot >> ${deviceId} -@ FixtureController => bootCode
 API: Prepare >> ${bootCode} -> WorkerModule => prepResult
 API: Trace >> start ->| Logger
@@ -648,7 +648,7 @@ sequenceDiagram
 
 ### 9.2 增强功能
 
-- **点击节点跳转到源码**：点击 Mermaid 节点时定位到 CSM 对应行
+- **点击节点跳转到源码**：点击 Mermaid 节点时定位到 CSMScript 对应行
 - **导出为图片**：支持 PNG/PDF 导出（需要 Mermaid CLI 或第三方库）
 - **主题切换**：支持 dark/light/neutral Mermaid 主题
 
@@ -666,9 +666,9 @@ sequenceDiagram
 
 ## 附录 A：完整示例
 
-### 输入（CSM）
+### 输入（CSMScript）
 
-```csm
+```csmscript
 [COMMAND_ALIAS]
 TestCmd = API: Test >> ${x} -@ Module
 

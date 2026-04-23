@@ -1,6 +1,6 @@
 # VSCode 语言扩展能力详解（Language Extension Features）
 
-> **适用场景：** 为一门新的脚本语言（如 CSM）开发 VSCode 支持插件  
+> **适用场景：** 为一门新的脚本语言（如 CSMScript）开发 VSCode 支持插件  
 > **参考来源：**
 > - [Language Extensions Overview](https://code.visualstudio.com/api/language-extensions/overview)  
 > - [Programmatic Language Features](https://code.visualstudio.com/api/language-extensions/programmatic-language-features)  
@@ -20,7 +20,7 @@
 7. [编程式语言功能——所有 Provider 详解](#7-编程式语言功能所有-provider-详解)
 8. [语言服务器协议（LSP）](#8-语言服务器协议lsp)
 9. [嵌入式语言（Embedded Languages）](#9-嵌入式语言embedded-languages)
-10. [对 CSM 的实施建议](#10-对-csm-的实施建议)
+10. [对 CSMScript 的实施建议](#10-对-csmscript-的实施建议)
 
 ---
 
@@ -30,7 +30,7 @@
 
 VSCode 的插件系统（Extension API）按能力领域划分为六大类别：
 
-| 类别 | 核心能力 | 对 CSM 的价值 |
+| 类别 | 核心能力 | 对 CSMScript 的价值 |
 |------|---------|---------------------|
 | **通用能力** | 命令、配置、快捷键、上下文菜单、通知、状态栏、进度条、数据存储、编辑器装饰 | ⭐⭐⭐ 可选辅助功能 |
 | **主题定制** | 颜色主题、文件图标主题、产品图标主题 | ⭐ 可选 |
@@ -64,17 +64,17 @@ VSCode 的插件系统（Extension API）按能力领域划分为六大类别：
 
 ### 0.3 工作台扩展快速参考
 
-| 扩展类型 | 接口 / 配置点 | CSM 潜在用途 |
+| 扩展类型 | 接口 / 配置点 | CSMScript 潜在用途 |
 |---------|-------------|------------------|
 | 树视图 | `TreeDataProvider` + `contributes.views` | 状态机结构可视化 |
 | Webview | `window.createWebviewPanel` | 状态图可视化面板 |
 | 自定义编辑器 | `CustomTextEditorProvider` | 可视化状态机编辑器（高级） |
 | 虚拟文档 | `TextDocumentContentProvider` | 展示生成的状态机代码或 AST |
-| 任务 | `TaskProvider` + `contributes.taskDefinitions` | CSM 编译/运行任务 |
+| 任务 | `TaskProvider` + `contributes.taskDefinitions` | CSMScript 编译/运行任务 |
 
 ### 0.4 能力优先级汇总表
 
-| 能力 | 实现方式 | 复杂度 | 对 CSM 的价值 |
+| 能力 | 实现方式 | 复杂度 | 对 CSMScript 的价值 |
 |------|---------|--------|---------------------|
 | 语法高亮 | TextMate Grammar（声明式） | ⭐⭐ | ⭐⭐⭐⭐⭐ 必做 |
 | 语言配置 | `.json` 配置文件（声明式） | ⭐ | ⭐⭐⭐⭐⭐ 必做 |
@@ -127,17 +127,17 @@ VSCode 语言支持插件分为两大类：
   "contributes": {
     "languages": [
       {
-        "id": "csm",                   // 语言唯一 ID（全局命名空间，建议带品牌前缀）
-        "aliases": ["CSM", "csm"],     // 显示名称，用于语言选择器
-        "extensions": [".csm", ".csm"], // 文件扩展名（含点号）
+        "id": "csmscript",                   // 语言唯一 ID（全局命名空间，建议带品牌前缀）
+        "aliases": ["CSMScript", "csm"],     // 显示名称，用于语言选择器
+        "extensions": [".csm", ".csmscript"], // 文件扩展名（含点号）
         "filenames": [],                      // 精确文件名匹配（可选）
         "filenamePatterns": [],               // glob 模式匹配（可选）
-        "mimetypes": ["text/x-csm"],   // MIME 类型（可选）
-        "firstLine": "^#!.*csm",       // 首行正则匹配（可选，用于 shebang）
+        "mimetypes": ["text/x-csmscript"],   // MIME 类型（可选）
+        "firstLine": "^#!.*csmscript",       // 首行正则匹配（可选，用于 shebang）
         "configuration": "./language-configuration.json",  // 语言配置文件路径
         "icon": {                            // 文件图标（可选）
-          "light": "./icons/csm-light.svg",
-          "dark": "./icons/csm-dark.svg"
+          "light": "./icons/csmscript-light.svg",
+          "dark": "./icons/csmscript-dark.svg"
         }
       }
     ]
@@ -275,9 +275,9 @@ VSCode 使用 **TextMate Grammar**（`.tmLanguage.json` 或 `.plist`）进行词
   "contributes": {
     "grammars": [
       {
-        "language": "csm",             // 对应 contributes.languages[].id
-        "scopeName": "source.csm",     // 根作用域名（全局唯一）
-        "path": "./syntaxes/csm.tmLanguage.json",
+        "language": "csmscript",             // 对应 contributes.languages[].id
+        "scopeName": "source.csmscript",     // 根作用域名（全局唯一）
+        "path": "./syntaxes/csmscript.tmLanguage.json",
         "embeddedLanguages": {               // 如果语法中嵌入其他语言（可选）
           "meta.embedded.block.javascript": "javascript"
         },
@@ -295,8 +295,8 @@ VSCode 使用 **TextMate Grammar**（`.tmLanguage.json` 或 `.plist`）进行词
 ```jsonc
 {
   "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
-  "name": "CSM",
-  "scopeName": "source.csm",    // 根 scope，与 package.json 一致
+  "name": "CSMScript",
+  "scopeName": "source.csmscript",    // 根 scope，与 package.json 一致
 
   // 顶层规则：按顺序匹配，先匹配到的规则优先
   "patterns": [
@@ -316,19 +316,19 @@ VSCode 使用 **TextMate Grammar**（`.tmLanguage.json` 或 `.plist`）进行词
       "patterns": [
         {
           // 块注释：begin/end 模式，匹配多行
-          "name": "comment.block.csm",
+          "name": "comment.block.csmscript",
           "begin": "/\\*",
           "end": "\\*/",
           "beginCaptures": {
-            "0": { "name": "punctuation.definition.comment.begin.csm" }
+            "0": { "name": "punctuation.definition.comment.begin.csmscript" }
           },
           "endCaptures": {
-            "0": { "name": "punctuation.definition.comment.end.csm" }
+            "0": { "name": "punctuation.definition.comment.end.csmscript" }
           }
         },
         {
           // 行注释：match 模式，匹配单行
-          "name": "comment.line.double-slash.csm",
+          "name": "comment.line.double-slash.csmscript",
           "match": "//.*$"
         }
       ]
@@ -339,17 +339,17 @@ VSCode 使用 **TextMate Grammar**（`.tmLanguage.json` 或 `.plist`）进行词
       "patterns": [
         {
           // 控制流关键字
-          "name": "keyword.control.csm",
+          "name": "keyword.control.csmscript",
           "match": "\\b(if|else|while|for|return|break|continue)\\b"
         },
         {
           // 声明关键字
-          "name": "keyword.declaration.csm",
+          "name": "keyword.declaration.csmscript",
           "match": "\\b(state|action|trigger|param|var|const)\\b"
         },
         {
           // 内置值
-          "name": "constant.language.csm",
+          "name": "constant.language.csmscript",
           "match": "\\b(true|false|null|undefined)\\b"
         }
       ]
@@ -360,19 +360,19 @@ VSCode 使用 **TextMate Grammar**（`.tmLanguage.json` 或 `.plist`）进行词
       "patterns": [
         {
           // 双引号字符串
-          "name": "string.quoted.double.csm",
+          "name": "string.quoted.double.csmscript",
           "begin": "\"",
           "end": "\"",
           "beginCaptures": {
-            "0": { "name": "punctuation.definition.string.begin.csm" }
+            "0": { "name": "punctuation.definition.string.begin.csmscript" }
           },
           "endCaptures": {
-            "0": { "name": "punctuation.definition.string.end.csm" }
+            "0": { "name": "punctuation.definition.string.end.csmscript" }
           },
           "patterns": [
             {
               // 转义序列
-              "name": "constant.character.escape.csm",
+              "name": "constant.character.escape.csmscript",
               "match": "\\\\[\\\\\"nrtbf]"
             }
           ]
@@ -384,7 +384,7 @@ VSCode 使用 **TextMate Grammar**（`.tmLanguage.json` 或 `.plist`）进行词
     "numbers": {
       "patterns": [
         {
-          "name": "constant.numeric.csm",
+          "name": "constant.numeric.csmscript",
           "match": "\\b-?(?:0x[0-9A-Fa-f]+|(?:\\d+\\.?\\d*|\\.\\d+)(?:[eE][+-]?\\d+)?)\\b"
         }
       ]
@@ -392,19 +392,19 @@ VSCode 使用 **TextMate Grammar**（`.tmLanguage.json` 或 `.plist`）进行词
 
     // ── 运算符 ────────────────────────────────────────────────
     "operators": {
-      "name": "keyword.operator.csm",
+      "name": "keyword.operator.csmscript",
       "match": "[+\\-*/=<>!&|^~%]+"
     },
 
-    // ── 状态名（CSM 特有）──────────────────────────────
+    // ── 状态名（CSMScript 特有）──────────────────────────────
     "state-names": {
       "patterns": [
         {
           // 状态定义：state MyState { ... }
           "match": "\\b(state)\\s+([A-Za-z_][A-Za-z0-9_]*)\\b",
           "captures": {
-            "1": { "name": "keyword.declaration.state.csm" },
-            "2": { "name": "entity.name.type.state.csm" }
+            "1": { "name": "keyword.declaration.state.csmscript" },
+            "2": { "name": "entity.name.type.state.csmscript" }
           }
         }
       ]
@@ -475,14 +475,14 @@ const legend = new vscode.SemanticTokensLegend(tokenTypes, tokenModifiers);
 export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(
     vscode.languages.registerDocumentSemanticTokensProvider(
-      { language: 'csm' },
-      new CSMSemanticTokensProvider(),
+      { language: 'csmscript' },
+      new CSMScriptSemanticTokensProvider(),
       legend
     )
   );
 }
 
-class CSMSemanticTokensProvider
+class CSMScriptSemanticTokensProvider
   implements vscode.DocumentSemanticTokensProvider {
 
   provideDocumentSemanticTokens(
@@ -514,8 +514,8 @@ class CSMSemanticTokensProvider
   "contributes": {
     "snippets": [
       {
-        "language": "csm",
-        "path": "./snippets/csm.code-snippets"
+        "language": "csmscript",
+        "path": "./snippets/csmscript.code-snippets"
       }
     ]
   }
@@ -525,7 +525,7 @@ class CSMSemanticTokensProvider
 ### 6.2 片段文件格式
 
 ```jsonc
-// snippets/csm.code-snippets
+// snippets/csmscript.code-snippets
 {
   // 片段名称（内部标识）
   "State Definition": {
@@ -599,7 +599,7 @@ class CSMSemanticTokensProvider
 // 通用注册模式
 context.subscriptions.push(
   vscode.languages.registerXxxProvider(
-    { language: 'csm' },  // 语言选择器
+    { language: 'csmscript' },  // 语言选择器
     new MyXxxProvider()
   )
 );
@@ -612,7 +612,7 @@ context.subscriptions.push(
 **效果：** 鼠标悬停在 token 上时弹出文档/类型信息。
 
 ```typescript
-class CSMHoverProvider implements vscode.HoverProvider {
+class CSMScriptHoverProvider implements vscode.HoverProvider {
   provideHover(
     document: vscode.TextDocument,
     position: vscode.Position,
@@ -636,7 +636,7 @@ class CSMHoverProvider implements vscode.HoverProvider {
 
 **注册：**
 ```typescript
-vscode.languages.registerHoverProvider({ language: 'csm' }, new CSMHoverProvider());
+vscode.languages.registerHoverProvider({ language: 'csmscript' }, new CSMScriptHoverProvider());
 ```
 
 ---
@@ -646,7 +646,7 @@ vscode.languages.registerHoverProvider({ language: 'csm' }, new CSMHoverProvider
 **效果：** 输入时触发 IntelliSense 自动补全列表。
 
 ```typescript
-class CSMCompletionProvider implements vscode.CompletionItemProvider {
+class CSMScriptCompletionProvider implements vscode.CompletionItemProvider {
   provideCompletionItems(
     document: vscode.TextDocument,
     position: vscode.Position,
@@ -659,8 +659,8 @@ class CSMCompletionProvider implements vscode.CompletionItemProvider {
     // 关键字补全
     for (const kw of ['state', 'action', 'transition', 'trigger']) {
       const item = new vscode.CompletionItem(kw, vscode.CompletionItemKind.Keyword);
-      item.detail = 'CSM keyword';
-      item.documentation = new vscode.MarkdownString(`CSM 关键字 \`${kw}\``);
+      item.detail = 'CSMScript keyword';
+      item.documentation = new vscode.MarkdownString(`CSMScript 关键字 \`${kw}\``);
       items.push(item);
     }
 
@@ -687,8 +687,8 @@ class CSMCompletionProvider implements vscode.CompletionItemProvider {
 **注册（可指定触发字符）：**
 ```typescript
 vscode.languages.registerCompletionItemProvider(
-  { language: 'csm' },
-  new CSMCompletionProvider(),
+  { language: 'csmscript' },
+  new CSMScriptCompletionProvider(),
   '.', ':'  // triggerCharacters：输入这些字符时自动触发
 );
 ```
@@ -730,7 +730,7 @@ vscode.languages.registerCompletionItemProvider(
 **效果：** 输入函数调用的 `(` 或 `,` 时，在光标上方显示参数列表提示。
 
 ```typescript
-class CSMSignatureHelpProvider implements vscode.SignatureHelpProvider {
+class CSMScriptSignatureHelpProvider implements vscode.SignatureHelpProvider {
   provideSignatureHelp(
     document: vscode.TextDocument,
     position: vscode.Position,
@@ -760,8 +760,8 @@ class CSMSignatureHelpProvider implements vscode.SignatureHelpProvider {
 **注册：**
 ```typescript
 vscode.languages.registerSignatureHelpProvider(
-  { language: 'csm' },
-  new CSMSignatureHelpProvider(),
+  { language: 'csmscript' },
+  new CSMScriptSignatureHelpProvider(),
   '(',   // 触发字符（开始调用）
   ','    // 重触发字符（切换参数）
 );
@@ -774,7 +774,7 @@ vscode.languages.registerSignatureHelpProvider(
 **效果：** `F12` 或 `Ctrl+点击` 跳转到符号定义处。
 
 ```typescript
-class CSMDefinitionProvider implements vscode.DefinitionProvider {
+class CSMScriptDefinitionProvider implements vscode.DefinitionProvider {
   provideDefinition(
     document: vscode.TextDocument,
     position: vscode.Position,
@@ -804,7 +804,7 @@ class CSMDefinitionProvider implements vscode.DefinitionProvider {
 **效果：** `Shift+F12` 查找符号的所有使用位置。
 
 ```typescript
-class CSMReferenceProvider implements vscode.ReferenceProvider {
+class CSMScriptReferenceProvider implements vscode.ReferenceProvider {
   provideReferences(
     document: vscode.TextDocument,
     position: vscode.Position,
@@ -824,7 +824,7 @@ class CSMReferenceProvider implements vscode.ReferenceProvider {
 **效果：** 填充大纲视图（Outline）和 `Ctrl+Shift+O` 符号列表。
 
 ```typescript
-class CSMDocumentSymbolProvider implements vscode.DocumentSymbolProvider {
+class CSMScriptDocumentSymbolProvider implements vscode.DocumentSymbolProvider {
   provideDocumentSymbols(
     document: vscode.TextDocument,
     token: vscode.CancellationToken
@@ -838,7 +838,7 @@ class CSMDocumentSymbolProvider implements vscode.DocumentSymbolProvider {
       if (match) {
         const sym = new vscode.DocumentSymbol(
           match[1],                      // 符号名
-          'CSM State',             // 详情
+          'CSMScript State',             // 详情
           vscode.SymbolKind.Class,       // 图标类型
           line.range,                    // 完整范围
           line.range                     // 选择范围（用于大纲选中）
@@ -860,12 +860,12 @@ class CSMDocumentSymbolProvider implements vscode.DocumentSymbolProvider {
 
 ```typescript
 // 创建诊断集合（通常在 activate 中创建一次，整个生命周期复用）
-const diagnosticCollection = vscode.languages.createDiagnosticCollection('csm');
+const diagnosticCollection = vscode.languages.createDiagnosticCollection('csmscript');
 context.subscriptions.push(diagnosticCollection);
 
 // 在文档变化时更新诊断
 function updateDiagnostics(document: vscode.TextDocument): void {
-  if (document.languageId !== 'csm') return;
+  if (document.languageId !== 'csmscript') return;
 
   const diagnostics: vscode.Diagnostic[] = [];
 
@@ -881,7 +881,7 @@ function updateDiagnostics(document: vscode.TextDocument): void {
         vscode.DiagnosticSeverity.Error   // Error / Warning / Information / Hint
       );
       diagnostic.code = 'CSM001';         // 错误代码（可选）
-      diagnostic.source = 'csm';    // 来源标识（显示在问题面板）
+      diagnostic.source = 'csmscript';    // 来源标识（显示在问题面板）
       diagnostics.push(diagnostic);
     }
   }
@@ -912,7 +912,7 @@ context.subscriptions.push(
 **效果：** 光标处出现 💡 灯泡，提供快速修复（Quick Fix）或重构建议。
 
 ```typescript
-class CSMCodeActionProvider implements vscode.CodeActionProvider {
+class CSMScriptCodeActionProvider implements vscode.CodeActionProvider {
   provideCodeActions(
     document: vscode.TextDocument,
     range: vscode.Range | vscode.Selection,
@@ -947,12 +947,12 @@ class CSMCodeActionProvider implements vscode.CodeActionProvider {
 
 ```typescript
 // 格式化整个文档
-class CSMDocumentFormatter implements vscode.DocumentFormattingEditProvider {
+class CSMScriptDocumentFormatter implements vscode.DocumentFormattingEditProvider {
   provideDocumentFormattingEdits(
     document: vscode.TextDocument,
     options: vscode.FormattingOptions  // options.tabSize, options.insertSpaces
   ): vscode.ProviderResult<vscode.TextEdit[]> {
-    const formatted = formatCSM(document.getText(), options);
+    const formatted = formatCSMScript(document.getText(), options);
     const fullRange = new vscode.Range(
       document.positionAt(0),
       document.positionAt(document.getText().length)
@@ -962,14 +962,14 @@ class CSMDocumentFormatter implements vscode.DocumentFormattingEditProvider {
 }
 
 // 格式化选中区域
-class CSMRangeFormatter implements vscode.DocumentRangeFormattingEditProvider {
+class CSMScriptRangeFormatter implements vscode.DocumentRangeFormattingEditProvider {
   provideDocumentRangeFormattingEdits(
     document: vscode.TextDocument,
     range: vscode.Range,
     options: vscode.FormattingOptions
   ): vscode.ProviderResult<vscode.TextEdit[]> {
     const text = document.getText(range);
-    const formatted = formatCSM(text, options);
+    const formatted = formatCSMScript(text, options);
     return [vscode.TextEdit.replace(range, formatted)];
   }
 }
@@ -977,8 +977,8 @@ class CSMRangeFormatter implements vscode.DocumentRangeFormattingEditProvider {
 
 **注册：**
 ```typescript
-vscode.languages.registerDocumentFormattingEditProvider({ language: 'csm' }, new CSMDocumentFormatter());
-vscode.languages.registerDocumentRangeFormattingEditProvider({ language: 'csm' }, new CSMRangeFormatter());
+vscode.languages.registerDocumentFormattingEditProvider({ language: 'csmscript' }, new CSMScriptDocumentFormatter());
+vscode.languages.registerDocumentRangeFormattingEditProvider({ language: 'csmscript' }, new CSMScriptRangeFormatter());
 ```
 
 ---
@@ -988,7 +988,7 @@ vscode.languages.registerDocumentRangeFormattingEditProvider({ language: 'csm' }
 **效果：** `F2` 重命名符号，批量替换所有引用位置。
 
 ```typescript
-class CSMRenameProvider implements vscode.RenameProvider {
+class CSMScriptRenameProvider implements vscode.RenameProvider {
   // （可选）验证重命名是否合法，返回当前名称的范围
   prepareRename(
     document: vscode.TextDocument,
@@ -1022,7 +1022,7 @@ class CSMRenameProvider implements vscode.RenameProvider {
 **效果：** 在编辑器左侧显示自定义的代码折叠箭头。
 
 ```typescript
-class CSMFoldingProvider implements vscode.FoldingRangeProvider {
+class CSMScriptFoldingProvider implements vscode.FoldingRangeProvider {
   provideFoldingRanges(
     document: vscode.TextDocument,
     context: vscode.FoldingContext,
@@ -1055,7 +1055,7 @@ class CSMFoldingProvider implements vscode.FoldingRangeProvider {
 **效果：** 在代码行内嵌入参数名、类型等额外信息（灰色小字）。
 
 ```typescript
-class CSMInlayHintsProvider implements vscode.InlayHintsProvider {
+class CSMScriptInlayHintsProvider implements vscode.InlayHintsProvider {
   provideInlayHints(
     document: vscode.TextDocument,
     range: vscode.Range,
@@ -1087,7 +1087,7 @@ class CSMInlayHintsProvider implements vscode.InlayHintsProvider {
 **效果：** 将文档中的特定文本变为可点击链接。
 
 ```typescript
-class CSMDocumentLinkProvider implements vscode.DocumentLinkProvider {
+class CSMScriptDocumentLinkProvider implements vscode.DocumentLinkProvider {
   provideDocumentLinks(
     document: vscode.TextDocument,
     token: vscode.CancellationToken
@@ -1172,14 +1172,14 @@ export function activate(context: vscode.ExtensionContext) {
   };
 
   const clientOptions: LanguageClientOptions = {
-    documentSelector: [{ scheme: 'file', language: 'csm' }],
+    documentSelector: [{ scheme: 'file', language: 'csmscript' }],
     // 可选：同步给服务端的设置
     synchronize: {
       fileEvents: vscode.workspace.createFileSystemWatcher('**/*.csm')
     }
   };
 
-  client = new LanguageClient('csmLsp', 'CSM Language Server', serverOptions, clientOptions);
+  client = new LanguageClient('csmscriptLsp', 'CSMScript Language Server', serverOptions, clientOptions);
   client.start();
 }
 
@@ -1251,16 +1251,16 @@ npm install vscode-languageserver vscode-languageserver-textdocument
 
 ## 9. 嵌入式语言（Embedded Languages）
 
-当 CSM 文件中嵌入其他语言（如内嵌 JavaScript 表达式）时，可以声明嵌入式语言支持：
+当 CSMScript 文件中嵌入其他语言（如内嵌 JavaScript 表达式）时，可以声明嵌入式语言支持：
 
 ```jsonc
 // package.json
 {
   "contributes": {
     "grammars": [{
-      "language": "csm",
-      "scopeName": "source.csm",
-      "path": "./syntaxes/csm.tmLanguage.json",
+      "language": "csmscript",
+      "scopeName": "source.csmscript",
+      "path": "./syntaxes/csmscript.tmLanguage.json",
       "embeddedLanguages": {
         "meta.embedded.block.javascript": "javascript",
         "meta.embedded.block.sql": "sql"
@@ -1288,7 +1288,7 @@ npm install vscode-languageserver vscode-languageserver-textdocument
 
 ---
 
-## 10. 对 CSM 的实施建议
+## 10. 对 CSMScript 的实施建议
 
 ### 10.1 功能优先级矩阵
 
@@ -1318,13 +1318,13 @@ npm install vscode-languageserver vscode-languageserver-textdocument
 
 **需要创建的文件：**
 ```
-csm-support/
+csmscript-support/
 ├── package.json                  ← 注册语言、语法、配置、片段
 ├── language-configuration.json  ← 括号、注释符号、缩进规则
 ├── syntaxes/
-│   └── csm.tmLanguage.json  ← 语法高亮规则
+│   └── csmscript.tmLanguage.json  ← 语法高亮规则
 └── snippets/
-    └── csm.code-snippets    ← 常用代码模板
+    └── csmscript.code-snippets    ← 常用代码模板
 ```
 
 **此阶段无需 `src/extension.ts`，无需编译步骤。**
@@ -1343,7 +1343,7 @@ src/
 │   ├── symbolProvider.ts         ← DocumentSymbolProvider
 │   └── diagnosticProvider.ts    ← DiagnosticCollection
 └── data/
-    └── keywords.ts               ← CSM 关键字和 API 定义
+    └── keywords.ts               ← CSMScript 关键字和 API 定义
 ```
 
 ### 10.4 阶段三：深度语言支持（v0.5.0）
@@ -1352,7 +1352,7 @@ src/
 
 **新增：** `DefinitionProvider`、`ReferenceProvider`、`RenameProvider`、`FoldingRangeProvider`、语义着色
 
-**技术要点：** 需要构建 CSM 的**符号表（Symbol Table）**，跟踪整个工作区中所有状态、动作、触发器的定义和引用位置。
+**技术要点：** 需要构建 CSMScript 的**符号表（Symbol Table）**，跟踪整个工作区中所有状态、动作、触发器的定义和引用位置。
 
 ### 10.5 阶段四：语言服务器（v1.0.0）
 
@@ -1360,12 +1360,12 @@ src/
 
 **项目结构变化：**
 ```
-csm-support/
+csmscript-support/
 ├── client/           ← 插件主代码（LanguageClient）
 ├── server/           ← 语言服务器（独立 Node.js 进程）
 │   ├── src/
 │   │   ├── server.ts
-│   │   └── parser/   ← CSM 解析器
+│   │   └── parser/   ← CSMScript 解析器
 │   └── package.json
 └── package.json      ← 根 package.json
 ```

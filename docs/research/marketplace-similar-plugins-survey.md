@@ -1,7 +1,7 @@
 # VSCode Marketplace 同类插件调研报告
 
 > 本文档对应开发计划中 **阶段一·调研** 的子任务：在 [VSCode Marketplace](https://marketplace.visualstudio.com/vscode) 搜索同类插件，了解实现思路。  
-> 调研目标：为 CSM VSCode 插件的开发提供参考，涵盖功能对比、技术实现方式与选型建议。  
+> 调研目标：为 CSMScript VSCode 插件的开发提供参考，涵盖功能对比、技术实现方式与选型建议。  
 > **相关文档：** [VSCode 插件开发完整计划](../plan/vscode-extension-development-plan.md)
 
 ---
@@ -15,7 +15,7 @@
    - [2.3 通用 DSL / 自定义语言类](#23-通用-dsl--自定义语言类)
 3. [实现方式横向对比](#3-实现方式横向对比)
 4. [关键技术点归纳](#4-关键技术点归纳)
-5. [对 CSM 插件的启示与建议](#5-对-csm-插件的启示与建议)
+5. [对 CSMScript 插件的启示与建议](#5-对-csmscript-插件的启示与建议)
 6. [参考资料](#6-参考资料)
 
 ---
@@ -49,8 +49,8 @@
 | 语言服务 | 内置 Language Server（TypeScript 实现），通过 LSP 提供诊断和补全 |
 | 适用场景 | XState（JavaScript/TypeScript 状态机库）的编辑器支持 |
 
-**对 CSM 的参考价值：**
-- CSM 同样是状态机脚本语言，XState VSCode 的整体架构（语言服务 + 可视化面板）值得重点参考。
+**对 CSMScript 的参考价值：**
+- CSMScript 同样是状态机脚本语言，XState VSCode 的整体架构（语言服务 + 可视化面板）值得重点参考。
 - 其 `StateChart` 可视化面板的实现方式（VSCode WebView API + 双向同步）展示了如何将文本编辑与图形可视化结合。
 
 ---
@@ -64,13 +64,13 @@
 | 实现方式 | Python Language Server + 自定义 Activity Bar + Terminal Provider |
 | 适用场景 | 物联网 / 嵌入式（常见状态机模式场景） |
 
-**对 CSM 的参考价值：** 展示了如何将外部工具链（非 JavaScript/TypeScript）集成进 VSCode 插件。
+**对 CSMScript 的参考价值：** 展示了如何将外部工具链（非 JavaScript/TypeScript）集成进 VSCode 插件。
 
 ---
 
 ### 2.2 图表 / 可视化 DSL 类
 
-图表类插件提供"**文本 → 预览**"的开发范式，与 CSM 的文本脚本 → 状态机图形预览需求高度相似。
+图表类插件提供"**文本 → 预览**"的开发范式，与 CSMScript 的文本脚本 → 状态机图形预览需求高度相似。
 
 #### PlantUML（`jebbs.plantuml`）
 
@@ -82,9 +82,9 @@
 | 实现方式 | TextMate Grammar（语法高亮）+ WebView（预览）+ 子进程调用（Java/PlantUML Server）|
 | 语法高亮 | `.tmLanguage.json` 正则规则 |
 
-**对 CSM 的参考价值：**
+**对 CSMScript 的参考价值：**
 - **文本编辑 → 实时预览** 模式：可借鉴其 WebView 刷新与节流（debounce）策略。
-- **外部渲染器集成**：通过 `child_process` 调用外部进程进行渲染的方式，可参考用于调用 CSM 解析器。
+- **外部渲染器集成**：通过 `child_process` 调用外部进程进行渲染的方式，可参考用于调用 CSMScript 解析器。
 
 ---
 
@@ -95,7 +95,7 @@
 | Markdown Preview Mermaid Support（`bierner.markdown-mermaid`）| https://marketplace.visualstudio.com/items?itemName=bierner.markdown-mermaid | 在 Markdown 预览中渲染 Mermaid 图表 |
 | Mermaid Chart（`MermaidChart.vscode-mermaid-chart`）| https://marketplace.visualstudio.com/items?itemName=MermaidChart.vscode-mermaid-chart | 官方插件，支持 AI 辅助生成、实时预览 |
 
-**对 CSM 的参考价值：**
+**对 CSMScript 的参考价值：**
 - Mermaid 支持 `stateDiagram-v2` 语法，其语法高亮的 TextMate Grammar 文件可作为**状态机 DSL 语法规则**的直接参考。
 - `bierner.markdown-mermaid` 的源码展示了如何通过 Markdown 扩展点注入自定义预览渲染器。
 
@@ -110,7 +110,7 @@
 | 核心功能 | 将 `.drawio` / `.svg` 文件作为 GUI 图形编辑器打开（Custom Editor API）|
 | 实现方式 | **Custom Editor Provider**（`vscode.CustomTextEditorProvider`）+ WebView |
 
-**对 CSM 的参考价值：**
+**对 CSMScript 的参考价值：**
 - 如果后期需要支持**可视化编辑 `.csms` 文件**（图形 ↔ 文本双向同步），Draw.io Integration 的 Custom Editor Provider 实现是最直接的参考案例。
 
 ---
@@ -125,7 +125,7 @@
 | 核心功能 | 为多种小众/DSL 文件类型提供语法高亮 |
 | 实现方式 | 纯声明式：多个 `.tmLanguage.json` + `package.json` 贡献点声明 |
 
-**对 CSM 的参考价值：** 展示了**纯声明式插件**（无 TypeScript 代码）的最精简实现方式，适合作为 CSM 插件的第一个可运行版本的参考。
+**对 CSMScript 的参考价值：** 展示了**纯声明式插件**（无 TypeScript 代码）的最精简实现方式，适合作为 CSMScript 插件的第一个可运行版本的参考。
 
 ---
 
@@ -169,7 +169,7 @@
 
 - 对于需要**语义级别**功能（补全、悬停、诊断、跳转）的场景，推荐使用 LSP 架构。
 - 使用 `vscode-languageserver` 和 `vscode-languageclient` 两个 npm 包。
-- 语言服务器可以用任意语言实现（TypeScript、Python、Java 等），便于复用 CSM 的现有解析逻辑。
+- 语言服务器可以用任意语言实现（TypeScript、Python、Java 等），便于复用 CSMScript 的现有解析逻辑。
 - 参考：[Language Server Extension Guide](https://code.visualstudio.com/api/language-extensions/language-server-extension-guide)
 
 ### 4.4 代码片段（Snippets）
@@ -184,7 +184,7 @@
 
 ---
 
-## 5. 对 CSM 插件的启示与建议
+## 5. 对 CSMScript 插件的启示与建议
 
 ### 推荐分阶段实现
 
@@ -199,9 +199,9 @@
 ### 核心建议
 
 1. **优先交付 v0.1**：仅需 `package.json` + TextMate Grammar + snippets 文件，无需 TypeScript 代码，即可发布至 Marketplace，快速收集用户反馈。
-2. **Grammar 参考 Mermaid StateDiagram**：[mermaid-vscode 的 Grammar](https://github.com/mermaid-js/mermaid) 中包含状态机语法规则，可直接参考并改造用于 CSM。
+2. **Grammar 参考 Mermaid StateDiagram**：[mermaid-vscode 的 Grammar](https://github.com/mermaid-js/mermaid) 中包含状态机语法规则，可直接参考并改造用于 CSMScript。
 3. **预览优先于 LSP**：状态机的核心价值在于可视化，建议 v0.2 的实时预览功能优先于 v0.3 的 IntelliSense。
-4. **复用现有解析器**：如果 CSM 已有解析器（任意语言），可通过 LSP 架构在语言服务器进程中复用，避免在 TypeScript 中重写解析逻辑。
+4. **复用现有解析器**：如果 CSMScript 已有解析器（任意语言），可通过 LSP 架构在语言服务器进程中复用，避免在 TypeScript 中重写解析逻辑。
 
 ---
 

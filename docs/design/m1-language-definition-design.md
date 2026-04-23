@@ -4,14 +4,14 @@
 > **关联 Issue：** [M1 项目初始化 + 语言定义 + 语法高亮](https://github.com/NEVSTOP-LAB/CSMSript-vsc-Support/issues/)
 > **完成日期：** 2026-03-20
 > **状态：** ✅ 已完成
-> **参考资料：** [CSM Wiki](https://nevstop-lab.github.io/CSM-Wiki/) · [CSM 消息语法](https://github.com/NEVSTOP-LAB/Communicable-State-Machine/blob/main/.doc/Syntax.md) · [CSM_User_Manual.md](../CSM_User_Manual.md)
+> **参考资料：** [CSM Wiki](https://nevstop-lab.github.io/CSM-Wiki/) · [CSM 消息语法](https://github.com/NEVSTOP-LAB/Communicable-State-Machine/blob/main/.doc/Syntax.md) · [CSMScript_User_Manual.md](../CSMScript_User_Manual.md)
 
 ---
 
 ## 目录
 
 1. [目标与范围](#1-目标与范围)
-2. [CSM 语言特性](#2-csm-语言特性)
+2. [CSMScript 语言特性](#2-csmscript-语言特性)
 3. [文件结构](#3-文件结构)
 4. [语言定义设计](#4-语言定义设计)
 5. [语言配置设计](#5-语言配置设计)
@@ -25,9 +25,9 @@
 
 ### M1 目标
 
-- 完成 CSM 语言注册（文件扩展名识别）
+- 完成 CSMScript 语言注册（文件扩展名识别）
 - 完成 `language-configuration.json`（注释、字符串引号等基础编辑行为）
-- 完成 TextMate Grammar 语法高亮（针对 CSM 实际语法）
+- 完成 TextMate Grammar 语法高亮（针对 CSMScript 实际语法）
 - 达到可本地安装并验证的状态
 
 ### 范围（本里程碑不包含）
@@ -38,18 +38,18 @@
 
 ---
 
-## 2. CSM 语言特性
+## 2. CSMScript 语言特性
 
-CSM 是 [Communicable State Machine (CSM)](https://nevstop-lab.github.io/CSM-Wiki/) 框架的**文本化状态机脚本语言**，用于描述 LabVIEW 模块间的通讯行为。完整语言规范见 [CSM_User_Manual.md](../CSM_User_Manual.md)。
+CSMScript 是 [Communicable State Machine (CSM)](https://nevstop-lab.github.io/CSM-Wiki/) 框架的**文本化状态机脚本语言**，用于描述 LabVIEW 模块间的通讯行为。完整语言规范见 [CSMScript_User_Manual.md](../CSMScript_User_Manual.md)。
 
 ### 2.1 文件结构
 
-一个 `.csm` 文件由两部分组成：
+一个 `.csmscript` 文件由两部分组成：
 
 1. **预定义区（Pre-definition）**：INI 格式配置段，位于文件顶部。以 `[SECTION_NAME]` 开始，下方跟 `key = value` 键值对。
 2. **脚本区（Script）**：逐行解析的消息指令序列。
 
-```csm
+```csmscript
 [CommandAlias]
 Connect = API: Connect >> ${host:localhost} -@ Database
 
@@ -100,12 +100,12 @@ Connect
 | `<while expression>` … `<end_while>` | 前检查循环 |
 | `<do_while>` … `<end_do_while expression>` | 后检查循环 |
 | `<foreach var in ${list}>` … `<end_foreach>` | 遍历列表 |
-| `<include filepath.csm>` | 引入外部脚本 |
+| `<include filepath.csmscript>` | 引入外部脚本 |
 | `<anchor_name>` | 跳转锚点标签 |
 
 ### 2.6 变量引用
 
-```csm
+```csmscript
 ECHO >> ${retValue}
 API: Connect >> host=${DB_HOST:localhost}
 ```
@@ -169,7 +169,7 @@ API: Connect >> host=${DB_HOST:localhost}
 
 只支持行注释，使用 `//`：
 
-```csm
+```csmscript
 UI: Initialize  // 初始化 UI
 // 这是一整行注释
 ```
@@ -178,7 +178,7 @@ UI: Initialize  // 初始化 UI
 
 `@` 用于在状态名中指定来源/目标模块：
 
-```csm
+```csmscript
 Status@SourceModule >> API@HandlerModule -><register>
 ```
 
@@ -192,7 +192,7 @@ M1 完成后新增/修改的文件：
 CSMSript-vsc-Support/
 ├── language-configuration.json          # 语言编辑行为配置（已简化为行注释）
 ├── syntaxes/
-│   └── csm.tmLanguage.json        # TextMate Grammar（基于实际 CSM 语法重新设计）
+│   └── csmscript.tmLanguage.json        # TextMate Grammar（基于实际 CSMScript 语法重新设计）
 └── src/
     └── test/
         └── extension.test.ts            # 测试用例（已更新）
@@ -204,9 +204,9 @@ CSMSript-vsc-Support/
 {
   "contributes": {
     "languages": [{
-      "id": "csm",
-      "aliases": ["CSM"],    // 只支持 CSM
-      "extensions": [".csm"],      // 只注册 .csm 扩展名
+      "id": "csmscript",
+      "aliases": ["CSMScript"],    // 只支持 CSMScript
+      "extensions": [".csmscript"],      // 只注册 .csmscript 扩展名
       "configuration": "./language-configuration.json"
     }]
   }
@@ -221,9 +221,9 @@ CSMSript-vsc-Support/
 
 | 字段 | 值 | 说明 |
 |------|-----|------|
-| `id` | `csm` | 语言唯一 ID，全局命名空间 |
-| `aliases` | `["CSM"]` | 只支持 CSM |
-| `extensions` | `[".csm"]` | CSM 文件扩展名 |
+| `id` | `csmscript` | 语言唯一 ID，全局命名空间 |
+| `aliases` | `["CSMScript"]` | 只支持 CSMScript |
+| `extensions` | `[".csmscript"]` | CSMScript 文件扩展名 |
 | `configuration` | `./language-configuration.json` | 语言配置文件路径 |
 
 ---
@@ -232,14 +232,14 @@ CSMSript-vsc-Support/
 
 文件路径：`language-configuration.json`
 
-CSM 是**逐行解析**的 DSL，**不支持**块结构（无 `{}`、`[]`、`()` 代码块），因此配置大幅简化：
+CSMScript 是**逐行解析**的 DSL，**不支持**块结构（无 `{}`、`[]`、`()` 代码块），因此配置大幅简化：
 
 ### 5.1 注释符号
 
 | 类型 | 符号 | 说明 |
 |------|------|------|
 | 行注释 | `//` | `Ctrl+/` 切换 |
-| 块注释 | —— | CSM 不支持块注释 |
+| 块注释 | —— | CSMScript 不支持块注释 |
 
 ### 5.2 自动补全
 
@@ -256,11 +256,11 @@ CSM 是**逐行解析**的 DSL，**不支持**块结构（无 `{}`、`[]`、`()`
 
 ## 6. 语法高亮设计
 
-文件路径：`syntaxes/csm.tmLanguage.json`
+文件路径：`syntaxes/csmscript.tmLanguage.json`
 
 ### 6.1 根作用域
 
-- **scopeName：** `source.csm`
+- **scopeName：** `source.csmscript`
 
 ### 6.2 顶层规则（优先级从高到低）
 
@@ -288,53 +288,53 @@ CSM 是**逐行解析**的 DSL，**不支持**块结构（无 `{}`、`[]`、`()`
 
 | Token 类型 | Scope 名称 |
 |-----------|-----------|
-| 行注释 | `comment.line.double-slash.csm` |
-| 预定义段头 `[SECTION]` | `entity.name.section.predef.csm` |
-| 预定义键 | `variable.other.predef-key.csm` |
-| 预定义值 | `string.unquoted.predef-value.csm` |
-| 控制流关键字 `if/while/…` | `keyword.control.flow.csm` |
-| 控制流括号 `<` `>` | `punctuation.definition.tag.csm` |
-| 包含指令 `include` | `keyword.control.include.csm` |
-| 包含路径 | `string.unquoted.include-path.csm` |
-| 锚点标签 `<label>` | `entity.name.label.anchor.csm` |
-| 变量引用 `${…}` 界定符 | `punctuation.definition.variable.csm` |
-| 变量名 | `variable.other.csm` |
-| 变量默认值分隔符 `:` | `punctuation.separator.default.csm` |
-| 变量默认值 | `string.unquoted.variable-default.csm` |
-| 返回值保存 `=>` | `keyword.operator.return-save.csm` |
-| 被赋值变量 | `variable.other.assignment.csm` |
-| 范围运算符 `∈` | `keyword.operator.range-in.csm` |
-| 范围运算符 `!∈` | `keyword.operator.range-not-in.csm` |
-| 字符串比较函数 `equal/match/belong` 等 | `support.function.string-compare.csm` |
-| 条件跳转 `?…?` | `keyword.operator.conditional-jump.csm` |
-| 错误跳转 `??` | `keyword.operator.error-jump.csm` |
-| 跳转表达式 | `meta.expression.conditional-jump.csm` |
-| 跳转 GOTO/JUMP | `keyword.control.jump.csm` |
-| 等待命令 | `keyword.control.wait.csm` |
-| 循环控制 | `keyword.control.loop.csm` |
-| 错误处理命令 | `keyword.other.auto-error.csm` |
-| ECHO 命令 | `support.function.echo.csm` |
-| EXPRESSION 命令 | `support.function.expression.csm` |
-| RANDOM 命令 | `support.function.random.csm` |
-| 对话框命令 | `support.function.dialog.csm` |
-| INI 变量空间命令 | `keyword.other.ini-var.csm` |
-| TagDB 配置命令 | `keyword.other.tagdb.csm` |
-| TagDB 操作命令 | `support.function.tagdb.csm` |
-| 同步调用 `-@` | `keyword.operator.sync-call.csm` |
-| 异步调用 `->` | `keyword.operator.async-call.csm` |
-| 异步无返回 `->|` | `keyword.operator.async-no-reply.csm` |
-| 参数分隔符 `>>` | `keyword.operator.argument-separator.csm` |
-| 订阅操作 `-><register>` 等 | `keyword.operator.subscription.csm` |
-| 广播目标 `<status>` 等 | `constant.language.broadcast-target.csm` |
-| 中断目标 `<interrupt>` | `constant.language.interrupt-target.csm` |
-| `@` 地址符 | `punctuation.separator.module.csm` |
-| `API:` 前缀 | `keyword.other.api-prefix.csm` |
-| `Macro:` 前缀 | `keyword.other.macro-prefix.csm` |
-| 系统预置状态 | `support.constant.system-state.csm` |
+| 行注释 | `comment.line.double-slash.csmscript` |
+| 预定义段头 `[SECTION]` | `entity.name.section.predef.csmscript` |
+| 预定义键 | `variable.other.predef-key.csmscript` |
+| 预定义值 | `string.unquoted.predef-value.csmscript` |
+| 控制流关键字 `if/while/…` | `keyword.control.flow.csmscript` |
+| 控制流括号 `<` `>` | `punctuation.definition.tag.csmscript` |
+| 包含指令 `include` | `keyword.control.include.csmscript` |
+| 包含路径 | `string.unquoted.include-path.csmscript` |
+| 锚点标签 `<label>` | `entity.name.label.anchor.csmscript` |
+| 变量引用 `${…}` 界定符 | `punctuation.definition.variable.csmscript` |
+| 变量名 | `variable.other.csmscript` |
+| 变量默认值分隔符 `:` | `punctuation.separator.default.csmscript` |
+| 变量默认值 | `string.unquoted.variable-default.csmscript` |
+| 返回值保存 `=>` | `keyword.operator.return-save.csmscript` |
+| 被赋值变量 | `variable.other.assignment.csmscript` |
+| 范围运算符 `∈` | `keyword.operator.range-in.csmscript` |
+| 范围运算符 `!∈` | `keyword.operator.range-not-in.csmscript` |
+| 字符串比较函数 `equal/match/belong` 等 | `support.function.string-compare.csmscript` |
+| 条件跳转 `?…?` | `keyword.operator.conditional-jump.csmscript` |
+| 错误跳转 `??` | `keyword.operator.error-jump.csmscript` |
+| 跳转表达式 | `meta.expression.conditional-jump.csmscript` |
+| 跳转 GOTO/JUMP | `keyword.control.jump.csmscript` |
+| 等待命令 | `keyword.control.wait.csmscript` |
+| 循环控制 | `keyword.control.loop.csmscript` |
+| 错误处理命令 | `keyword.other.auto-error.csmscript` |
+| ECHO 命令 | `support.function.echo.csmscript` |
+| EXPRESSION 命令 | `support.function.expression.csmscript` |
+| RANDOM 命令 | `support.function.random.csmscript` |
+| 对话框命令 | `support.function.dialog.csmscript` |
+| INI 变量空间命令 | `keyword.other.ini-var.csmscript` |
+| TagDB 配置命令 | `keyword.other.tagdb.csmscript` |
+| TagDB 操作命令 | `support.function.tagdb.csmscript` |
+| 同步调用 `-@` | `keyword.operator.sync-call.csmscript` |
+| 异步调用 `->` | `keyword.operator.async-call.csmscript` |
+| 异步无返回 `->|` | `keyword.operator.async-no-reply.csmscript` |
+| 参数分隔符 `>>` | `keyword.operator.argument-separator.csmscript` |
+| 订阅操作 `-><register>` 等 | `keyword.operator.subscription.csmscript` |
+| 广播目标 `<status>` 等 | `constant.language.broadcast-target.csmscript` |
+| 中断目标 `<interrupt>` | `constant.language.interrupt-target.csmscript` |
+| `@` 地址符 | `punctuation.separator.module.csmscript` |
+| `API:` 前缀 | `keyword.other.api-prefix.csmscript` |
+| `Macro:` 前缀 | `keyword.other.macro-prefix.csmscript` |
+| 系统预置状态 | `support.constant.system-state.csmscript` |
 
 ### 6.4 高亮示例
 
-```csm
+```csmscript
 // ── 预定义区 ──────────────────────────────────────
 [CommandAlias]
 Connect = API: Connect >> ${host:localhost} -@ Database
@@ -365,7 +365,7 @@ DataReady@Src >> OnData@UI -><register>              // 订阅
 <high_branch>                                        // 锚点
 ECHO >> High branch taken
 
-<include SEQ-PCB-Init.csm>                     // 包含文件
+<include SEQ-PCB-Init.csmscript>                     // 包含文件
 
 <error_handler>
 Error Handler
@@ -384,14 +384,14 @@ Error Handler
 |---------|---------|
 | `language-configuration.json exists` | 配置文件存在 |
 | `language-configuration.json is valid JSON` | 文件为合法 JSON |
-| `language-configuration.json has line comment and no block comment` | 行注释为 `//`，无块注释（CSM 特性） |
-| `csm.tmLanguage.json exists` | grammar 文件存在 |
-| `csm.tmLanguage.json is valid JSON` | 文件为合法 JSON |
-| `csm.tmLanguage.json has required fields` | `name=CSM`，`scopeName=source.csm` |
-| `csm.tmLanguage.json contains CSM-specific patterns` | repository 包含 `line-comment`、`subscription-op`、`communication-operator`、`argument-separator`、`state-prefix`、`system-state` |
-| `csm.tmLanguage.json argument-separator matches >>` | `>>` 分隔符规则有效 |
-| `package.json registers CSM language with .csm only` | 只注册 `.csm` 扩展名，只有 `CSM` 别名 |
-| `package.json registers CSM grammar` | grammar 的 scopeName 和路径正确 |
+| `language-configuration.json has line comment and no block comment` | 行注释为 `//`，无块注释（CSMScript 特性） |
+| `csmscript.tmLanguage.json exists` | grammar 文件存在 |
+| `csmscript.tmLanguage.json is valid JSON` | 文件为合法 JSON |
+| `csmscript.tmLanguage.json has required fields` | `name=CSMScript`，`scopeName=source.csmscript` |
+| `csmscript.tmLanguage.json contains CSMScript-specific patterns` | repository 包含 `line-comment`、`subscription-op`、`communication-operator`、`argument-separator`、`state-prefix`、`system-state` |
+| `csmscript.tmLanguage.json argument-separator matches >>` | `>>` 分隔符规则有效 |
+| `package.json registers CSMScript language with .csmscript only` | 只注册 `.csmscript` 扩展名，只有 `CSMScript` 别名 |
+| `package.json registers CSMScript grammar` | grammar 的 scopeName 和路径正确 |
 
 ---
 
@@ -400,10 +400,10 @@ Error Handler
 ### 8.1 本地调试验证
 
 1. 打开项目目录，按 `F5` 启动 Extension Development Host
-2. 创建 `.csm` 文件，输入以下内容并观察高亮效果：
+2. 创建 `.csmscript` 文件，输入以下内容并观察高亮效果：
 
 ```csm
-// CSM 语法高亮验证示例
+// CSMScript 语法高亮验证示例
 Macro: Initialize
 
 API: Connect >> host=localhost -@ DatabaseModule

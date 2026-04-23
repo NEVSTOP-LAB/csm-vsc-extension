@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { HoverEntry, provideCSMHover } from './hoverData';
+import { HoverEntry, provideCSMScriptHover } from './hoverData';
 
 /** Lookup key → hover entry (upper-case keys for case-insensitive matching). */
 const CSMLOG_HOVER_DB: Record<string, HoverEntry> = {
@@ -264,7 +264,7 @@ const CSMLOG_HOVER_DB: Record<string, HoverEntry> = {
         detail: [
             '出现在日志内容中，表示该事件**来自**某个模块或消息源（反向溯源）。',
             '',
-            '这是**日志特有**的方向标记，与 CSM 脚本中的其他操作符（`->`, `-@`）语义不同，',
+            '这是**日志特有**的方向标记，与 CSMScript 脚本中的其他操作符（`->`, `-@`）语义不同，',
             '仅用于日志链路追踪，不表示发送操作。',
             '',
             '**示例**',
@@ -432,7 +432,7 @@ export class CSMLogHoverProvider implements vscode.HoverProvider {
             return undefined;
         }
 
-        // Zone: content (after '|') — delegate to CSM hover
+        // Zone: content (after '|') — delegate to CSMScript hover
         if (contentStart !== -1 && col >= contentStart) {
             // Check for '<-' log origin marker first
             const contentSection = line.slice(contentStart);
@@ -444,8 +444,8 @@ export class CSMLogHoverProvider implements vscode.HoverProvider {
                     return buildHover(CSMLOG_HOVER_DB['<-']!);
                 }
             }
-            // Delegate to CSM hover for operators, commands, variables, etc.
-            return provideCSMHover(document, position);
+            // Delegate to CSMScript hover for operators, commands, variables, etc.
+            return provideCSMScriptHover(document, position);
         }
 
         // Zone: module name (between event type and '|') — no hover

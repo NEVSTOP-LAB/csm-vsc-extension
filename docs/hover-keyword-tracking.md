@@ -1,7 +1,7 @@
 # HoverProvider 关键字追踪文档
 
 > 本文档用于追踪 `src/hoverProvider.ts` 中已收录的关键字/操作符文档，
-> 以及与 `docs/CSM_User_Manual.md`（当前版本：**0.3.2**）之间的同步状态。
+> 以及与 `docs/CSMScript_User_Manual.md`（当前版本：**0.3.2**）之间的同步状态。
 >
 > 每次用户手册更新后，请对照本文档核查是否需要更新 `hoverProvider.ts`。
 
@@ -166,7 +166,7 @@
 
 ## 更新流程
 
-当用户手册（`docs/CSM_User_Manual.md`）发生更新时：
+当用户手册（`docs/CSMScript_User_Manual.md`）发生更新时：
 
 1. 检查新增/修改的语法或指令，与本文档的"已收录清单"对比。
 2. 在 `src/hoverProvider.ts` 的 `HOVER_DB` 对象中新增或修改对应条目。

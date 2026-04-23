@@ -277,7 +277,7 @@
       }
     },
     "log-argument-data-block": {
-      "comment": "Argument data block: {key:value;...} in log entries — CSM argument encoding, not CSM code. Prevents <Tag> inside args from matching CSM anchor pattern. Negative lookbehind excludes ${varname} variable references.",
+      "comment": "Argument data block: {key:value;...} in log entries — CSM argument encoding, not CSMScript code. Prevents <Tag> inside args from matching CSMScript anchor pattern. Negative lookbehind excludes ${varname} variable references.",
       "match": "(?<!\\$)\\{[^}]+\\}",
       "name": "meta.log.argument-data.csmlog"
     },
@@ -301,26 +301,26 @@
     },
 
     "log-variable-reference": {
-      "comment": "Variable reference in log content: ${varname} or ${varname:default} — self-contained copy, no reference to csm grammar",
+      "comment": "Variable reference in log content: ${varname} or ${varname:default} — self-contained copy, no reference to csmscript grammar",
       "patterns": [
         {
           "comment": "Variable with default value: ${varname:default}",
           "match": "(\\$\\{)([^}:]+)(:)([^}]*)(\\})",
           "captures": {
-            "1": { "name": "punctuation.definition.variable.csm" },
-            "2": { "name": "variable.other.csm" },
-            "3": { "name": "punctuation.separator.default.csm" },
-            "4": { "name": "markup.italic markup.underline string.unquoted.variable-default.csm" },
-            "5": { "name": "punctuation.definition.variable.csm" }
+            "1": { "name": "punctuation.definition.variable.csmscript" },
+            "2": { "name": "variable.other.csmscript" },
+            "3": { "name": "punctuation.separator.default.csmscript" },
+            "4": { "name": "markup.italic markup.underline string.unquoted.variable-default.csmscript" },
+            "5": { "name": "punctuation.definition.variable.csmscript" }
           }
         },
         {
           "comment": "Simple variable reference: ${varname}",
           "match": "(\\$\\{)([^}]+)(\\})",
           "captures": {
-            "1": { "name": "punctuation.definition.variable.csm" },
-            "2": { "name": "variable.other.csm" },
-            "3": { "name": "punctuation.definition.variable.csm" }
+            "1": { "name": "punctuation.definition.variable.csmscript" },
+            "2": { "name": "variable.other.csmscript" },
+            "3": { "name": "punctuation.definition.variable.csmscript" }
           }
         }
       ]
@@ -333,18 +333,18 @@
           "comment": "Register with priority change: -><register as interrupt> or -><register as status>",
           "match": "(-><)(register\\s+as\\s+(?:interrupt|status|Interrupt|Status))(>)",
           "captures": {
-            "1": { "name": "keyword.operator.subscription.csm" },
-            "2": { "name": "keyword.control.subscription-type.csm" },
-            "3": { "name": "keyword.operator.subscription.csm" }
+            "1": { "name": "keyword.operator.subscription.csmscript" },
+            "2": { "name": "keyword.control.subscription-type.csmscript" },
+            "3": { "name": "keyword.operator.subscription.csmscript" }
           }
         },
         {
           "comment": "Register or unregister subscription: -><register> or -><unregister>",
           "match": "(-><)(register|unregister)(>)",
           "captures": {
-            "1": { "name": "keyword.operator.subscription.csm" },
-            "2": { "name": "keyword.control.subscription.csm" },
-            "3": { "name": "keyword.operator.subscription.csm" }
+            "1": { "name": "keyword.operator.subscription.csmscript" },
+            "2": { "name": "keyword.control.subscription.csmscript" },
+            "3": { "name": "keyword.operator.subscription.csmscript" }
           }
         }
       ]
@@ -357,61 +357,61 @@
           "comment": "Interrupt broadcast target: -> <interrupt>",
           "match": "(->)\\s*(<interrupt>)",
           "captures": {
-            "1": { "name": "keyword.operator.async-call.csm" },
-            "2": { "name": "constant.language.interrupt-target.csm" }
+            "1": { "name": "keyword.operator.async-call.csmscript" },
+            "2": { "name": "constant.language.interrupt-target.csmscript" }
           }
         },
         {
           "comment": "Normal broadcast targets: -> <status>, -> <broadcast>, -> <all>",
           "match": "(->)\\s*(<(?:status|broadcast|all)>)",
           "captures": {
-            "1": { "name": "keyword.operator.async-call.csm" },
-            "2": { "name": "constant.language.broadcast-target.csm" }
+            "1": { "name": "keyword.operator.async-call.csmscript" },
+            "2": { "name": "constant.language.broadcast-target.csmscript" }
           }
         },
         {
           "comment": "Synchronous call with target module: -@ ModuleName",
           "match": "(-@)\\s+([\\w][\\w\\-]*)",
           "captures": {
-            "1": { "name": "keyword.operator.sync-call.csm" },
-            "2": { "name": "entity.name.namespace.module.csm" }
+            "1": { "name": "keyword.operator.sync-call.csmscript" },
+            "2": { "name": "entity.name.namespace.module.csmscript" }
           }
         },
         {
           "comment": "Async no-reply with target module: ->| ModuleName",
           "match": "(->\\|)\\s+([\\w][\\w\\-]*)",
           "captures": {
-            "1": { "name": "keyword.operator.async-no-reply.csm" },
-            "2": { "name": "entity.name.namespace.module.csm" }
+            "1": { "name": "keyword.operator.async-no-reply.csmscript" },
+            "2": { "name": "entity.name.namespace.module.csmscript" }
           }
         },
         {
           "comment": "Async call with target module: -> ModuleName",
           "match": "(->)\\s+([\\w][\\w\\-]*)",
           "captures": {
-            "1": { "name": "keyword.operator.async-call.csm" },
-            "2": { "name": "entity.name.namespace.module.csm" }
+            "1": { "name": "keyword.operator.async-call.csmscript" },
+            "2": { "name": "entity.name.namespace.module.csmscript" }
           }
         }
       ]
     },
 
     "log-communication-operator": {
-      "comment": "Inter-module communication operators in log content — self-contained copy, no reference to csm grammar",
+      "comment": "Inter-module communication operators in log content — self-contained copy, no reference to csmscript grammar",
       "patterns": [
         {
           "comment": "Async call without reply: ->|",
-          "name": "keyword.operator.async-no-reply.csm",
+          "name": "keyword.operator.async-no-reply.csmscript",
           "match": "->\\|"
         },
         {
           "comment": "Synchronous call: -@",
-          "name": "keyword.operator.sync-call.csm",
+          "name": "keyword.operator.sync-call.csmscript",
           "match": "-@"
         },
         {
           "comment": "Asynchronous call with reply: ->",
-          "name": "keyword.operator.async-call.csm",
+          "name": "keyword.operator.async-call.csmscript",
           "match": "->"
         }
       ]
@@ -421,10 +421,10 @@
       "comment": "Arguments after >> separator in log content — self-contained, internal patterns reference csmlog repository only",
       "begin": ">>\\s*",
       "beginCaptures": {
-        "0": { "name": "keyword.operator.argument-separator.csm" }
+        "0": { "name": "keyword.operator.argument-separator.csmscript" }
       },
       "end": "(?=\\s*(?:-@|->\\|?|-><|=>|<-|$))",
-      "contentName": "markup.italic markup.underline string.unquoted.argument.csm",
+      "contentName": "markup.italic markup.underline string.unquoted.argument.csmscript",
       "patterns": [
         { "include": "#log-argument-key-pair" },
         { "include": "#log-variable-reference" },
@@ -445,22 +445,22 @@
       "comment": "Module reference in log content: @ModuleName — self-contained copy",
       "match": "(@)([\\w][\\w\\-]*)?",
       "captures": {
-        "1": { "name": "punctuation.separator.module.csm" },
-        "2": { "name": "entity.name.label.module-address.csm" }
+        "1": { "name": "punctuation.separator.module.csmscript" },
+        "2": { "name": "entity.name.label.module-address.csmscript" }
       }
     },
 
     "log-system-state": {
-      "comment": "CSM framework built-in state names in log content — self-contained copy, no reference to csm grammar",
+      "comment": "CSM framework built-in state names in log content — self-contained copy, no reference to csmscript grammar",
       "patterns": [
         {
           "comment": "Multi-word system states",
-          "name": "support.constant.system-state.csm",
+          "name": "support.constant.system-state.csmscript",
           "match": "(?<![^\\s])(Async Message Posted|Async Response|Target Timeout Error|Target Error|Critical Error|No Target Error|Error Handler)(?=[\\s>]|$)"
         },
         {
           "comment": "Single-word system state",
-          "name": "support.constant.system-state.csm",
+          "name": "support.constant.system-state.csmscript",
           "match": "\\b(Response)\\b"
         }
       ]

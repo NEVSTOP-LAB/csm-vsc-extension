@@ -28,11 +28,11 @@
 
 ## [0.0.3] - 2026-03-20
 
-### 新增（基于 CSM_User_Manual 完整重设计）
+### 新增（基于 CSMScript_User_Manual 完整重设计）
 
-- **语法高亮**（`syntaxes/csm.tmLanguage.json`）大幅扩展，根据 CSM_User_Manual.md 补全全部语言特性：
+- **语法高亮**（`syntaxes/csmscript.tmLanguage.json`）大幅扩展，根据 CSMScript_User_Manual.md 补全全部语言特性：
   - **控制流**：`<if expr>`, `<else>`, `<end_if>`, `<while expr>`, `<end_while>`, `<do_while>`, `<end_do_while expr>`, `<foreach var in list>`, `<end_foreach>`
-  - **引入文件**：`<include filepath.csm>`
+  - **引入文件**：`<include filepath.csmscript>`
   - **跳转锚点**：`<anchor_name>` 通用标签
   - **变量引用**：`${varname}` 和 `${varname:default}`
   - **返回值保存**：`=> varname`
@@ -45,19 +45,19 @@
   - 新增 `${` → `}` 自动补全（变量引用）
 - **测试**：新增 `Grammar Pattern Tests`、`Variable Reference Tests`、`Return Value and Range Operator Tests`、`Conditional Jump Tests`、`Pre-definition Section Tests`、`Grammar Integration Smoke Tests` 六个测试套件，全面覆盖新增特性
 - **设计文档**（`docs/design/m1-language-definition-design.md`）：完整更新语言特性描述（2.x 节）、顶层规则表（6.2）、Scope 命名表（6.3）、高亮示例（6.4）
-- **代码片段**（`snippets/csm.code-snippets`）：覆盖控制流、通信操作符、变量引用等高频代码模式
+- **代码片段**（`snippets/csmscript.code-snippets`）：覆盖控制流、通信操作符、变量引用等高频代码模式
 - **代码补全**（`src/completionProvider.ts`）：IntelliSense 补全项，触发字符：`<`、`[`、`>`、`$`、`?`，支持 Tab 占位符（Snippet String）
 - **悬停提示**（`src/hoverProvider.ts`）：关键字的 Markdown 文档说明，用户定义锚点另显示定义行号及行内注释
-- **语法诊断**（`src/diagnosticProvider.ts`）：诊断规则（CSM001–008），覆盖未闭合标签、变量引用错误、EXPRESSION 使用限制等
+- **语法诊断**（`src/diagnosticProvider.ts`）：诊断规则（CSMSCRIPT001–008），覆盖未闭合标签、变量引用错误、EXPRESSION 使用限制等
 - **CI/CD**（`.github/workflows/ci.yml`）：并行 Job（lint + 语法测试 + 集成测试），支持无头环境（xvfb）
 
 ## [0.0.2] - 2026-03-20
 
 ### 新增 (M1)
-- **语言定义**：注册 `csm` 语言，关联文件扩展名 `.csm`
+- **语言定义**：注册 `csmscript` 语言，关联文件扩展名 `.csmscript`
 - **语言配置** (`language-configuration.json`)：
   - 行注释 `//`
-- **语法高亮** (`syntaxes/csm.tmLanguage.json`)：
+- **语法高亮** (`syntaxes/csmscript.tmLanguage.json`)：
   - 行注释
   - 转移与调度运算符：`>>`、`->`、`-@`、`->|`
   - 广播目标标记：`<status>`、`<broadcast>`、`<interrupt>`、`<all>`
