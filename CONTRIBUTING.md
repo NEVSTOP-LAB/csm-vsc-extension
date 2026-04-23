@@ -30,7 +30,7 @@ npm run compile-tests
 npx mocha --ui tdd --timeout 10000 --require out/test/setup.js out/test/csmlogDocumentSymbolProvider.test.js out/test/csmlogHoverProvider.test.js
 ```
 
-预期输出示例：`50 passing`
+预期输出示例：`52 passing`
 
 ### 在 VS Code 中运行完整测试套件
 
