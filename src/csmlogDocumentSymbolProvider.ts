@@ -3,8 +3,15 @@ import * as vscode from 'vscode';
 /** Matches a configuration line: `- Key | Value` */
 const CONFIG_REGEX = /^-\s+([^|]+?)\s+\|\s+.+$/;
 
+const CSMLOG_DATETIME_PATTERN = String.raw`\d{4}\/\d{2}\/\d{2}\s+\d{2}:\d{2}:\d{2}\.\d{3}`;
+const CSMLOG_OPTIONAL_RELATIVE_TS_PATTERN = String.raw`(?:\s+\[[\d:.]+\])?`;
+const CSMLOG_LIFECYCLE_EVENT_PATTERN = String.raw`\[(Module Created|Module Destroyed)\]`;
+const CSMLOG_OPTIONAL_MODULE_PATTERN = String.raw`(?:\s+([^|]+?)(?:\s+\||$))?`;
+
 /** Matches a Module Created/Destroyed log line and captures the event type and module name. */
-const MODULE_LIFECYCLE_REGEX = /^\d{4}\/\d{2}\/\d{2}\s+\d{2}:\d{2}:\d{2}\.\d{3}(?:\s+\[[\d:.]+\])?\s+\[(Module Created|Module Destroyed)\](?:\s+([^|]+?)(?:\s+\||$))?/;
+const MODULE_LIFECYCLE_REGEX = new RegExp(
+    `^${CSMLOG_DATETIME_PATTERN}${CSMLOG_OPTIONAL_RELATIVE_TS_PATTERN}\\s+${CSMLOG_LIFECYCLE_EVENT_PATTERN}${CSMLOG_OPTIONAL_MODULE_PATTERN}`
+);
 
 /** Matches a Logger system message: timestamp followed by `<label>`. */
 const LOGGER_MESSAGE_REGEX = /^\d{4}\/\d{2}\/\d{2}\s+\d{2}:\d{2}:\d{2}\.\d{3}\s+<([^>]+)>/;
