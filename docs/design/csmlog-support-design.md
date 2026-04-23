@@ -1,7 +1,7 @@
 # .csmlog 文件支持设计总览
 
 > 功能：.csmlog 文件支持（总览与文档索引）
-> 关联 Issue：[.csmlog 文件支持](https://github.com/nevstop/CSMScript-vsc-Support/issues/66)
+> 关联 Issue：[.csmlog 文件支持](https://github.com/nevstop/csm-vsc-extension/issues/66)
 > 更新日期：2026-03-29
 > 状态：维护中
 
