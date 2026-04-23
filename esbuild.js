@@ -1,6 +1,4 @@
 const esbuild = require("esbuild");
-const fs = require("fs");
-const path = require("path");
 
 const production = process.argv.includes('--production');
 const watch = process.argv.includes('--watch');
@@ -50,18 +48,6 @@ async function main() {
 	} else {
 		await ctx.rebuild();
 		await ctx.dispose();
-	}
-
-	// Copy pre-built mermaid.min.js to dist/ for webview local loading
-	const mermaidSrc = path.join(__dirname, 'node_modules', 'mermaid', 'dist', 'mermaid.min.js');
-	const mermaidDst = path.join(__dirname, 'dist', 'mermaid.min.js');
-	try {
-		fs.copyFileSync(mermaidSrc, mermaidDst);
-		console.log('[build] copied mermaid.min.js to dist/');
-	} catch (err) {
-		console.error('[build] FAILED to copy mermaid.min.js:', err.message);
-		console.error('[build] Run "npm install" to ensure mermaid is installed.');
-		process.exit(1);
 	}
 }
 
