@@ -88,7 +88,7 @@ code --install-extension csm-vsc-support-*.vsix
 
 ### 扩展图标
 
-当前使用的是占位符图标（[images/icon.png](images/icon.png)），可根据需要替换为正式图标。详见 [docs/images-guide.md](docs/images-guide.md) 了解图标规格和替换指南。
+当前仓库中的 [images/icon.png](images/icon.png) 为已发布版本使用的图标资源。若后续需要迭代图标，请参考 [docs/images-guide.md](docs/images-guide.md) 中的规范与替换流程。
 
 ## 提交 PR 前的检查清单
 
