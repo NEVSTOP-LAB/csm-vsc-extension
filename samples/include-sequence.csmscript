@@ -1,8 +1,0 @@
-// include 子样例：用于验证 <include ...> 的路径和高亮
-<included_entry>
-ECHO >> 进入 include 子样例
-WAIT(ms) >> 50
-API: IncludedSync >> ${deviceId:UNKNOWN} -@ FixtureController => includedSyncRet
-API: IncludedAsync >> ping -> WorkerModule
-API: FireAndForget >> noop ->| Logger
-ECHO >> include 子样例执行完成

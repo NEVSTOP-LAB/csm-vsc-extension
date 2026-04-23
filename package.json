@@ -31,24 +31,13 @@
   "contributes": {
     "languages": [
       {
-        "id": "csmscript",
-        "aliases": [
-          "CSMScript"
-        ],
-        "extensions": [
-          ".csmscript"
-        ],
-        "configuration": "./language-configuration.json"
-      },
-      {
         "id": "csmlog",
         "aliases": [
           "CSMLog"
         ],
         "extensions": [
           ".csmlog"
-        ],
-        "configuration": "./language-configuration.json"
+        ]
       },
       {
         "id": "lvcsm",
@@ -62,11 +51,6 @@
     ],
     "grammars": [
       {
-        "language": "csmscript",
-        "scopeName": "source.csmscript",
-        "path": "./syntaxes/csmscript.tmLanguage.json"
-      },
-      {
         "language": "csmlog",
         "scopeName": "source.csmlog",
         "path": "./syntaxes/csmlog.tmLanguage.json"
@@ -77,39 +61,7 @@
         "path": "./syntaxes/lvcsm.tmLanguage.json"
       }
     ],
-    "snippets": [
-      {
-        "language": "csmscript",
-        "path": "./snippets/csmscript.code-snippets"
-      }
-    ],
-    "commands": [
-      {
-        "command": "csmscript.showFlowVisualization",
-        "title": "CSMScript: Show Flow Visualization",
-        "category": "CSMScript"
-      }
-    ],
-    "menus": {
-      "editor/title": [
-        {
-          "command": "csmscript.showFlowVisualization",
-          "when": "editorLangId == csmscript",
-          "group": "navigation"
-        }
-      ],
-      "commandPalette": [
-        {
-          "command": "csmscript.showFlowVisualization",
-          "when": "editorLangId == csmscript"
-        }
-      ]
-    },
     "configurationDefaults": {
-      "[csmscript]": {
-        "editor.defaultFormatter": "NEVSTOP-LAB.csmscript-language-support",
-        "files.autoGuessEncoding": true
-      },
       "[csmlog]": {
         "editor.fontSize": 14,
         "files.autoGuessEncoding": true
@@ -120,64 +72,6 @@
       "editor.tokenColorCustomizations": {
         "textMateRules": [
           {
-            "scope": "comment.line.double-slash.csmscript",
-            "settings": {
-              "foreground": "#22863a",
-              "fontStyle": "italic"
-            }
-          },
-          {
-            "scope": [
-              "keyword.operator.sync-call.csmscript",
-              "keyword.operator.async-no-reply.csmscript",
-              "keyword.operator.async-call.csmscript"
-            ],
-            "settings": {
-              "foreground": "#d73a49",
-              "fontStyle": "bold"
-            }
-          },
-          {
-            "scope": "keyword.operator.argument-separator.csmscript",
-            "settings": {
-              "foreground": "#d73a49",
-              "fontStyle": "bold"
-            }
-          },
-          {
-            "scope": "keyword.operator.subscription.csmscript",
-            "settings": {
-              "foreground": "#d73a49",
-              "fontStyle": "bold"
-            }
-          },
-          {
-            "scope": "entity.name.label.module-address.csmscript",
-            "settings": {
-              "fontStyle": "bold"
-            }
-          },
-          {
-            "scope": "entity.name.namespace.module.csmscript",
-            "settings": {
-              "foreground": "#ca7601"
-            }
-          },
-          {
-            "scope": "string.unquoted.variable-default.csmscript",
-            "settings": {
-              "foreground": "#6a737d",
-              "fontStyle": "italic"
-            }
-          },
-          {
-            "scope": "string.unquoted.argument.csmscript",
-            "settings": {
-              "foreground": "#6a737d",
-              "fontStyle": "italic"
-            }
-          },
-          {
             "scope": [
               "variable.other.argument-key.csmlog",
               "punctuation.separator.argument-key.csmlog"
@@ -185,138 +79,6 @@
             "settings": {
               "foreground": "#6a737d",
               "fontStyle": "bold italic underline"
-            }
-          },
-          {
-            "scope": [
-              "variable.other.csmscript",
-              "variable.other.assignment.csmscript"
-            ],
-            "settings": {
-              "foreground": "#e36209",
-              "fontStyle": "italic"
-            }
-          },
-          {
-            "scope": "punctuation.definition.variable.csmscript",
-            "settings": {
-              "foreground": "#e36209"
-            }
-          },
-          {
-            "scope": [
-              "keyword.control.flow.csmscript",
-              "keyword.control.include.csmscript",
-              "keyword.control.jump.csmscript",
-              "keyword.control.wait.csmscript",
-              "keyword.control.loop.csmscript",
-              "keyword.control.subscription.csmscript",
-              "keyword.control.subscription-type.csmscript"
-            ],
-            "settings": {
-              "foreground": "#d73a49",
-              "fontStyle": "bold"
-            }
-          },
-          {
-            "scope": "punctuation.definition.tag.csmscript",
-            "settings": {
-              "foreground": "#d73a49"
-            }
-          },
-          {
-            "scope": "entity.name.label.anchor.csmscript",
-            "settings": {
-              "foreground": "#0366d6",
-              "fontStyle": "bold"
-            }
-          },
-          {
-            "scope": [
-              "support.function.echo.csmscript",
-              "support.function.expression.csmscript",
-              "support.function.random.csmscript",
-              "support.function.dialog.csmscript",
-              "support.function.tagdb.csmscript",
-              "support.function.string-compare.csmscript"
-            ],
-            "settings": {
-              "foreground": "#6f42c1"
-            }
-          },
-          {
-            "scope": "support.constant.system-state.csmscript",
-            "settings": {
-              "foreground": "#005cc5",
-              "fontStyle": "italic"
-            }
-          },
-          {
-            "scope": [
-              "constant.language.broadcast-target.csmscript",
-              "constant.language.interrupt-target.csmscript"
-            ],
-            "settings": {
-              "foreground": "#005cc5",
-              "fontStyle": "bold"
-            }
-          },
-          {
-            "scope": [
-              "keyword.operator.return-save.csmscript",
-              "keyword.operator.conditional-jump.csmscript",
-              "keyword.operator.error-jump.csmscript",
-              "keyword.operator.range-in.csmscript",
-              "keyword.operator.range-not-in.csmscript",
-              "keyword.operator.assignment.csmscript"
-            ],
-            "settings": {
-              "foreground": "#d73a49"
-            }
-          },
-          {
-            "scope": "punctuation.separator.module.csmscript",
-            "settings": {
-              "foreground": "#6f42c1"
-            }
-          },
-          {
-            "scope": [
-              "keyword.other.auto-error.csmscript",
-              "keyword.other.ini-var.csmscript",
-              "keyword.other.tagdb.csmscript"
-            ],
-            "settings": {
-              "foreground": "#005cc5"
-            }
-          },
-          {
-            "scope": "entity.name.section.predef.csmscript",
-            "settings": {
-              "foreground": "#6f42c1",
-              "fontStyle": "bold"
-            }
-          },
-          {
-            "scope": [
-              "punctuation.separator.prefix.csmscript",
-              "punctuation.separator.default.csmscript"
-            ],
-            "settings": {
-              "foreground": "#6a737d"
-            }
-          },
-          {
-            "scope": "meta.expression.conditional-jump.csmscript",
-            "settings": {
-              "foreground": "#6a737d",
-              "fontStyle": "italic"
-            }
-          },
-          {
-            "scope": "punctuation.definition.section.csmscript",
-            "settings": {
-              "foreground": "#6f42c1"
             }
           },
           {
@@ -587,8 +349,5 @@
     "semver": "^7.7.4",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.56.1"
-  },
-  "dependencies": {
-    "mermaid": "^11.4.1"
   }
 }
