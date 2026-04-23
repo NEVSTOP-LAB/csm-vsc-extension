@@ -101,7 +101,7 @@ jobs:
         run: npm run compile-tests
 
       - name: 运行语法规则测试（无需 VS Code）
-        run: npx mocha --ui tdd --timeout 10000 out/test/grammar.test.js
+        run: npx mocha --ui tdd --timeout 10000 --require out/test/setup.js "out/test/csmlog*Provider.test.js"
 
   extension-tests:
     name: 扩展集成测试
@@ -135,7 +135,7 @@ jobs:
     needs: [prepare-deps, lint-and-typecheck, grammar-tests, extension-tests]
     outputs:
       build_version: ${{ steps.version.outputs.build_version }}
-      artifact_name: csmscript-language-support-${{ steps.version.outputs.build_version }}-vsix
+      artifact_name: csm-vsc-support-${{ steps.version.outputs.build_version }}-vsix
     steps:
       - uses: actions/checkout@v4
 
@@ -169,7 +169,7 @@ jobs:
       - name: 上传 VSIX Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: csmscript-language-support-${{ steps.version.outputs.build_version }}-vsix
+          name: csm-vsc-support-${{ steps.version.outputs.build_version }}-vsix
           path: '*.vsix'
           retention-days: 30
 
@@ -242,4 +242,3 @@ jobs:
           echo "✓ 主入口文件存在: $MAIN_IN_VSIX"
 
           echo "✓ VSIX 验证通过，可正常被 VS Code 加载"
-

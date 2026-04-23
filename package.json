@@ -1,21 +1,23 @@
 {
-  "name": "csmscript-language-support",
-  "displayName": "CSMScript Language Support",
-  "description": "Language support for CSMScript in Visual Studio Code",
+  "name": "csm-vsc-support",
+  "displayName": "Communicable State Machine(CSM)",
+  "description": "Language support for Communicable State Machine (CSM) files in Visual Studio Code",
   "version": "0.0.4",
   "license": "AGPL-3.0-only",
   "publisher": "NEVSTOP-LAB",
   "icon": "images/icon.png",
   "repository": {
     "type": "git",
-    "url": "https://github.com/NEVSTOP-LAB/CSMScript-vsc-Support.git"
+    "url": "https://github.com/nevstop/csm-vsc-extension.git"
   },
   "bugs": {
-    "url": "https://github.com/NEVSTOP-LAB/CSMScript-vsc-Support/issues"
+    "url": "https://github.com/nevstop/csm-vsc-extension/issues"
   },
-  "homepage": "https://github.com/NEVSTOP-LAB/CSMScript-vsc-Support#readme",
+  "homepage": "https://github.com/nevstop/csm-vsc-extension#readme",
   "keywords": [
-    "csmscript",
+    "csm",
+    "csmlog",
+    "lvcsm",
     "state machine",
     "scripting language",
     "syntax highlighting"
