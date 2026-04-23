@@ -1,0 +1,48 @@
+- PeriodicLog.Enable | 1
+- PeriodicLog.Threshold(#/s) | 2.00
+- PeriodicLog.CheckPeriod(s) | 1.00
+2026/03/20 17:32:59.425 [17:32:59.425] [Module Created] AI |  > HAL-AI.vi:5990002 > HAL-AI.vi.ACBRProxyCaller.60200096
+2026/03/20 17:32:59.426 [17:32:59.425] [State Change] AI | Macro: Initialize
+2026/03/20 17:32:59.426 [17:32:59.425] [Sync Message] -SendMsgAPI2BA5CB1425E8 | VI Reference -@ AI
+2026/03/20 17:32:59.426 [17:32:59.426] [State Change] AI | Data: Initialize
+2026/03/20 17:32:59.426 [17:32:59.426] [State Change] AI | Initialize Core Data
+2026/03/20 17:32:59.426 [17:32:59.426] [State Change] AI | Data: Update Indicators
+2026/03/20 17:32:59.426 [17:32:59.426] [State Change] AI | VI Reference <- -SendMsgAPI2BA5CB1425E8
+2026/03/20 17:32:59.427 [17:32:59.427] [Sync Message] AI | VI Reference(Complete) -@ -SendMsgAPI2BA5CB1425E8
+2026/03/20 17:32:59.490 [17:32:59.490] [Module Created] Measure |  > MAL-TEST.vi:5620002 > MAL-TEST.vi.ACBRProxyCaller.60D000A1
+2026/03/20 17:32:59.490 [17:32:59.490] [Sync Message] -SendMsgAPI2BA5CB1425E8 | VI Reference -@ Measure
+2026/03/20 17:32:59.490 [17:32:59.490] [State Change] Measure | Macro: Initialize
+2026/03/20 17:32:59.491 [17:32:59.491] [State Change] Measure | Data: Initialize
+2026/03/20 17:32:59.491 [17:32:59.491] [State Change] Measure | Initialize Core Data
+2026/03/20 17:32:59.491 [17:32:59.491] [State Change] Measure | Data: Update Indicators
+2026/03/20 17:32:59.491 [17:32:59.491] [State Change] Measure | VI Reference <- -SendMsgAPI2BA5CB1425E8
+2026/03/20 17:32:59.491 [17:32:59.491] [Sync Message] Measure | VI Reference(Complete) -@ -SendMsgAPI2BA5CB1425E8
+2026/03/20 17:32:59.592 [17:32:59.592] [Module Created] Chart |  > UI-Chart.vi:3100002 > UI-Chart.vi.ACBRProxyCaller.611000A5
+2026/03/20 17:32:59.592 [17:32:59.592] [Sync Message] -SendMsgAPI2BA5CB1425E8 | VI Reference -@ Chart
+2026/03/20 17:32:59.592 [17:32:59.592] [State Change] Chart | Macro: Initialize
+2026/03/20 17:32:59.593 [17:32:59.593] [State Change] Chart | Data: Initialize
+2026/03/20 17:32:59.593 [17:32:59.593] [State Change] Chart | Initialize Core Data
+2026/03/20 17:32:59.593 [17:32:59.593] [State Change] Chart | Data: Update Indicators
+2026/03/20 17:32:59.593 [17:32:59.593] [State Change] Chart | VI Reference <- -SendMsgAPI2BA5CB1425E8
+2026/03/20 17:32:59.593 [17:32:59.593] [Sync Message] Chart | VI Reference(Complete) -@ -SendMsgAPI2BA5CB1425E8
+2026/03/20 17:32:59.697 [17:32:59.697] [Async Message] AI | API: Start >> -><interrupt> -> Measure
+2026/03/20 17:32:59.698 [17:32:59.697] [State Change] Measure | API: Start >> -><interrupt>
+2026/03/20 17:32:59.698 [17:32:59.697] [State Change] Measure | Data: Start
+2026/03/20 17:32:59.698 [17:32:59.698] [Async Message] Measure | Status: Started -><broadcast>
+2026/03/20 17:33:00.712 [17:33:00.712] [State Change] Measure | Data: Measure
+2026/03/20 17:33:00.713 [17:33:00.713] [Async Message] Measure | Data: Result >> ${value:123.45} -><status>
+2026/03/20 17:33:01.812 [17:33:01.812] [State Change] Chart | Data: Plot >> ${data}
+2026/03/20 17:33:01.813 [17:33:01.813] [State Change] Chart | WAIT 100(ms)
+2026/03/20 17:33:05.250 [17:33:05.250] [Module Destroyed] AI
+2026/03/20 17:33:05.251 [17:33:05.251] [Module Destroyed] Measure
+2026/03/20 17:33:05.252 [17:33:05.252] [Module Destroyed] Chart
+2026/03/20 17:33:05.260 [User Log] TestRunner | Measurement cycle complete: ${result:OK}
+2026/03/20 17:33:05.261 [17:33:05.261] [Register] Measure | API: DataReady -><register>
+2026/03/20 17:33:05.262 [17:33:05.262] [Unregister] Measure | API: DataReady -><unregister>
+2026/03/20 17:33:05.263 [17:33:05.263] [Interrupt] AI | Interrupt Signal -><interrupt>
+2026/03/20 17:33:05.264 [17:33:05.264] [Status] Measure | Status: Ready -><status>
+2026/03/20 17:33:05.270 [17:33:05.270] [Error] AI | Target Error <- MeasureModule
+2026/03/11 18:09:47.330  System started successfully
+2026/03/11 18:09:48.100  Configuration loaded from config.ini
+2026/03/11 18:09:50.500  WARNING: Low memory threshold reached
+2026/03/11 18:09:47.330 <Logger Thread Exit> 0 logs are still in the queue.
