@@ -78,7 +78,7 @@ jobs:
         run: npm run lint
 
   grammar-tests:
-    name: 语法规则单元测试
+    name: 无 VS Code 单元测试
     runs-on: ubuntu-latest
     needs: [prepare-deps]
     steps:
@@ -100,8 +100,8 @@ jobs:
       - name: 编译测试
         run: npm run compile-tests
 
-      - name: 运行语法规则测试（无需 VS Code）
-        run: npx mocha --ui tdd --timeout 10000 --require out/test/setup.js "out/test/csmlog*Provider.test.js"
+      - name: 运行无 VS Code 单元测试
+        run: npx mocha --ui tdd --timeout 10000 --require out/test/setup.js out/test/csmlogDocumentSymbolProvider.test.js out/test/csmlogHoverProvider.test.js
 
   extension-tests:
     name: 扩展集成测试
