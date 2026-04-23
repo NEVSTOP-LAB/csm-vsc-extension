@@ -5,7 +5,7 @@ on:
     branches:
       - main
     tags:
-      - '**'
+      - 'v*'
   pull_request:
     branches:
       - main
@@ -211,12 +211,11 @@ jobs:
           const fs = require('fs');
           const pkg = JSON.parse(fs.readFileSync('./vsix-pkg.json', 'utf8'));
           // 接受标准 semver 或 年.月.日.build 四段日期版本（如 2026.04.23.4）
-          // VS Code Marketplace 支持四段版本号格式
+          // VS Code Marketplace 支持 major.minor.patch.build 四段版本号，不要求严格的 semver 格式
           const semverPattern = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|[0-9A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|[0-9A-Za-z-][0-9A-Za-z-]*))*))?(?:\+([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$/;
           const calverPattern = /^\d{4}\.\d{2}\.\d{2}\.\d+$/;
-          // VS Code 扩展扫描器使用 semver 解析版本号，非法 semver 会导致"无法读取扩展"错误
           if (!semverPattern.test(pkg.version) && !calverPattern.test(pkg.version)) {
-            console.error('FAILED: version "' + pkg.version + '" is not valid semver or calver (YYYY.MM.DD.build). VS Code cannot load this extension.');
+            console.error('FAILED: version "' + pkg.version + '" is not valid semver or YYYY.MM.DD.build calver. VS Code cannot load this extension.');
             process.exit(1);
           }
           console.log('✓ 版本号合法: ' + pkg.version);
