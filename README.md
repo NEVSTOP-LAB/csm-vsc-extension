@@ -23,6 +23,7 @@
 - ✅ Hover 悬停提示（事件类型、时间戳、配置键、部分操作符）
 - ✅ Outline 大纲（配置项、Module Created/Destroyed、Logger 系统消息）
 - ✅ 默认编辑器字号配置：`14px`（可通过 `editor.fontSize` 覆盖）
+- ✅ 默认开启 `files.autoGuessEncoding`，降低 GBK/GB2312 文件乱码风险
 
 ### `.lvcsm` 文件支持
 
