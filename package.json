@@ -26,7 +26,10 @@
   "categories": [
     "Programming Languages"
   ],
-  "activationEvents": [],
+  "activationEvents": [
+    "onLanguage:csmlog",
+    "onLanguage:lvcsm"
+  ],
   "main": "./dist/extension.js",
   "contributes": {
     "languages": [
