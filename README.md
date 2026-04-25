@@ -7,7 +7,7 @@
 当前版本扩展聚焦两类文件：
 
 - `.csmlog`：CSM 日志文件（语法高亮 + 悬停提示 + 大纲）
-- `.lvcsm`：CSM 配置文件（基于 INI 语法高亮）
+- `.lvcsm`：CSM 配置文件（基于 INI 语法高亮 + 大纲）
 
 ## 安装要求
 
@@ -29,6 +29,7 @@
 
 - ✅ 注册独立语言 `lvcsm`
 - ✅ 语法通过 `source.ini` 复用 INI 高亮规则
+- ✅ Outline 大纲（INI 节 `[section]` 作为大纲条目）
 - ✅ 默认开启 `files.autoGuessEncoding`，降低 GBK/GB2312 文件乱码风险
 
 ## 问题反馈
