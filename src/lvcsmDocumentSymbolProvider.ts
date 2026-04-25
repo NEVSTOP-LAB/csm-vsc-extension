@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 
-/** Matches an INI section header: `[SectionName]` */
-const INI_SECTION_REGEX = /^\[([^\]]+)\]/;
+/** Matches an INI section header: `[SectionName]` (optional leading whitespace) */
+const INI_SECTION_REGEX = /^\s*\[([^\]]+)\]/;
 
 /**
  * Provides document symbols (outline) for LVCSM files.
@@ -30,7 +30,7 @@ export class LvcsmDocumentSymbolProvider implements vscode.DocumentSymbolProvide
             const text = document.lineAt(i).text;
             const match = text.match(INI_SECTION_REGEX);
             if (match) {
-                entries.push({ lineIndex: i, name: match[1] });
+                entries.push({ lineIndex: i, name: match[1].trim() });
             }
         }
 

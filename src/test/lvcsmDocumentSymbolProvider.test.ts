@@ -107,6 +107,18 @@ suite('LvcsmDocumentSymbolProvider — section detection', () => {
         assert.strictEqual(syms[0].name, 'My Section Name');
     });
 
+    test('section header with leading whitespace is detected', () => {
+        const syms = getSymbols(['  [IndentedSection]']);
+        assert.strictEqual(syms.length, 1);
+        assert.strictEqual(syms[0].name, 'IndentedSection');
+    });
+
+    test('section name with surrounding spaces is trimmed', () => {
+        const syms = getSymbols(['[ SpacedName ]']);
+        assert.strictEqual(syms.length, 1);
+        assert.strictEqual(syms[0].name, 'SpacedName');
+    });
+
     test('multiple section headers are all detected', () => {
         const lines = [
             '[SectionA]',

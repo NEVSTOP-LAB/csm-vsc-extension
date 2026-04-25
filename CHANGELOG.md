@@ -6,6 +6,10 @@
 
 ## [未发布] / [Unreleased]
 
+### 新增
+
+- `.lvcsm`：Outline 大纲支持 —— INI 节 `[section]` 显示为大纲条目（`SymbolKind.Module`）
+
 ### 变更
 
 - `.csmlog`：默认开启 `files.autoGuessEncoding`，降低 GBK/GB2312 文件乱码风险
