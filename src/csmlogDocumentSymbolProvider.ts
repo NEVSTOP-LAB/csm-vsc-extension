@@ -1,33 +1,36 @@
 import * as vscode from 'vscode';
+import { buildFlatSymbols, FlatSymbolEntry } from './symbols/flatSymbols';
 
-/** Matches a configuration line: `- Key | Value` */
+// Configuration line: `- Key | Value`
 const CONFIG_REGEX = /^-\s+([^|]+?)\s+\|\s+.+$/;
 
-const CSMLOG_DATETIME_PATTERN = String.raw`\d{4}\/\d{2}\/\d{2}\s+\d{2}:\d{2}:\d{2}\.\d{3}`;
-const CSMLOG_OPTIONAL_RELATIVE_TIMESTAMP_PATTERN = String.raw`(?:\s+\[[\d:.]+\])?`;
-const CSMLOG_LIFECYCLE_EVENT_PATTERN = String.raw`\[(Module Created|Module Destroyed)\]`;
-const CSMLOG_OPTIONAL_MODULE_NAME_PATTERN = String.raw`(?:\s+([^|]+?)(?:\s+\||$))?`;
-
-/** Matches a Module Created/Destroyed log line and captures the event type and module name. */
+// Module Created / Module Destroyed log line.
+//   - Date timestamp is required.
+//   - Relative timestamp is optional.
+//   - Module name is optional (Module Destroyed lines may omit `| ...`).
+const CSMLOG_DATETIME = String.raw`\d{4}\/\d{2}\/\d{2}\s+\d{2}:\d{2}:\d{2}\.\d{3}`;
+const CSMLOG_OPTIONAL_RELATIVE_TS = String.raw`(?:\s+\[[\d:.]+\])?`;
+const CSMLOG_LIFECYCLE_EVENT = String.raw`\[(Module Created|Module Destroyed)\]`;
+const CSMLOG_OPTIONAL_MODULE_NAME = String.raw`(?:\s+([^|]+?)(?:\s+\||$))?`;
 const MODULE_LIFECYCLE_REGEX = new RegExp(
-    `^${CSMLOG_DATETIME_PATTERN}${CSMLOG_OPTIONAL_RELATIVE_TIMESTAMP_PATTERN}\\s+${CSMLOG_LIFECYCLE_EVENT_PATTERN}${CSMLOG_OPTIONAL_MODULE_NAME_PATTERN}`
+    `^${CSMLOG_DATETIME}${CSMLOG_OPTIONAL_RELATIVE_TS}\\s+${CSMLOG_LIFECYCLE_EVENT}${CSMLOG_OPTIONAL_MODULE_NAME}`,
 );
 
-/** Matches a Logger system message: timestamp followed by `<label>`. */
+// Logger system message: `<date timestamp> <Label> ...`
 const LOGGER_MESSAGE_REGEX = /^\d{4}\/\d{2}\/\d{2}\s+\d{2}:\d{2}:\d{2}\.\d{3}\s+<([^>]+)>/;
 
 /**
- * Provides document symbols (outline) for CSMLog files.
+ * Provides a flat outline for `.csmlog` files.
  *
- * The outline contains:
- *  - Configuration parameters   (`- Key | Value`)              → SymbolKind.Property
- *  - Module Created events      (`[Module Created]`)            → SymbolKind.Constructor
- *  - Module Destroyed events    (`[Module Destroyed]`)          → SymbolKind.Event
- *  - Logger system messages     (`<Label>`)                     → SymbolKind.Key
+ * Recognised entries (matched in this priority order, first match wins):
+ *  - `- Key | Value`              configuration parameters → `Property`
+ *  - `[Module Created]`           module life-cycle start  → `Constructor`
+ *  - `[Module Destroyed]`         module life-cycle end    → `Event`
+ *  - `<Label>` after a timestamp  Logger system messages   → `Key`
  *
- * Each symbol's full range extends from its own line to the line immediately
- * before the next symbol (or the end of the document), so that the outline
- * entries are collapsible in the Explorer panel.
+ * Other lines (state changes, messages, errors, etc.) are intentionally
+ * skipped so that the outline stays useful as a navigational map rather
+ * than a copy of every log entry.
  */
 export class CSMLogDocumentSymbolProvider implements vscode.DocumentSymbolProvider {
 
@@ -35,54 +38,46 @@ export class CSMLogDocumentSymbolProvider implements vscode.DocumentSymbolProvid
         document: vscode.TextDocument,
         _token: vscode.CancellationToken,
     ): vscode.DocumentSymbol[] {
-
-        interface Entry {
-            lineIndex: number;
-            name: string;
-            kind: vscode.SymbolKind;
-        }
-
-        const entries: Entry[] = [];
+        const entries: FlatSymbolEntry[] = [];
 
         for (let i = 0; i < document.lineCount; i++) {
             const text = document.lineAt(i).text;
 
-            // Configuration line: - Key | Value
             const configMatch = text.match(CONFIG_REGEX);
             if (configMatch) {
-                entries.push({ lineIndex: i, name: configMatch[1].trim(), kind: vscode.SymbolKind.Property });
+                entries.push({
+                    lineIndex: i,
+                    name: configMatch[1].trim(),
+                    kind: vscode.SymbolKind.Property,
+                });
                 continue;
             }
 
-            // Module Created / Module Destroyed
             const moduleMatch = text.match(MODULE_LIFECYCLE_REGEX);
             if (moduleMatch) {
-                const kind = moduleMatch[1] === 'Module Created'
-                    ? vscode.SymbolKind.Constructor
-                    : vscode.SymbolKind.Event;
+                const eventName = moduleMatch[1];
                 const moduleName = moduleMatch[2]?.trim() || '<unknown-module>';
-                entries.push({ lineIndex: i, name: `${moduleMatch[1]}: ${moduleName}`, kind });
+                entries.push({
+                    lineIndex: i,
+                    name: `${eventName}: ${moduleName}`,
+                    kind: eventName === 'Module Created'
+                        ? vscode.SymbolKind.Constructor
+                        : vscode.SymbolKind.Event,
+                });
                 continue;
             }
 
-            // Logger system message: timestamp <Label> ...
             const loggerMatch = text.match(LOGGER_MESSAGE_REGEX);
             if (loggerMatch) {
-                entries.push({ lineIndex: i, name: `<${loggerMatch[1]}>`, kind: vscode.SymbolKind.Key });
+                entries.push({
+                    lineIndex: i,
+                    name: `<${loggerMatch[1]}>`,
+                    kind: vscode.SymbolKind.Key,
+                });
                 continue;
             }
         }
 
-        const lastLine = document.lineCount - 1;
-        return entries.map((entry, idx): vscode.DocumentSymbol => {
-            const startLine = entry.lineIndex;
-            const endLine = idx + 1 < entries.length
-                ? entries[idx + 1].lineIndex - 1
-                : lastLine;
-            const endLineText = document.lineAt(endLine).text;
-            const fullRange = new vscode.Range(startLine, 0, endLine, endLineText.length);
-            const selectionRange = document.lineAt(startLine).range;
-            return new vscode.DocumentSymbol(entry.name, '', entry.kind, fullRange, selectionRange);
-        });
+        return buildFlatSymbols(document, entries);
     }
 }

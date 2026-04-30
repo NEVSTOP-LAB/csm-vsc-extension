@@ -121,7 +121,8 @@ Line 3:  [...] [Module Created] AI | ...   ← symbol 2, range = [3, lastLine]
 
 | 文件 | 职责 |
 |------|------|
-| `src/csmlogDocumentSymbolProvider.ts` | Provider 实现（唯一权威） |
+| `src/csmlogDocumentSymbolProvider.ts` | `.csmlog` Provider 实现（按优先级匹配每行） |
+| `src/symbols/flatSymbols.ts` | 共享辅助：`FlatSymbolEntry` → `vscode.DocumentSymbol[]`（计算可折叠 range） |
 | `src/extension.ts` | 注册 Provider 到 `csmlog` 语言 |
 | `src/test/csmlogDocumentSymbolProvider.test.ts` | 单元测试 |
 

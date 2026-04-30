@@ -2,8 +2,10 @@
 
 > **功能：** .csmlog 文件语法高亮的独立规则设计
 > **关联设计：** [csmlog-support-design.md](./csmlog-support-design.md)
-> **创建日期：** 2026-03-29
-> **状态：** 🚧 进行中
+> **更新日期：** 2026-04-30
+> **状态：** 维护中
+
+本文件是 `.csmlog` 高亮规则的唯一权威说明，描述当前 `syntaxes/csmlog.tmLanguage.json` 与 `package.json` 内 `editor.tokenColorCustomizations.textMateRules` 的实际行为。代码与本文档不一致时，以代码与测试结果为准并回写本文档。
 
 ---
 

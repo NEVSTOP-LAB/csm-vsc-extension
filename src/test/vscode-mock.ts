@@ -1,7 +1,8 @@
 /**
  * vscode-mock.ts
  * Minimal stub for the vscode API used by standalone csmlog tests
- * (csmlogHoverProvider / csmlogDocumentSymbolProvider / hoverData).
+ * (csmlogHoverProvider / csmlogDocumentSymbolProvider /
+ *  lvcsmDocumentSymbolProvider and the hover/* helpers they reuse).
  * Compiled to out/test/vscode-mock.js and used by setup.ts to intercept
  * require('vscode') during standalone Mocha runs.
  */

@@ -12,9 +12,9 @@
 本文档只保留 .csmlog 支持的总览信息，不再重复高亮规则、颜色表、流程图、悬浮数据库等细节。
 
 详细设计请直接查看：
+- 代码架构与模块划分（唯一权威）：[code-architecture.md](./code-architecture.md)
 - 高亮设计（唯一权威）：[csmlog-highlight-design.md](./csmlog-highlight-design.md)
 - 悬浮设计（唯一权威）：[csmlog-hover-design.md](./csmlog-hover-design.md)
-- 高亮实现计划（执行状态）：[csmlog-highlight-implementation-plan.md](./csmlog-highlight-implementation-plan.md)
 - 大纲设计（唯一权威）：[csmlog-outline-design.md](./csmlog-outline-design.md)
 
 ---
@@ -77,10 +77,10 @@ YYYY/MM/DD HH:MM:SS.mmm [HH:MM:SS.mmm] [EventType] Module | Content
 ## 5. 文档边界（避免重复）
 
 - 本文档：只写范围、边界、索引与验收基线。
+- `code-architecture.md`：只写 `src/` 模块划分与运行时数据流。
 - `csmlog-highlight-design.md`：只写高亮规则与可视化流程。
 - `csmlog-hover-design.md`：只写 Hover 触发区域、词条与委托策略。
 - `csmlog-outline-design.md`：只写大纲匹配规则、符号名格式与范围计算。
-- `csmlog-highlight-implementation-plan.md`：只写进度、风险、下一步。
 
 ---
 

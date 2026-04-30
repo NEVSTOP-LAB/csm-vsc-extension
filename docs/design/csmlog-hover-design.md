@@ -24,7 +24,7 @@
 
 - 在 `.csmlog` 中提供上下文敏感悬浮提示。
 - 解释关键字段：时间戳、事件类型、配置键、来源标记。
-- 对日志内容区的脚本片段复用 `hoverData` 中的关键字条目。
+- 对日志内容区的脚本片段复用 `hover/db/*` 中聚合的关键字条目。
 
 ### 2.2 包含
 
@@ -60,10 +60,21 @@
 
 ### 4.1 文件
 
-- `src/csmlogHoverProvider.ts`
-- `src/hoverData.ts`（被复用提供内容区关键字 Hover）
-- `src/extension.ts`（注册）
-- `src/test/csmlogHoverProvider.test.ts`
+| 文件 | 职责 |
+|------|------|
+| `src/csmlogHoverProvider.ts` | `CSMLogHoverProvider` 编排：分支到 配置行 / File Logger / 标准日志行 |
+| `src/csmlog/logLineParser.ts` | 标准日志行的正则常量与 `parseLogLineZones`（时间戳/事件类型/内容起点） |
+| `src/csmlog/headerHoverDb.ts` | 日志头词条：事件类型、时间戳、配置键、`<-` 来源标记 |
+| `src/hover/types.ts` | `HoverEntry` 接口与共享 `buildHover` 实现 |
+| `src/hover/contentHover.ts` | 内容区委托入口 `provideContentHover` 与查询辅助函数 / 锚点缓存 |
+| `src/hover/db/index.ts` | 内容区词条总表（拼接各类别） |
+| `src/hover/db/operators.ts` | 通信操作符、`=>` 返回值、`->` 订阅、广播目标、`${...}` |
+| `src/hover/db/sections.ts` | `[COMMAND_ALIAS]` 等预定义节、`API:` / `Macro:` 状态前缀 |
+| `src/hover/db/commands.ts` | 内置脚本指令（GOTO、WAIT、ECHO、TAGDB_*、对话框 等） |
+| `src/hover/db/controlFlow.ts` | 控制流（`<if>` / `<while>` / ...）、范围/字符串运算符、`??` |
+| `src/hover/db/systemStates.ts` | CSM 框架内置状态名（含多词短语） |
+| `src/extension.ts` | 注册 Provider |
+| `src/test/csmlogHoverProvider.test.ts` | 单元测试 |
 
 ### 4.2 类结构
 
@@ -72,7 +83,7 @@ export class CSMLogHoverProvider implements vscode.HoverProvider {
   provideHover(document: vscode.TextDocument, position: vscode.Position) {
     // 1) 判断是否配置行
     // 2) 判断字段区域（时间戳/事件类型/来源标记）
-    // 3) 内容区委托给 provideContentHover（基于 hoverData）
+    // 3) 内容区委托给 provideContentHover（来自 src/hover/contentHover.ts）
     // 4) 无命中返回 undefined
   }
 }
@@ -87,7 +98,10 @@ export class CSMLogHoverProvider implements vscode.HoverProvider {
 - 配置键：参数说明 + 取值语义
 - 来源标记：链路方向说明
 
-词条内容以 `src/csmlogHoverProvider.ts` 中的 `CSMLOG_HOVER_DB` 为唯一维护点。
+词条内容拆分维护：
+
+- 日志头部词条（事件类型、时间戳、配置键、`<-`）：`src/csmlog/headerHoverDb.ts`
+- 内容区词条（操作符、指令、控制流、系统状态等）：`src/hover/db/*.ts`，由 `src/hover/db/index.ts` 聚合。
 
 ---
 
