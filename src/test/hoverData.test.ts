@@ -137,3 +137,17 @@ suite('hoverData – @ operator lookup', () => {
         }
     });
 });
+
+suite('hoverData – section header hover range', () => {
+    test('section hover only applies when cursor is inside [SECTION]', () => {
+        const doc = makeDoc([
+            '[COMMAND_ALIAS] trailing text',
+        ]);
+
+        const hoverInHeader = hoverData.provideContentHover(doc, { line: 0, character: 2 });
+        assert.ok(hoverInHeader !== undefined, 'Should provide section hover inside [SECTION]');
+
+        const hoverOutsideHeader = hoverData.provideContentHover(doc, { line: 0, character: 20 });
+        assert.strictEqual(hoverOutsideHeader, undefined, 'Should not provide section hover outside [SECTION]');
+    });
+});

@@ -224,6 +224,12 @@ export function provideContentHover(
     // Check if the word is inside a [SECTION] header on this line
     const sectionMatch = line.match(/^\s*(\[[^\]]+\])/);
     if (sectionMatch) {
+        const matchIndex = sectionMatch.index ?? 0;
+        const sectionStart = matchIndex + sectionMatch[0].indexOf(sectionMatch[1]);
+        const sectionEnd = sectionStart + sectionMatch[1].length;
+        if (col < sectionStart || col >= sectionEnd) {
+            return undefined;
+        }
         const sectionKey = sectionMatch[1].toUpperCase()
             .replace(/COMMAND.ALIAS|CMD.ALIAS|COMMANDALIAS|CMDALIAS/i, 'COMMAND_ALIAS')
             .replace(/\s+/g, '_');

@@ -22,7 +22,6 @@
 - ✅ 参数 `key:` 前缀高亮（粗体 + 斜体 + 下划线）
 - ✅ Hover 悬停提示（事件类型、时间戳、配置键、部分操作符）
 - ✅ Outline 大纲（配置项、Module Created/Destroyed、Logger 系统消息）
-- ✅ 默认编辑器字号配置：`14px`（可通过 `editor.fontSize` 覆盖）
 - ✅ 默认开启 `files.autoGuessEncoding`，降低 GBK/GB2312 文件乱码风险
 
 ### `.lvcsm` 文件支持
@@ -31,6 +30,11 @@
 - ✅ 语法通过 `source.ini` 复用 INI 高亮规则
 - ✅ Outline 大纲（INI 节 `[section]` 作为大纲条目）
 - ✅ 默认开启 `files.autoGuessEncoding`，降低 GBK/GB2312 文件乱码风险
+
+## 文件图标主题
+
+- 扩展内置文件图标主题 **CSM File Icons**，为 `.csmlog` 与 `.lvcsm` 提供专用图标。
+- 可在 VS Code 中通过 `首选项 → 文件图标主题`（或命令面板执行 `Preferences: File Icon Theme`）选择 **CSM File Icons** 启用。
 
 ## 问题反馈
 
