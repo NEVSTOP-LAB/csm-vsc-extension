@@ -242,6 +242,13 @@ suite('CSMLogHoverProvider – content-area delegation', () => {
         assertContains(hover(LINE_SYNC_MSG, col), '同步调用');
     });
 
+    test('@ in log content triggers module-address-separator hover', () => {
+        // Test line: "... | API: Start @ Module"
+        const testLine = '2026/03/20 17:32:59.697 [17:32:59.697] [Async Message] AI | API: Start @ Module';
+        const col = testLine.indexOf(' @ ') + 1;
+        assertContains(hover(testLine, col), '模块地址分隔符');
+    });
+
     test('${var} in log content triggers variable-reference hover', () => {
         // LINE_USER_LOG: "... | Measurement cycle complete: ${result:OK}"
         const col = LINE_USER_LOG.indexOf('${');

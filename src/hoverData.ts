@@ -1101,6 +1101,7 @@ function lookupOperator(line: string, pos: number): HoverEntry | undefined {
         ['-@',                        '-@'],
         ['=>',                        '=>'],
         ['>>',                        '>>'],
+        ['@',                         '@'],
         ['!∈',                        '!∈'],
         ['∈',                         '∈'],
         ['??',                        '??'],
@@ -1196,6 +1197,14 @@ interface AnchorCacheEntry {
 
 /** Cache anchor definitions per document URI and version to avoid repeated full scans. */
 const anchorCache = new Map<string, AnchorCacheEntry>();
+
+/**
+ * Clears the anchor cache entry for the given document URI.
+ * Should be called when a document is closed to prevent memory leaks.
+ */
+export function clearAnchorCache(documentUri: string): void {
+    anchorCache.delete(documentUri);
+}
 
 /**
  * Find an anchor definition `<name>` that matches `anchorName`
