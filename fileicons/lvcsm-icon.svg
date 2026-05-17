@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16">
+  <rect x="2" y="1" width="9" height="13" rx="1" ry="1" fill="#1a237e" opacity="0.9"/>
+  <path d="M11 1 L14 4 L11 4 Z" fill="#283593"/>
+  <rect x="11" y="4" width="3" height="10" rx="0" ry="0" fill="#283593" opacity="0.9"/>
+  <text x="3" y="8" font-family="monospace" font-size="3.5" font-weight="bold" fill="#82b1ff">CSM</text>
+  <rect x="3" y="9.5" width="7" height="0.8" fill="#82b1ff" opacity="0.7"/>
+  <rect x="3" y="11" width="7" height="0.8" fill="#82b1ff" opacity="0.5"/>
+  <rect x="3" y="12.5" width="4" height="0.8" fill="#82b1ff" opacity="0.3"/>
+</svg>

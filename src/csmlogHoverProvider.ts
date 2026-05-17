@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { HoverEntry, provideContentHover } from './hoverData';
+import { HoverEntry, buildHover, provideContentHover } from './hoverData';
 
 /** Lookup key → hover entry (upper-case keys for case-insensitive matching). */
 const CSMLOG_HOVER_DB: Record<string, HoverEntry> = {
@@ -352,22 +352,6 @@ function parseLogLineZones(line: string): LogLineZones | null {
     const pipeIdx = line.indexOf('|', pos);
 
     return { dateTs, relTs, eventType, contentStart: pipeIdx === -1 ? -1 : pipeIdx + 1 };
-}
-
-// ---------------------------------------------------------------------------
-// Helper: build a vscode.Hover from a HoverEntry
-// ---------------------------------------------------------------------------
-
-function buildHover(entry: HoverEntry): vscode.Hover {
-    const md = new vscode.MarkdownString();
-    md.isTrusted = false;
-    md.supportHtml = false;
-    md.appendMarkdown(`**${entry.summary}**`);
-    if (entry.detail) {
-        md.appendMarkdown('\n\n---\n\n');
-        md.appendMarkdown(entry.detail);
-    }
-    return new vscode.Hover(md);
 }
 
 // ---------------------------------------------------------------------------

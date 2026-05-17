@@ -13,8 +13,11 @@
 ### 变更
 
 - `.csmlog`：默认开启 `files.autoGuessEncoding`，降低 GBK/GB2312 文件乱码风险
+- 图标主题：新增 `CSM File Icons`，为 `.csmlog` / `.lvcsm` 提供专用文件图标（可在文件图标主题中启用）
+- `.csmlog`：移除默认 `editor.fontSize = 14` 配置，避免覆盖用户字号偏好
 - `.csmlog` Hover：修复日志内容区 `@` 操作符悬停无提示的问题
 - Hover 缓存：在文档关闭时清理 anchor 缓存条目，避免长期运行时缓存持续累积
+- `.csmlog` Hover：仅当光标位于 `[SECTION]` 标题括号范围内时才返回 section 悬停提示
 - CI：修复无 VS Code 单元测试任务引用已删除 `out/test/grammar.test.js` 的问题，改为运行现有 csmlog standalone 测试
 - 构建：`esbuild.js` 增强错误处理
   - `location` 为空时不再二次报错
