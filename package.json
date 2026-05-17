@@ -66,9 +66,15 @@
         "path": "./syntaxes/lvcsm.tmLanguage.json"
       }
     ],
+    "iconThemes": [
+      {
+        "id": "csm-file-icons",
+        "label": "CSM File Icons",
+        "path": "./fileicons/csm-icon-theme.json"
+      }
+    ],
     "configurationDefaults": {
       "[csmlog]": {
-        "editor.fontSize": 14,
         "files.autoGuessEncoding": true
       },
       "[lvcsm]": {
