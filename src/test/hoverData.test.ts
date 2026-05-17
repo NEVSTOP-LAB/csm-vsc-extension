@@ -77,26 +77,41 @@ suite('hoverData – anchor cache cleanup', () => {
 
     test('clearAnchorCache removes cache entry for specified URI', () => {
         const uri = 'file:///test-clear.lvcsm';
+        let lineAtCallCount = 0;
         const doc = makeDoc([
             '<TestAnchor>',
             'GOTO <TestAnchor>',
         ], uri);
+        const originalLineAt = doc.lineAt;
+        doc.lineAt = (line: number) => {
+            lineAtCallCount++;
+            return originalLineAt(line);
+        };
 
         // Populate cache
         const pos = { line: 1, character: 6 };
+        const hoverFromPopulate = hoverData.provideContentHover(doc, pos);
+        assert.ok(hoverFromPopulate, 'Initial lookup should resolve anchor hover');
+
+        const callsAfterPopulate = lineAtCallCount;
         hoverData.provideContentHover(doc, pos);
+        const deltaWithWarmCache = lineAtCallCount - callsAfterPopulate;
+        assert.ok(
+            deltaWithWarmCache < doc.lineCount,
+            'Warm-cache lookup should avoid rescanning all document lines'
+        );
 
-        // Clear the cache
-        assert.doesNotThrow(() => {
-            hoverData.clearAnchorCache(uri);
-        });
+        hoverData.clearAnchorCache(uri);
 
-        // Cache should be cleared, but lookups should still work
-        // (they'll just rebuild the cache)
-        const hover = hoverData.provideContentHover(doc, pos);
-        // The hover may or may not be defined depending on position,
-        // but the operation should not crash
-        assert.ok(true, 'Cache cleanup should not break subsequent lookups');
+        const callsBeforeRebuild = lineAtCallCount;
+        const hoverAfterClear = hoverData.provideContentHover(doc, pos);
+        const deltaAfterClear = lineAtCallCount - callsBeforeRebuild;
+
+        assert.ok(hoverAfterClear, 'Lookup should still work after cache clear');
+        assert.ok(
+            deltaAfterClear >= doc.lineCount,
+            'Lookup after clearAnchorCache should rescan document lines'
+        );
     });
 });
 
