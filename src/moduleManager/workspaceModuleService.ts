@@ -1,11 +1,9 @@
-import { execFile } from 'child_process';
 import * as fs from 'fs/promises';
 import * as os from 'os';
 import * as path from 'path';
-import { promisify } from 'util';
 import { CsmModuleEntry, LocalModuleConfig, LocalModuleConfigEntry, ModuleApplyMethod } from './types';
+import { GitService, IGitRunner } from './gitService';
 
-const execFileAsync = promisify(execFile);
 const CONFIG_VERSION = '2';
 const SECTION_ROOT = 'csmModules';
 
@@ -60,16 +58,9 @@ function stripGitSuffix(value: string): string {
 	return value.replace(/\.git$/i, '');
 }
 
-function formatCommandError(error: unknown): string {
-	if (error && typeof error === 'object') {
-		const stderr = 'stderr' in error ? String((error as { stderr?: unknown }).stderr ?? '').trim() : '';
-		const message = 'message' in error ? String((error as { message?: unknown }).message ?? '').trim() : '';
-		return stderr || message || 'Unknown command failure.';
-	}
-	return 'Unknown command failure.';
-}
-
 export class WorkspaceModuleService {
+	constructor(private readonly gitRunner: IGitRunner = new GitService()) {}
+
 	public normalizeRootPath(value: string): string {
 		const trimmed = value.trim();
 		if (!trimmed) {
@@ -356,33 +347,7 @@ export class WorkspaceModuleService {
 	}
 
 	private async runGit(cwd: string, args: string[], authToken?: string, repoUrl?: string): Promise<string> {
-		const commandArgs = [...this.buildGitAuthArgs(repoUrl, authToken), ...args];
-		try {
-			const { stdout } = await execFileAsync('git', commandArgs, {
-				cwd,
-				encoding: 'utf8',
-			});
-			return stdout.trim();
-		} catch (error) {
-			throw new Error(formatCommandError(error));
-		}
-	}
-
-	private buildGitAuthArgs(repoUrl: string | undefined, authToken: string | undefined): string[] {
-		if (!repoUrl || !authToken) {
-			return [];
-		}
-		try {
-			const parsedUrl = new URL(repoUrl);
-			if (parsedUrl.protocol !== 'https:') {
-				return [];
-			}
-			const serverUrl = `${parsedUrl.protocol}//${parsedUrl.host}/`;
-			const encoded = Buffer.from(`x-access-token:${authToken}`, 'utf8').toString('base64');
-			return ['-c', `http.${serverUrl}.extraheader=AUTHORIZATION: basic ${encoded}`];
-		} catch {
-			return [];
-		}
+		return this.gitRunner.exec({ cwd, args, authToken, repoUrl });
 	}
 
 	private async resolveExistingSubmoduleRef(repoRoot: string, targetRelativePath: string): Promise<string> {
