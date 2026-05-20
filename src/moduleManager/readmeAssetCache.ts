@@ -8,7 +8,14 @@ function escapeHtml(value: string): string {
 		.replace(/&/g, '&amp;')
 		.replace(/</g, '&lt;')
 		.replace(/>/g, '&gt;')
-		.replace(/"/g, '&quot;');
+		.replace(/"/g, '&quot;')
+		.replace(/'/g, '&#39;')
+		.replace(/`/g, '&#96;')
+		.replace(/\//g, '&#47;')
+		.replace(/\\/g, '&#92;')
+		// Strip control characters that could break out of attribute contexts.
+		// eslint-disable-next-line no-control-regex
+		.replace(/[\u0000-\u001F\u007F]/g, (char) => `&#${char.charCodeAt(0)};`);
 }
 
 function sanitizeSegment(value: string): string {
@@ -152,6 +159,7 @@ export class ReadmeAssetCache {
 
 	public async renderMarkdown(entry: CsmModuleEntry, markdown: string, webview: vscode.Webview): Promise<string> {
 		await ensureDir(this.getEntryDir(entry));
+		const nonce = crypto.randomBytes(16).toString('base64');
 		const lines = markdown.split(/\r?\n/);
 		const blocks: string[] = [];
 		let index = 0;
@@ -203,9 +211,9 @@ export class ReadmeAssetCache {
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${webview.cspSource} https:; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'none';" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${webview.cspSource} https:; style-src ${webview.cspSource} 'nonce-${nonce}'; script-src 'none';" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <style>
+  <style nonce="${nonce}">
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; padding: 24px; color: #e6edf3; background: #0d1117; line-height: 1.6; }
     a { color: #58a6ff; }
     code, pre { background: rgba(110, 118, 129, 0.18); border-radius: 6px; }

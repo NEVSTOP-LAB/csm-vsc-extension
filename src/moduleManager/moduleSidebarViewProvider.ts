@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import * as crypto from 'crypto';
 import { CsmModuleEntry } from './types';
 import { ViewState } from './moduleTreeDataProvider';
 
@@ -37,11 +38,16 @@ function escapeHtml(value: string): string {
 		.replace(/</g, '&lt;')
 		.replace(/>/g, '&gt;')
 		.replace(/"/g, '&quot;')
-		.replace(/'/g, '&#39;');
+		.replace(/'/g, '&#39;')
+		.replace(/`/g, '&#96;')
+		.replace(/\//g, '&#47;')
+		.replace(/\\/g, '&#92;')
+		// eslint-disable-next-line no-control-regex
+		.replace(/[\u0000-\u001F\u007F]/g, (char) => `&#${char.charCodeAt(0)};`);
 }
 
 function createNonce(): string {
-	return `${Math.random().toString(36).slice(2)}${Math.random().toString(36).slice(2)}`;
+	return crypto.randomBytes(16).toString('base64');
 }
 
 function getToolbarMetaText(totalCount: number, filteredCount: number, selectedCount: number): string {
@@ -254,10 +260,10 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider {
 <html lang="en">
 <head>
 	<meta charset="UTF-8">
-	<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';">
+	<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'nonce-${nonce}'; script-src 'nonce-${nonce}';">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
 	<title>CSM Modules</title>
-	<style>
+	<style nonce="${nonce}">
 		:root {
 			color-scheme: light dark;
 		}
