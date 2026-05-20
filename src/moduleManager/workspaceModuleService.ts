@@ -586,7 +586,7 @@ export class WorkspaceModuleService {
 		}
 
 		const obj = parsed as Record<string, unknown>;
-		const version = typeof obj.version === 'string' ? obj.version : (obj.version != null ? String(obj.version) : undefined);
+		const version = typeof obj.version === 'string' ? obj.version : (obj.version !== undefined && obj.version !== null ? String(obj.version) : undefined);
 		const root = typeof obj.root === 'string' ? obj.root : undefined;
 		const modules: Record<string, LocalModuleConfigEntry> = {};
 
