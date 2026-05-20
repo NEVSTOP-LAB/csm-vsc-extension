@@ -4,19 +4,50 @@ import { AuthService } from './authService';
 import { GitHubModuleService } from './githubModuleService';
 import { ModuleCacheStore } from './cacheStore';
 import { CsmModuleEntry, LocalModuleConfig, ModuleApplyMethod } from './types';
-import { ModuleTreeDataProvider, ModuleTreeItem } from './moduleTreeDataProvider';
+import { ModuleTreeItem } from './moduleTreeDataProvider';
+import { ModuleSidebarViewProvider } from './moduleSidebarViewProvider';
 import { ReadmeAssetCache } from './readmeAssetCache';
 import { DEFAULT_LOCAL_MODULE_ROOT, LEGACY_LOCAL_MODULE_CONFIG_FILE, LOCAL_MODULE_CONFIG_FILE, WorkspaceModuleService } from './workspaceModuleService';
+
+const LOCAL_MODULE_CONFIG_GLOB = `**/{${LOCAL_MODULE_CONFIG_FILE},${LEGACY_LOCAL_MODULE_CONFIG_FILE}}`;
+const WORKSPACE_INIT_CONTEXT_KEY = 'csmModules.canInitializeWorkspace';
+const LVPROJ_GLOB = '**/*.lvproj';
+const WORKSPACE_INIT_PROMPT = 'Detected csm/ and .lvproj files but no local CSM module config. Initialize CSM module management for this repository?';
+
+interface PendingWorkspaceInitialization {
+	workspaceFolder: vscode.WorkspaceFolder;
+	repoRoot: string;
+}
 
 export class ModuleManagerController {
 	private readonly authService = new AuthService();
 	private readonly githubService = new GitHubModuleService();
 	private readonly cacheStore: ModuleCacheStore;
-	private readonly treeDataProvider = new ModuleTreeDataProvider();
+	private readonly treeDataProvider = new ModuleSidebarViewProvider({
+		onLogin: () => {
+			void this.loginCommand();
+		},
+		onRefresh: () => {
+			void this.refreshCommand();
+		},
+		onInitializeWorkspace: () => {
+			void this.initializeWorkspaceCommand();
+		},
+		onOpenReadme: (entry) => {
+			void this.openReadmeCommand(entry);
+		},
+		onApplySelection: (entry) => {
+			void this.applyToWorkspaceCommand(entry);
+		},
+		onSelectionChange: (moduleKeys) => {
+			this.setSelectedModuleKeys(moduleKeys);
+		},
+	});
 	private readonly readmeAssetCache: ReadmeAssetCache;
 	private readonly workspaceModuleService = new WorkspaceModuleService();
 	private readonly readmeCache: Record<string, string>;
-	private treeView: vscode.TreeView<ModuleTreeItem | vscode.TreeItem> | undefined;
+	private availableModules: CsmModuleEntry[] = [];
+	private readonly selectedModuleKeys = new Set<string>();
 	private currentToken: string | undefined;
 
 	constructor(private readonly context: vscode.ExtensionContext) {
@@ -26,15 +57,16 @@ export class ModuleManagerController {
 	}
 
 	public register(subscriptions: vscode.Disposable[]): void {
-		this.treeView = vscode.window.createTreeView('csmModules.view', {
-			treeDataProvider: this.treeDataProvider,
-			canSelectMany: true,
-		});
+		if (this.treeDataProvider instanceof ModuleSidebarViewProvider) {
+			subscriptions.push(vscode.window.registerWebviewViewProvider('csmModules.view', this.treeDataProvider, {
+				webviewOptions: { retainContextWhenHidden: true },
+			}));
+		}
 
 		subscriptions.push(
-			this.treeView,
 			vscode.commands.registerCommand('csmModules.login', () => this.loginCommand()),
 			vscode.commands.registerCommand('csmModules.refresh', () => this.refreshCommand()),
+			vscode.commands.registerCommand('csmModules.initializeWorkspace', () => this.initializeWorkspaceCommand()),
 			vscode.commands.registerCommand('csmModules.openReadme', (entry?: CsmModuleEntry | ModuleTreeItem) => this.openReadmeCommand(entry)),
 			vscode.commands.registerCommand('csmModules.applyToWorkspace', (entry?: CsmModuleEntry | ModuleTreeItem) => this.applyToWorkspaceCommand(entry)),
 		);
@@ -42,6 +74,7 @@ export class ModuleManagerController {
 		const cached = this.cacheStore.getModuleSnapshot();
 		const hasCachedModules = !!cached && cached.modules.length > 0;
 		if (hasCachedModules) {
+			this.availableModules = cached.modules;
 			this.treeDataProvider.setModules(cached.modules);
 		} else {
 			this.treeDataProvider.setLoading('Sign in to GitHub to load modules.');
@@ -55,6 +88,9 @@ export class ModuleManagerController {
 				preserveVisibleModules: hasCachedModules,
 			});
 		}
+
+		void this.refreshWorkspaceInitializationState({ prompt: true });
+		void this.refreshSidebarWorkspaceState();
 	}
 
 	private async applyToWorkspaceCommand(entry?: CsmModuleEntry | ModuleTreeItem): Promise<void> {
@@ -89,6 +125,7 @@ export class ModuleManagerController {
 		if (!config) {
 			return;
 		}
+		await this.refreshWorkspaceInitializationState({ prompt: false });
 
 		const applyMethod = await this.promptApplyMethod(selectedEntries.length);
 		if (!applyMethod) {
@@ -144,6 +181,48 @@ export class ModuleManagerController {
 		void vscode.window.showInformationMessage(
 			`Applied ${selectedEntries.length} module(s) via ${applyMethod}. Config: ${path.relative(repoRoot, config.configPath).replace(/\\/g, '/')}`,
 		);
+		await this.refreshSidebarWorkspaceState();
+	}
+
+	private async initializeWorkspaceCommand(workspaceFolder?: vscode.WorkspaceFolder): Promise<void> {
+		const targetFolder = workspaceFolder ?? await this.resolveWorkspaceFolder();
+		if (!targetFolder) {
+			void vscode.window.showWarningMessage('Open the target repository as a workspace folder before initializing CSM module management.');
+			return;
+		}
+
+		const repoRoot = await this.workspaceModuleService.resolveGitRepositoryRoot(targetFolder.uri.fsPath);
+		if (!repoRoot) {
+			void vscode.window.showErrorMessage('The current workspace folder is not a Git repository.');
+			return;
+		}
+
+		const existingConfigs = await this.findLocalModuleConfigFiles(targetFolder);
+		if (existingConfigs.length > 0) {
+			await this.setWorkspaceInitializationContext(false);
+			const existingConfig = await this.resolveLocalModuleConfig(targetFolder, repoRoot);
+			if (existingConfig) {
+				void vscode.window.showInformationMessage(
+					`Local CSM module config already exists at ${path.relative(repoRoot, existingConfig.configPath).replace(/\\/g, '/')}.`,
+				);
+			}
+			await this.refreshSidebarWorkspaceState();
+			return;
+		}
+
+		const recoveredConfig = await this.workspaceModuleService.recoverConfigFromExistingSubmodules(repoRoot, DEFAULT_LOCAL_MODULE_ROOT);
+		if (recoveredConfig) {
+			void vscode.window.showInformationMessage(
+				`Initialized local CSM module config from existing submodules at ${path.relative(repoRoot, recoveredConfig.configPath).replace(/\\/g, '/')}.`,
+			);
+			await this.refreshSidebarWorkspaceState();
+			await this.refreshWorkspaceInitializationState({ prompt: false });
+			return;
+		}
+
+		await this.initializeLocalModuleConfig(repoRoot, WORKSPACE_INIT_PROMPT);
+		await this.refreshSidebarWorkspaceState();
+		await this.refreshWorkspaceInitializationState({ prompt: false });
 	}
 
 	private async loginCommand(): Promise<void> {
@@ -213,6 +292,8 @@ export class ModuleManagerController {
 		}
 		try {
 			const modules = await this.githubService.fetchModules(token);
+			this.availableModules = modules;
+			this.setSelectedModuleKeys([...this.selectedModuleKeys]);
 			const refreshedReadme: Record<string, string> = {};
 			for (const moduleEntry of modules) {
 				const key = this.getReadmeCacheKey(moduleEntry);
@@ -228,6 +309,7 @@ export class ModuleManagerController {
 			await this.cacheStore.setModuleSnapshot(modules);
 			await this.cacheStore.setReadmeCache(this.readmeCache);
 			this.treeDataProvider.setModules(modules);
+			await this.refreshSidebarWorkspaceState();
 			if (options.showSuccessMessage) {
 				void vscode.window.showInformationMessage(`Refreshed ${modules.length} module(s).`);
 			}
@@ -288,15 +370,25 @@ export class ModuleManagerController {
 	}
 
 	private getSelectedModules(entry?: CsmModuleEntry): CsmModuleEntry[] {
-		const selection = this.treeView?.selection ?? [];
-		const selectedEntries = selection
-			.filter((item): item is ModuleTreeItem => item instanceof ModuleTreeItem)
-			.map((item) => item.moduleEntry);
+		const selectedEntries = this.availableModules.filter((moduleEntry) => this.selectedModuleKeys.has(this.getModuleKey(moduleEntry)));
 		if (entry) {
 			const includesEntry = selectedEntries.some((selectedEntry) => this.sameModule(selectedEntry, entry));
 			return includesEntry ? selectedEntries : [entry];
 		}
 		return selectedEntries;
+	}
+
+	private setSelectedModuleKeys(moduleKeys: string[]): void {
+		const allowedKeys = new Set(this.availableModules.map((moduleEntry) => this.getModuleKey(moduleEntry)));
+		this.selectedModuleKeys.clear();
+		for (const moduleKey of moduleKeys) {
+			if (allowedKeys.has(moduleKey)) {
+				this.selectedModuleKeys.add(moduleKey);
+			}
+		}
+		if (this.treeDataProvider instanceof ModuleSidebarViewProvider) {
+			this.treeDataProvider.setSelection([...this.selectedModuleKeys]);
+		}
 	}
 
 	private resolveModuleEntry(entry?: CsmModuleEntry | ModuleTreeItem): CsmModuleEntry | undefined {
@@ -318,6 +410,58 @@ export class ModuleManagerController {
 
 	private sameModule(left: CsmModuleEntry, right: CsmModuleEntry): boolean {
 		return left.owner === right.owner && left.name === right.name;
+	}
+
+	private getModuleKey(entry: CsmModuleEntry): string {
+		return ModuleSidebarViewProvider.getModuleKey(entry);
+	}
+
+	private async refreshSidebarWorkspaceState(): Promise<void> {
+		if (!(this.treeDataProvider instanceof ModuleSidebarViewProvider)) {
+			return;
+		}
+
+		const workspaceFolder = this.getPreferredWorkspaceFolder();
+		if (!workspaceFolder) {
+			this.treeDataProvider.setWorkspaceContext({ appliedModuleKeys: [] });
+			return;
+		}
+
+		const repoRoot = await this.workspaceModuleService.resolveGitRepositoryRoot(workspaceFolder.uri.fsPath);
+		if (!repoRoot) {
+			this.treeDataProvider.setWorkspaceContext({
+				workspaceLabel: workspaceFolder.name,
+				appliedModuleKeys: [],
+			});
+			return;
+		}
+
+		const config = await this.tryLoadSidebarLocalModuleConfig(workspaceFolder, repoRoot);
+		this.treeDataProvider.setWorkspaceContext({
+			workspaceLabel: path.basename(repoRoot) || workspaceFolder.name,
+			moduleRoot: config?.root,
+			appliedModuleKeys: this.mapAppliedModuleKeys(config),
+		});
+	}
+
+	private getPreferredWorkspaceFolder(): vscode.WorkspaceFolder | undefined {
+		const folders = vscode.workspace.workspaceFolders;
+		if (!folders || folders.length === 0) {
+			return undefined;
+		}
+		if (folders.length === 1) {
+			return folders[0];
+		}
+
+		const activeEditor = vscode.window.activeTextEditor;
+		if (activeEditor) {
+			const activeFolder = vscode.workspace.getWorkspaceFolder(activeEditor.document.uri);
+			if (activeFolder) {
+				return activeFolder;
+			}
+		}
+
+		return folders[0];
 	}
 
 	private async resolveWorkspaceFolder(): Promise<vscode.WorkspaceFolder | undefined> {
@@ -352,15 +496,12 @@ export class ModuleManagerController {
 		workspaceFolder: vscode.WorkspaceFolder,
 		repoRoot: string,
 	): Promise<LocalModuleConfig | undefined> {
-		const matches = await vscode.workspace.findFiles(
-			new vscode.RelativePattern(workspaceFolder, `**/{${LOCAL_MODULE_CONFIG_FILE},${LEGACY_LOCAL_MODULE_CONFIG_FILE}}`),
-			'**/{.git,node_modules,out,dist,.vscode-test}/**',
-			20,
-		);
+		const matches = await this.findLocalModuleConfigFiles(workspaceFolder);
 
 		if (matches.length === 0) {
 			const recoveredConfig = await this.workspaceModuleService.recoverConfigFromExistingSubmodules(repoRoot, DEFAULT_LOCAL_MODULE_ROOT);
 			if (recoveredConfig) {
+				await this.setWorkspaceInitializationContext(false);
 				void vscode.window.showInformationMessage(
 					`Recovered local CSM module config from existing submodules at ${path.relative(repoRoot, recoveredConfig.configPath).replace(/\\/g, '/')}.`,
 				);
@@ -369,14 +510,7 @@ export class ModuleManagerController {
 			return this.initializeLocalModuleConfig(repoRoot);
 		}
 
-		const sortedMatches = [...matches].sort((left, right) => {
-			const leftIsYaml = path.basename(left.fsPath).toLowerCase() === LOCAL_MODULE_CONFIG_FILE.toLowerCase();
-			const rightIsYaml = path.basename(right.fsPath).toLowerCase() === LOCAL_MODULE_CONFIG_FILE.toLowerCase();
-			if (leftIsYaml !== rightIsYaml) {
-				return leftIsYaml ? -1 : 1;
-			}
-			return left.fsPath.localeCompare(right.fsPath);
-		});
+		const sortedMatches = this.sortLocalModuleConfigMatches(matches);
 
 		if (
 			sortedMatches.length === 2
@@ -402,19 +536,44 @@ export class ModuleManagerController {
 			configUri = choice.uri;
 		}
 
+		await this.setWorkspaceInitializationContext(false);
 		return this.workspaceModuleService.loadConfig(repoRoot, configUri.fsPath);
 	}
 
-	private async initializeLocalModuleConfig(repoRoot: string): Promise<LocalModuleConfig | undefined> {
+	private async tryLoadSidebarLocalModuleConfig(
+		workspaceFolder: vscode.WorkspaceFolder,
+		repoRoot: string,
+	): Promise<LocalModuleConfig | undefined> {
+		const workspaceService = this.workspaceModuleService as Partial<WorkspaceModuleService>;
+		if (typeof workspaceService.loadConfig !== 'function') {
+			return undefined;
+		}
+
+		const matches = this.sortLocalModuleConfigMatches(await this.findLocalModuleConfigFiles(workspaceFolder));
+		if (matches.length === 0) {
+			return undefined;
+		}
+
+		try {
+			return await workspaceService.loadConfig.call(this.workspaceModuleService, repoRoot, matches[0].fsPath);
+		} catch {
+			return undefined;
+		}
+	}
+
+	private async initializeLocalModuleConfig(
+		repoRoot: string,
+		message = 'No local CSM module config was found. Initialize one for this repository?',
+	): Promise<LocalModuleConfig | undefined> {
 		const choice = await vscode.window.showInformationMessage(
-			'No local CSM module config was found. Initialize one for this repository?',
+			message,
 			{ modal: true },
 			`Use ${DEFAULT_LOCAL_MODULE_ROOT}/`,
 			'Choose Directory',
-			'Cancel',
+			'Later',
 		);
 
-		if (!choice || choice === 'Cancel') {
+		if (!choice || choice === 'Later') {
 			return undefined;
 		}
 
@@ -438,9 +597,142 @@ export class ModuleManagerController {
 			rootPath = this.workspaceModuleService.normalizeRootPath(input);
 		}
 
+		const recoveredConfig = await this.workspaceModuleService.recoverConfigFromExistingSubmodules(repoRoot, rootPath);
+		if (recoveredConfig) {
+			await this.setWorkspaceInitializationContext(false);
+			void vscode.window.showInformationMessage(
+				`Initialized local CSM module config from existing submodules at ${path.relative(repoRoot, recoveredConfig.configPath).replace(/\\/g, '/')}.`,
+			);
+			return recoveredConfig;
+		}
+
 		const config = await this.workspaceModuleService.initializeConfig(repoRoot, rootPath);
+		await this.setWorkspaceInitializationContext(false);
 		void vscode.window.showInformationMessage(`Initialized local CSM module config at ${path.relative(repoRoot, config.configPath).replace(/\\/g, '/')}.`);
 		return config;
+	}
+
+	private async refreshWorkspaceInitializationState(options: { prompt: boolean }): Promise<void> {
+		const pending = await this.findPendingWorkspaceInitialization();
+		await this.setWorkspaceInitializationContext(!!pending);
+
+		if (!options.prompt || !pending) {
+			return;
+		}
+
+		const choice = await vscode.window.showInformationMessage(
+			WORKSPACE_INIT_PROMPT,
+			'Initialize',
+			'Later',
+		);
+		if (choice === 'Initialize') {
+			await this.initializeWorkspaceCommand(pending.workspaceFolder);
+		}
+	}
+
+	private async findPendingWorkspaceInitialization(): Promise<PendingWorkspaceInitialization | undefined> {
+		const folders = vscode.workspace.workspaceFolders ?? [];
+		for (const workspaceFolder of folders) {
+			const repoRoot = await this.workspaceModuleService.resolveGitRepositoryRoot(workspaceFolder.uri.fsPath);
+			if (!repoRoot) {
+				continue;
+			}
+
+			const configMatches = await this.findLocalModuleConfigFiles(workspaceFolder);
+			if (configMatches.length > 0) {
+				continue;
+			}
+
+			if (!await this.hasLocalModuleRoot(repoRoot)) {
+				continue;
+			}
+
+			if (!await this.hasLvprojFile(workspaceFolder)) {
+				continue;
+			}
+
+			return { workspaceFolder, repoRoot };
+		}
+
+		return undefined;
+	}
+
+	private async findLocalModuleConfigFiles(workspaceFolder: vscode.WorkspaceFolder): Promise<vscode.Uri[]> {
+		return vscode.workspace.findFiles(
+			new vscode.RelativePattern(workspaceFolder, LOCAL_MODULE_CONFIG_GLOB),
+			'**/{.git,node_modules,out,dist,.vscode-test}/**',
+			20,
+		);
+	}
+
+	private sortLocalModuleConfigMatches(matches: vscode.Uri[]): vscode.Uri[] {
+		return [...matches].sort((left, right) => {
+			const leftIsYaml = path.basename(left.fsPath).toLowerCase() === LOCAL_MODULE_CONFIG_FILE.toLowerCase();
+			const rightIsYaml = path.basename(right.fsPath).toLowerCase() === LOCAL_MODULE_CONFIG_FILE.toLowerCase();
+			if (leftIsYaml !== rightIsYaml) {
+				return leftIsYaml ? -1 : 1;
+			}
+			return left.fsPath.localeCompare(right.fsPath);
+		});
+	}
+
+	private mapAppliedModuleKeys(config: LocalModuleConfig | undefined): string[] {
+		if (!config) {
+			return [];
+		}
+
+		const availableModulesByName = new Map<string, string>();
+		const availableModulesBySource = new Map<string, string>();
+		for (const moduleEntry of this.availableModules) {
+			const moduleKey = this.getModuleKey(moduleEntry);
+			availableModulesByName.set(`${moduleEntry.owner.toLowerCase()}/${moduleEntry.name.toLowerCase()}`, moduleKey);
+			availableModulesBySource.set(this.normalizeModuleSource(moduleEntry.repoUrl), moduleKey);
+		}
+
+		const appliedModuleKeys = new Set<string>();
+		for (const configEntry of Object.values(config.modules)) {
+			const directMatch = availableModulesByName.get(`${configEntry.owner.toLowerCase()}/${configEntry.name.toLowerCase()}`);
+			if (directMatch) {
+				appliedModuleKeys.add(directMatch);
+				continue;
+			}
+
+			const sourceMatch = availableModulesBySource.get(this.normalizeModuleSource(configEntry.source));
+			if (sourceMatch) {
+				appliedModuleKeys.add(sourceMatch);
+			}
+		}
+
+		return [...appliedModuleKeys];
+	}
+
+	private normalizeModuleSource(source: string): string {
+		return source.trim().replace(/\.git$/i, '').replace(/\/+$/g, '').toLowerCase();
+	}
+
+	private async hasLocalModuleRoot(repoRoot: string): Promise<boolean> {
+		try {
+			await vscode.workspace.fs.stat(vscode.Uri.file(path.join(repoRoot, DEFAULT_LOCAL_MODULE_ROOT)));
+			return true;
+		} catch {
+			return false;
+		}
+	}
+
+	private async hasLvprojFile(workspaceFolder: vscode.WorkspaceFolder): Promise<boolean> {
+		const matches = await vscode.workspace.findFiles(
+			new vscode.RelativePattern(workspaceFolder, LVPROJ_GLOB),
+			'**/{.git,node_modules,out,dist,.vscode-test}/**',
+			1,
+		);
+		return matches.length > 0;
+	}
+
+	private async setWorkspaceInitializationContext(canInitializeWorkspace: boolean): Promise<void> {
+		if (this.treeDataProvider instanceof ModuleSidebarViewProvider) {
+			this.treeDataProvider.setCanInitializeWorkspace(canInitializeWorkspace);
+		}
+		await vscode.commands.executeCommand('setContext', WORKSPACE_INIT_CONTEXT_KEY, canInitializeWorkspace);
 	}
 
 	private getCacheTtlMinutes(): number {

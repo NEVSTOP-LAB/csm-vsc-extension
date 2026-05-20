@@ -1,7 +1,9 @@
 import * as assert from 'assert';
+import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import * as vscode from 'vscode';
+import { DEFAULT_LOCAL_MODULE_ROOT, LEGACY_LOCAL_MODULE_CONFIG_FILE, LOCAL_MODULE_CONFIG_FILE } from '../moduleManager';
 import { ModuleManagerController } from '../moduleManager/moduleManagerController';
 import { ModuleTreeItem } from '../moduleManager/moduleTreeDataProvider';
 import { CsmModuleEntry, LocalModuleConfig, ModuleCacheSnapshot } from '../moduleManager/types';
@@ -14,9 +16,13 @@ type VscodeMock = typeof vscode & {
 	__setInformationMessageResponse: (response: unknown) => void;
 	__setQuickPickResponse: (response: unknown) => void;
 	__setFindFilesResult: (result: vscode.Uri[]) => void;
+	__setFindFilesResultForPattern: (pattern: string, result: vscode.Uri[]) => void;
 	__setWorkspaceFolders: (folders: Array<{ name: string; uri: vscode.Uri }> | undefined) => void;
 	__setConfigurationValue: (key: string, value: unknown) => void;
+	__getContextValue: (key: string) => unknown;
 	__getLastWebviewPanel: () => { title: string; html: string } | undefined;
+	__resolveWebviewView: (viewId: string) => { html: string; fireMessage: (message: unknown) => void } | undefined;
+	__getLastWebviewView: () => { viewId: string; html: string } | undefined;
 };
 
 class FakeMemento {
@@ -54,6 +60,17 @@ function createCachedSnapshot(modules: CsmModuleEntry[], lastRefreshAt = new Dat
 		modules,
 	};
 }
+
+function createWorkspaceFolderWithCsmProject(prefix: string): { repoRoot: string; lvprojPath: string } {
+	const repoRoot = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
+	fs.mkdirSync(path.join(repoRoot, DEFAULT_LOCAL_MODULE_ROOT), { recursive: true });
+	const lvprojPath = path.join(repoRoot, 'demo.lvproj');
+	fs.writeFileSync(lvprojPath, '<Project />', 'utf8');
+	return { repoRoot, lvprojPath };
+}
+
+const configSearchPattern = `**/{${LOCAL_MODULE_CONFIG_FILE},${LEGACY_LOCAL_MODULE_CONFIG_FILE}}`;
+const lvprojSearchPattern = '**/*.lvproj';
 
 suite('ModuleManagerController Regression Tests', () => {
 	const mocked = vscode as VscodeMock;
@@ -328,6 +345,144 @@ suite('ModuleManagerController Regression Tests', () => {
 
 		assert.strictEqual(fetched, true);
 		assert.strictEqual(loadingCalls, 0);
+	});
+
+	test('register marks modules already applied in the current workspace', async () => {
+		const memento = new FakeMemento();
+		await memento.update('csmModules.cache.modules', createCachedSnapshot([
+			{
+				id: 1,
+				owner: 'org',
+				name: 'module-a',
+				description: 'cached',
+				topics: ['csm-modsets'],
+				visibility: 'public',
+				defaultBranch: 'main',
+				repoUrl: 'https://github.com/org/module-a',
+			},
+			{
+				id: 2,
+				owner: 'org',
+				name: 'module-b',
+				description: 'cached',
+				topics: ['csm-modsets'],
+				visibility: 'public',
+				defaultBranch: 'main',
+				repoUrl: 'https://github.com/org/module-b',
+			},
+		]));
+		const controller = createController(memento) as any;
+
+		controller.authService = {
+			getSessionSilently: async () => undefined,
+			getSessionInteractively: async () => undefined,
+		};
+		controller.workspaceModuleService = {
+			resolveGitRepositoryRoot: async () => 'd:/repo',
+			loadConfig: async () => ({
+				version: '2',
+				root: 'csm',
+				configPath: 'd:/repo/csm/csm-modules.yaml',
+				modules: {
+					org__module_a: {
+						key: 'org__module_a',
+						name: 'module-a',
+						owner: 'org',
+						source: 'https://github.com/org/module-a',
+						method: 'copy',
+						path: 'csm/module-a',
+						ref: 'abc123',
+						branch: 'main',
+					},
+				},
+			}),
+		};
+		mocked.__setWorkspaceFolders([{ name: 'repo', uri: vscode.Uri.file('d:/repo') }]);
+		mocked.__setFindFilesResultForPattern(configSearchPattern, [vscode.Uri.file('d:/repo/csm/csm-modules.yaml')]);
+		mocked.__setFindFilesResultForPattern(lvprojSearchPattern, []);
+		mocked.__setConfigurationValue('csmModules.cache.ttlMinutes', 60);
+
+		controller.register([]);
+		mocked.__resolveWebviewView('csmModules.view');
+		await controller.refreshSidebarWorkspaceState();
+
+		const rendered = mocked.__getLastWebviewView();
+		assert.ok(rendered?.html.includes('Workspace: repo'));
+		assert.ok(rendered?.html.includes('1 applied'));
+		assert.ok(rendered?.html.includes('Already recorded for repo under csm/'));
+		assert.ok(rendered?.html.includes('module-a'));
+		assert.ok(rendered?.html.includes('module-b'));
+	});
+
+	test('proactive init detection prompts when csm and lvproj exist without config', async () => {
+		const { repoRoot, lvprojPath } = createWorkspaceFolderWithCsmProject('csm-init-detect-');
+		const controller = createController() as any;
+
+		controller.authService = {
+			getSessionSilently: async () => undefined,
+			getSessionInteractively: async () => undefined,
+		};
+		controller.workspaceModuleService = {
+			resolveGitRepositoryRoot: async () => repoRoot,
+		};
+
+		mocked.__setWorkspaceFolders([{ name: 'repo', uri: vscode.Uri.file(repoRoot) }]);
+		mocked.__setFindFilesResultForPattern(configSearchPattern, []);
+		mocked.__setFindFilesResultForPattern(lvprojSearchPattern, [vscode.Uri.file(lvprojPath)]);
+		mocked.__setInformationMessageResponse('Later');
+
+		await controller.refreshWorkspaceInitializationState({ prompt: true });
+
+		const infos = mocked.__getMessageLog().filter((message) => message.level === 'info').map((message) => message.text);
+		assert.ok(infos.some((text) => text.includes('Detected csm/ and .lvproj files but no local CSM module config')));
+		assert.strictEqual(mocked.__getContextValue('csmModules.canInitializeWorkspace'), true);
+	});
+
+	test('initializeWorkspaceCommand recovers existing submodules and clears init toolbar state', async () => {
+		const { repoRoot, lvprojPath } = createWorkspaceFolderWithCsmProject('csm-init-run-');
+		const controller = createController() as any;
+		const recoveredConfig: LocalModuleConfig = {
+			version: '2',
+			root: DEFAULT_LOCAL_MODULE_ROOT,
+			configPath: path.join(repoRoot, DEFAULT_LOCAL_MODULE_ROOT, LOCAL_MODULE_CONFIG_FILE),
+			modules: {
+				local__module_a: {
+					key: 'local__module_a',
+					name: 'module-a',
+					owner: '',
+					source: 'https://github.com/org/module-a',
+					method: 'submodule',
+					path: 'csm/module-a',
+					ref: 'abc123',
+					branch: 'main',
+				},
+			},
+		};
+		let initializeCalled = false;
+
+		controller.workspaceModuleService = {
+			resolveGitRepositoryRoot: async () => repoRoot,
+			recoverConfigFromExistingSubmodules: async () => {
+				mocked.__setFindFilesResultForPattern(configSearchPattern, [vscode.Uri.file(recoveredConfig.configPath)]);
+				return recoveredConfig;
+			},
+			initializeConfig: async () => {
+				initializeCalled = true;
+				return recoveredConfig;
+			},
+		};
+
+		mocked.__setWorkspaceFolders([{ name: 'repo', uri: vscode.Uri.file(repoRoot) }]);
+		mocked.__setFindFilesResultForPattern(configSearchPattern, []);
+		mocked.__setFindFilesResultForPattern(lvprojSearchPattern, [vscode.Uri.file(lvprojPath)]);
+		mocked.__setInformationMessageResponse('Initialize');
+
+		await controller.initializeWorkspaceCommand();
+
+		assert.strictEqual(initializeCalled, false);
+		const infos = mocked.__getMessageLog().filter((message) => message.level === 'info').map((message) => message.text);
+		assert.ok(infos.some((text) => text.includes('Initialized local CSM module config from existing submodules')));
+		assert.strictEqual(mocked.__getContextValue('csmModules.canInitializeWorkspace'), false);
 	});
 
 	test('apply initializes config and writes module record', async () => {

@@ -32,6 +32,7 @@
     "onLanguage:csmlog",
     "onLanguage:lvcsm",
     "onView:csmModules.view",
+    "onCommand:csmModules.initializeWorkspace",
     "onCommand:csmModules.login",
     "onCommand:csmModules.refresh",
     "onCommand:csmModules.openReadme",
@@ -49,6 +50,11 @@
         "command": "csmModules.refresh",
         "title": "CSM Modules: Refresh",
         "icon": "$(refresh)"
+      },
+      {
+        "command": "csmModules.initializeWorkspace",
+        "title": "CSM Modules: Initialize Workspace Management",
+        "icon": "$(gear)"
       },
       {
         "command": "csmModules.openReadme",
@@ -74,26 +80,32 @@
       "csmModules": [
         {
           "id": "csmModules.view",
-          "name": "Available Modules"
+          "name": "Available Modules",
+          "type": "webview"
         }
       ]
     },
     "menus": {
       "view/title": [
         {
-          "command": "csmModules.applyToWorkspace",
-          "when": "view == csmModules.view",
+          "command": "csmModules.initializeWorkspace",
+          "when": "view == csmModules.view && csmModules.canInitializeWorkspace",
           "group": "navigation"
         },
         {
-          "command": "csmModules.refresh",
+          "command": "csmModules.applyToWorkspace",
           "when": "view == csmModules.view",
           "group": "navigation@1"
         },
         {
-          "command": "csmModules.login",
+          "command": "csmModules.refresh",
           "when": "view == csmModules.view",
           "group": "navigation@2"
+        },
+        {
+          "command": "csmModules.login",
+          "when": "view == csmModules.view",
+          "group": "navigation@3"
         }
       ],
       "view/item/context": [

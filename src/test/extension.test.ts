@@ -321,13 +321,18 @@ const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));
 const commands: Array<{ command: string; icon?: string }> = pkg.contributes?.commands ?? [];
 const viewContainers = pkg.contributes?.viewsContainers?.activitybar ?? [];
 const views = pkg.contributes?.views?.csmModules ?? [];
+const viewTitleMenus: Array<{ command: string; when?: string }> = pkg.contributes?.menus?.['view/title'] ?? [];
+const initMenu = viewTitleMenus.find((menu) => menu.command === 'csmModules.initializeWorkspace');
 assert.ok(commands.some((c) => c.command === 'csmModules.login'), 'csmModules.login command should be declared');
 assert.ok(commands.some((c) => c.command === 'csmModules.refresh'), 'csmModules.refresh command should be declared');
+assert.ok(commands.some((c) => c.command === 'csmModules.initializeWorkspace'), 'csmModules.initializeWorkspace command should be declared');
 assert.ok(commands.some((c) => c.command === 'csmModules.openReadme'), 'csmModules.openReadme command should be declared');
 assert.ok(commands.some((c) => c.command === 'csmModules.applyToWorkspace'), 'csmModules.applyToWorkspace command should be declared');
 assert.ok(commands.every((c) => typeof c.icon === 'string' && c.icon.startsWith('$(')), 'module manager commands should declare product icons for toolbar buttons');
 assert.ok(viewContainers.some((v: { id: string }) => v.id === 'csmModules'), 'csmModules activity bar container should be declared');
 assert.ok(views.some((v: { id: string }) => v.id === 'csmModules.view'), 'csmModules.view should be declared');
+assert.ok(initMenu, 'csmModules.initializeWorkspace should be available from the view title toolbar');
+assert.ok(initMenu?.when?.includes('csmModules.canInitializeWorkspace'), 'initialize toolbar entry should only show when a workspace needs initialization');
 assert.strictEqual(pkg.contributes?.snippets, undefined, 'contributes.snippets should not be declared');
 });
 

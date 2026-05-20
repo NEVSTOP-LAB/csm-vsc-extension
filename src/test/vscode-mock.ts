@@ -177,6 +177,45 @@ export class TreeView<T> extends Disposable {
     public selection: readonly T[] = [];
 }
 
+class MockWebview {
+    private messageListeners: Array<(message: unknown) => void> = [];
+    private webviewHtml = '';
+    public readonly cspSource = 'vscode-resource:';
+    public options: { enableScripts?: boolean } = {};
+    constructor(private readonly onHtmlChange: (html: string) => void) {}
+    asWebviewUri(uri: Uri): Uri {
+        return uri;
+    }
+    onDidReceiveMessage(listener: (message: unknown) => void): Disposable {
+        this.messageListeners.push(listener);
+        return new Disposable(() => {
+            this.messageListeners = this.messageListeners.filter((item) => item !== listener);
+        });
+    }
+    async postMessage(_message: unknown): Promise<boolean> {
+        return true;
+    }
+    get html(): string {
+        return this.webviewHtml;
+    }
+    set html(value: string) {
+        this.webviewHtml = value;
+        this.onHtmlChange(value);
+    }
+    __fireMessage(message: unknown): void {
+        for (const listener of this.messageListeners) {
+            listener(message);
+        }
+    }
+}
+
+class MockWebviewView {
+    public readonly webview: MockWebview;
+    constructor(onHtmlChange: (html: string) => void) {
+        this.webview = new MockWebview(onHtmlChange);
+    }
+}
+
 export class EventEmitter<T> {
     private listeners: Array<(value: T) => void> = [];
     public readonly event = (listener: (value: T) => void): Disposable => {
@@ -248,9 +287,15 @@ let informationResponse: unknown;
 let quickPickResponse: unknown;
 let inputBoxResponse: string | undefined;
 let findFilesResult: Uri[] = [];
+let findFilesResultByPattern = new Map<string, Uri[]>();
 let workspaceFoldersState: Array<{ name: string; uri: Uri }> | undefined;
 let configurationValues = new Map<string, unknown>();
+let contextValues = new Map<string, unknown>();
 let lastWebviewPanel: { title: string; html: string } | undefined;
+let lastWebviewView: { viewId: string; html: string } | undefined;
+
+const webviewViewProviders = new Map<string, { resolveWebviewView: (webviewView: unknown, context: unknown, token: unknown) => void }>();
+const webviewViews = new Map<string, MockWebviewView>();
 
 const commandMap = new Map<string, (...args: unknown[]) => unknown>();
 
@@ -260,6 +305,13 @@ export const commands = {
         return new Disposable(() => commandMap.delete(command));
     },
     async executeCommand(command: string, ...args: unknown[]): Promise<unknown> {
+        if (command === 'setContext') {
+            const [key, value] = args;
+            if (typeof key === 'string') {
+                contextValues.set(key, value);
+            }
+            return undefined;
+        }
         const handler = commandMap.get(command);
         if (!handler) {
             return undefined;
@@ -271,6 +323,13 @@ export const commands = {
 export const window = {
     registerTreeDataProvider: () => new Disposable(),
     createTreeView: <T>(_viewId: string, _options: unknown) => new TreeView<T>(),
+    registerWebviewViewProvider: (viewId: string, provider: { resolveWebviewView: (webviewView: unknown, context: unknown, token: unknown) => void }) => {
+        webviewViewProviders.set(viewId, provider);
+        return new Disposable(() => {
+            webviewViewProviders.delete(viewId);
+            webviewViews.delete(viewId);
+        });
+    },
     createWebviewPanel: (_viewType: string, title: string, _column: ViewColumn, _options: unknown) => {
         let webviewHtml = '';
         return {
@@ -341,6 +400,12 @@ export const workspace = {
         },
     },
     async findFiles(_include: unknown, _exclude?: unknown, _maxResults?: number): Promise<Uri[]> {
+        const pattern = typeof _include === 'object' && _include !== null && 'pattern' in _include
+            ? String((_include as { pattern: unknown }).pattern)
+            : undefined;
+        if (pattern && findFilesResultByPattern.has(pattern)) {
+            return [...(findFilesResultByPattern.get(pattern) ?? [])];
+        }
         return [...findFilesResult];
     },
     getWorkspaceFolder(uri: Uri): { name: string; uri: Uri } | undefined {
@@ -383,6 +448,10 @@ export function __setFindFilesResult(result: Uri[]): void {
     findFilesResult = [...result];
 }
 
+export function __setFindFilesResultForPattern(pattern: string, result: Uri[]): void {
+    findFilesResultByPattern.set(pattern, [...result]);
+}
+
 export function __setWorkspaceFolders(folders: Array<{ name: string; uri: Uri }> | undefined): void {
     workspaceFoldersState = folders;
     workspace.workspaceFolders = folders;
@@ -392,8 +461,36 @@ export function __setConfigurationValue(key: string, value: unknown): void {
     configurationValues.set(key, value);
 }
 
+export function __getContextValue(key: string): unknown {
+    return contextValues.get(key);
+}
+
 export function __getLastWebviewPanel(): { title: string; html: string } | undefined {
     return lastWebviewPanel ? { ...lastWebviewPanel } : undefined;
+}
+
+export function __resolveWebviewView(viewId: string): { html: string; fireMessage: (message: unknown) => void } | undefined {
+    const provider = webviewViewProviders.get(viewId);
+    if (!provider) {
+        return undefined;
+    }
+
+    const view = new MockWebviewView((html: string) => {
+        lastWebviewView = { viewId, html };
+    });
+    webviewViews.set(viewId, view);
+    provider.resolveWebviewView(view as unknown, {} as unknown, {} as unknown);
+
+    return {
+        html: view.webview.html,
+        fireMessage: (message: unknown) => {
+            view.webview.__fireMessage(message);
+        },
+    };
+}
+
+export function __getLastWebviewView(): { viewId: string; html: string } | undefined {
+    return lastWebviewView ? { ...lastWebviewView } : undefined;
 }
 
 export function __resetUiState(): void {
@@ -402,9 +499,14 @@ export function __resetUiState(): void {
     quickPickResponse = undefined;
     inputBoxResponse = undefined;
     findFilesResult = [];
+    findFilesResultByPattern = new Map<string, Uri[]>();
     workspaceFoldersState = undefined;
     configurationValues = new Map<string, unknown>();
+    contextValues = new Map<string, unknown>();
     lastWebviewPanel = undefined;
+    lastWebviewView = undefined;
+    webviewViewProviders.clear();
+    webviewViews.clear();
     workspace.workspaceFolders = undefined;
     window.activeTextEditor = undefined;
 }

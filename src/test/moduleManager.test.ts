@@ -4,9 +4,17 @@ import * as fs from 'fs/promises';
 import * as os from 'os';
 import * as path from 'path';
 import { ModuleCacheStore, mapRepoToModuleEntry } from '../moduleManager';
+import { ModuleSidebarViewProvider } from '../moduleManager/moduleSidebarViewProvider';
 import { ModuleTreeDataProvider, ModuleTreeItem } from '../moduleManager/moduleTreeDataProvider';
 import { GitHubRepoSummary } from '../moduleManager';
 import { LEGACY_LOCAL_MODULE_CONFIG_FILE, LOCAL_MODULE_CONFIG_FILE, WorkspaceModuleService } from '../moduleManager/workspaceModuleService';
+import * as vscode from 'vscode';
+
+type VscodeMock = typeof vscode & {
+	__resolveWebviewView: (viewId: string) => { html: string; fireMessage: (message: unknown) => void } | undefined;
+	__getLastWebviewView: () => { viewId: string; html: string } | undefined;
+	__resetUiState: () => void;
+};
 
 function runGit(cwd: string, args: string[]): string {
 	return execFileSync('git', args, {
@@ -36,6 +44,12 @@ class FakeMemento {
 }
 
 suite('Module Manager Tests', () => {
+	const mocked = vscode as VscodeMock;
+
+	teardown(() => {
+		mocked.__resetUiState();
+	});
+
 	test('mapRepoToModuleEntry maps visibility and owner fields', () => {
 		const repo: GitHubRepoSummary = {
 			id: 101,
@@ -153,6 +167,161 @@ suite('Module Manager Tests', () => {
 		const children = provider.getChildren();
 		assert.strictEqual(children.length, 1);
 		assert.strictEqual(children[0]?.contextValue, 'csmModuleEntry');
+	});
+
+	test('ModuleSidebarViewProvider renders extension-style module cards', () => {
+		const provider = new ModuleSidebarViewProvider({
+			onLogin: () => undefined,
+			onRefresh: () => undefined,
+			onInitializeWorkspace: () => undefined,
+			onOpenReadme: () => undefined,
+			onApplySelection: () => undefined,
+			onSelectionChange: () => undefined,
+		});
+
+		provider.setAuthenticated(true);
+		provider.setModules([
+			{
+				id: 1,
+				owner: 'org',
+				name: 'module-a',
+				description: 'A demo module',
+				topics: ['csm-modsets', 'automation'],
+				visibility: 'private',
+				defaultBranch: 'main',
+				repoUrl: 'https://github.com/org/module-a',
+			},
+			{
+				id: 2,
+				owner: 'org',
+				name: 'module-b',
+				description: 'Manual module',
+				topics: ['csm-modsets', 'manual'],
+				visibility: 'public',
+				defaultBranch: 'develop',
+				repoUrl: 'https://github.com/org/module-b',
+			},
+		]);
+		provider.setWorkspaceContext({
+			workspaceLabel: 'repo',
+			moduleRoot: 'csm',
+			appliedModuleKeys: ['org/module-a'],
+		});
+
+		const disposable = vscode.window.registerWebviewViewProvider('csmModules.view', provider);
+		const resolved = mocked.__resolveWebviewView('csmModules.view');
+		const rendered = mocked.__getLastWebviewView();
+
+		assert.ok(resolved);
+		assert.strictEqual(rendered?.viewId, 'csmModules.view');
+		assert.ok(rendered?.html.includes('module-card'));
+		assert.ok(rendered?.html.includes('module-a'));
+		assert.ok(rendered?.html.includes('@org'));
+		assert.ok(rendered?.html.includes('automation'));
+		assert.ok(rendered?.html.includes('placeholder="Search modules"'));
+		assert.ok(rendered?.html.includes('data-role="search-box"'));
+		assert.ok(rendered ? rendered.html.indexOf('placeholder="Search modules"') < rendered.html.indexOf('data-role="apply-selected"') : false);
+		assert.ok(rendered?.html.includes('Workspace: repo'));
+		assert.ok(rendered?.html.includes('Applied'));
+		assert.ok(rendered?.html.includes('data-role="apply-selected" hidden'));
+		assert.ok(rendered?.html.includes('title="Apply module"'));
+		assert.ok(rendered?.html.includes('title="Open README"'));
+		assert.ok(!rendered?.html.includes('class="avatar"'));
+		assert.ok(!rendered?.html.includes('title="Refresh modules"'));
+		assert.ok(rendered ? rendered.html.indexOf('Already recorded for repo') < rendered.html.indexOf('>automation</span>') : false);
+
+		provider.setSelection(['org/module-a']);
+		const selectedRender = mocked.__getLastWebviewView();
+		assert.ok(selectedRender?.html.includes('data-role="apply-selected"'));
+		assert.ok(!selectedRender?.html.includes('data-role="apply-selected" hidden'));
+
+		resolved?.fireMessage({ type: 'dismissIntroTip' });
+		const dismissedRender = mocked.__getLastWebviewView();
+		assert.ok(!dismissedRender?.html.includes('data-role="intro-tip"'));
+		disposable.dispose();
+	});
+
+	test('ModuleSidebarViewProvider forwards checkbox selection and card actions', () => {
+		const selectionUpdates: string[][] = [];
+		let appliedModuleName = '';
+		let openedReadmeName = '';
+		const provider = new ModuleSidebarViewProvider({
+			onLogin: () => undefined,
+			onRefresh: () => undefined,
+			onInitializeWorkspace: () => undefined,
+			onOpenReadme: (entry) => {
+				openedReadmeName = entry.name;
+			},
+			onApplySelection: (entry) => {
+				appliedModuleName = entry?.name ?? 'selected';
+			},
+			onSelectionChange: (moduleKeys) => {
+				selectionUpdates.push(moduleKeys);
+			},
+		});
+
+		provider.setAuthenticated(true);
+		provider.setModules([
+			{
+				id: 1,
+				owner: 'org',
+				name: 'module-a',
+				description: 'A demo module',
+				topics: ['csm-modsets'],
+				visibility: 'public',
+				defaultBranch: 'main',
+				repoUrl: 'https://github.com/org/module-a',
+			},
+			{
+				id: 2,
+				owner: 'org',
+				name: 'module-b',
+				description: 'Second module',
+				topics: ['csm-modsets', 'manual'],
+				visibility: 'public',
+				defaultBranch: 'main',
+				repoUrl: 'https://github.com/org/module-b',
+			},
+		]);
+
+		const disposable = vscode.window.registerWebviewViewProvider('csmModules.view', provider);
+		const resolved = mocked.__resolveWebviewView('csmModules.view');
+
+		resolved?.fireMessage({ type: 'setFilterQuery', query: 'module-a' });
+		provider.setModules([
+			{
+				id: 1,
+				owner: 'org',
+				name: 'module-a',
+				description: 'A demo module',
+				topics: ['csm-modsets'],
+				visibility: 'public',
+				defaultBranch: 'main',
+				repoUrl: 'https://github.com/org/module-a',
+			},
+			{
+				id: 2,
+				owner: 'org',
+				name: 'module-b',
+				description: 'Second module',
+				topics: ['csm-modsets', 'manual'],
+				visibility: 'public',
+				defaultBranch: 'main',
+				repoUrl: 'https://github.com/org/module-b',
+			},
+		]);
+		resolved?.fireMessage({ type: 'toggleSelection', moduleKey: 'org/module-a', selected: true });
+		resolved?.fireMessage({ type: 'openReadme', moduleKey: 'org/module-a' });
+		resolved?.fireMessage({ type: 'applyOne', moduleKey: 'org/module-a' });
+
+		const rerendered = mocked.__getLastWebviewView();
+		assert.ok(rerendered?.html.includes('value="module-a"'));
+		assert.ok(rerendered?.html.includes('1 of 2 shown | 1 selected'));
+		assert.ok(rerendered?.html.includes('data-role="apply-selected"'));
+		assert.deepStrictEqual(selectionUpdates[selectionUpdates.length - 1], ['org/module-a']);
+		assert.strictEqual(openedReadmeName, 'module-a');
+		assert.strictEqual(appliedModuleName, 'module-a');
+		disposable.dispose();
 	});
 
 	test('WorkspaceModuleService persists and reloads local module config', async () => {
