@@ -55,11 +55,6 @@ export class ModuleTreeItem extends vscode.TreeItem {
 			`Repository: ${moduleEntry.repoUrl}`,
 		].join('  \n'));
 		this.contextValue = 'csmModuleEntry';
-		this.command = {
-			command: 'csmModules.openReadme',
-			title: 'Open README',
-			arguments: [moduleEntry],
-		};
 	}
 }
 

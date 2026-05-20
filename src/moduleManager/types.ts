@@ -10,7 +10,28 @@ export interface CsmModuleEntry {
 	readme?: string;
 }
 
+export type ModuleApplyMethod = 'submodule' | 'copy';
+
+export interface LocalModuleConfigEntry {
+	key: string;
+	name: string;
+	owner: string;
+	source: string;
+	method: ModuleApplyMethod;
+	path: string;
+	ref: string;
+	branch: string;
+}
+
+export interface LocalModuleConfig {
+	version: string;
+	root: string;
+	configPath: string;
+	modules: Record<string, LocalModuleConfigEntry>;
+}
+
 export interface ModuleCacheSnapshot {
+	schemaVersion?: number;
 	lastRefreshAt: string;
 	modules: CsmModuleEntry[];
 }

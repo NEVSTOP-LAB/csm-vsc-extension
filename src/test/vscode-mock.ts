@@ -173,6 +173,10 @@ export class Disposable {
     }
 }
 
+export class TreeView<T> extends Disposable {
+    public selection: readonly T[] = [];
+}
+
 export class EventEmitter<T> {
     private listeners: Array<(value: T) => void> = [];
     public readonly event = (listener: (value: T) => void): Disposable => {
@@ -217,7 +221,7 @@ export enum ViewColumn {
 }
 
 export class Uri {
-    constructor(private readonly fsPath: string) {}
+    constructor(public readonly fsPath: string) {}
     static joinPath(base: Uri, ...segments: string[]): Uri {
         return new Uri(path.join(base.fsPath, ...segments));
     }
@@ -229,10 +233,24 @@ export class Uri {
     }
 }
 
+export class RelativePattern {
+    constructor(
+        public readonly baseUri: Uri | { uri: Uri },
+        public readonly pattern: string,
+    ) {}
+}
+
 type MessageLevel = 'info' | 'warn' | 'error';
 
 const messageLog: Array<{ level: MessageLevel; text: string }> = [];
 let warningResponse: string | undefined;
+let informationResponse: unknown;
+let quickPickResponse: unknown;
+let inputBoxResponse: string | undefined;
+let findFilesResult: Uri[] = [];
+let workspaceFoldersState: Array<{ name: string; uri: Uri }> | undefined;
+let configurationValues = new Map<string, unknown>();
+let lastWebviewPanel: { title: string; html: string } | undefined;
 
 const commandMap = new Map<string, (...args: unknown[]) => unknown>();
 
@@ -252,29 +270,61 @@ export const commands = {
 
 export const window = {
     registerTreeDataProvider: () => new Disposable(),
-    createWebviewPanel: (_viewType: string, _title: string, _column: ViewColumn, _options: unknown) => ({
-        webview: {
-            cspSource: 'vscode-resource:',
-            asWebviewUri: (uri: Uri) => uri,
-            html: '',
-        },
-    }),
+    createTreeView: <T>(_viewId: string, _options: unknown) => new TreeView<T>(),
+    createWebviewPanel: (_viewType: string, title: string, _column: ViewColumn, _options: unknown) => {
+        let webviewHtml = '';
+        return {
+            webview: {
+                cspSource: 'vscode-resource:',
+                asWebviewUri: (uri: Uri) => uri,
+                get html(): string {
+                    return webviewHtml;
+                },
+                set html(value: string) {
+                    webviewHtml = value;
+                    lastWebviewPanel = {
+                        title,
+                        html: value,
+                    };
+                },
+            },
+        };
+    },
     async showWarningMessage(message: string, ..._items: unknown[]): Promise<string | undefined> {
         messageLog.push({ level: 'warn', text: message });
         return warningResponse;
     },
-    async showInformationMessage(message: string): Promise<void> {
+    async showInformationMessage(message: string, ...items: unknown[]): Promise<unknown> {
         messageLog.push({ level: 'info', text: message });
+        return items.length > 0 ? informationResponse : undefined;
     },
     async showErrorMessage(message: string): Promise<void> {
         messageLog.push({ level: 'error', text: message });
     },
+    async showQuickPick<T>(_items: readonly T[] | Promise<readonly T[]>, _options?: unknown): Promise<T | undefined> {
+        return quickPickResponse as T | undefined;
+    },
+    async showInputBox(_options?: unknown): Promise<string | undefined> {
+        return inputBoxResponse;
+    },
     async showTextDocument(): Promise<void> {
         return;
     },
+    activeTextEditor: undefined as { document: { uri: Uri } } | undefined,
 };
 
 export const workspace = {
+    workspaceFolders: workspaceFoldersState as Array<{ name: string; uri: Uri }> | undefined,
+    getConfiguration(section?: string): { get: <T>(key: string, defaultValue?: T) => T } {
+        return {
+            get<T>(key: string, defaultValue?: T): T {
+                const fullKey = section ? `${section}.${key}` : key;
+                return configurationValues.has(fullKey)
+                    ? configurationValues.get(fullKey) as T
+                    : defaultValue as T;
+            },
+        };
+    },
     fs: {
         async createDirectory(uri: Uri): Promise<void> {
             fs.mkdirSync(uri.toString(), { recursive: true });
@@ -289,6 +339,12 @@ export const workspace = {
         async stat(uri: Uri): Promise<unknown> {
             return fs.statSync(uri.toString());
         },
+    },
+    async findFiles(_include: unknown, _exclude?: unknown, _maxResults?: number): Promise<Uri[]> {
+        return [...findFilesResult];
+    },
+    getWorkspaceFolder(uri: Uri): { name: string; uri: Uri } | undefined {
+        return workspace.workspaceFolders?.find((folder) => uri.fsPath.startsWith(folder.uri.fsPath));
     },
     async openTextDocument(options: { language: string; content: string }): Promise<{ uri: { toString: () => string }; getText: () => string; languageId: string }> {
         return {
@@ -309,6 +365,48 @@ export function __resetMessageLog(): void {
 
 export function __setWarningMessageResponse(response: string | undefined): void {
     warningResponse = response;
+}
+
+export function __setInformationMessageResponse(response: unknown): void {
+    informationResponse = response;
+}
+
+export function __setQuickPickResponse(response: unknown): void {
+    quickPickResponse = response;
+}
+
+export function __setInputBoxResponse(response: string | undefined): void {
+    inputBoxResponse = response;
+}
+
+export function __setFindFilesResult(result: Uri[]): void {
+    findFilesResult = [...result];
+}
+
+export function __setWorkspaceFolders(folders: Array<{ name: string; uri: Uri }> | undefined): void {
+    workspaceFoldersState = folders;
+    workspace.workspaceFolders = folders;
+}
+
+export function __setConfigurationValue(key: string, value: unknown): void {
+    configurationValues.set(key, value);
+}
+
+export function __getLastWebviewPanel(): { title: string; html: string } | undefined {
+    return lastWebviewPanel ? { ...lastWebviewPanel } : undefined;
+}
+
+export function __resetUiState(): void {
+    warningResponse = undefined;
+    informationResponse = undefined;
+    quickPickResponse = undefined;
+    inputBoxResponse = undefined;
+    findFilesResult = [];
+    workspaceFoldersState = undefined;
+    configurationValues = new Map<string, unknown>();
+    lastWebviewPanel = undefined;
+    workspace.workspaceFolders = undefined;
+    window.activeTextEditor = undefined;
 }
 
 // ---------------------------------------------------------------------------

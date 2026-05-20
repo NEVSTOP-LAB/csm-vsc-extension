@@ -34,22 +34,31 @@
     "onView:csmModules.view",
     "onCommand:csmModules.login",
     "onCommand:csmModules.refresh",
-    "onCommand:csmModules.openReadme"
+    "onCommand:csmModules.openReadme",
+    "onCommand:csmModules.applyToWorkspace"
   ],
   "main": "./dist/extension.js",
   "contributes": {
     "commands": [
       {
         "command": "csmModules.login",
-        "title": "CSM Modules: Sign In to GitHub"
+        "title": "CSM Modules: Sign In to GitHub",
+        "icon": "$(account)"
       },
       {
         "command": "csmModules.refresh",
-        "title": "CSM Modules: Refresh"
+        "title": "CSM Modules: Refresh",
+        "icon": "$(refresh)"
       },
       {
         "command": "csmModules.openReadme",
-        "title": "CSM Modules: Open README"
+        "title": "CSM Modules: Open README",
+        "icon": "$(book)"
+      },
+      {
+        "command": "csmModules.applyToWorkspace",
+        "title": "CSM Modules: Apply to Current Repository",
+        "icon": "$(repo-pull)"
       }
     ],
     "viewsContainers": {
@@ -72,21 +81,31 @@
     "menus": {
       "view/title": [
         {
-          "command": "csmModules.refresh",
+          "command": "csmModules.applyToWorkspace",
           "when": "view == csmModules.view",
           "group": "navigation"
         },
         {
-          "command": "csmModules.login",
+          "command": "csmModules.refresh",
           "when": "view == csmModules.view",
           "group": "navigation@1"
+        },
+        {
+          "command": "csmModules.login",
+          "when": "view == csmModules.view",
+          "group": "navigation@2"
         }
       ],
       "view/item/context": [
         {
+          "command": "csmModules.applyToWorkspace",
+          "when": "view == csmModules.view && viewItem == csmModuleEntry",
+          "group": "inline@1"
+        },
+        {
           "command": "csmModules.openReadme",
           "when": "view == csmModules.view && viewItem == csmModuleEntry",
-          "group": "inline"
+          "group": "inline@2"
         }
       ]
     },
@@ -97,7 +116,7 @@
           "type": "number",
           "default": 60,
           "minimum": 1,
-          "description": "Preferred cache time for module list and README content in minutes."
+          "description": "Preferred cache reuse time in minutes before the module list and README cache are refreshed in the background."
         }
       }
     },
