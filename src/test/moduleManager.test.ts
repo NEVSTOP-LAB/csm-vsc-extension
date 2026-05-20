@@ -1,6 +1,6 @@
 import * as assert from 'assert';
 import { ModuleCacheStore, mapRepoToModuleEntry } from '../moduleManager';
-import { ModuleTreeItem } from '../moduleManager/moduleTreeDataProvider';
+import { ModuleTreeDataProvider, ModuleTreeItem } from '../moduleManager/moduleTreeDataProvider';
 import { GitHubRepoSummary } from '../moduleManager';
 
 class FakeMemento {
@@ -83,11 +83,37 @@ suite('Module Manager Tests', () => {
 		};
 
 		const item = new ModuleTreeItem(entry);
+		const rawLabel = item.label;
+		const label = typeof rawLabel === 'string' ? rawLabel : String(rawLabel?.label ?? '');
+		const highlights = typeof rawLabel === 'string' ? [] : (rawLabel?.highlights ?? []);
 		const description = String(item.description ?? '');
 		const tooltip = item.tooltip instanceof Object && 'value' in item.tooltip ? String((item.tooltip as { value?: string }).value ?? '') : String(item.tooltip ?? '');
-		assert.ok(description.includes('org'));
-		assert.ok(description.includes('private'));
-		assert.ok(description.includes('csm-modsets'));
+		assert.ok(label.includes('[GH]'));
+		assert.ok(label.includes('[PRI]'));
+		assert.deepStrictEqual(highlights, [[0, 'module-a'.length]]);
+		assert.ok(description.includes('@org'));
+		assert.strictEqual(item.collapsibleState, 2);
 		assert.ok(tooltip.includes('Topics: csm-modsets, automation'));
+	});
+
+	test('ModuleTreeDataProvider keeps refresh only in the title bar when signed in', () => {
+		const provider = new ModuleTreeDataProvider();
+		provider.setAuthenticated(true);
+		provider.setModules([
+			{
+				id: 1,
+				owner: 'org',
+				name: 'module-a',
+				description: 'A demo module',
+				topics: ['csm-modsets'],
+				visibility: 'public',
+				defaultBranch: 'main',
+				repoUrl: 'https://github.com/org/module-a',
+			},
+		]);
+
+		const children = provider.getChildren();
+		assert.strictEqual(children.length, 1);
+		assert.strictEqual(children[0]?.contextValue, 'csmModuleEntry');
 	});
 });

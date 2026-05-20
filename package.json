@@ -2,7 +2,7 @@
   "name": "csm-vsc-support",
   "displayName": "Communicable State Machine(CSM)",
   "description": "Language support for Communicable State Machine (CSM) files in Visual Studio Code",
-  "version": "0.0.14",
+  "version": "0.0.20",
   "license": "AGPL-3.0-only",
   "publisher": "NEVSTOP-LAB",
   "icon": "images/icon.png",

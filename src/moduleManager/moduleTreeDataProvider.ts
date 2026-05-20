@@ -17,13 +17,33 @@ class ModuleActionItem extends vscode.TreeItem {
 	}
 }
 
+class ModuleDetailItem extends vscode.TreeItem {
+	constructor(label: string, iconId: string) {
+		super(label, vscode.TreeItemCollapsibleState.None);
+		this.iconPath = new vscode.ThemeIcon(iconId);
+		this.contextValue = 'csmModuleDetail';
+	}
+}
+
+function truncate(text: string, maxLength: number): string {
+	if (text.length <= maxLength) {
+		return text;
+	}
+	return `${text.slice(0, maxLength - 3)}...`;
+}
+
 export class ModuleTreeItem extends vscode.TreeItem {
 	constructor(public readonly moduleEntry: CsmModuleEntry) {
-		super(moduleEntry.name, vscode.TreeItemCollapsibleState.None);
+		super(moduleEntry.name, vscode.TreeItemCollapsibleState.Expanded);
 		const topics = moduleEntry.topics ?? [];
-		const topicSummary = topics.slice(0, 3).join(', ');
 		const visibilityLabel = moduleEntry.visibility === 'private' ? 'private' : 'public';
-		this.description = [moduleEntry.owner, visibilityLabel, moduleEntry.defaultBranch, topicSummary].filter(Boolean).join(' · ');
+		const shortName = truncate(moduleEntry.name, 36);
+		const visibilityTag = moduleEntry.visibility === 'private' ? '[PRI]' : '[PUB]';
+		this.label = {
+			label: `${shortName}  [GH] ${visibilityTag}`,
+			highlights: [[0, shortName.length]],
+		};
+		this.description = `@${moduleEntry.owner}`;
 		this.iconPath = new vscode.ThemeIcon(moduleEntry.visibility === 'private' ? 'lock' : 'repo');
 		this.tooltip = new vscode.MarkdownString([
 			`**${moduleEntry.name}**`,
@@ -84,18 +104,23 @@ export class ModuleTreeDataProvider implements vscode.TreeDataProvider<ModuleTre
 		return element;
 	}
 
-	public getChildren(): Array<ModuleTreeItem | vscode.TreeItem> {
-		if (this.state === 'ready') {
+	public getChildren(element?: ModuleTreeItem | vscode.TreeItem): Array<ModuleTreeItem | vscode.TreeItem> {
+		if (element instanceof ModuleTreeItem) {
+			const topics = element.moduleEntry.topics ?? [];
+			const topicsText = topics.length > 0 ? topics.join(', ') : 'none';
+			const line2 = `> topics: ${truncate(topicsText, 64)} | branch: ${element.moduleEntry.defaultBranch}`;
+			const summaryText = element.moduleEntry.description ? element.moduleEntry.description : 'No description';
+			const line3 = `> summary: ${truncate(summaryText, 86)}`;
 			return [
-				new ModuleActionItem('Refresh modules', 'csmModules.refresh', 'Refresh modules from GitHub after confirmation.', 'refresh'),
-				...this.modules.map((moduleEntry) => new ModuleTreeItem(moduleEntry)),
+				new ModuleDetailItem(line2, 'tag'),
+				new ModuleDetailItem(line3, 'info'),
 			];
 		}
+		if (this.state === 'ready') {
+			return this.modules.map((moduleEntry) => new ModuleTreeItem(moduleEntry));
+		}
 		if (this.signedIn) {
-			return [
-				new ModuleActionItem('Refresh modules', 'csmModules.refresh', 'Refresh modules from GitHub after confirmation.', 'refresh'),
-				new vscode.TreeItem(this.message, vscode.TreeItemCollapsibleState.None),
-			];
+			return [new vscode.TreeItem(this.message, vscode.TreeItemCollapsibleState.None)];
 		}
 		return [
 			new ModuleActionItem('Sign in to GitHub', 'csmModules.login', 'Sign in to GitHub to load modules.', 'account'),

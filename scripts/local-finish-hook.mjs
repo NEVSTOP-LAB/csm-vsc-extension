@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
-import { execSync } from 'child_process';
+import { execSync, execFileSync } from 'child_process';
 import semver from 'semver';
 
 const root = process.cwd();
@@ -16,6 +16,35 @@ function run(command) {
 
 function runCapture(command) {
 	return execSync(command, { stdio: ['ignore', 'pipe', 'pipe'], cwd: root }).toString('utf8').trim();
+}
+
+function quote(value) {
+	return `"${String(value).replace(/"/g, '\\"')}"`;
+}
+
+function resolveCodeCommand() {
+	if (process.env.VSCODE_CLI) {
+		return process.env.VSCODE_CLI;
+	}
+	const localAppData = process.env.LOCALAPPDATA;
+	if (localAppData) {
+		const vscodeRoot = path.join(localAppData, 'Programs', 'Microsoft VS Code');
+		const codeCli = path.join(vscodeRoot, 'bin', 'code.cmd');
+		if (fs.existsSync(codeCli)) {
+			return codeCli;
+		}
+		const codeExe = path.join(vscodeRoot, 'Code.exe');
+		if (fs.existsSync(codeExe)) {
+			return codeExe;
+		}
+	}
+	return 'code';
+}
+
+function runFile(command, args) {
+	const renderedArgs = args.map((arg) => quote(arg)).join(' ');
+	console.log(`[hook] ${quote(command)} ${renderedArgs}`);
+	execFileSync(command, args, { stdio: 'inherit', cwd: root });
 }
 
 function getChangedFiles() {
@@ -98,9 +127,11 @@ function updateVersionAndDocs() {
 function installVsix(version) {
 	const vsixFile = `csm-vsc-support-${version}.vsix`;
 	const extensionsDir = process.env.VSCODE_EXTENSIONS_DIR || path.join(os.homedir(), '.vscode', 'extensions');
+	const codeCommand = resolveCodeCommand();
+	const nodeCommand = process.execPath;
 	run(`npx @vscode/vsce@3.7.1 package --no-dependencies`);
-	run(`code --extensions-dir "${extensionsDir}" --install-extension .\\${vsixFile} --force`);
-	run(`node scripts/verify-local-install.mjs --extensions-dir "${extensionsDir}" --version ${version}`);
+	runFile(codeCommand, ['--extensions-dir', extensionsDir, '--install-extension', `.\\${vsixFile}`, '--force']);
+	runFile(nodeCommand, ['scripts/verify-local-install.mjs', '--extensions-dir', extensionsDir, '--version', version]);
 }
 
 function main() {
