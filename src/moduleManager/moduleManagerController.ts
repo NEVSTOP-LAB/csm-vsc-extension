@@ -526,11 +526,21 @@ export class ModuleManagerController {
 	}): Promise<void> {
 		const token = await this.ensureToken(options.interactiveAuth);
 		if (!token) {
-			if (options.interactiveAuth) {
+			// Offline mode (review item 7.4): if we have a cached snapshot, surface it
+			// instead of an error so users can browse the catalog without GitHub access.
+			if (this.availableModules.length > 0) {
+				if (typeof this.treeDataProvider.setOfflineMode === 'function') {
+					this.treeDataProvider.setOfflineMode(true);
+				}
+				this.treeDataProvider.setModules(this.availableModules);
+			} else if (options.interactiveAuth) {
 				this.treeDataProvider.setError('GitHub sign-in is required to refresh modules.');
 				void vscode.window.showWarningMessage('Unable to refresh modules without a GitHub session.');
 			}
 			return;
+		}
+		if (typeof this.treeDataProvider.setOfflineMode === 'function') {
+			this.treeDataProvider.setOfflineMode(false);
 		}
 		this.treeDataProvider.setAuthenticated(true);
 
