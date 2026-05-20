@@ -54,6 +54,7 @@ export class ModuleManagerController {
 	private readonly workspaceModuleService = new WorkspaceModuleService();
 	private readonly readmeCache: Record<string, string>;
 	private availableModules: CsmModuleEntry[] = [];
+	private currentSortField: ModuleSortField = 'name';
 	private readonly selectedModuleKeys = new Set<string>();
 	private currentToken: string | undefined;
 	private lastTokenVerifiedAt = 0;
@@ -80,6 +81,9 @@ export class ModuleManagerController {
 			vscode.commands.registerCommand(COMMAND_IDS.initializeWorkspace, wrapCommand(COMMAND_IDS.initializeWorkspace, () => this.initializeWorkspaceCommand(), this.logger)),
 			vscode.commands.registerCommand(COMMAND_IDS.openReadme, wrapCommand(COMMAND_IDS.openReadme, (entry?: CsmModuleEntry | ModuleTreeItem) => this.openReadmeCommand(entry), this.logger)),
 			vscode.commands.registerCommand(COMMAND_IDS.applyToWorkspace, wrapCommand(COMMAND_IDS.applyToWorkspace, (entry?: CsmModuleEntry | ModuleTreeItem) => this.applyToWorkspaceCommand(entry), this.logger)),
+			vscode.commands.registerCommand(COMMAND_IDS.removeModule, wrapCommand(COMMAND_IDS.removeModule, (entry?: CsmModuleEntry | ModuleTreeItem) => this.removeModuleCommand(entry), this.logger)),
+			vscode.commands.registerCommand(COMMAND_IDS.updateModule, wrapCommand(COMMAND_IDS.updateModule, (entry?: CsmModuleEntry | ModuleTreeItem) => this.updateModuleCommand(entry), this.logger)),
+			vscode.commands.registerCommand(COMMAND_IDS.setSortOrder, wrapCommand(COMMAND_IDS.setSortOrder, (field?: ModuleSortField) => this.setSortOrderCommand(field), this.logger)),
 		);
 
 		const cached = this.cacheStore.getModuleSnapshot();
@@ -255,6 +259,160 @@ export class ModuleManagerController {
 			`Applied ${selectedEntries.length} module(s) via ${applyMethod}. Config: ${path.relative(repoRoot, config.configPath).replace(/\\/g, '/')}`,
 		);
 		await this.refreshSidebarWorkspaceState();
+	}
+
+	private async removeModuleCommand(entry?: CsmModuleEntry | ModuleTreeItem): Promise<void> {
+		const resolvedEntry = this.resolveModuleEntry(entry);
+		const workspaceFolder = await this.resolveWorkspaceFolder();
+		if (!workspaceFolder) {
+			void vscode.window.showWarningMessage('Open the target repository as a workspace folder before removing modules.');
+			return;
+		}
+		const repoRoot = await this.workspaceModuleService.resolveGitRepositoryRoot(workspaceFolder.uri.fsPath);
+		if (!repoRoot) {
+			void vscode.window.showErrorMessage('The current workspace folder is not a Git repository.');
+			return;
+		}
+		let config = await this.tryLoadSidebarLocalModuleConfig(workspaceFolder, repoRoot);
+		if (!config) {
+			void vscode.window.showWarningMessage('No CSM module configuration found in this workspace.');
+			return;
+		}
+		const target = this.findAppliedEntryFor(config, resolvedEntry);
+		if (!target) {
+			void vscode.window.showWarningMessage('Selected module is not currently applied to this workspace.');
+			return;
+		}
+		const confirmation = await vscode.window.showWarningMessage(
+			`Remove module ${target.owner}/${target.name} from ${path.basename(repoRoot)}? This deletes ${target.path}.`,
+			{ modal: true },
+			'Remove',
+			'Cancel',
+		);
+		if (confirmation !== 'Remove') {
+			return;
+		}
+		try {
+			await vscode.window.withProgress(
+				{
+					location: vscode.ProgressLocation.Notification,
+					title: `Removing ${target.owner}/${target.name}...`,
+					cancellable: false,
+				},
+				async () => {
+					await this.workspaceModuleService.removeModule(repoRoot, target);
+					config = this.workspaceModuleService.withoutModule(config!, target.key);
+					await this.workspaceModuleService.writeConfig(config);
+				},
+			);
+		} catch (error) {
+			const message = error instanceof Error ? error.message : 'Unknown error';
+			this.logger.error(`Failed to remove module ${target.owner}/${target.name}: ${message}`);
+			void vscode.window.showErrorMessage(`Failed to remove module: ${message}`);
+			return;
+		}
+		void vscode.window.showInformationMessage(`Removed module ${target.owner}/${target.name}.`);
+		await this.refreshSidebarWorkspaceState();
+	}
+
+	private async updateModuleCommand(entry?: CsmModuleEntry | ModuleTreeItem): Promise<void> {
+		const resolvedEntry = this.resolveModuleEntry(entry);
+		const workspaceFolder = await this.resolveWorkspaceFolder();
+		if (!workspaceFolder) {
+			void vscode.window.showWarningMessage('Open the target repository as a workspace folder before updating modules.');
+			return;
+		}
+		const repoRoot = await this.workspaceModuleService.resolveGitRepositoryRoot(workspaceFolder.uri.fsPath);
+		if (!repoRoot) {
+			void vscode.window.showErrorMessage('The current workspace folder is not a Git repository.');
+			return;
+		}
+		let config = await this.tryLoadSidebarLocalModuleConfig(workspaceFolder, repoRoot);
+		if (!config) {
+			void vscode.window.showWarningMessage('No CSM module configuration found in this workspace.');
+			return;
+		}
+		const target = this.findAppliedEntryFor(config, resolvedEntry);
+		if (!target) {
+			void vscode.window.showWarningMessage('Selected module is not currently applied to this workspace.');
+			return;
+		}
+		const moduleEntry = this.findAvailableModule(target.owner, target.name) ?? this.synthesizeModuleEntry(target);
+		const authToken = await this.ensureToken(moduleEntry.visibility === 'private');
+		try {
+			let updated: LocalModuleConfigEntry | undefined;
+			await vscode.window.withProgress(
+				{
+					location: vscode.ProgressLocation.Notification,
+					title: `Updating ${target.owner}/${target.name}...`,
+					cancellable: false,
+				},
+				async () => {
+					updated = await this.workspaceModuleService.updateModule(repoRoot, target, moduleEntry, authToken);
+					config = this.workspaceModuleService.withAppliedModule(config!, updated);
+					await this.workspaceModuleService.writeConfig(config);
+				},
+			);
+			void vscode.window.showInformationMessage(`Updated ${target.owner}/${target.name} to ${updated?.ref ?? 'latest'}.`);
+		} catch (error) {
+			const message = error instanceof Error ? error.message : 'Unknown error';
+			this.logger.error(`Failed to update module ${target.owner}/${target.name}: ${message}`);
+			void vscode.window.showErrorMessage(`Failed to update module: ${message}`);
+			return;
+		}
+		await this.refreshSidebarWorkspaceState();
+	}
+
+	private setSortOrderCommand(field?: ModuleSortField): void {
+		const allowed: ModuleSortField[] = ['name', 'owner', 'updatedAt'];
+		const next: ModuleSortField = (field && allowed.includes(field)) ? field : 'name';
+		this.currentSortField = next;
+		this.applyModuleSort();
+		if (typeof this.treeDataProvider.setSortOrder === 'function') {
+			this.treeDataProvider.setSortOrder(next);
+		}
+		this.treeDataProvider.setModules(this.availableModules);
+	}
+
+	private applyModuleSort(): void {
+		const field = this.currentSortField;
+		const sorted = [...this.availableModules];
+		sorted.sort((a, b) => {
+			if (field === 'owner') {
+				const owner = a.owner.localeCompare(b.owner);
+				return owner !== 0 ? owner : a.name.localeCompare(b.name);
+			}
+			if (field === 'updatedAt') {
+				return (b.updatedAt ?? '').localeCompare(a.updatedAt ?? '');
+			}
+			return a.name.localeCompare(b.name);
+		});
+		this.availableModules = sorted;
+	}
+
+	private findAppliedEntryFor(config: LocalModuleConfig, entry: CsmModuleEntry | undefined): LocalModuleConfigEntry | undefined {
+		const candidates = Object.values(config.modules);
+		if (!entry) {
+			return candidates.length === 1 ? candidates[0] : undefined;
+		}
+		return candidates.find((m) => m.owner === entry.owner && m.name === entry.name);
+	}
+
+	private findAvailableModule(owner: string, name: string): CsmModuleEntry | undefined {
+		return this.availableModules.find((m) => m.owner === owner && m.name === name);
+	}
+
+	private synthesizeModuleEntry(entry: LocalModuleConfigEntry): CsmModuleEntry {
+		return {
+			id: 0,
+			owner: entry.owner,
+			name: entry.name,
+			description: '',
+			topics: [],
+			visibility: 'public',
+			defaultBranch: entry.branch || 'main',
+			repoUrl: entry.source,
+		};
 	}
 
 	private async initializeWorkspaceCommand(workspaceFolder?: vscode.WorkspaceFolder): Promise<void> {

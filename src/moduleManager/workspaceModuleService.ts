@@ -145,6 +145,83 @@ export class WorkspaceModuleService {
 		};
 	}
 
+	/** Drop a module from the in-memory config (review item 7.1). */
+	public withoutModule(config: LocalModuleConfig, moduleKey: string): LocalModuleConfig {
+		const { [moduleKey]: _omitted, ...rest } = config.modules;
+		return { ...config, modules: rest };
+	}
+
+	/**
+	 * Remove a module from the workspace: deinit the submodule (if any), delete the
+	 * working tree, and erase any stale `.git/modules/<path>` cache.
+	 *
+	 * Review item 7.1 — implements `csmModules.removeModule` end-to-end.
+	 */
+	public async removeModule(repoRoot: string, entry: LocalModuleConfigEntry): Promise<void> {
+		const targetAbsolute = this.toAbsoluteTargetPath(repoRoot, entry.path);
+		if (entry.method === 'submodule') {
+			try {
+				await this.runGit(repoRoot, ['submodule', 'deinit', '-f', '--', entry.path]);
+			} catch {
+				// already deinitialized; continue
+			}
+			try {
+				await this.runGit(repoRoot, ['rm', '-rf', '--', entry.path]);
+			} catch {
+				// fall through to manual removal
+			}
+			const submoduleGitDir = path.join(repoRoot, '.git', 'modules', ...entry.path.split('/'));
+			try {
+				await fs.rm(submoduleGitDir, { recursive: true, force: true });
+			} catch {
+				// best effort
+			}
+		}
+		try {
+			await fs.rm(targetAbsolute, { recursive: true, force: true });
+		} catch {
+			// best effort: directory may not exist
+		}
+	}
+
+	/**
+	 * Update an applied module to the latest commit on its tracked branch.
+	 *
+	 * For submodules, runs `git submodule update --remote`. For copies, recreates the
+	 * working tree from a fresh shallow clone (review item 7.2).
+	 */
+	public async updateModule(
+		repoRoot: string,
+		entry: LocalModuleConfigEntry,
+		moduleEntry: CsmModuleEntry,
+		authToken?: string,
+	): Promise<LocalModuleConfigEntry> {
+		const targetRelativePath = entry.path;
+		const targetAbsolute = this.toAbsoluteTargetPath(repoRoot, targetRelativePath);
+
+		if (entry.method === 'submodule') {
+			await this.runGit(repoRoot, ['submodule', 'update', '--remote', '--', targetRelativePath], authToken, entry.source);
+			const head = await this.runGit(targetAbsolute, ['rev-parse', 'HEAD']);
+			return { ...entry, ref: head };
+		}
+
+		// copy mode: rewrite the directory from a fresh shallow clone.
+		await fs.rm(targetAbsolute, { recursive: true, force: true });
+		const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'csm-update-'));
+		try {
+			const branch = entry.branch || moduleEntry.defaultBranch;
+			await this.runGit(tmpDir, ['clone', '--depth', '1', '--branch', branch, entry.source, 'src'], authToken, entry.source);
+			const cloneRoot = path.join(tmpDir, 'src');
+			const head = await this.runGit(cloneRoot, ['rev-parse', 'HEAD']);
+			await fs.mkdir(path.dirname(targetAbsolute), { recursive: true });
+			await fs.cp(cloneRoot, targetAbsolute, { recursive: true });
+			await fs.rm(path.join(targetAbsolute, '.git'), { recursive: true, force: true });
+			return { ...entry, ref: head, branch };
+		} finally {
+			await fs.rm(tmpDir, { recursive: true, force: true });
+		}
+	}
+
 	public async targetExists(repoRoot: string, targetRelativePath: string): Promise<boolean> {
 		try {
 			await fs.stat(this.toAbsoluteTargetPath(repoRoot, targetRelativePath));

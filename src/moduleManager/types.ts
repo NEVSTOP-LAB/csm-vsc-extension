@@ -8,6 +8,7 @@ export interface CsmModuleEntry {
 	defaultBranch: string;
 	repoUrl: string;
 	readme?: string;
+	updatedAt?: string;
 }
 
 export type ModuleApplyMethod = 'submodule' | 'copy';
@@ -45,4 +46,5 @@ export interface GitHubRepoSummary {
 	default_branch: string;
 	html_url: string;
 	topics?: string[];
+	updated_at?: string;
 }
