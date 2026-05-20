@@ -97,6 +97,7 @@ export class ReadmeAssetCache {
 		const markdownUri = this.getMarkdownUri(entry);
 		await ensureDir(this.getEntryDir(entry));
 		await vscode.workspace.fs.writeFile(markdownUri, Buffer.from(markdown, 'utf8'));
+		await this.prefetchImages(entry, markdown);
 	}
 
 	public async readMarkdown(entry: CsmModuleEntry): Promise<string | undefined> {
@@ -132,6 +133,21 @@ export class ReadmeAssetCache {
 		rendered = rendered.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
 		rendered = rendered.replace(/\*([^*]+)\*/g, '<em>$1</em>');
 		return rendered;
+	}
+
+	private async prefetchImages(entry: CsmModuleEntry, markdown: string): Promise<void> {
+		const imageMatches = [...markdown.matchAll(/!\[([^\]]*)\]\(([^)]+)\)/g)];
+		for (const match of imageMatches) {
+			const source = (match[2] ?? '').trim();
+			if (!source) {
+				continue;
+			}
+			try {
+				await this.downloadAsset(entry, source);
+			} catch {
+				// Best-effort cache population; rendering will fall back to the source URL if needed.
+			}
+		}
 	}
 
 	public async renderMarkdown(entry: CsmModuleEntry, markdown: string, webview: vscode.Webview): Promise<string> {
