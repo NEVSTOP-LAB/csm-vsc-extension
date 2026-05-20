@@ -1,8 +1,9 @@
 import { CsmModuleEntry, GitHubRepoSummary } from './types';
+import { GITHUB } from './constants';
 
-const GITHUB_API_BASE = 'https://api.github.com';
-const MODULE_TOPIC = 'csm-modsets';
-const PER_PAGE = 100;
+const GITHUB_API_BASE = GITHUB.apiBase;
+const MODULE_TOPIC = GITHUB.moduleTopic;
+const PER_PAGE = GITHUB.perPage;
 
 function hasModuleTopic(repo: GitHubRepoSummary): boolean {
 	return (repo.topics ?? []).some((topic) => topic.toLowerCase() === MODULE_TOPIC);

@@ -1,7 +1,8 @@
 import * as vscode from 'vscode';
+import { GITHUB } from './constants';
 
-const GITHUB_PROVIDER_ID = 'github';
-const REQUIRED_SCOPES = ['read:user', 'repo'];
+const GITHUB_PROVIDER_ID = GITHUB.providerId;
+const REQUIRED_SCOPES = [...GITHUB.requiredScopes];
 
 export class AuthService {
 	public async getSessionSilently(): Promise<vscode.AuthenticationSession | undefined> {

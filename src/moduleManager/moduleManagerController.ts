@@ -8,9 +8,10 @@ import { ModuleTreeItem } from './moduleTreeDataProvider';
 import { ModuleSidebarViewProvider } from './moduleSidebarViewProvider';
 import { ReadmeAssetCache } from './readmeAssetCache';
 import { DEFAULT_LOCAL_MODULE_ROOT, LEGACY_LOCAL_MODULE_CONFIG_FILE, LOCAL_MODULE_CONFIG_FILE, WorkspaceModuleService } from './workspaceModuleService';
+import { COMMAND_IDS, CONFIG_KEYS, CONFIG_SECTION, CONTEXT_KEYS, VIEW_IDS } from './constants';
 
 const LOCAL_MODULE_CONFIG_GLOB = `**/{${LOCAL_MODULE_CONFIG_FILE},${LEGACY_LOCAL_MODULE_CONFIG_FILE}}`;
-const WORKSPACE_INIT_CONTEXT_KEY = 'csmModules.canInitializeWorkspace';
+const WORKSPACE_INIT_CONTEXT_KEY = CONTEXT_KEYS.canInitializeWorkspace;
 const LVPROJ_GLOB = '**/*.lvproj';
 const WORKSPACE_INIT_PROMPT = 'Detected csm/ and .lvproj files but no local CSM module config. Initialize CSM module management for this repository?';
 
@@ -58,17 +59,17 @@ export class ModuleManagerController {
 
 	public register(subscriptions: vscode.Disposable[]): void {
 		if (this.treeDataProvider instanceof ModuleSidebarViewProvider) {
-			subscriptions.push(vscode.window.registerWebviewViewProvider('csmModules.view', this.treeDataProvider, {
+			subscriptions.push(vscode.window.registerWebviewViewProvider(VIEW_IDS.moduleSidebar, this.treeDataProvider, {
 				webviewOptions: { retainContextWhenHidden: true },
 			}));
 		}
 
 		subscriptions.push(
-			vscode.commands.registerCommand('csmModules.login', () => this.loginCommand()),
-			vscode.commands.registerCommand('csmModules.refresh', () => this.refreshCommand()),
-			vscode.commands.registerCommand('csmModules.initializeWorkspace', () => this.initializeWorkspaceCommand()),
-			vscode.commands.registerCommand('csmModules.openReadme', (entry?: CsmModuleEntry | ModuleTreeItem) => this.openReadmeCommand(entry)),
-			vscode.commands.registerCommand('csmModules.applyToWorkspace', (entry?: CsmModuleEntry | ModuleTreeItem) => this.applyToWorkspaceCommand(entry)),
+			vscode.commands.registerCommand(COMMAND_IDS.login, () => this.loginCommand()),
+			vscode.commands.registerCommand(COMMAND_IDS.refresh, () => this.refreshCommand()),
+			vscode.commands.registerCommand(COMMAND_IDS.initializeWorkspace, () => this.initializeWorkspaceCommand()),
+			vscode.commands.registerCommand(COMMAND_IDS.openReadme, (entry?: CsmModuleEntry | ModuleTreeItem) => this.openReadmeCommand(entry)),
+			vscode.commands.registerCommand(COMMAND_IDS.applyToWorkspace, (entry?: CsmModuleEntry | ModuleTreeItem) => this.applyToWorkspaceCommand(entry)),
 		);
 
 		const cached = this.cacheStore.getModuleSnapshot();
@@ -736,7 +737,7 @@ export class ModuleManagerController {
 	}
 
 	private getCacheTtlMinutes(): number {
-		const configuredTtl = vscode.workspace.getConfiguration('csmModules.cache').get<number>('ttlMinutes', 60);
+		const configuredTtl = vscode.workspace.getConfiguration(CONFIG_SECTION).get<number>(CONFIG_KEYS.cacheTtlMinutes, 60);
 		if (typeof configuredTtl !== 'number' || !Number.isFinite(configuredTtl)) {
 			return 60;
 		}
