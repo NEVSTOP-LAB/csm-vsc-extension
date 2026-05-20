@@ -1,6 +1,7 @@
 import * as fs from 'fs/promises';
 import * as os from 'os';
 import * as path from 'path';
+import * as yaml from 'js-yaml';
 import { CsmModuleEntry, LocalModuleConfig, LocalModuleConfigEntry, ModuleApplyMethod } from './types';
 import { GitService, IGitRunner } from './gitService';
 
@@ -26,28 +27,6 @@ interface GitSubmoduleDefinition {
 
 function toPosixPath(value: string): string {
 	return value.replace(/\\/g, '/');
-}
-
-function yamlScalar(value: string): string {
-	return JSON.stringify(value);
-}
-
-function parseStructuredScalar(value: string): string {
-	const trimmed = value.trim();
-	if (!trimmed) {
-		return '';
-	}
-	if (trimmed.startsWith('"') && trimmed.endsWith('"')) {
-		try {
-			return JSON.parse(trimmed) as string;
-		} catch {
-			return trimmed.slice(1, -1);
-		}
-	}
-	if (trimmed.startsWith("'") && trimmed.endsWith("'")) {
-		return trimmed.slice(1, -1).replace(/''/g, "'");
-	}
-	return trimmed;
 }
 
 function sanitizeModuleKeyPart(value: string): string {
@@ -519,56 +498,39 @@ export class WorkspaceModuleService {
 	}
 
 	private parseYamlConfig(raw: string): ParsedConfigShape {
-		const modules: Record<string, LocalModuleConfigEntry> = {};
-		let root: string | undefined;
-		let version: string | undefined;
-		let currentModuleKey: string | undefined;
-		let currentModule: Partial<LocalModuleConfigEntry> | undefined;
-
-		for (const rawLine of raw.split(/\r?\n/)) {
-			const line = rawLine.replace(/\t/g, '    ');
-			const trimmed = line.trim();
-			if (!trimmed || trimmed.startsWith('#')) {
-				continue;
-			}
-
-			const rootMatch = line.match(/^(version|root):\s*(.+)?$/);
-			if (rootMatch) {
-				if (currentModuleKey && currentModule) {
-					modules[currentModuleKey] = this.finalizeModuleSection(currentModule);
-					currentModuleKey = undefined;
-					currentModule = undefined;
-				}
-				if (rootMatch[1] === 'version') {
-					version = parseStructuredScalar(rootMatch[2] ?? '');
-				} else {
-					root = parseStructuredScalar(rootMatch[2] ?? '');
-				}
-				continue;
-			}
-
-			if (/^modules:\s*(\{\})?\s*$/.test(trimmed)) {
-				continue;
-			}
-
-			const moduleMatch = line.match(/^  ([A-Za-z0-9_-]+):\s*$/);
-			if (moduleMatch) {
-				if (currentModuleKey && currentModule) {
-					modules[currentModuleKey] = this.finalizeModuleSection(currentModule);
-				}
-				currentModuleKey = moduleMatch[1];
-				currentModule = { key: currentModuleKey };
-				continue;
-			}
-
-			const fieldMatch = line.match(/^    ([a-zA-Z]+):\s*(.+)?$/);
-			if (fieldMatch && currentModule) {
-				(currentModule as Record<string, string>)[fieldMatch[1]] = parseStructuredScalar(fieldMatch[2] ?? '');
-			}
+		let parsed: unknown;
+		try {
+			parsed = yaml.load(raw, { schema: yaml.JSON_SCHEMA });
+		} catch (error) {
+			throw new Error(`Failed to parse YAML config: ${error instanceof Error ? error.message : String(error)}`);
+		}
+		if (!parsed || typeof parsed !== 'object') {
+			return { modules: {} };
 		}
 
-		if (currentModuleKey && currentModule) {
-			modules[currentModuleKey] = this.finalizeModuleSection(currentModule);
+		const obj = parsed as Record<string, unknown>;
+		const version = typeof obj.version === 'string' ? obj.version : (obj.version != null ? String(obj.version) : undefined);
+		const root = typeof obj.root === 'string' ? obj.root : undefined;
+		const modules: Record<string, LocalModuleConfigEntry> = {};
+
+		const modulesRaw = obj.modules;
+		if (modulesRaw && typeof modulesRaw === 'object' && !Array.isArray(modulesRaw)) {
+			for (const [key, value] of Object.entries(modulesRaw as Record<string, unknown>)) {
+				if (!value || typeof value !== 'object' || Array.isArray(value)) {
+					continue;
+				}
+				const entry = value as Record<string, unknown>;
+				modules[key] = this.finalizeModuleSection({
+					key,
+					name: typeof entry.name === 'string' ? entry.name : undefined,
+					owner: typeof entry.owner === 'string' ? entry.owner : undefined,
+					source: typeof entry.source === 'string' ? entry.source : undefined,
+					method: entry.method === 'copy' ? 'copy' : 'submodule',
+					path: typeof entry.path === 'string' ? entry.path : undefined,
+					ref: typeof entry.ref === 'string' ? entry.ref : undefined,
+					branch: typeof entry.branch === 'string' ? entry.branch : undefined,
+				});
+			}
 		}
 
 		return { version, root, modules };
@@ -588,24 +550,31 @@ export class WorkspaceModuleService {
 	}
 
 	private serializeConfig(config: LocalModuleConfig): string {
-		const lines: string[] = [
-			`version: ${yamlScalar(config.version || CONFIG_VERSION)}`,
-			`root: ${yamlScalar(config.root)}`,
-			'modules:',
-		];
-
+		const moduleEntries: Record<string, Omit<LocalModuleConfigEntry, 'key'>> = {};
 		for (const key of Object.keys(config.modules).sort((left, right) => left.localeCompare(right))) {
 			const module = config.modules[key];
-			lines.push(`  ${key}:`);
-			lines.push(`    name: ${yamlScalar(module.name)}`);
-			lines.push(`    owner: ${yamlScalar(module.owner)}`);
-			lines.push(`    source: ${yamlScalar(module.source)}`);
-			lines.push(`    method: ${yamlScalar(module.method)}`);
-			lines.push(`    path: ${yamlScalar(module.path)}`);
-			lines.push(`    ref: ${yamlScalar(module.ref)}`);
-			lines.push(`    branch: ${yamlScalar(module.branch)}`);
+			moduleEntries[key] = {
+				name: module.name,
+				owner: module.owner,
+				source: module.source,
+				method: module.method,
+				path: module.path,
+				ref: module.ref,
+				branch: module.branch,
+			};
 		}
-
-		return `${lines.join('\n').trimEnd()}\n`;
+		const document = {
+			version: config.version || CONFIG_VERSION,
+			root: config.root,
+			modules: moduleEntries,
+		};
+		return yaml.dump(document, {
+			schema: yaml.JSON_SCHEMA,
+			lineWidth: 120,
+			noRefs: true,
+			sortKeys: false,
+			quotingType: '"',
+			forceQuotes: true,
+		});
 	}
 }
