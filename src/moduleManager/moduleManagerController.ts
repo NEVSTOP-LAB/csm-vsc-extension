@@ -52,11 +52,17 @@ export class ModuleManagerController {
 	private availableModules: CsmModuleEntry[] = [];
 	private readonly selectedModuleKeys = new Set<string>();
 	private currentToken: string | undefined;
+	private lastTokenVerifiedAt = 0;
+	private static readonly TOKEN_VERIFY_INTERVAL_MS = 10 * 60 * 1000; // 10 minutes
 
 	constructor(private readonly context: vscode.ExtensionContext) {
 		this.cacheStore = new ModuleCacheStore(context.globalState);
 		this.readmeAssetCache = new ReadmeAssetCache(context.globalStorageUri);
+		// Pull any legacy in-memory copy from GlobalState (for backward compat),
+		// but do NOT persist new entries there going forward — the filesystem
+		// asset cache is the single source of truth (review item 3.5).
 		this.readmeCache = this.cacheStore.getReadmeCache();
+		void this.cacheStore.clearReadmeCache();
 	}
 
 	public register(subscriptions: vscode.Disposable[]): void {
@@ -235,21 +241,31 @@ export class ModuleManagerController {
 			return;
 		}
 		this.currentToken = session.accessToken;
+		this.lastTokenVerifiedAt = Date.now();
 		this.treeDataProvider.setAuthenticated(true);
 		void vscode.window.showInformationMessage(`Signed in as ${session.account.label}`);
+		// Best-effort scope verification, logged when missing scopes are detected (7.5).
+		if (typeof this.authService.verifyScopes === 'function') {
+			void this.authService.verifyScopes(session.accessToken);
+		}
 		await this.loadModules({ interactiveAuth: false, showSuccessMessage: true, showErrorMessage: true });
 	}
 
 	private async ensureToken(interactive: boolean): Promise<string | undefined> {
-		if (this.currentToken) {
+		if (this.currentToken && this.isCachedTokenFresh()) {
 			return this.currentToken;
 		}
+		// Re-validate cached token via a fresh silent session (which the editor will
+		// invalidate if the underlying credentials were revoked).
 		const silentSession = await this.authService.getSessionSilently();
 		if (silentSession) {
 			this.currentToken = silentSession.accessToken;
+			this.lastTokenVerifiedAt = Date.now();
 			this.treeDataProvider.setAuthenticated(true);
 			return this.currentToken;
 		}
+		this.currentToken = undefined;
+		this.lastTokenVerifiedAt = 0;
 		if (!interactive) {
 			return undefined;
 		}
@@ -258,7 +274,13 @@ export class ModuleManagerController {
 			return undefined;
 		}
 		this.currentToken = session.accessToken;
+		this.lastTokenVerifiedAt = Date.now();
 		return this.currentToken;
+	}
+
+	private isCachedTokenFresh(): boolean {
+		return this.lastTokenVerifiedAt > 0
+			&& Date.now() - this.lastTokenVerifiedAt < ModuleManagerController.TOKEN_VERIFY_INTERVAL_MS;
 	}
 
 	private async refreshCommand(): Promise<void> {
@@ -317,7 +339,7 @@ export class ModuleManagerController {
 			const refreshedReadme = await this.fetchReadmesParallel(modules, token, 5);
 			Object.assign(this.readmeCache, refreshedReadme);
 			await this.cacheStore.setModuleSnapshot(modules);
-			await this.cacheStore.setReadmeCache(this.readmeCache);
+			// README content is persisted via the filesystem asset cache only (3.5).
 			if (fetchResult.etag) {
 				await this.cacheStore.setModuleEtag(fetchResult.etag);
 			}
@@ -393,9 +415,9 @@ export class ModuleManagerController {
 			try {
 				readme = await this.githubService.fetchReadme(resolvedEntry.owner, resolvedEntry.name, token);
 				this.readmeCache[key] = readme;
-				await this.cacheStore.setReadmeCache(this.readmeCache);
 				await this.readmeAssetCache.saveMarkdown(resolvedEntry, readme);
-			} catch {
+			} catch (error) {
+				this.logger.warn(`Failed to fetch README for ${resolvedEntry.owner}/${resolvedEntry.name}: ${error instanceof Error ? error.message : String(error)}`);
 				readme = '';
 			}
 		}
@@ -593,19 +615,15 @@ export class ModuleManagerController {
 		workspaceFolder: vscode.WorkspaceFolder,
 		repoRoot: string,
 	): Promise<LocalModuleConfig | undefined> {
-		const workspaceService = this.workspaceModuleService as Partial<WorkspaceModuleService>;
-		if (typeof workspaceService.loadConfig !== 'function') {
-			return undefined;
-		}
-
 		const matches = this.sortLocalModuleConfigMatches(await this.findLocalModuleConfigFiles(workspaceFolder));
 		if (matches.length === 0) {
 			return undefined;
 		}
 
 		try {
-			return await workspaceService.loadConfig.call(this.workspaceModuleService, repoRoot, matches[0].fsPath);
-		} catch {
+			return await this.workspaceModuleService.loadConfig(repoRoot, matches[0].fsPath);
+		} catch (error) {
+			this.logger.warn(`Failed to load local module config at ${matches[0].fsPath}: ${error instanceof Error ? error.message : String(error)}`);
 			return undefined;
 		}
 	}

@@ -68,6 +68,14 @@ export class ModuleCacheStore {
 		await this.globalState.update(README_CACHE_KEY, cache);
 	}
 
+	/**
+	 * Drop any legacy README payloads stored in GlobalState. README content is now
+	 * persisted exclusively on the filesystem via {@link ReadmeAssetCache}.
+	 */
+	public async clearReadmeCache(): Promise<void> {
+		await this.globalState.update(README_CACHE_KEY, undefined);
+	}
+
 	public getModuleEtag(): string | undefined {
 		const value = this.globalState.get<unknown>(MODULE_ETAG_KEY);
 		return typeof value === 'string' ? value : undefined;
