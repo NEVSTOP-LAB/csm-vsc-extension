@@ -9,6 +9,7 @@ import { ModuleSidebarViewProvider } from './moduleSidebarViewProvider';
 import { ReadmeAssetCache } from './readmeAssetCache';
 import { DEFAULT_LOCAL_MODULE_ROOT, LEGACY_LOCAL_MODULE_CONFIG_FILE, LOCAL_MODULE_CONFIG_FILE, WorkspaceModuleService } from './workspaceModuleService';
 import { COMMAND_IDS, CONFIG_KEYS, CONFIG_SECTION, CONTEXT_KEYS, VIEW_IDS } from './constants';
+import { Logger, getLogger, wrapCommand } from './logger';
 
 const LOCAL_MODULE_CONFIG_GLOB = `**/{${LOCAL_MODULE_CONFIG_FILE},${LEGACY_LOCAL_MODULE_CONFIG_FILE}}`;
 const WORKSPACE_INIT_CONTEXT_KEY = CONTEXT_KEYS.canInitializeWorkspace;
@@ -21,8 +22,9 @@ interface PendingWorkspaceInitialization {
 }
 
 export class ModuleManagerController {
-	private readonly authService = new AuthService();
-	private readonly githubService = new GitHubModuleService();
+	private readonly logger: Logger = getLogger();
+	private readonly authService = new AuthService(this.logger);
+	private readonly githubService = new GitHubModuleService(this.logger);
 	private readonly cacheStore: ModuleCacheStore;
 	private readonly treeDataProvider = new ModuleSidebarViewProvider({
 		onLogin: () => {
@@ -65,11 +67,11 @@ export class ModuleManagerController {
 		}
 
 		subscriptions.push(
-			vscode.commands.registerCommand(COMMAND_IDS.login, () => this.loginCommand()),
-			vscode.commands.registerCommand(COMMAND_IDS.refresh, () => this.refreshCommand()),
-			vscode.commands.registerCommand(COMMAND_IDS.initializeWorkspace, () => this.initializeWorkspaceCommand()),
-			vscode.commands.registerCommand(COMMAND_IDS.openReadme, (entry?: CsmModuleEntry | ModuleTreeItem) => this.openReadmeCommand(entry)),
-			vscode.commands.registerCommand(COMMAND_IDS.applyToWorkspace, (entry?: CsmModuleEntry | ModuleTreeItem) => this.applyToWorkspaceCommand(entry)),
+			vscode.commands.registerCommand(COMMAND_IDS.login, wrapCommand(COMMAND_IDS.login, () => this.loginCommand(), this.logger)),
+			vscode.commands.registerCommand(COMMAND_IDS.refresh, wrapCommand(COMMAND_IDS.refresh, () => this.refreshCommand(), this.logger)),
+			vscode.commands.registerCommand(COMMAND_IDS.initializeWorkspace, wrapCommand(COMMAND_IDS.initializeWorkspace, () => this.initializeWorkspaceCommand(), this.logger)),
+			vscode.commands.registerCommand(COMMAND_IDS.openReadme, wrapCommand(COMMAND_IDS.openReadme, (entry?: CsmModuleEntry | ModuleTreeItem) => this.openReadmeCommand(entry), this.logger)),
+			vscode.commands.registerCommand(COMMAND_IDS.applyToWorkspace, wrapCommand(COMMAND_IDS.applyToWorkspace, (entry?: CsmModuleEntry | ModuleTreeItem) => this.applyToWorkspaceCommand(entry), this.logger)),
 		);
 
 		const cached = this.cacheStore.getModuleSnapshot();
@@ -292,35 +294,81 @@ export class ModuleManagerController {
 			this.treeDataProvider.setLoading('Refreshing modules from GitHub...');
 		}
 		try {
-			const modules = await this.githubService.fetchModules(token);
+			const previousEtag = this.cacheStore.getModuleEtag();
+			const fetchResult = await this.githubService.fetchModules(token, { etag: previousEtag });
+			if (fetchResult.notModified) {
+				this.logger.info('Module list unchanged since last fetch (304 Not Modified).');
+				// Touch lastRefreshAt so TTL window resets even when we got 304.
+				if (this.availableModules.length > 0) {
+					await this.cacheStore.setModuleSnapshot(this.availableModules);
+				}
+				if (fetchResult.etag) {
+					await this.cacheStore.setModuleEtag(fetchResult.etag);
+				}
+				if (options.showSuccessMessage) {
+					void vscode.window.showInformationMessage('CSM modules are up to date.');
+				}
+				return;
+			}
+			const modules = fetchResult.modules;
 			this.availableModules = modules;
 			this.setSelectedModuleKeys([...this.selectedModuleKeys]);
-			const refreshedReadme: Record<string, string> = {};
-			for (const moduleEntry of modules) {
-				const key = this.getReadmeCacheKey(moduleEntry);
-				try {
-					const markdown = await this.githubService.fetchReadme(moduleEntry.owner, moduleEntry.name, token);
-					refreshedReadme[key] = markdown;
-					await this.readmeAssetCache.saveMarkdown(moduleEntry, markdown);
-				} catch {
-					refreshedReadme[key] = '';
-				}
-			}
+			// Parallelized README prefetch with bounded concurrency to avoid blocking on large lists.
+			const refreshedReadme = await this.fetchReadmesParallel(modules, token, 5);
 			Object.assign(this.readmeCache, refreshedReadme);
 			await this.cacheStore.setModuleSnapshot(modules);
 			await this.cacheStore.setReadmeCache(this.readmeCache);
+			if (fetchResult.etag) {
+				await this.cacheStore.setModuleEtag(fetchResult.etag);
+			}
 			this.treeDataProvider.setModules(modules);
 			await this.refreshSidebarWorkspaceState();
 			if (options.showSuccessMessage) {
 				void vscode.window.showInformationMessage(`Refreshed ${modules.length} module(s).`);
 			}
 		} catch (error) {
+			this.logger.error(`Failed to refresh modules: ${error instanceof Error ? error.message : String(error)}`);
 			this.treeDataProvider.setError('Failed to load modules from GitHub.');
 			if (options.showErrorMessage) {
 				const message = error instanceof Error ? error.message : 'Unknown error';
 				void vscode.window.showErrorMessage(`Failed to refresh CSM modules: ${message}`);
 			}
 		}
+	}
+
+	/**
+	 * Fetch READMEs in parallel with a bounded concurrency limit to keep
+	 * GitHub API usage reasonable while avoiding O(N) serial latency.
+	 */
+	private async fetchReadmesParallel(
+		modules: CsmModuleEntry[],
+		token: string,
+		concurrency: number,
+	): Promise<Record<string, string>> {
+		const refreshed: Record<string, string> = {};
+		let cursor = 0;
+		const worker = async (): Promise<void> => {
+			while (cursor < modules.length) {
+				const index = cursor;
+				cursor += 1;
+				const moduleEntry = modules[index];
+				if (!moduleEntry) {
+					continue;
+				}
+				const key = this.getReadmeCacheKey(moduleEntry);
+				try {
+					const markdown = await this.githubService.fetchReadme(moduleEntry.owner, moduleEntry.name, token);
+					refreshed[key] = markdown;
+					await this.readmeAssetCache.saveMarkdown(moduleEntry, markdown);
+				} catch (error) {
+					this.logger.warn(`Failed to fetch README for ${moduleEntry.owner}/${moduleEntry.name}: ${error instanceof Error ? error.message : String(error)}`);
+					refreshed[key] = '';
+				}
+			}
+		};
+		const workerCount = Math.max(1, Math.min(concurrency, modules.length));
+		await Promise.all(Array.from({ length: workerCount }, () => worker()));
+		return refreshed;
 	}
 
 	private async openReadmeCommand(entry?: CsmModuleEntry | ModuleTreeItem): Promise<void> {
