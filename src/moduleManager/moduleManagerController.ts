@@ -23,10 +23,25 @@ interface PendingWorkspaceInitialization {
 	repoRoot: string;
 }
 
+/**
+ * Optional dependencies for {@link ModuleManagerController}.
+ *
+ * Allowing tests (and future command-handler refactors) to inject mocks of the
+ * underlying services replaces the prior pattern of overwriting `private`
+ * fields via `as any` (review items 2.1 / 6.1).
+ */
+export interface ModuleManagerControllerDeps {
+	authService?: AuthService;
+	githubService?: GitHubModuleService;
+	workspaceModuleService?: WorkspaceModuleService;
+	viewProvider?: IModuleViewProvider;
+	logger?: Logger;
+}
+
 export class ModuleManagerController {
-	private readonly logger: Logger = getLogger();
-	private readonly authService = new AuthService(this.logger);
-	private readonly githubService = new GitHubModuleService(this.logger);
+	private readonly logger: Logger;
+	private readonly authService: AuthService;
+	private readonly githubService: GitHubModuleService;
 	private readonly cacheStore: ModuleCacheStore;
 	private readonly sidebarViewProvider: ModuleSidebarViewProvider = new ModuleSidebarViewProvider({
 		onLogin: () => {
@@ -49,9 +64,9 @@ export class ModuleManagerController {
 		},
 	});
 	// IModuleViewProvider abstraction (review item 2.2). Tests can swap this out.
-	private treeDataProvider: IModuleViewProvider = this.sidebarViewProvider;
+	private treeDataProvider: IModuleViewProvider;
 	private readonly readmeAssetCache: ReadmeAssetCache;
-	private readonly workspaceModuleService = new WorkspaceModuleService();
+	private readonly workspaceModuleService: WorkspaceModuleService;
 	private readonly readmeCache: Record<string, string>;
 	private availableModules: CsmModuleEntry[] = [];
 	private currentSortField: ModuleSortField = 'name';
@@ -60,7 +75,12 @@ export class ModuleManagerController {
 	private lastTokenVerifiedAt = 0;
 	private static readonly TOKEN_VERIFY_INTERVAL_MS = 10 * 60 * 1000; // 10 minutes
 
-	constructor(private readonly context: vscode.ExtensionContext) {
+	constructor(private readonly context: vscode.ExtensionContext, deps: ModuleManagerControllerDeps = {}) {
+		this.logger = deps.logger ?? getLogger();
+		this.authService = deps.authService ?? new AuthService(this.logger);
+		this.githubService = deps.githubService ?? new GitHubModuleService(this.logger);
+		this.workspaceModuleService = deps.workspaceModuleService ?? new WorkspaceModuleService();
+		this.treeDataProvider = deps.viewProvider ?? this.sidebarViewProvider;
 		this.cacheStore = new ModuleCacheStore(context.globalState);
 		this.readmeAssetCache = new ReadmeAssetCache(context.globalStorageUri);
 		// Pull any legacy in-memory copy from GlobalState (for backward compat),
@@ -108,7 +128,7 @@ export class ModuleManagerController {
 		void this.refreshSidebarWorkspaceState();
 	}
 
-	private async applyToWorkspaceCommand(entry?: CsmModuleEntry | ModuleTreeItem): Promise<void> {
+	public async applyToWorkspaceCommand(entry?: CsmModuleEntry | ModuleTreeItem): Promise<void> {
 		const selectedEntries = this.getSelectedModules(this.resolveModuleEntry(entry));
 		if (selectedEntries.length === 0) {
 			void vscode.window.showWarningMessage('Select at least one module to apply to the current repository.');
@@ -261,7 +281,7 @@ export class ModuleManagerController {
 		await this.refreshSidebarWorkspaceState();
 	}
 
-	private async removeModuleCommand(entry?: CsmModuleEntry | ModuleTreeItem): Promise<void> {
+	public async removeModuleCommand(entry?: CsmModuleEntry | ModuleTreeItem): Promise<void> {
 		const resolvedEntry = this.resolveModuleEntry(entry);
 		const workspaceFolder = await this.resolveWorkspaceFolder();
 		if (!workspaceFolder) {
@@ -315,7 +335,7 @@ export class ModuleManagerController {
 		await this.refreshSidebarWorkspaceState();
 	}
 
-	private async updateModuleCommand(entry?: CsmModuleEntry | ModuleTreeItem): Promise<void> {
+	public async updateModuleCommand(entry?: CsmModuleEntry | ModuleTreeItem): Promise<void> {
 		const resolvedEntry = this.resolveModuleEntry(entry);
 		const workspaceFolder = await this.resolveWorkspaceFolder();
 		if (!workspaceFolder) {
@@ -363,7 +383,7 @@ export class ModuleManagerController {
 		await this.refreshSidebarWorkspaceState();
 	}
 
-	private setSortOrderCommand(field?: ModuleSortField): void {
+	public setSortOrderCommand(field?: ModuleSortField): void {
 		const allowed: ModuleSortField[] = ['name', 'owner', 'updatedAt'];
 		const next: ModuleSortField = (field && allowed.includes(field)) ? field : 'name';
 		this.currentSortField = next;
@@ -415,7 +435,7 @@ export class ModuleManagerController {
 		};
 	}
 
-	private async initializeWorkspaceCommand(workspaceFolder?: vscode.WorkspaceFolder): Promise<void> {
+	public async initializeWorkspaceCommand(workspaceFolder?: vscode.WorkspaceFolder): Promise<void> {
 		const targetFolder = workspaceFolder ?? await this.resolveWorkspaceFolder();
 		if (!targetFolder) {
 			void vscode.window.showWarningMessage('Open the target repository as a workspace folder before initializing CSM module management.');
@@ -456,7 +476,7 @@ export class ModuleManagerController {
 		await this.refreshWorkspaceInitializationState({ prompt: false });
 	}
 
-	private async loginCommand(): Promise<void> {
+	public async loginCommand(): Promise<void> {
 		const session = await this.authService.getSessionInteractively();
 		if (!session) {
 			void vscode.window.showWarningMessage('GitHub sign-in was cancelled.');
@@ -505,7 +525,7 @@ export class ModuleManagerController {
 			&& Date.now() - this.lastTokenVerifiedAt < ModuleManagerController.TOKEN_VERIFY_INTERVAL_MS;
 	}
 
-	private async refreshCommand(): Promise<void> {
+	public async refreshCommand(): Promise<void> {
 		const choice = await vscode.window.showWarningMessage(
 			'Refresh CSM modules from GitHub?',
 			{ modal: true },
@@ -625,7 +645,7 @@ export class ModuleManagerController {
 		return refreshed;
 	}
 
-	private async openReadmeCommand(entry?: CsmModuleEntry | ModuleTreeItem): Promise<void> {
+	public async openReadmeCommand(entry?: CsmModuleEntry | ModuleTreeItem): Promise<void> {
 		const resolvedEntry = this.resolveModuleEntry(entry);
 		if (!resolvedEntry) {
 			return;
