@@ -1,0 +1,69 @@
+import * as assert from 'assert';
+import { ModuleCacheStore, mapRepoToModuleEntry } from '../moduleManager';
+import { GitHubRepoSummary } from '../moduleManager';
+
+class FakeMemento {
+	private readonly store = new Map<string, unknown>();
+
+	public get<T>(key: string, defaultValue?: T): T {
+		if (this.store.has(key)) {
+			return this.store.get(key) as T;
+		}
+		return defaultValue as T;
+	}
+
+	public async update(key: string, value: unknown): Promise<void> {
+		if (typeof value === 'undefined') {
+			this.store.delete(key);
+			return;
+		}
+		this.store.set(key, value);
+	}
+}
+
+suite('Module Manager Tests', () => {
+	test('mapRepoToModuleEntry maps visibility and owner fields', () => {
+		const repo: GitHubRepoSummary = {
+			id: 101,
+			name: 'robot-vision-pack',
+			full_name: 'nevstop/robot-vision-pack',
+			description: 'vision helpers',
+			private: true,
+			default_branch: 'main',
+			html_url: 'https://github.com/nevstop/robot-vision-pack',
+			topics: ['csm-modsets'],
+		};
+
+		const entry = mapRepoToModuleEntry(repo);
+		assert.strictEqual(entry.owner, 'nevstop');
+		assert.strictEqual(entry.visibility, 'private');
+		assert.strictEqual(entry.defaultBranch, 'main');
+		assert.strictEqual(entry.repoUrl, repo.html_url);
+	});
+
+	test('ModuleCacheStore stores and clears module snapshot', async () => {
+		const memento = new FakeMemento();
+		const store = new ModuleCacheStore(memento as never);
+
+		await store.setModuleSnapshot([
+			{
+				id: 1,
+				owner: 'org',
+				name: 'module-a',
+				description: '',
+				visibility: 'public',
+				defaultBranch: 'main',
+				repoUrl: 'https://github.com/org/module-a',
+			},
+		]);
+
+		const snapshot = store.getModuleSnapshot();
+		assert.ok(snapshot);
+		assert.strictEqual(snapshot?.modules.length, 1);
+		assert.ok(snapshot?.lastRefreshAt);
+
+		await store.clear();
+		assert.strictEqual(store.getModuleSnapshot(), undefined);
+		assert.deepStrictEqual(store.getReadmeCache(), {});
+	});
+});

@@ -2,7 +2,7 @@
   "name": "csm-vsc-support",
   "displayName": "Communicable State Machine(CSM)",
   "description": "Language support for Communicable State Machine (CSM) files in Visual Studio Code",
-  "version": "0.0.4",
+  "version": "0.0.14",
   "license": "AGPL-3.0-only",
   "publisher": "NEVSTOP-LAB",
   "icon": "images/icon.png",
@@ -30,10 +30,77 @@
   ],
   "activationEvents": [
     "onLanguage:csmlog",
-    "onLanguage:lvcsm"
+    "onLanguage:lvcsm",
+    "onView:csmModules.view",
+    "onCommand:csmModules.login",
+    "onCommand:csmModules.refresh",
+    "onCommand:csmModules.openReadme"
   ],
   "main": "./dist/extension.js",
   "contributes": {
+    "commands": [
+      {
+        "command": "csmModules.login",
+        "title": "CSM Modules: Sign In to GitHub"
+      },
+      {
+        "command": "csmModules.refresh",
+        "title": "CSM Modules: Refresh"
+      },
+      {
+        "command": "csmModules.openReadme",
+        "title": "CSM Modules: Open README"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "csmModules",
+          "title": "CSM Modules",
+          "icon": "images/activitybar-csm.svg"
+        }
+      ]
+    },
+    "views": {
+      "csmModules": [
+        {
+          "id": "csmModules.view",
+          "name": "Available Modules"
+        }
+      ]
+    },
+    "menus": {
+      "view/title": [
+        {
+          "command": "csmModules.refresh",
+          "when": "view == csmModules.view",
+          "group": "navigation"
+        },
+        {
+          "command": "csmModules.login",
+          "when": "view == csmModules.view",
+          "group": "navigation@1"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "csmModules.openReadme",
+          "when": "view == csmModules.view && viewItem == csmModuleEntry",
+          "group": "inline"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "CSM Modules",
+      "properties": {
+        "csmModules.cache.ttlMinutes": {
+          "type": "number",
+          "default": 60,
+          "minimum": 1,
+          "description": "Preferred cache time for module list and README content in minutes."
+        }
+      }
+    },
     "languages": [
       {
         "id": "csmlog",
@@ -346,7 +413,11 @@
     "pretest": "npm run compile-tests && npm run compile && npm run lint",
     "check-types": "tsc --noEmit",
     "lint": "eslint src",
-    "test": "vscode-test"
+    "test": "vscode-test",
+    "vsix:package": "npx @vscode/vsce@3.7.1 package --no-dependencies",
+    "vsix:verify-local": "node scripts/verify-local-install.mjs",
+    "hook:finish": "node scripts/local-finish-hook.mjs",
+    "release:local": "npm run hook:finish"
   },
   "devDependencies": {
     "@types/mocha": "^10.0.10",

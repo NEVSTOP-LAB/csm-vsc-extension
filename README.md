@@ -12,6 +12,7 @@
 ## 安装要求
 
 - Visual Studio Code 1.60.0 或更高版本
+- 当前开发版本：0.0.14
 
 ## 功能特性
 
@@ -30,6 +31,23 @@
 - ✅ 语法通过 `source.ini` 复用 INI 高亮规则
 - ✅ Outline 大纲（INI 节 `[section]` 作为大纲条目）
 - ✅ 默认开启 `files.autoGuessEncoding`，降低 GBK/GB2312 文件乱码风险
+
+### CSM 模块管理（阶段一）
+
+- ✅ 侧边栏 `CSM Modules` 视图展示可访问模块仓库（topic: `csm-modsets`）
+- ✅ 优先复用 VS Code 已登录 GitHub 会话（静默读取），必要时交互授权
+- ✅ 视图加载时自动尝试静默拉取模块（已登录用户无需先手动点击 refresh）
+- ✅ 手动刷新模块列表与 README 缓存
+- ✅ 展示模块名称、描述、可见性（public/private）
+- ✅ 点击模块条目可查看 README（若不可用则显示降级提示）
+
+## 本地结束 Hook
+
+- 命令：`npm run hook:finish`
+- 执行动作：自动 patch 递增版本、同步 `README.md` / `CHANGELOG.md`、执行编译，并在“需要时”（检测到扩展运行相关改动）自动打包+安装+校验 VSIX，最后继续测试流程
+- 强制加载：`npm run hook:finish -- --force-vsix`（无论改动类型都执行 VSIX 打包与加载）
+- 安装校验：`npm run vsix:verify-local`（检查本地扩展目录是否存在目标版本）
+- 说明：如本机未配置 VS Code CLI `code` 命令，脚本会保留 VSIX 打包结果并给出提示
 
 ## 文件图标主题
 
