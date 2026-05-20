@@ -1,5 +1,6 @@
 import * as assert from 'assert';
 import { ModuleCacheStore, mapRepoToModuleEntry } from '../moduleManager';
+import { ModuleTreeItem } from '../moduleManager/moduleTreeDataProvider';
 import { GitHubRepoSummary } from '../moduleManager';
 
 class FakeMemento {
@@ -67,5 +68,26 @@ suite('Module Manager Tests', () => {
 		await store.clear();
 		assert.strictEqual(store.getModuleSnapshot(), undefined);
 		assert.deepStrictEqual(store.getReadmeCache(), {});
+	});
+
+	test('ModuleTreeItem includes topic and visibility metadata', () => {
+		const entry = {
+			id: 1,
+			owner: 'org',
+			name: 'module-a',
+			description: 'A demo module',
+			topics: ['csm-modsets', 'automation'],
+			visibility: 'private' as const,
+			defaultBranch: 'main',
+			repoUrl: 'https://github.com/org/module-a',
+		};
+
+		const item = new ModuleTreeItem(entry);
+		const description = String(item.description ?? '');
+		const tooltip = item.tooltip instanceof Object && 'value' in item.tooltip ? String((item.tooltip as { value?: string }).value ?? '') : String(item.tooltip ?? '');
+		assert.ok(description.includes('org'));
+		assert.ok(description.includes('private'));
+		assert.ok(description.includes('csm-modsets'));
+		assert.ok(tooltip.includes('Topics: csm-modsets, automation'));
 	});
 });

@@ -20,13 +20,18 @@ class ModuleActionItem extends vscode.TreeItem {
 export class ModuleTreeItem extends vscode.TreeItem {
 	constructor(public readonly moduleEntry: CsmModuleEntry) {
 		super(moduleEntry.name, vscode.TreeItemCollapsibleState.None);
-		const topicSummary = (moduleEntry.topics ?? []).slice(0, 3).join(', ');
-		this.description = [topicSummary, moduleEntry.visibility, moduleEntry.defaultBranch].filter(Boolean).join(' · ');
+		const topics = moduleEntry.topics ?? [];
+		const topicSummary = topics.slice(0, 3).join(', ');
+		const visibilityLabel = moduleEntry.visibility === 'private' ? 'private' : 'public';
+		this.description = [moduleEntry.owner, visibilityLabel, moduleEntry.defaultBranch, topicSummary].filter(Boolean).join(' · ');
+		this.iconPath = new vscode.ThemeIcon(moduleEntry.visibility === 'private' ? 'lock' : 'repo');
 		this.tooltip = new vscode.MarkdownString([
 			`**${moduleEntry.name}**`,
+			`Owner: ${moduleEntry.owner}`,
 			moduleEntry.description || '_No description_',
-			moduleEntry.topics && moduleEntry.topics.length > 0 ? `Topics: ${moduleEntry.topics.join(', ')}` : 'Topics: none',
-			`Visibility: ${moduleEntry.visibility}`,
+			topics.length > 0 ? `Topics: ${topics.join(', ')}` : 'Topics: none',
+			`Visibility: ${visibilityLabel}`,
+			`Default branch: ${moduleEntry.defaultBranch}`,
 			`Repository: ${moduleEntry.repoUrl}`,
 		].join('  \n'));
 		this.contextValue = 'csmModuleEntry';
