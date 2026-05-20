@@ -216,6 +216,7 @@ export enum ViewColumn {
 type MessageLevel = 'info' | 'warn' | 'error';
 
 const messageLog: Array<{ level: MessageLevel; text: string }> = [];
+let warningResponse: string | undefined;
 
 const commandMap = new Map<string, (...args: unknown[]) => unknown>();
 
@@ -235,8 +236,9 @@ export const commands = {
 
 export const window = {
     registerTreeDataProvider: () => new Disposable(),
-    async showWarningMessage(message: string): Promise<void> {
+    async showWarningMessage(message: string, ..._items: unknown[]): Promise<string | undefined> {
         messageLog.push({ level: 'warn', text: message });
+        return warningResponse;
     },
     async showInformationMessage(message: string): Promise<void> {
         messageLog.push({ level: 'info', text: message });
@@ -265,6 +267,10 @@ export function __getMessageLog(): Array<{ level: MessageLevel; text: string }> 
 
 export function __resetMessageLog(): void {
     messageLog.length = 0;
+}
+
+export function __setWarningMessageResponse(response: string | undefined): void {
+    warningResponse = response;
 }
 
 // ---------------------------------------------------------------------------

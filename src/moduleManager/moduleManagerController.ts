@@ -30,7 +30,7 @@ export class ModuleManagerController {
 		if (cached && cached.modules.length > 0) {
 			this.treeDataProvider.setModules(cached.modules);
 		} else {
-			this.treeDataProvider.setLoading('Sign in to GitHub and refresh to load modules.');
+			this.treeDataProvider.setLoading('Sign in to GitHub to load modules.');
 		}
 
 		void this.loadModules({ interactiveAuth: false, showSuccessMessage: false, showErrorMessage: false });
@@ -43,6 +43,7 @@ export class ModuleManagerController {
 			return;
 		}
 		this.currentToken = session.accessToken;
+		this.treeDataProvider.setAuthenticated(true);
 		void vscode.window.showInformationMessage(`Signed in as ${session.account.label}`);
 		await this.loadModules({ interactiveAuth: false, showSuccessMessage: true, showErrorMessage: true });
 	}
@@ -54,6 +55,7 @@ export class ModuleManagerController {
 		const silentSession = await this.authService.getSessionSilently();
 		if (silentSession) {
 			this.currentToken = silentSession.accessToken;
+			this.treeDataProvider.setAuthenticated(true);
 			return this.currentToken;
 		}
 		if (!interactive) {
@@ -68,6 +70,15 @@ export class ModuleManagerController {
 	}
 
 	private async refreshCommand(): Promise<void> {
+		const choice = await vscode.window.showWarningMessage(
+			'Refresh CSM modules from GitHub?',
+			{ modal: true },
+			'Refresh',
+			'Cancel',
+		);
+		if (choice !== 'Refresh') {
+			return;
+		}
 		await this.loadModules({ interactiveAuth: true, showSuccessMessage: true, showErrorMessage: true });
 	}
 
@@ -84,6 +95,7 @@ export class ModuleManagerController {
 			}
 			return;
 		}
+		this.treeDataProvider.setAuthenticated(true);
 
 		this.treeDataProvider.setLoading('Refreshing modules from GitHub...');
 		try {

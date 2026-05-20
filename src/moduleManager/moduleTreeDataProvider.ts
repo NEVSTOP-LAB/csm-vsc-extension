@@ -3,13 +3,29 @@ import { CsmModuleEntry } from './types';
 
 export type ViewState = 'loading' | 'ready' | 'empty' | 'error';
 
+class ModuleActionItem extends vscode.TreeItem {
+	constructor(label: string, command: string, tooltip: string, iconId: string, arguments_: unknown[] = []) {
+		super(label, vscode.TreeItemCollapsibleState.None);
+		this.command = {
+			command,
+			title: label,
+			arguments: arguments_,
+		};
+		this.tooltip = tooltip;
+		this.iconPath = new vscode.ThemeIcon(iconId);
+		this.contextValue = command;
+	}
+}
+
 export class ModuleTreeItem extends vscode.TreeItem {
 	constructor(public readonly moduleEntry: CsmModuleEntry) {
 		super(moduleEntry.name, vscode.TreeItemCollapsibleState.None);
-		this.description = `${moduleEntry.visibility} · ${moduleEntry.defaultBranch}`;
+		const topicSummary = (moduleEntry.topics ?? []).slice(0, 3).join(', ');
+		this.description = [topicSummary, moduleEntry.visibility, moduleEntry.defaultBranch].filter(Boolean).join(' · ');
 		this.tooltip = new vscode.MarkdownString([
 			`**${moduleEntry.name}**`,
 			moduleEntry.description || '_No description_',
+			moduleEntry.topics && moduleEntry.topics.length > 0 ? `Topics: ${moduleEntry.topics.join(', ')}` : 'Topics: none',
 			`Visibility: ${moduleEntry.visibility}`,
 			`Repository: ${moduleEntry.repoUrl}`,
 		].join('  \n'));
@@ -27,8 +43,14 @@ export class ModuleTreeDataProvider implements vscode.TreeDataProvider<ModuleTre
 	private modules: CsmModuleEntry[] = [];
 	private state: ViewState = 'loading';
 	private message = 'Loading modules...';
+	private signedIn = false;
 
 	public readonly onDidChangeTreeData = this.emitter.event;
+
+	public setAuthenticated(signedIn: boolean): void {
+		this.signedIn = signedIn;
+		this.emitter.fire(undefined);
+	}
 
 	public setLoading(message = 'Loading modules...'): void {
 		this.state = 'loading';
@@ -59,8 +81,20 @@ export class ModuleTreeDataProvider implements vscode.TreeDataProvider<ModuleTre
 
 	public getChildren(): Array<ModuleTreeItem | vscode.TreeItem> {
 		if (this.state === 'ready') {
-			return this.modules.map((moduleEntry) => new ModuleTreeItem(moduleEntry));
+			return [
+				new ModuleActionItem('Refresh modules', 'csmModules.refresh', 'Refresh modules from GitHub after confirmation.', 'refresh'),
+				...this.modules.map((moduleEntry) => new ModuleTreeItem(moduleEntry)),
+			];
 		}
-		return [new vscode.TreeItem(this.message, vscode.TreeItemCollapsibleState.None)];
+		if (this.signedIn) {
+			return [
+				new ModuleActionItem('Refresh modules', 'csmModules.refresh', 'Refresh modules from GitHub after confirmation.', 'refresh'),
+				new vscode.TreeItem(this.message, vscode.TreeItemCollapsibleState.None),
+			];
+		}
+		return [
+			new ModuleActionItem('Sign in to GitHub', 'csmModules.login', 'Sign in to GitHub to load modules.', 'account'),
+			new vscode.TreeItem(this.message, vscode.TreeItemCollapsibleState.None),
+		];
 	}
 }

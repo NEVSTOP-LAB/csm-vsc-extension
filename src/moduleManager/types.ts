@@ -3,6 +3,7 @@ export interface CsmModuleEntry {
 	owner: string;
 	name: string;
 	description: string;
+	topics: string[];
 	visibility: 'public' | 'private';
 	defaultBranch: string;
 	repoUrl: string;

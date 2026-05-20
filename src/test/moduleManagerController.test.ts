@@ -6,6 +6,7 @@ import { CsmModuleEntry } from '../moduleManager/types';
 type VscodeMock = typeof vscode & {
 	__getMessageLog: () => Array<{ level: 'info' | 'warn' | 'error'; text: string }>;
 	__resetMessageLog: () => void;
+	__setWarningMessageResponse: (response: string | undefined) => void;
 };
 
 class FakeMemento {
@@ -39,6 +40,7 @@ suite('ModuleManagerController Regression Tests', () => {
 
 	teardown(() => {
 		mocked.__resetMessageLog();
+		mocked.__setWarningMessageResponse(undefined);
 	});
 
 	test('refresh without session sets error and warning message', async () => {
@@ -100,6 +102,7 @@ suite('ModuleManagerController Regression Tests', () => {
 			owner: 'org',
 			name: 'module-a',
 			description: '',
+			topics: ['csm-modsets'],
 			visibility: 'public',
 			defaultBranch: 'main',
 			repoUrl: 'https://github.com/org/module-a',
@@ -134,6 +137,7 @@ suite('ModuleManagerController Regression Tests', () => {
 					owner: 'org',
 					name: 'module-a',
 					description: 'demo',
+					topics: ['csm-modsets'],
 					visibility: 'public',
 					defaultBranch: 'main',
 					repoUrl: 'https://github.com/org/module-a',
@@ -152,5 +156,33 @@ suite('ModuleManagerController Regression Tests', () => {
 		await controller.loginCommand();
 
 		assert.strictEqual(moduleCount, 1);
+	});
+
+	test('refresh cancellation does not fetch modules', async () => {
+		const controller = createController() as any;
+		let fetched = false;
+
+		controller.authService = {
+			getSessionSilently: async () => ({ accessToken: 'token', account: { label: 'tester' } }),
+			getSessionInteractively: async () => undefined,
+		};
+		controller.githubService = {
+			fetchModules: async () => {
+				fetched = true;
+				return [];
+			},
+			fetchReadme: async () => '',
+		};
+		controller.treeDataProvider = {
+			setError: () => undefined,
+			setLoading: () => undefined,
+			setModules: () => undefined,
+		};
+		mocked.__resetMessageLog();
+		mocked.__setWarningMessageResponse(undefined);
+
+		await controller.refreshCommand();
+
+		assert.strictEqual(fetched, false);
 	});
 });

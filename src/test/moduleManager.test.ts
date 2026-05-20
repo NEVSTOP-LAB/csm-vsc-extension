@@ -39,6 +39,7 @@ suite('Module Manager Tests', () => {
 		assert.strictEqual(entry.visibility, 'private');
 		assert.strictEqual(entry.defaultBranch, 'main');
 		assert.strictEqual(entry.repoUrl, repo.html_url);
+		assert.deepStrictEqual(entry.topics, ['csm-modsets']);
 	});
 
 	test('ModuleCacheStore stores and clears module snapshot', async () => {
@@ -51,6 +52,7 @@ suite('Module Manager Tests', () => {
 				owner: 'org',
 				name: 'module-a',
 				description: '',
+				topics: ['csm-modsets'],
 				visibility: 'public',
 				defaultBranch: 'main',
 				repoUrl: 'https://github.com/org/module-a',
