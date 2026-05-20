@@ -58,6 +58,12 @@ export class ModuleTreeItem extends vscode.TreeItem {
 	}
 }
 
+/**
+ * @deprecated The webview-based {@link ModuleSidebarViewProvider} is the production
+ * module manager UI. This legacy `TreeDataProvider` is retained only as a fallback
+ * for hosts that disable webviews; it is not wired up by the controller and may be
+ * removed in a future release (review item 2.6).
+ */
 export class ModuleTreeDataProvider implements vscode.TreeDataProvider<ModuleTreeItem | vscode.TreeItem> {
 	private readonly emitter = new vscode.EventEmitter<ModuleTreeItem | vscode.TreeItem | undefined>();
 	private modules: CsmModuleEntry[] = [];

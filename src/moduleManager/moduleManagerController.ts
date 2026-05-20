@@ -1,11 +1,13 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
+import * as fs from 'fs/promises';
 import { AuthService } from './authService';
 import { GitHubModuleService } from './githubModuleService';
 import { ModuleCacheStore } from './cacheStore';
 import { CsmModuleEntry, LocalModuleConfig, ModuleApplyMethod } from './types';
 import { ModuleTreeItem } from './moduleTreeDataProvider';
 import { ModuleSidebarViewProvider } from './moduleSidebarViewProvider';
+import { IModuleViewProvider, ModuleSortField, SidebarWorkspaceContext } from './interfaces';
 import { ReadmeAssetCache } from './readmeAssetCache';
 import { DEFAULT_LOCAL_MODULE_ROOT, LEGACY_LOCAL_MODULE_CONFIG_FILE, LOCAL_MODULE_CONFIG_FILE, WorkspaceModuleService } from './workspaceModuleService';
 import { COMMAND_IDS, CONFIG_KEYS, CONFIG_SECTION, CONTEXT_KEYS, VIEW_IDS } from './constants';
@@ -26,7 +28,7 @@ export class ModuleManagerController {
 	private readonly authService = new AuthService(this.logger);
 	private readonly githubService = new GitHubModuleService(this.logger);
 	private readonly cacheStore: ModuleCacheStore;
-	private readonly treeDataProvider = new ModuleSidebarViewProvider({
+	private readonly sidebarViewProvider: ModuleSidebarViewProvider = new ModuleSidebarViewProvider({
 		onLogin: () => {
 			void this.loginCommand();
 		},
@@ -46,6 +48,8 @@ export class ModuleManagerController {
 			this.setSelectedModuleKeys(moduleKeys);
 		},
 	});
+	// IModuleViewProvider abstraction (review item 2.2). Tests can swap this out.
+	private treeDataProvider: IModuleViewProvider = this.sidebarViewProvider;
 	private readonly readmeAssetCache: ReadmeAssetCache;
 	private readonly workspaceModuleService = new WorkspaceModuleService();
 	private readonly readmeCache: Record<string, string>;
@@ -66,11 +70,9 @@ export class ModuleManagerController {
 	}
 
 	public register(subscriptions: vscode.Disposable[]): void {
-		if (this.treeDataProvider instanceof ModuleSidebarViewProvider) {
-			subscriptions.push(vscode.window.registerWebviewViewProvider(VIEW_IDS.moduleSidebar, this.treeDataProvider, {
-				webviewOptions: { retainContextWhenHidden: true },
-			}));
-		}
+		subscriptions.push(vscode.window.registerWebviewViewProvider(VIEW_IDS.moduleSidebar, this.sidebarViewProvider, {
+			webviewOptions: { retainContextWhenHidden: true },
+		}));
 
 		subscriptions.push(
 			vscode.commands.registerCommand(COMMAND_IDS.login, wrapCommand(COMMAND_IDS.login, () => this.loginCommand(), this.logger)),
@@ -457,7 +459,7 @@ export class ModuleManagerController {
 				this.selectedModuleKeys.add(moduleKey);
 			}
 		}
-		if (this.treeDataProvider instanceof ModuleSidebarViewProvider) {
+		if (typeof this.treeDataProvider.setSelection === 'function') {
 			this.treeDataProvider.setSelection([...this.selectedModuleKeys]);
 		}
 	}
@@ -488,19 +490,20 @@ export class ModuleManagerController {
 	}
 
 	private async refreshSidebarWorkspaceState(): Promise<void> {
-		if (!(this.treeDataProvider instanceof ModuleSidebarViewProvider)) {
-			return;
-		}
-
+		const setContext = (context: SidebarWorkspaceContext): void => {
+			if (typeof this.treeDataProvider.setWorkspaceContext === 'function') {
+				this.treeDataProvider.setWorkspaceContext(context);
+			}
+		};
 		const workspaceFolder = this.getPreferredWorkspaceFolder();
 		if (!workspaceFolder) {
-			this.treeDataProvider.setWorkspaceContext({ appliedModuleKeys: [] });
+			setContext({ appliedModuleKeys: [] });
 			return;
 		}
 
 		const repoRoot = await this.workspaceModuleService.resolveGitRepositoryRoot(workspaceFolder.uri.fsPath);
 		if (!repoRoot) {
-			this.treeDataProvider.setWorkspaceContext({
+			setContext({
 				workspaceLabel: workspaceFolder.name,
 				appliedModuleKeys: [],
 			});
@@ -508,11 +511,33 @@ export class ModuleManagerController {
 		}
 
 		const config = await this.tryLoadSidebarLocalModuleConfig(workspaceFolder, repoRoot);
-		this.treeDataProvider.setWorkspaceContext({
+		setContext({
 			workspaceLabel: path.basename(repoRoot) || workspaceFolder.name,
 			moduleRoot: config?.root,
 			appliedModuleKeys: this.mapAppliedModuleKeys(config),
+			staleModuleKeys: await this.computeStaleModuleKeys(repoRoot, config),
 		});
+	}
+
+	/**
+	 * Identify modules whose configured filesystem path is missing on disk
+	 * (e.g. someone deleted the directory after applying the module). The UI
+	 * surfaces these as "stale" so users know their config drifted (review item 7.6).
+	 */
+	private async computeStaleModuleKeys(repoRoot: string, config: LocalModuleConfig | undefined): Promise<string[]> {
+		if (!config) {
+			return [];
+		}
+		const stale: string[] = [];
+		await Promise.all(Object.values(config.modules).map(async (module) => {
+			const target = path.resolve(repoRoot, module.path);
+			try {
+				await fs.access(target);
+			} catch {
+				stale.push(`${module.owner}/${module.name}`);
+			}
+		}));
+		return stale;
 	}
 
 	private getPreferredWorkspaceFolder(): vscode.WorkspaceFolder | undefined {
@@ -796,7 +821,7 @@ export class ModuleManagerController {
 	}
 
 	private async setWorkspaceInitializationContext(canInitializeWorkspace: boolean): Promise<void> {
-		if (this.treeDataProvider instanceof ModuleSidebarViewProvider) {
+		if (typeof this.treeDataProvider.setCanInitializeWorkspace === 'function') {
 			this.treeDataProvider.setCanInitializeWorkspace(canInitializeWorkspace);
 		}
 		await vscode.commands.executeCommand('setContext', WORKSPACE_INIT_CONTEXT_KEY, canInitializeWorkspace);

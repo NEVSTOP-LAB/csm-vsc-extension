@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import * as crypto from 'crypto';
 import { CsmModuleEntry } from './types';
 import { ViewState } from './moduleTreeDataProvider';
+import { IModuleViewProvider, SidebarWorkspaceContext } from './interfaces';
 
 interface ModuleSidebarActions {
 	onLogin: () => void;
@@ -12,17 +13,12 @@ interface ModuleSidebarActions {
 	onSelectionChange: (moduleKeys: string[]) => void;
 }
 
-interface SidebarWorkspaceContext {
-	workspaceLabel?: string;
-	moduleRoot?: string;
-	appliedModuleKeys: string[];
-}
-
 type WebviewMessage = {
-	type: 'login' | 'refresh' | 'initializeWorkspace' | 'applySelected' | 'openReadme' | 'applyOne' | 'toggleSelection' | 'setFilterQuery' | 'clearFilter' | 'dismissIntroTip';
+	type: 'login' | 'refresh' | 'initializeWorkspace' | 'applySelected' | 'openReadme' | 'applyOne' | 'toggleSelection' | 'setFilterQuery' | 'clearFilter' | 'dismissIntroTip' | 'removeModule' | 'updateModule' | 'setSortField';
 	moduleKey?: string;
 	selected?: boolean;
 	query?: string;
+	sortField?: 'name' | 'owner' | 'updatedAt';
 };
 
 function truncate(text: string, maxLength: number): string {
@@ -72,7 +68,7 @@ function renderIcon(name: IconName): string {
 	}
 }
 
-export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider {
+export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IModuleViewProvider {
 	private view: vscode.WebviewView | undefined;
 	private modules: CsmModuleEntry[] = [];
 	private state: ViewState = 'loading';
