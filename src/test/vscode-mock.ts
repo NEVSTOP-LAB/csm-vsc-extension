@@ -1,3 +1,6 @@
+import * as fs from 'fs';
+import * as path from 'path';
+
 /**
  * vscode-mock.ts
  * Minimal stub for the vscode API used by standalone csmlog tests
@@ -213,6 +216,19 @@ export enum ViewColumn {
     One = 1,
 }
 
+export class Uri {
+    constructor(private readonly fsPath: string) {}
+    static joinPath(base: Uri, ...segments: string[]): Uri {
+        return new Uri(path.join(base.fsPath, ...segments));
+    }
+    static file(fsPath: string): Uri {
+        return new Uri(fsPath);
+    }
+    toString(): string {
+        return this.fsPath;
+    }
+}
+
 type MessageLevel = 'info' | 'warn' | 'error';
 
 const messageLog: Array<{ level: MessageLevel; text: string }> = [];
@@ -236,6 +252,13 @@ export const commands = {
 
 export const window = {
     registerTreeDataProvider: () => new Disposable(),
+    createWebviewPanel: (_viewType: string, _title: string, _column: ViewColumn, _options: unknown) => ({
+        webview: {
+            cspSource: 'vscode-resource:',
+            asWebviewUri: (uri: Uri) => uri,
+            html: '',
+        },
+    }),
     async showWarningMessage(message: string, ..._items: unknown[]): Promise<string | undefined> {
         messageLog.push({ level: 'warn', text: message });
         return warningResponse;
@@ -252,6 +275,21 @@ export const window = {
 };
 
 export const workspace = {
+    fs: {
+        async createDirectory(uri: Uri): Promise<void> {
+            fs.mkdirSync(uri.toString(), { recursive: true });
+        },
+        async writeFile(uri: Uri, data: Uint8Array): Promise<void> {
+            fs.mkdirSync(path.dirname(uri.toString()), { recursive: true });
+            fs.writeFileSync(uri.toString(), Buffer.from(data));
+        },
+        async readFile(uri: Uri): Promise<Uint8Array> {
+            return fs.readFileSync(uri.toString());
+        },
+        async stat(uri: Uri): Promise<unknown> {
+            return fs.statSync(uri.toString());
+        },
+    },
     async openTextDocument(options: { language: string; content: string }): Promise<{ uri: { toString: () => string }; getText: () => string; languageId: string }> {
         return {
             uri: { toString: () => 'untitled:mock-readme.md' },

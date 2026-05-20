@@ -4,17 +4,20 @@ import { GitHubModuleService } from './githubModuleService';
 import { ModuleCacheStore } from './cacheStore';
 import { CsmModuleEntry } from './types';
 import { ModuleTreeDataProvider } from './moduleTreeDataProvider';
+import { ReadmeAssetCache } from './readmeAssetCache';
 
 export class ModuleManagerController {
 	private readonly authService = new AuthService();
 	private readonly githubService = new GitHubModuleService();
 	private readonly cacheStore: ModuleCacheStore;
 	private readonly treeDataProvider = new ModuleTreeDataProvider();
+	private readonly readmeAssetCache: ReadmeAssetCache;
 	private readonly readmeCache: Record<string, string>;
 	private currentToken: string | undefined;
 
 	constructor(private readonly context: vscode.ExtensionContext) {
 		this.cacheStore = new ModuleCacheStore(context.globalState);
+		this.readmeAssetCache = new ReadmeAssetCache(context.globalStorageUri);
 		this.readmeCache = this.cacheStore.getReadmeCache();
 	}
 
@@ -104,7 +107,9 @@ export class ModuleManagerController {
 			for (const moduleEntry of modules) {
 				const key = this.getReadmeCacheKey(moduleEntry);
 				try {
-					refreshedReadme[key] = await this.githubService.fetchReadme(moduleEntry.owner, moduleEntry.name, token);
+					const markdown = await this.githubService.fetchReadme(moduleEntry.owner, moduleEntry.name, token);
+					refreshedReadme[key] = markdown;
+					await this.readmeAssetCache.saveMarkdown(moduleEntry, markdown);
 				} catch {
 					refreshedReadme[key] = '';
 				}
@@ -130,7 +135,13 @@ export class ModuleManagerController {
 			return;
 		}
 		const key = this.getReadmeCacheKey(entry);
-		let readme = this.readmeCache[key];
+		let readme: string | undefined = this.readmeCache[key];
+		if (!readme) {
+			readme = await this.readmeAssetCache.readMarkdown(entry);
+			if (readme) {
+				this.readmeCache[key] = readme;
+			}
+		}
 		if (!readme) {
 			const token = await this.ensureToken(false);
 			if (!token) {
@@ -141,25 +152,24 @@ export class ModuleManagerController {
 				readme = await this.githubService.fetchReadme(entry.owner, entry.name, token);
 				this.readmeCache[key] = readme;
 				await this.cacheStore.setReadmeCache(this.readmeCache);
+				await this.readmeAssetCache.saveMarkdown(entry, readme);
 			} catch {
 				readme = '';
 			}
 		}
 
 		const markdownContent = readme || '# README not available\n\nUnable to load README from GitHub for this module.';
-		const doc = await vscode.workspace.openTextDocument({
-			language: 'markdown',
-			content: markdownContent,
-		});
-		await vscode.window.showTextDocument(doc, {
-			preview: true,
-			viewColumn: vscode.ViewColumn.Beside,
-		});
-		try {
-			await vscode.commands.executeCommand('markdown.showPreviewToSide', doc.uri);
-		} catch {
-			// Fall back to the opened markdown editor when markdown preview command is unavailable.
-		}
+		const panel = vscode.window.createWebviewPanel(
+			'csmModulesReadme',
+			`README: ${entry.name}`,
+			vscode.ViewColumn.Active,
+			{
+				enableFindWidget: true,
+				retainContextWhenHidden: true,
+				localResourceRoots: [this.readmeAssetCache.rootUri],
+			},
+		);
+		panel.webview.html = await this.readmeAssetCache.renderMarkdown(entry, markdownContent, panel.webview);
 	}
 
 	private getReadmeCacheKey(entry: CsmModuleEntry): string {
