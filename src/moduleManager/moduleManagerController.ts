@@ -4,7 +4,7 @@ import * as fs from 'fs/promises';
 import { AuthService } from './authService';
 import { GitHubModuleService } from './githubModuleService';
 import { ModuleCacheStore } from './cacheStore';
-import { CsmModuleEntry, LocalModuleConfig, ModuleApplyMethod } from './types';
+import { CsmModuleEntry, LocalModuleConfig, LocalModuleConfigEntry, ModuleApplyMethod } from './types';
 import { ModuleTreeItem } from './moduleTreeDataProvider';
 import { ModuleSidebarViewProvider } from './moduleSidebarViewProvider';
 import { IModuleViewProvider, ModuleSortField, SidebarWorkspaceContext } from './interfaces';
@@ -132,10 +132,11 @@ export class ModuleManagerController {
 			}
 		}
 
-		let config = await this.resolveLocalModuleConfig(workspaceFolder, repoRoot);
-		if (!config) {
+		const initialConfig = await this.resolveLocalModuleConfig(workspaceFolder, repoRoot);
+		if (!initialConfig) {
 			return;
 		}
+		let config: LocalModuleConfig = initialConfig;
 		await this.refreshWorkspaceInitializationState({ prompt: false });
 
 		const applyMethod = await this.promptApplyMethod(selectedEntries.length);
@@ -167,24 +168,85 @@ export class ModuleManagerController {
 		}
 
 		let appliedCount = 0;
+		const writeConfigSafely = async (latest: LocalModuleConfig): Promise<void> => {
+			await this.workspaceModuleService.writeConfig(latest);
+		};
+
 		try {
-			for (const moduleEntry of selectedEntries) {
-				const appliedModule = await this.workspaceModuleService.applyModule(
-					repoRoot,
-					config,
-					moduleEntry,
-					applyMethod,
-					authToken,
-				);
-				config = this.workspaceModuleService.withAppliedModule(config, appliedModule);
-				await this.workspaceModuleService.writeConfig(config);
-				appliedCount += 1;
-			}
+			await vscode.window.withProgress(
+				{
+					location: vscode.ProgressLocation.Notification,
+					title: `Applying ${selectedEntries.length} module(s) via ${applyMethod}...`,
+					cancellable: false,
+				},
+				async (progress) => {
+					if (applyMethod === 'copy') {
+						// Copy mode is independent per-module; run in parallel and collect results,
+						// then atomically merge into config in one write (review item 2.4).
+						const settled = await Promise.allSettled(
+							selectedEntries.map(async (moduleEntry) => {
+								const applied = await this.workspaceModuleService.applyModule(
+									repoRoot,
+									config,
+									moduleEntry,
+									applyMethod,
+									authToken,
+								);
+								progress.report({
+									increment: 100 / selectedEntries.length,
+									message: `${moduleEntry.owner}/${moduleEntry.name}`,
+								});
+								return applied;
+							}),
+						);
+						const successes: LocalModuleConfigEntry[] = [];
+						const failures: string[] = [];
+						for (let i = 0; i < settled.length; i += 1) {
+							const result = settled[i];
+							const moduleEntry = selectedEntries[i];
+							if (result.status === 'fulfilled') {
+								successes.push(result.value);
+							} else {
+								failures.push(`${moduleEntry.owner}/${moduleEntry.name}: ${result.reason instanceof Error ? result.reason.message : String(result.reason)}`);
+							}
+						}
+						for (const applied of successes) {
+							config = this.workspaceModuleService.withAppliedModule(config, applied);
+						}
+						appliedCount = successes.length;
+						if (successes.length > 0) {
+							await writeConfigSafely(config);
+						}
+						if (failures.length > 0) {
+							throw new Error(failures.join('; '));
+						}
+					} else {
+						// Submodule mode must run serially because git submodule add can race.
+						for (const moduleEntry of selectedEntries) {
+							const applied = await this.workspaceModuleService.applyModule(
+								repoRoot,
+								config,
+								moduleEntry,
+								applyMethod,
+								authToken,
+							);
+							config = this.workspaceModuleService.withAppliedModule(config, applied);
+							await writeConfigSafely(config);
+							appliedCount += 1;
+							progress.report({
+								increment: 100 / selectedEntries.length,
+								message: `${moduleEntry.owner}/${moduleEntry.name}`,
+							});
+						}
+					}
+				},
+			);
 		} catch (error) {
 			const message = error instanceof Error ? error.message : 'Unknown error';
 			const prefix = appliedCount > 0
 				? `Applied ${appliedCount}/${selectedEntries.length} module(s) before failure`
 				: 'Failed to apply CSM modules';
+			this.logger.error(`${prefix}: ${message}`);
 			void vscode.window.showErrorMessage(`${prefix}: ${message}`);
 			return;
 		}

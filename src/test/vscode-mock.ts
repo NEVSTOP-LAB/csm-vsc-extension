@@ -259,6 +259,12 @@ export enum ViewColumn {
     One = 1,
 }
 
+export enum ProgressLocation {
+    SourceControl = 1,
+    Window = 10,
+    Notification = 15,
+}
+
 export class Uri {
     constructor(public readonly fsPath: string) {}
     static joinPath(base: Uri, ...segments: string[]): Uri {
@@ -401,6 +407,9 @@ export const window = {
         };
     },
     activeTextEditor: undefined as { document: { uri: Uri } } | undefined,
+    async withProgress<T>(_options: unknown, task: (progress: { report: (value: unknown) => void }, token: { isCancellationRequested: boolean }) => Thenable<T> | T): Promise<T> {
+        return await task({ report: () => {} }, { isCancellationRequested: false });
+    },
 };
 
 export const workspace = {
