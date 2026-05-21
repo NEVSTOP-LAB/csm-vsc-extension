@@ -179,6 +179,7 @@ suite('Module Manager Tests', () => {
 			onRemoveModule: () => undefined,
 			onUpdateModule: () => undefined,
 			onSelectionChange: () => undefined,
+			onSortChange: () => undefined,
 		});
 
 		provider.setAuthenticated(true);
@@ -282,6 +283,7 @@ suite('Module Manager Tests', () => {
 			onSelectionChange: (moduleKeys) => {
 				selectionUpdates.push(moduleKeys);
 			},
+			onSortChange: () => undefined,
 		});
 
 		provider.setAuthenticated(true);
@@ -349,6 +351,56 @@ suite('Module Manager Tests', () => {
 		assert.strictEqual(appliedModuleName, 'module-a');
 		assert.strictEqual(removedModuleName, 'module-a');
 		assert.strictEqual(updatedModuleName, 'module-a');
+		disposable.dispose();
+	});
+
+	test('ModuleSidebarViewProvider renders and forwards sort control changes', () => {
+		const sortUpdates: Array<Record<string, string>> = [];
+		const provider = new ModuleSidebarViewProvider({
+			onLogin: () => undefined,
+			onRefresh: () => undefined,
+			onInitializeWorkspace: () => undefined,
+			onOpenReadme: () => undefined,
+			onApplySelection: () => undefined,
+			onRemoveModule: () => undefined,
+			onUpdateModule: () => undefined,
+			onSelectionChange: () => undefined,
+			onSortChange: (sortState) => {
+				sortUpdates.push(sortState as Record<string, string>);
+			},
+		});
+
+		provider.setAuthenticated(true);
+		provider.setSortOrder({ field: 'owner', direction: 'desc' });
+		provider.setModules([
+			{
+				id: 1,
+				owner: 'org',
+				name: 'module-a',
+				description: 'A demo module',
+				topics: ['csm-modsets'],
+				visibility: 'public',
+				defaultBranch: 'main',
+				repoUrl: 'https://github.com/org/module-a',
+			},
+		]);
+
+		const disposable = vscode.window.registerWebviewViewProvider('csmModules.view', provider);
+		const resolved = mocked.__resolveWebviewView('csmModules.view');
+		const rendered = mocked.__getLastWebviewView();
+
+		assert.ok(rendered?.html.includes('data-role="sort-field"'));
+		assert.ok(rendered?.html.includes('<option value="owner" selected>Owner</option>'));
+		assert.ok(rendered?.html.includes('data-action="setSortDirection"'));
+		assert.ok(rendered?.html.includes('data-sort-direction="asc"'));
+
+		resolved?.fireMessage({ type: 'setSortField', sortField: 'applied' });
+		resolved?.fireMessage({ type: 'setSortDirection', sortDirection: 'asc' });
+
+		assert.deepStrictEqual(sortUpdates, [
+			{ field: 'applied' },
+			{ direction: 'asc' },
+		]);
 		disposable.dispose();
 	});
 
