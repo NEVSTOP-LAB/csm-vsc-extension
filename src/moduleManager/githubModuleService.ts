@@ -6,8 +6,33 @@ const GITHUB_API_BASE = GITHUB.apiBase;
 const MODULE_TOPIC = GITHUB.moduleTopic;
 const PER_PAGE = GITHUB.perPage;
 
+interface GitHubSearchResponse<T> {
+	items?: T[];
+}
+
 function hasModuleTopic(repo: GitHubRepoSummary): boolean {
 	return (repo.topics ?? []).some((topic) => topic.toLowerCase() === MODULE_TOPIC);
+}
+
+function normalizeSearchRepo(repo: GitHubRepoSummary): GitHubRepoSummary {
+	return {
+		...repo,
+		topics: repo.topics && repo.topics.length > 0 ? repo.topics : [MODULE_TOPIC],
+	};
+}
+
+function dedupeRepos(repos: GitHubRepoSummary[]): GitHubRepoSummary[] {
+	const seen = new Set<string>();
+	const deduped: GitHubRepoSummary[] = [];
+	for (const repo of repos) {
+		const key = repo.full_name || String(repo.id);
+		if (seen.has(key)) {
+			continue;
+		}
+		seen.add(key);
+		deduped.push(repo);
+	}
+	return deduped;
 }
 
 export function mapRepoToModuleEntry(repo: GitHubRepoSummary): CsmModuleEntry {
@@ -42,12 +67,14 @@ function parseNextPage(linkHeader: string | null): string | undefined {
 export class GitHubModuleService {
 	constructor(private readonly logger: Logger = getLogger()) {}
 
-	private async requestJson<T>(url: string, token: string, etag?: string): Promise<{ data: T; next?: string; etag?: string; notModified?: boolean }> {
+	private async requestJson<T>(url: string, token?: string, etag?: string): Promise<{ data: T; next?: string; etag?: string; notModified?: boolean }> {
 		const headers: Record<string, string> = {
-			Authorization: `Bearer ${token}`,
 			Accept: 'application/vnd.github+json',
 			'User-Agent': GITHUB.userAgent,
 		};
+		if (token) {
+			headers.Authorization = `Bearer ${token}`;
+		}
 		if (etag) {
 			headers['If-None-Match'] = etag;
 		}
@@ -67,32 +94,36 @@ export class GitHubModuleService {
 		};
 	}
 
-	public async fetchModules(token: string, options: { etag?: string } = {}): Promise<{ modules: CsmModuleEntry[]; etag?: string; notModified?: boolean }> {
-		const initialUrl = `${GITHUB_API_BASE}/user/repos?per_page=${PER_PAGE}&affiliation=owner,collaborator,organization_member`;
+	public async fetchModules(token?: string, options: { etag?: string } = {}): Promise<{ modules: CsmModuleEntry[]; etag?: string; notModified?: boolean }> {
+		const searchQuery = encodeURIComponent(`topic:${MODULE_TOPIC}`);
+		const initialUrl = `${GITHUB_API_BASE}/search/repositories?per_page=${PER_PAGE}&q=${searchQuery}`;
 		// Conditional request: send If-None-Match only on the first page; if 304, short-circuit.
-		const firstResult = await this.requestJson<GitHubRepoSummary[]>(initialUrl, token, options.etag);
+		const firstResult = await this.requestJson<GitHubSearchResponse<GitHubRepoSummary>>(initialUrl, token, options.etag);
 		if (firstResult.notModified) {
 			return { modules: [], etag: firstResult.etag, notModified: true };
 		}
-		const repos: GitHubRepoSummary[] = [...firstResult.data];
+		const repos: GitHubRepoSummary[] = [...(firstResult.data.items ?? []).map(normalizeSearchRepo)];
 		let url = firstResult.next ?? '';
 		while (url) {
-			const result = await this.requestJson<GitHubRepoSummary[]>(url, token);
-			repos.push(...result.data);
+			const result = await this.requestJson<GitHubSearchResponse<GitHubRepoSummary>>(url, token);
+			repos.push(...(result.data.items ?? []).map(normalizeSearchRepo));
 			url = result.next ?? '';
 		}
-		const modules = repos.filter(hasModuleTopic).map(mapRepoToModuleEntry).sort((a, b) => a.name.localeCompare(b.name));
+		const modules = dedupeRepos(repos).filter(hasModuleTopic).map(mapRepoToModuleEntry).sort((a, b) => a.name.localeCompare(b.name));
 		return { modules, etag: firstResult.etag };
 	}
 
-	public async fetchReadme(owner: string, repo: string, token: string): Promise<string> {
+	public async fetchReadme(owner: string, repo: string, token?: string): Promise<string> {
 		const url = `${GITHUB_API_BASE}/repos/${owner}/${repo}/readme`;
+		const headers: Record<string, string> = {
+			Accept: 'application/vnd.github.raw+json',
+			'User-Agent': GITHUB.userAgent,
+		};
+		if (token) {
+			headers.Authorization = `Bearer ${token}`;
+		}
 		const response = await fetch(url, {
-			headers: {
-				Authorization: `Bearer ${token}`,
-				Accept: 'application/vnd.github.raw+json',
-				'User-Agent': GITHUB.userAgent,
-			},
+			headers,
 		});
 		if (response.status === 404) {
 			return '';

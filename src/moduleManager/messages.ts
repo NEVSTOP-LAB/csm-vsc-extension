@@ -19,8 +19,8 @@ const messages = {
 		zh: '检测到 {rootPath}/ 目录和 .lvproj 文件，但尚未找到本地 CSM 模块配置。要为此仓库初始化 CSM 模块管理吗？',
 	},
 	signInToLoadModules: {
-		en: 'Sign in to GitHub to load modules.',
-		zh: '登录 GitHub 以加载模块。',
+		en: 'Sign in to GitHub to include private modules.',
+		zh: '登录 GitHub 以纳入私有模块。',
 	},
 	selectModuleToApply: {
 		en: 'Select at least one module to apply to the current repository.',

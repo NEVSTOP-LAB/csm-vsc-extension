@@ -142,31 +142,42 @@ export class ModuleManagerController {
 		);
 
 		const cached = this.cacheStore.getModuleSnapshot();
-		const hasCachedModules = !!cached && cached.modules.length > 0;
-		if (hasCachedModules) {
-			this.availableModules = cached.modules;
+		const cachedModules = cached?.modules ?? [];
+		const hasCachedModules = cachedModules.length > 0;
+		const cachedIncludesPrivate = cachedModules.some((module) => module.visibility === 'private');
+		const initiallyVisibleModules = cachedIncludesPrivate
+			? cachedModules.filter((module) => module.visibility === 'public')
+			: cachedModules;
+		if (initiallyVisibleModules.length > 0) {
+			this.availableModules = initiallyVisibleModules;
 			this.applyModuleSort();
 			this.treeDataProvider.setModules(this.availableModules);
 		} else {
-			this.treeDataProvider.setLoading(t('signInToLoadModules'));
+			this.treeDataProvider.setLoading(t('loadingModules'));
 		}
 		if (typeof this.treeDataProvider.setSortOrder === 'function') {
 			this.treeDataProvider.setSortOrder(this.currentSortState);
 		}
 		void this.setAuthenticationState(false);
 		void this.setApplySelectionContext(false);
+		const sidebarWorkspaceRefresh = this.refreshSidebarWorkspaceState();
+		void sidebarWorkspaceRefresh;
 
-		if (!hasCachedModules || this.cacheStore.isModuleSnapshotExpired(cached, this.getCacheTtlMinutes())) {
+		const shouldRefreshNow = !hasCachedModules
+			|| cachedIncludesPrivate
+			|| this.cacheStore.isModuleSnapshotExpired(cached, this.getCacheTtlMinutes());
+		if (shouldRefreshNow) {
 			void this.loadModules({
 				interactiveAuth: false,
 				showSuccessMessage: false,
 				showErrorMessage: false,
-				preserveVisibleModules: hasCachedModules,
+				preserveVisibleModules: initiallyVisibleModules.length > 0,
 			});
+		} else {
+			void sidebarWorkspaceRefresh.then(() => this.refreshModulesForSignedInUsers());
 		}
 
 		void this.refreshWorkspaceInitializationState({ prompt: true });
-		void this.refreshSidebarWorkspaceState();
 	}
 
 	public async applyToWorkspaceCommand(entry?: CsmModuleEntry | ModuleTreeItem, useOnlyEntry = false): Promise<void> {
@@ -588,6 +599,22 @@ export class ModuleManagerController {
 			&& Date.now() - this.lastTokenVerifiedAt < ModuleManagerController.TOKEN_VERIFY_INTERVAL_MS;
 	}
 
+	private async refreshModulesForSignedInUsers(): Promise<void> {
+		if (this.availableModules.some((module) => module.visibility === 'private')) {
+			return;
+		}
+		const token = await this.ensureToken(false);
+		if (!token) {
+			return;
+		}
+		await this.loadModules({
+			interactiveAuth: false,
+			showSuccessMessage: false,
+			showErrorMessage: false,
+			preserveVisibleModules: this.availableModules.length > 0,
+		});
+	}
+
 	public async refreshCommand(): Promise<void> {
 		const choice = await vscode.window.showWarningMessage(
 			t('refreshConfirmation'),
@@ -597,7 +624,7 @@ export class ModuleManagerController {
 		if (choice !== t('refreshAction')) {
 			return;
 		}
-		await this.loadModules({ interactiveAuth: true, showSuccessMessage: true, showErrorMessage: true });
+		await this.loadModules({ interactiveAuth: false, showSuccessMessage: true, showErrorMessage: true });
 	}
 
 	private async loadModules(options: {
@@ -607,21 +634,6 @@ export class ModuleManagerController {
 		preserveVisibleModules?: boolean;
 	}): Promise<void> {
 		const token = await this.ensureToken(options.interactiveAuth);
-		if (!token) {
-			// Offline mode (review item 7.4): if we have a cached snapshot, surface it
-			// instead of an error so users can browse the catalog without GitHub access.
-			if (this.availableModules.length > 0) {
-				if (typeof this.treeDataProvider.setOfflineMode === 'function') {
-					this.treeDataProvider.setOfflineMode(true);
-				}
-				this.applyModuleSort();
-				this.treeDataProvider.setModules(this.availableModules);
-			} else if (options.interactiveAuth) {
-				this.treeDataProvider.setError(t('signInRequiredForRefresh'));
-				void vscode.window.showWarningMessage(t('refreshWithoutSession'));
-			}
-			return;
-		}
 		if (typeof this.treeDataProvider.setOfflineMode === 'function') {
 			this.treeDataProvider.setOfflineMode(false);
 		}
@@ -682,7 +694,7 @@ export class ModuleManagerController {
 	 */
 	private async fetchReadmesParallel(
 		modules: CsmModuleEntry[],
-		token: string,
+		token: string | undefined,
 		concurrency: number,
 	): Promise<Record<string, string>> {
 		const refreshed: Record<string, string> = {};
@@ -787,7 +799,7 @@ export class ModuleManagerController {
 		}
 
 		const token = await this.ensureToken(false);
-		if (!token) {
+		if (!token && entry.visibility === 'private') {
 			if (options.warnOnMissingSession) {
 				void vscode.window.showWarningMessage(t('noCachedReadmeAndNoSession'));
 				return undefined;
