@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { isChineseLanguage } from '../i18n';
 import type { HoverEntry } from './types';
 import { HOVER_DB } from './db';
 
@@ -170,9 +171,17 @@ function buildAnchorHover(name: string, def: AnchorDefinition): vscode.Hover {
     // Do not trust user-controlled document content in anchor hovers.
     md.isTrusted = false;
     md.supportHtml = false;
-    md.appendMarkdown(`**\`<${name}>\` — 用户定义锚点 (User Anchor)**`);
+    if (isChineseLanguage()) {
+        md.appendMarkdown(`**\`<${name}>\` — 用户定义锚点**`);
+    } else {
+        md.appendMarkdown(`**\`<${name}>\` — User-defined anchor**`);
+    }
     md.appendMarkdown('\n\n---\n\n');
-    md.appendMarkdown(`定义于第 ${def.line + 1} 行。`);
+    if (isChineseLanguage()) {
+        md.appendMarkdown(`定义于第 ${def.line + 1} 行。`);
+    } else {
+        md.appendMarkdown(`Defined on line ${def.line + 1}.`);
+    }
     if (def.comment) {
         md.appendMarkdown('\n\n');
         md.appendText(def.comment);

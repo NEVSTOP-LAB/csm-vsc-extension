@@ -1,3 +1,5 @@
+import { t } from './messages';
+
 /**
  * Centralized constants for the Module Manager feature.
  *
@@ -49,7 +51,7 @@ export const CONTEXT_KEYS = {
 	hasSelection: 'csmModules.hasSelection',
 } as const;
 
-export const OUTPUT_CHANNEL_NAME = 'CSM Modules';
+export const OUTPUT_CHANNEL_NAME = t('outputChannelName');
 
 export const GITHUB = {
 	apiBase: 'https://api.github.com',

@@ -10,6 +10,7 @@
 
 import * as assert from 'assert';
 import * as path from 'path';
+import { __setLanguageOverrideForTests } from '../i18n';
 
 // ---------------------------------------------------------------------------
 // Type stubs (matching vscode-mock.ts shapes)
@@ -79,6 +80,14 @@ const LINE_CONFIG_ENABLE  = '- PeriodicLog.Enable | 1';
 const LINE_CONFIG_THRESH  = '- PeriodicLog.Threshold(#/s) | 2.00';
 const LINE_CONFIG_PERIOD  = '- PeriodicLog.CheckPeriod(s) | 1.00';
 
+setup(() => {
+    __setLanguageOverrideForTests('zh-cn');
+});
+
+teardown(() => {
+    __setLanguageOverrideForTests(undefined);
+});
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -142,6 +151,12 @@ suite('CSMLogHoverProvider – event types', () => {
     test('[No-Rep Async Message] hover contains "无应答异步消息"', () => {
         const col = LINE_NO_REP_ASYNC.indexOf('[No-Rep Async Message]') + 2;
         assertContains(hover(LINE_NO_REP_ASYNC, col), '无应答异步消息');
+    });
+
+    test('[State Change] hover switches to English when language override is en', () => {
+        __setLanguageOverrideForTests('en');
+        const col = LINE_STATE_CHANGE.indexOf('[State Change]') + 2;
+        assertContains(hover(LINE_STATE_CHANGE, col), 'State Change (Priority 8)');
     });
 });
 

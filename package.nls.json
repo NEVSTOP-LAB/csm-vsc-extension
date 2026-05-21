@@ -1,0 +1,23 @@
+{
+  "extension.displayName": "Communicable State Machine(CSM)",
+  "extension.description": "Language support for Communicable State Machine (CSM) files in Visual Studio Code",
+  "commands.login.title": "CSM Modules: Sign In to GitHub",
+  "commands.refresh.title": "CSM Modules: Refresh",
+  "commands.initializeWorkspace.title": "CSM Modules: Initialize Workspace Management",
+  "commands.openReadme.title": "CSM Modules: Open README",
+  "commands.applyToWorkspace.title": "CSM Modules: Apply to Current Repository",
+  "commands.removeModule.title": "CSM Modules: Remove Applied Module",
+  "commands.updateModule.title": "CSM Modules: Update Applied Module",
+  "commands.contextApplyModule.title": "Apply to Workspace",
+  "commands.contextOpenReadme.title": "Open README",
+  "commands.contextRemoveModule.title": "Remove from Workspace",
+  "commands.contextUpdateModule.title": "Update Applied Module",
+  "commands.contextSelectModule.title": "Select Module",
+  "commands.contextClearModuleSelection.title": "Clear Selection",
+  "commands.setSortOrder.title": "CSM Modules: Change Sort Order",
+  "csmModules.title": "CSM Modules",
+  "views.csmModules.view.name": "Available Modules",
+  "configuration.csmModules.defaultModuleRoot.description": "Default relative directory used when initializing local CSM module management for a repository that does not already have a csm-modules.yaml file.",
+  "configuration.csmModules.cache.ttlMinutes.description": "Preferred cache reuse time in minutes before the module list and README cache are refreshed in the background.",
+  "iconThemes.csmFileIcons.label": "CSM File Icons"
+}

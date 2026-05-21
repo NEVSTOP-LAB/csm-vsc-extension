@@ -7,6 +7,7 @@
 
 import * as assert from 'assert';
 import * as path from 'path';
+import { __setLanguageOverrideForTests } from '../i18n';
 
 // ---------------------------------------------------------------------------
 // Type stubs (matching vscode-mock.ts shapes)
@@ -37,6 +38,14 @@ const hoverData = require(
     clearAnchorCache: (uri: string) => void;
     provideContentHover: (doc: FakeDocument, pos: any) => any;
 };
+
+setup(() => {
+    __setLanguageOverrideForTests('zh-cn');
+});
+
+teardown(() => {
+    __setLanguageOverrideForTests(undefined);
+});
 
 // ---------------------------------------------------------------------------
 // Tests
@@ -134,6 +143,23 @@ suite('hoverData – @ operator lookup', () => {
                 text.includes('模块地址分隔符') || text.includes('@'),
                 'Hover should mention module address separator'
             );
+        }
+    });
+
+    test('@ operator hover switches to English when language override is en', () => {
+        __setLanguageOverrideForTests('en');
+
+        const doc = makeDoc([
+            'API: State @ Module',
+        ]);
+
+        const hover = hoverData.provideContentHover(doc, { line: 0, character: 11 });
+        assert.ok(hover !== undefined, 'Should provide hover for @ operator in English');
+
+        if (hover && hover.contents) {
+            const md = Array.isArray(hover.contents) ? hover.contents[0] : hover.contents;
+            const text = md?.value || '';
+            assert.ok(text.includes('Module Address Separator'), 'Hover should switch to English text');
         }
     });
 });

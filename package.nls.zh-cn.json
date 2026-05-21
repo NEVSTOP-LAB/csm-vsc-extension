@@ -1,0 +1,23 @@
+{
+  "extension.displayName": "可通信状态机（CSM）",
+  "extension.description": "为 Visual Studio Code 中的 Communicable State Machine (CSM) 文件提供语言支持",
+  "commands.login.title": "CSM 模块：登录 GitHub",
+  "commands.refresh.title": "CSM 模块：刷新",
+  "commands.initializeWorkspace.title": "CSM 模块：初始化工作区管理",
+  "commands.openReadme.title": "CSM 模块：打开 README",
+  "commands.applyToWorkspace.title": "CSM 模块：应用到当前仓库",
+  "commands.removeModule.title": "CSM 模块：移除已应用模块",
+  "commands.updateModule.title": "CSM 模块：更新已应用模块",
+  "commands.contextApplyModule.title": "应用到工作区",
+  "commands.contextOpenReadme.title": "打开 README",
+  "commands.contextRemoveModule.title": "从工作区移除",
+  "commands.contextUpdateModule.title": "更新已应用模块",
+  "commands.contextSelectModule.title": "选择模块",
+  "commands.contextClearModuleSelection.title": "清除选择",
+  "commands.setSortOrder.title": "CSM 模块：更改排序方式",
+  "csmModules.title": "CSM 模块",
+  "views.csmModules.view.name": "可用模块",
+  "configuration.csmModules.defaultModuleRoot.description": "当仓库中尚不存在 csm-modules.yaml 文件时，用于初始化本地 CSM 模块管理的默认相对目录。",
+  "configuration.csmModules.cache.ttlMinutes.description": "在后台刷新模块列表和 README 缓存之前，优先复用缓存的时长（分钟）。",
+  "iconThemes.csmFileIcons.label": "CSM 文件图标"
+}

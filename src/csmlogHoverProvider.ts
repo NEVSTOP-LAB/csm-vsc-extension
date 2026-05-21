@@ -1,8 +1,10 @@
 import * as vscode from 'vscode';
 import { HoverEntry, buildHover, provideContentHover } from './hoverData';
+import { localizeHoverEntries } from './hoverData/localize';
+import { csmlogHoverTranslations } from './csmlogHoverTranslations';
 
 /** Lookup key → hover entry (upper-case keys for case-insensitive matching). */
-const CSMLOG_HOVER_DB: Record<string, HoverEntry> = {
+const zhCsmlogHoverDb: Record<string, HoverEntry> = {
 
     // -----------------------------------------------------------------------
     // Event types (priority order, high → low)
@@ -276,6 +278,8 @@ const CSMLOG_HOVER_DB: Record<string, HoverEntry> = {
         ].join('\n'),
     },
 };
+
+const CSMLOG_HOVER_DB: Record<string, HoverEntry> = localizeHoverEntries(zhCsmlogHoverDb, csmlogHoverTranslations);
 
 // ---------------------------------------------------------------------------
 // Regex patterns for log line structure

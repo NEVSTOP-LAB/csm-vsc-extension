@@ -12,6 +12,7 @@ import { ReadmeAssetCache } from './readmeAssetCache';
 import { DEFAULT_LOCAL_MODULE_ROOT, LEGACY_LOCAL_MODULE_CONFIG_FILE, LOCAL_MODULE_CONFIG_FILE, WorkspaceModuleService } from './workspaceModuleService';
 import { COMMAND_IDS, CONFIG_KEYS, CONFIG_SECTIONS, CONTEXT_KEYS, VIEW_IDS } from './constants';
 import { Logger, getLogger, wrapCommand } from './logger';
+import { getApplyMethodLabel, t } from './messages';
 import { DEFAULT_MODULE_SORT_STATE, isModuleSortField, normalizeModuleSortState, sortModules } from './sort';
 
 const LOCAL_MODULE_CONFIG_GLOB = `**/{${LOCAL_MODULE_CONFIG_FILE},${LEGACY_LOCAL_MODULE_CONFIG_FILE}}`;
@@ -21,7 +22,7 @@ const HAS_SELECTION_CONTEXT_KEY = CONTEXT_KEYS.hasSelection;
 const LVPROJ_GLOB = '**/*.lvproj';
 
 function getWorkspaceInitPrompt(rootPath: string): string {
-	return `Detected ${rootPath}/ and .lvproj files but no local CSM module config. Initialize CSM module management for this repository?`;
+	return t('workspaceInitPrompt', { rootPath });
 }
 
 interface PendingWorkspaceInitialization {
@@ -147,7 +148,7 @@ export class ModuleManagerController {
 			this.applyModuleSort();
 			this.treeDataProvider.setModules(this.availableModules);
 		} else {
-			this.treeDataProvider.setLoading('Sign in to GitHub to load modules.');
+			this.treeDataProvider.setLoading(t('signInToLoadModules'));
 		}
 		if (typeof this.treeDataProvider.setSortOrder === 'function') {
 			this.treeDataProvider.setSortOrder(this.currentSortState);
@@ -174,19 +175,19 @@ export class ModuleManagerController {
 			? (resolvedEntry ? [resolvedEntry] : [])
 			: this.getSelectedModules(resolvedEntry);
 		if (selectedEntries.length === 0) {
-			void vscode.window.showWarningMessage('Select at least one module to apply to the current repository.');
+			void vscode.window.showWarningMessage(t('selectModuleToApply'));
 			return;
 		}
 
 		const workspaceFolder = await this.resolveWorkspaceFolder();
 		if (!workspaceFolder) {
-			void vscode.window.showWarningMessage('Open the target repository as a workspace folder before applying modules.');
+			void vscode.window.showWarningMessage(t('openWorkspaceBeforeApply'));
 			return;
 		}
 
 		const repoRoot = await this.workspaceModuleService.resolveGitRepositoryRoot(workspaceFolder.uri.fsPath);
 		if (!repoRoot) {
-			void vscode.window.showErrorMessage('The current workspace folder is not a Git repository.');
+			void vscode.window.showErrorMessage(t('workspaceNotGitRepo'));
 			return;
 		}
 
@@ -194,7 +195,7 @@ export class ModuleManagerController {
 		if (!authToken && selectedEntries.some((moduleEntry) => moduleEntry.visibility === 'private')) {
 			authToken = await this.ensureToken(true);
 			if (!authToken) {
-				void vscode.window.showWarningMessage('GitHub sign-in is required to apply private modules.');
+				void vscode.window.showWarningMessage(t('signInRequiredForPrivate'));
 				return;
 			}
 		}
@@ -213,23 +214,29 @@ export class ModuleManagerController {
 
 		const duplicateTargets = this.findDuplicateTargetPaths(config, selectedEntries);
 		if (duplicateTargets.length > 0) {
-			void vscode.window.showErrorMessage(`Selected modules would map to the same target path: ${duplicateTargets.join(', ')}`);
+			void vscode.window.showErrorMessage(t('duplicateTargetPaths', { paths: duplicateTargets.join(', ') }));
 			return;
 		}
 
 		const occupiedTargets = await this.findOccupiedTargetPaths(repoRoot, config, selectedEntries);
 		if (occupiedTargets.length > 0) {
-			const prefix = applyMethod === 'copy' ? 'Copy target already exists' : 'Target path already exists';
+			const prefix = applyMethod === 'copy' ? t('copyTargetExists') : t('targetPathExists');
 			void vscode.window.showWarningMessage(`${prefix}: ${occupiedTargets.join(', ')}`);
 			return;
 		}
+		const applyMethodLabel = getApplyMethodLabel(applyMethod);
 
 		const confirmation = await vscode.window.showWarningMessage(
-			`Apply ${selectedEntries.length} module(s) to ${path.basename(repoRoot)} using ${applyMethod} under ${config.root}/?`,
+			t('applyConfirmation', {
+				count: selectedEntries.length,
+				repository: path.basename(repoRoot),
+				method: applyMethodLabel,
+				root: config.root,
+			}),
 			{ modal: true },
-			'Apply',
+			t('applyAction'),
 		);
-		if (confirmation !== 'Apply') {
+		if (confirmation !== t('applyAction')) {
 			return;
 		}
 
@@ -242,7 +249,7 @@ export class ModuleManagerController {
 			await vscode.window.withProgress(
 				{
 					location: vscode.ProgressLocation.Notification,
-					title: `Applying ${selectedEntries.length} module(s) via ${applyMethod}...`,
+					title: t('progressApplying', { count: selectedEntries.length, method: applyMethodLabel }),
 					cancellable: false,
 				},
 				async (progress) => {
@@ -310,15 +317,19 @@ export class ModuleManagerController {
 		} catch (error) {
 			const message = this.getUserFacingErrorMessage(error, 'apply');
 			const prefix = appliedCount > 0
-				? `Applied ${appliedCount}/${selectedEntries.length} module(s) before failure`
-				: 'Failed to apply CSM modules';
+				? t('applyPartialFailure', { appliedCount, selectedCount: selectedEntries.length })
+				: t('applyFailed');
 			this.logger.error(`${prefix}: ${message}`);
 			void vscode.window.showErrorMessage(`${prefix}: ${message}`);
 			return;
 		}
 
 		void vscode.window.showInformationMessage(
-			`Applied ${selectedEntries.length} module(s) via ${applyMethod}. Config: ${path.relative(repoRoot, config.configPath).replace(/\\/g, '/')}`,
+			t('applySuccess', {
+				count: selectedEntries.length,
+				method: applyMethodLabel,
+				configPath: path.relative(repoRoot, config.configPath).replace(/\\/g, '/'),
+			}),
 		);
 		await this.refreshSidebarWorkspaceState();
 	}
@@ -327,37 +338,42 @@ export class ModuleManagerController {
 		const resolvedEntry = this.resolveModuleEntry(entry);
 		const workspaceFolder = await this.resolveWorkspaceFolder();
 		if (!workspaceFolder) {
-			void vscode.window.showWarningMessage('Open the target repository as a workspace folder before removing modules.');
+			void vscode.window.showWarningMessage(t('openWorkspaceBeforeRemove'));
 			return;
 		}
 		const repoRoot = await this.workspaceModuleService.resolveGitRepositoryRoot(workspaceFolder.uri.fsPath);
 		if (!repoRoot) {
-			void vscode.window.showErrorMessage('The current workspace folder is not a Git repository.');
+			void vscode.window.showErrorMessage(t('workspaceNotGitRepo'));
 			return;
 		}
 		let config = await this.tryLoadSidebarLocalModuleConfig(workspaceFolder, repoRoot);
 		if (!config) {
-			void vscode.window.showWarningMessage('No CSM module configuration found in this workspace.');
+			void vscode.window.showWarningMessage(t('noWorkspaceConfig'));
 			return;
 		}
 		const target = this.findAppliedEntryFor(config, resolvedEntry);
 		if (!target) {
-			void vscode.window.showWarningMessage('Selected module is not currently applied to this workspace.');
+			void vscode.window.showWarningMessage(t('selectedModuleNotApplied'));
 			return;
 		}
+		const targetLabel = `${target.owner}/${target.name}`;
 		const confirmation = await vscode.window.showWarningMessage(
-			`Remove module ${target.owner}/${target.name} from ${path.basename(repoRoot)}? This deletes ${target.path}.`,
+			t('removeConfirmation', {
+				module: targetLabel,
+				repository: path.basename(repoRoot),
+				targetPath: target.path,
+			}),
 			{ modal: true },
-			'Remove',
+			t('removeAction'),
 		);
-		if (confirmation !== 'Remove') {
+		if (confirmation !== t('removeAction')) {
 			return;
 		}
 		try {
 			await vscode.window.withProgress(
 				{
 					location: vscode.ProgressLocation.Notification,
-					title: `Removing ${target.owner}/${target.name}...`,
+					title: t('progressRemoving', { module: targetLabel }),
 					cancellable: false,
 				},
 				async () => {
@@ -369,10 +385,10 @@ export class ModuleManagerController {
 		} catch (error) {
 			const message = this.getUserFacingErrorMessage(error, 'remove');
 			this.logger.error(`Failed to remove module ${target.owner}/${target.name}: ${message}`);
-			void vscode.window.showErrorMessage(`Failed to remove module: ${message}`);
+			void vscode.window.showErrorMessage(t('removeFailed', { message }));
 			return;
 		}
-		void vscode.window.showInformationMessage(`Removed module ${target.owner}/${target.name}.`);
+		void vscode.window.showInformationMessage(t('removeSuccess', { module: targetLabel }));
 		await this.refreshSidebarWorkspaceState();
 	}
 
@@ -380,32 +396,33 @@ export class ModuleManagerController {
 		const resolvedEntry = this.resolveModuleEntry(entry);
 		const workspaceFolder = await this.resolveWorkspaceFolder();
 		if (!workspaceFolder) {
-			void vscode.window.showWarningMessage('Open the target repository as a workspace folder before updating modules.');
+			void vscode.window.showWarningMessage(t('openWorkspaceBeforeUpdate'));
 			return;
 		}
 		const repoRoot = await this.workspaceModuleService.resolveGitRepositoryRoot(workspaceFolder.uri.fsPath);
 		if (!repoRoot) {
-			void vscode.window.showErrorMessage('The current workspace folder is not a Git repository.');
+			void vscode.window.showErrorMessage(t('workspaceNotGitRepo'));
 			return;
 		}
 		let config = await this.tryLoadSidebarLocalModuleConfig(workspaceFolder, repoRoot);
 		if (!config) {
-			void vscode.window.showWarningMessage('No CSM module configuration found in this workspace.');
+			void vscode.window.showWarningMessage(t('noWorkspaceConfig'));
 			return;
 		}
 		const target = this.findAppliedEntryFor(config, resolvedEntry);
 		if (!target) {
-			void vscode.window.showWarningMessage('Selected module is not currently applied to this workspace.');
+			void vscode.window.showWarningMessage(t('selectedModuleNotApplied'));
 			return;
 		}
 		const moduleEntry = this.findAvailableModule(target.owner, target.name) ?? this.synthesizeModuleEntry(target);
 		const authToken = await this.ensureToken(moduleEntry.visibility === 'private');
+		const targetLabel = `${target.owner}/${target.name}`;
 		try {
 			let updated: LocalModuleConfigEntry | undefined;
 			await vscode.window.withProgress(
 				{
 					location: vscode.ProgressLocation.Notification,
-					title: `Updating ${target.owner}/${target.name}...`,
+					title: t('progressUpdating', { module: targetLabel }),
 					cancellable: false,
 				},
 				async () => {
@@ -414,11 +431,14 @@ export class ModuleManagerController {
 					await this.workspaceModuleService.writeConfig(config);
 				},
 			);
-			void vscode.window.showInformationMessage(`Updated ${target.owner}/${target.name} to ${updated?.ref ?? 'latest'}.`);
+			void vscode.window.showInformationMessage(t('updateSuccess', {
+				module: targetLabel,
+				ref: updated?.ref ?? t('latestRef'),
+			}));
 		} catch (error) {
-			const message = error instanceof Error ? error.message : 'Unknown error';
+			const message = this.getUserFacingErrorMessage(error, 'update');
 			this.logger.error(`Failed to update module ${target.owner}/${target.name}: ${message}`);
-			void vscode.window.showErrorMessage(`Failed to update module: ${message}`);
+			void vscode.window.showErrorMessage(t('updateFailed', { message }));
 			return;
 		}
 		await this.refreshSidebarWorkspaceState();
@@ -478,13 +498,13 @@ export class ModuleManagerController {
 	public async initializeWorkspaceCommand(workspaceFolder?: vscode.WorkspaceFolder): Promise<void> {
 		const targetFolder = workspaceFolder ?? await this.resolveWorkspaceFolder();
 		if (!targetFolder) {
-			void vscode.window.showWarningMessage('Open the target repository as a workspace folder before initializing CSM module management.');
+			void vscode.window.showWarningMessage(t('openWorkspaceBeforeInitialize'));
 			return;
 		}
 
 		const repoRoot = await this.workspaceModuleService.resolveGitRepositoryRoot(targetFolder.uri.fsPath);
 		if (!repoRoot) {
-			void vscode.window.showErrorMessage('The current workspace folder is not a Git repository.');
+			void vscode.window.showErrorMessage(t('workspaceNotGitRepo'));
 			return;
 		}
 
@@ -494,7 +514,7 @@ export class ModuleManagerController {
 			const existingConfig = await this.resolveLocalModuleConfig(targetFolder, repoRoot);
 			if (existingConfig) {
 				void vscode.window.showInformationMessage(
-					`Local CSM module config already exists at ${path.relative(repoRoot, existingConfig.configPath).replace(/\\/g, '/')}.`,
+					t('configAlreadyExists', { configPath: path.relative(repoRoot, existingConfig.configPath).replace(/\\/g, '/') }),
 				);
 			}
 			await this.refreshSidebarWorkspaceState();
@@ -505,7 +525,7 @@ export class ModuleManagerController {
 		const recoveredConfig = await this.workspaceModuleService.recoverConfigFromExistingSubmodules(repoRoot, defaultRoot);
 		if (recoveredConfig) {
 			void vscode.window.showInformationMessage(
-				`Initialized local CSM module config from existing submodules at ${path.relative(repoRoot, recoveredConfig.configPath).replace(/\\/g, '/')}.`,
+				t('configInitializedFromSubmodules', { configPath: path.relative(repoRoot, recoveredConfig.configPath).replace(/\\/g, '/') }),
 			);
 			await this.refreshSidebarWorkspaceState();
 			await this.refreshWorkspaceInitializationState({ prompt: false });
@@ -520,13 +540,13 @@ export class ModuleManagerController {
 	public async loginCommand(): Promise<void> {
 		const session = await this.authService.getSessionInteractively();
 		if (!session) {
-			void vscode.window.showWarningMessage('GitHub sign-in was cancelled.');
+			void vscode.window.showWarningMessage(t('signInCancelled'));
 			return;
 		}
 		this.currentToken = session.accessToken;
 		this.lastTokenVerifiedAt = Date.now();
 		await this.setAuthenticationState(true);
-		void vscode.window.showInformationMessage(`Signed in as ${session.account.label}`);
+		void vscode.window.showInformationMessage(t('signedInAs', { account: session.account.label }));
 		// Best-effort scope verification, logged when missing scopes are detected (7.5).
 		if (typeof this.authService.verifyScopes === 'function') {
 			void this.authService.verifyScopes(session.accessToken);
@@ -570,11 +590,11 @@ export class ModuleManagerController {
 
 	public async refreshCommand(): Promise<void> {
 		const choice = await vscode.window.showWarningMessage(
-			'Refresh CSM modules from GitHub?',
+			t('refreshConfirmation'),
 			{ modal: true },
-			'Refresh',
+			t('refreshAction'),
 		);
-		if (choice !== 'Refresh') {
+		if (choice !== t('refreshAction')) {
 			return;
 		}
 		await this.loadModules({ interactiveAuth: true, showSuccessMessage: true, showErrorMessage: true });
@@ -597,8 +617,8 @@ export class ModuleManagerController {
 				this.applyModuleSort();
 				this.treeDataProvider.setModules(this.availableModules);
 			} else if (options.interactiveAuth) {
-				this.treeDataProvider.setError('GitHub sign-in is required to refresh modules.');
-				void vscode.window.showWarningMessage('Unable to refresh modules without a GitHub session.');
+				this.treeDataProvider.setError(t('signInRequiredForRefresh'));
+				void vscode.window.showWarningMessage(t('refreshWithoutSession'));
 			}
 			return;
 		}
@@ -607,7 +627,7 @@ export class ModuleManagerController {
 		}
 
 		if (!options.preserveVisibleModules) {
-			this.treeDataProvider.setLoading('Refreshing modules from GitHub...');
+			this.treeDataProvider.setLoading(t('refreshingModules'));
 		}
 		try {
 			const previousEtag = this.cacheStore.getModuleEtag();
@@ -625,7 +645,7 @@ export class ModuleManagerController {
 					await this.cacheStore.setModuleEtag(fetchResult.etag);
 				}
 				if (options.showSuccessMessage) {
-					void vscode.window.showInformationMessage('CSM modules are up to date.');
+					void vscode.window.showInformationMessage(t('modulesUpToDate'));
 				}
 				return;
 			}
@@ -644,14 +664,14 @@ export class ModuleManagerController {
 			this.treeDataProvider.setModules(this.availableModules);
 			await this.refreshSidebarWorkspaceState();
 			if (options.showSuccessMessage) {
-				void vscode.window.showInformationMessage(`Refreshed ${modules.length} module(s).`);
+				void vscode.window.showInformationMessage(t('modulesRefreshed', { count: modules.length }));
 			}
 		} catch (error) {
 			const message = this.getUserFacingErrorMessage(error, 'refresh');
 			this.logger.error(`Failed to refresh modules: ${message}`);
 			this.treeDataProvider.setError(message);
 			if (options.showErrorMessage) {
-				void vscode.window.showErrorMessage(`Failed to refresh CSM modules: ${message}`);
+				void vscode.window.showErrorMessage(t('refreshFailed', { message }));
 			}
 		}
 	}
@@ -692,14 +712,14 @@ export class ModuleManagerController {
 	}
 
 	private getUnavailableReadmeMarkdown(): string {
-		return '# README not available\n\nUnable to load README from GitHub for this module.';
+		return `${t('readmeUnavailableTitle')}\n\n${t('readmeUnavailableBody')}`;
 	}
 
 	private getUserFacingErrorMessage(error: unknown, context: UserFacingErrorContext): string {
 		const rawMessage = error instanceof Error ? error.message : String(error);
 		const segments = rawMessage.split('; ').map((segment) => segment.trim()).filter((segment) => segment.length > 0);
 		if (segments.length === 0) {
-			return 'Unknown error';
+			return t('unexpectedError');
 		}
 		return segments.map((segment) => this.mapUserFacingErrorSegment(segment, context)).join('; ');
 	}
@@ -718,16 +738,16 @@ export class ModuleManagerController {
 			return this.mapGitHubStatusToUserMessage(Number(githubStatusMatch[1]), context);
 		}
 		if (/Failed to parse YAML config:/i.test(message)) {
-			return 'The local CSM module config is not valid YAML. Fix the file or reinitialize the workspace.';
+			return t('invalidYamlConfig');
 		}
 		if (/spawn .*ENOENT|is not recognized as an internal or external command|The system cannot find the file specified/i.test(message)) {
-			return 'Git is not available. Install Git or configure git.path in VS Code.';
+			return t('gitUnavailable');
 		}
 		if (/Authentication failed|Permission denied|could not read Username|Repository not found|access denied/i.test(message)) {
-			return 'Git could not access the module repository. Check your GitHub session and repository permissions.';
+			return t('gitCannotAccessRepo');
 		}
 		if (/ENOTFOUND|ECONNRESET|ECONNREFUSED|ETIMEDOUT|fetch failed|network/i.test(message)) {
-			return 'Network request failed while contacting GitHub. Check your connection and try again.';
+			return t('networkRequestFailed');
 		}
 		return message;
 	}
@@ -735,18 +755,18 @@ export class ModuleManagerController {
 	private mapGitHubStatusToUserMessage(status: number, context: UserFacingErrorContext): string {
 		switch (status) {
 			case 401:
-				return 'GitHub rejected the request (HTTP 401). Sign in again and try again.';
+				return t('github401');
 			case 403:
-				return 'GitHub rejected the request (HTTP 403). Check repository permissions and token scopes.';
+				return t('github403');
 			case 404:
 				return context === 'refresh'
-					? 'GitHub could not find the requested module data (HTTP 404).'
-					: 'GitHub could not find the requested README or repository data (HTTP 404).';
+					? t('github404Module')
+					: t('github404Readme');
 			default:
 				if (status === 429 || status >= 500) {
-					return `GitHub is temporarily unavailable (HTTP ${status}). Try again in a moment.`;
+					return t('githubTemporaryUnavailable', { status });
 				}
-				return `GitHub request failed (HTTP ${status}).`;
+				return t('githubRequestFailed', { status });
 		}
 	}
 
@@ -769,7 +789,7 @@ export class ModuleManagerController {
 		const token = await this.ensureToken(false);
 		if (!token) {
 			if (options.warnOnMissingSession) {
-				void vscode.window.showWarningMessage('No cached README and no GitHub session available.');
+				void vscode.window.showWarningMessage(t('noCachedReadmeAndNoSession'));
 				return undefined;
 			}
 			return '';
@@ -806,7 +826,7 @@ export class ModuleManagerController {
 		const markdownContent = readme || this.getUnavailableReadmeMarkdown();
 		const panel = vscode.window.createWebviewPanel(
 			'csmModulesReadme',
-			`README: ${resolvedEntry.name}`,
+			t('readmePanelTitle', { name: resolvedEntry.name }),
 			vscode.ViewColumn.Active,
 			{
 				enableFindWidget: true,
@@ -1044,7 +1064,7 @@ export class ModuleManagerController {
 				description: folder.uri.fsPath,
 				folder,
 			})),
-			{ placeHolder: 'Select the repository to receive the selected CSM modules.' },
+			{ placeHolder: t('selectRepositoryPlaceholder') },
 		);
 		return pick?.folder;
 	}
@@ -1060,7 +1080,7 @@ export class ModuleManagerController {
 			if (recoveredConfig) {
 				await this.setWorkspaceInitializationContext(false);
 				void vscode.window.showInformationMessage(
-					`Recovered local CSM module config from existing submodules at ${path.relative(repoRoot, recoveredConfig.configPath).replace(/\\/g, '/')}.`,
+					t('configRecoveredFromSubmodules', { configPath: path.relative(repoRoot, recoveredConfig.configPath).replace(/\\/g, '/') }),
 				);
 				return recoveredConfig;
 			}
@@ -1085,7 +1105,7 @@ export class ModuleManagerController {
 					label: path.relative(repoRoot, uri.fsPath).replace(/\\/g, '/'),
 					uri,
 				})),
-				{ placeHolder: 'Multiple CSM module configs were found. Select one to update.' },
+				{ placeHolder: t('selectConfigToUpdatePlaceholder') },
 			);
 			if (!choice?.uri) {
 				return undefined;
@@ -1116,32 +1136,35 @@ export class ModuleManagerController {
 
 	private async initializeLocalModuleConfig(
 		repoRoot: string,
-		message = 'No local CSM module config was found. Initialize one for this repository?',
+		message = t('noLocalConfigFoundPrompt'),
 	): Promise<LocalModuleConfig | undefined> {
 		const defaultRoot = this.getConfiguredDefaultModuleRoot();
+		const useDefaultRootLabel = t('useDefaultRoot', { root: defaultRoot });
+		const chooseDirectoryLabel = t('chooseDirectory');
+		const laterLabel = t('later');
 		const choice = await vscode.window.showInformationMessage(
 			message,
 			{ modal: true },
-			`Use ${defaultRoot}/`,
-			'Choose Directory',
-			'Later',
+			useDefaultRootLabel,
+			chooseDirectoryLabel,
+			laterLabel,
 		);
 
-		if (!choice || choice === 'Later') {
+		if (!choice || choice === laterLabel) {
 			return undefined;
 		}
 
 		let rootPath = defaultRoot;
-		if (choice === 'Choose Directory') {
+		if (choice === chooseDirectoryLabel) {
 			const input = await vscode.window.showInputBox({
-				prompt: 'Enter a directory relative to the repository root for local CSM modules.',
+				prompt: t('directoryPrompt'),
 				value: defaultRoot,
 				validateInput: (value) => {
 					try {
 						this.workspaceModuleService.normalizeRootPath(value);
 						return undefined;
 					} catch (error) {
-						return error instanceof Error ? error.message : 'Invalid directory.';
+						return error instanceof Error ? error.message : t('invalidDirectory');
 					}
 				},
 			});
@@ -1155,14 +1178,16 @@ export class ModuleManagerController {
 		if (recoveredConfig) {
 			await this.setWorkspaceInitializationContext(false);
 			void vscode.window.showInformationMessage(
-				`Initialized local CSM module config from existing submodules at ${path.relative(repoRoot, recoveredConfig.configPath).replace(/\\/g, '/')}.`,
+				t('configInitializedFromSubmodules', { configPath: path.relative(repoRoot, recoveredConfig.configPath).replace(/\\/g, '/') }),
 			);
 			return recoveredConfig;
 		}
 
 		const config = await this.workspaceModuleService.initializeConfig(repoRoot, rootPath);
 		await this.setWorkspaceInitializationContext(false);
-		void vscode.window.showInformationMessage(`Initialized local CSM module config at ${path.relative(repoRoot, config.configPath).replace(/\\/g, '/')}.`);
+		void vscode.window.showInformationMessage(t('configInitializedAt', {
+			configPath: path.relative(repoRoot, config.configPath).replace(/\\/g, '/'),
+		}));
 		return config;
 	}
 
@@ -1176,10 +1201,10 @@ export class ModuleManagerController {
 
 		const choice = await vscode.window.showInformationMessage(
 			getWorkspaceInitPrompt(this.getConfiguredDefaultModuleRoot()),
-			'Initialize',
-			'Later',
+			t('initializeAction'),
+			t('later'),
 		);
-		if (choice === 'Initialize') {
+		if (choice === t('initializeAction')) {
 			await this.initializeWorkspaceCommand(pending.workspaceFolder);
 		}
 	}
@@ -1319,19 +1344,19 @@ export class ModuleManagerController {
 		const pick = await vscode.window.showQuickPick(
 			[
 				{
-					label: 'submodule',
-					description: 'Track each module as a Git submodule.',
-					detail: `Runs git submodule add + git submodule update for ${moduleCount} selected module(s).`,
+					label: t('applyMethodSubmoduleLabel'),
+					description: t('applyMethodSubmoduleDescription'),
+					detail: t('applyMethodSubmoduleDetail', { count: moduleCount }),
 					method: 'submodule' as const,
 				},
 				{
-					label: 'copy',
-					description: 'Copy repository files without preserving .git metadata.',
-					detail: `Clones then copies files into the local module directory for ${moduleCount} selected module(s).`,
+					label: t('applyMethodCopyLabel'),
+					description: t('applyMethodCopyDescription'),
+					detail: t('applyMethodCopyDetail', { count: moduleCount }),
 					method: 'copy' as const,
 				},
 			],
-			{ placeHolder: 'Choose how to apply the selected CSM modules.' },
+			{ placeHolder: t('chooseApplyMethodPlaceholder') },
 		);
 		return pick?.method;
 	}

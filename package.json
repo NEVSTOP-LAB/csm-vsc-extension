@@ -1,7 +1,7 @@
 {
   "name": "csm-vsc-support",
-  "displayName": "Communicable State Machine(CSM)",
-  "description": "Language support for Communicable State Machine (CSM) files in Visual Studio Code",
+  "displayName": "%extension.displayName%",
+  "description": "%extension.description%",
   "version": "0.0.25",
   "license": "AGPL-3.0-only",
   "publisher": "NEVSTOP-LAB",
@@ -43,75 +43,75 @@
     "commands": [
       {
         "command": "csmModules.login",
-        "title": "CSM Modules: Sign In to GitHub",
+        "title": "%commands.login.title%",
         "icon": "$(account)"
       },
       {
         "command": "csmModules.refresh",
-        "title": "CSM Modules: Refresh",
+        "title": "%commands.refresh.title%",
         "icon": "$(refresh)"
       },
       {
         "command": "csmModules.initializeWorkspace",
-        "title": "CSM Modules: Initialize Workspace Management",
+        "title": "%commands.initializeWorkspace.title%",
         "icon": "$(gear)"
       },
       {
         "command": "csmModules.openReadme",
-        "title": "CSM Modules: Open README",
+        "title": "%commands.openReadme.title%",
         "icon": "$(book)"
       },
       {
         "command": "csmModules.applyToWorkspace",
-        "title": "CSM Modules: Apply to Current Repository",
+        "title": "%commands.applyToWorkspace.title%",
         "icon": "$(repo-pull)"
       },
       {
         "command": "csmModules.removeModule",
-        "title": "CSM Modules: Remove Applied Module",
+        "title": "%commands.removeModule.title%",
         "icon": "$(trash)"
       },
       {
         "command": "csmModules.updateModule",
-        "title": "CSM Modules: Update Applied Module",
+        "title": "%commands.updateModule.title%",
         "icon": "$(sync)"
       },
       {
         "command": "csmModules.contextApplyModule",
-        "title": "Apply to Workspace",
+        "title": "%commands.contextApplyModule.title%",
         "icon": "$(repo-pull)",
         "enablement": "!moduleApplied"
       },
       {
         "command": "csmModules.contextOpenReadme",
-        "title": "Open README",
+        "title": "%commands.contextOpenReadme.title%",
         "icon": "$(book)"
       },
       {
         "command": "csmModules.contextRemoveModule",
-        "title": "Remove from Workspace",
+        "title": "%commands.contextRemoveModule.title%",
         "icon": "$(trash)",
         "enablement": "moduleApplied"
       },
       {
         "command": "csmModules.contextUpdateModule",
-        "title": "Update Applied Module",
+        "title": "%commands.contextUpdateModule.title%",
         "icon": "$(sync)",
         "enablement": "moduleApplied"
       },
       {
         "command": "csmModules.contextSelectModule",
-        "title": "Select Module",
+        "title": "%commands.contextSelectModule.title%",
         "icon": "$(check)"
       },
       {
         "command": "csmModules.contextClearModuleSelection",
-        "title": "Clear Selection",
+        "title": "%commands.contextClearModuleSelection.title%",
         "icon": "$(close)"
       },
       {
         "command": "csmModules.setSortOrder",
-        "title": "CSM Modules: Change Sort Order",
+        "title": "%commands.setSortOrder.title%",
         "icon": "$(list-ordered)"
       }
     ],
@@ -119,7 +119,7 @@
       "activitybar": [
         {
           "id": "csmModules",
-          "title": "CSM Modules",
+          "title": "%csmModules.title%",
           "icon": "images/activitybar-csm.svg"
         }
       ]
@@ -128,7 +128,7 @@
       "csmModules": [
         {
           "id": "csmModules.view",
-          "name": "Available Modules",
+          "name": "%views.csmModules.view.name%",
           "type": "webview"
         }
       ]
@@ -228,19 +228,19 @@
       ]
     },
     "configuration": {
-      "title": "CSM Modules",
+      "title": "%csmModules.title%",
       "properties": {
         "csmModules.defaultModuleRoot": {
           "type": "string",
           "default": "csm",
           "scope": "resource",
-          "description": "Default relative directory used when initializing local CSM module management for a repository that does not already have a csm-modules.yaml file."
+          "description": "%configuration.csmModules.defaultModuleRoot.description%"
         },
         "csmModules.cache.ttlMinutes": {
           "type": "number",
           "default": 60,
           "minimum": 1,
-          "description": "Preferred cache reuse time in minutes before the module list and README cache are refreshed in the background."
+          "description": "%configuration.csmModules.cache.ttlMinutes.description%"
         }
       }
     },
@@ -279,7 +279,7 @@
     "iconThemes": [
       {
         "id": "csm-file-icons",
-        "label": "CSM File Icons",
+        "label": "%iconThemes.csmFileIcons.label%",
         "path": "./fileicons/csm-icon-theme.json"
       }
     ],

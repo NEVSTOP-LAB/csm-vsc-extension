@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { CsmModuleEntry } from './types';
+import { getVisibilityLabel, getVisibilityTag, t } from './messages';
 
 export type ViewState = 'loading' | 'ready' | 'empty' | 'error';
 
@@ -36,9 +37,9 @@ export class ModuleTreeItem extends vscode.TreeItem {
 	constructor(public readonly moduleEntry: CsmModuleEntry) {
 		super(moduleEntry.name, vscode.TreeItemCollapsibleState.Expanded);
 		const topics = moduleEntry.topics ?? [];
-		const visibilityLabel = moduleEntry.visibility === 'private' ? 'private' : 'public';
+		const visibilityLabel = getVisibilityLabel(moduleEntry.visibility);
 		const shortName = truncate(moduleEntry.name, 36);
-		const visibilityTag = moduleEntry.visibility === 'private' ? '[PRI]' : '[PUB]';
+		const visibilityTag = getVisibilityTag(moduleEntry.visibility);
 		this.label = {
 			label: `${shortName}  [GH] ${visibilityTag}`,
 			highlights: [[0, shortName.length]],
@@ -47,12 +48,12 @@ export class ModuleTreeItem extends vscode.TreeItem {
 		this.iconPath = new vscode.ThemeIcon(moduleEntry.visibility === 'private' ? 'lock' : 'repo');
 		this.tooltip = new vscode.MarkdownString([
 			`**${moduleEntry.name}**`,
-			`Owner: ${moduleEntry.owner}`,
-			moduleEntry.description || '_No description_',
-			topics.length > 0 ? `Topics: ${topics.join(', ')}` : 'Topics: none',
-			`Visibility: ${visibilityLabel}`,
-			`Default branch: ${moduleEntry.defaultBranch}`,
-			`Repository: ${moduleEntry.repoUrl}`,
+			`${t('ownerLabel')}: ${moduleEntry.owner}`,
+			moduleEntry.description || t('noDescription'),
+			topics.length > 0 ? `${t('topicsLabel')}: ${topics.join(', ')}` : `${t('topicsLabel')}: ${t('topicsNone')}`,
+			`${t('visibilityLabel')}: ${visibilityLabel}`,
+			`${t('defaultBranchLabel')}: ${moduleEntry.defaultBranch}`,
+			`${t('repositoryLabel')}: ${moduleEntry.repoUrl}`,
 		].join('  \n'));
 		this.contextValue = 'csmModuleEntry';
 	}
@@ -68,7 +69,7 @@ export class ModuleTreeDataProvider implements vscode.TreeDataProvider<ModuleTre
 	private readonly emitter = new vscode.EventEmitter<ModuleTreeItem | vscode.TreeItem | undefined>();
 	private modules: CsmModuleEntry[] = [];
 	private state: ViewState = 'loading';
-	private message = 'Loading modules...';
+	private message = t('loadingModules');
 	private signedIn = false;
 
 	public readonly onDidChangeTreeData = this.emitter.event;
@@ -78,7 +79,7 @@ export class ModuleTreeDataProvider implements vscode.TreeDataProvider<ModuleTre
 		this.emitter.fire(undefined);
 	}
 
-	public setLoading(message = 'Loading modules...'): void {
+	public setLoading(message = t('loadingModules')): void {
 		this.state = 'loading';
 		this.message = message;
 		this.emitter.fire(undefined);
@@ -94,7 +95,7 @@ export class ModuleTreeDataProvider implements vscode.TreeDataProvider<ModuleTre
 		this.modules = modules;
 		if (modules.length === 0) {
 			this.state = 'empty';
-			this.message = 'No repositories with topic csm-modsets were found.';
+			this.message = t('noRepositoriesFound');
 		} else {
 			this.state = 'ready';
 		}
@@ -108,10 +109,18 @@ export class ModuleTreeDataProvider implements vscode.TreeDataProvider<ModuleTre
 	public getChildren(element?: ModuleTreeItem | vscode.TreeItem): Array<ModuleTreeItem | vscode.TreeItem> {
 		if (element instanceof ModuleTreeItem) {
 			const topics = element.moduleEntry.topics ?? [];
-			const topicsText = topics.length > 0 ? topics.join(', ') : 'none';
-			const line2 = `> topics: ${truncate(topicsText, 64)} | branch: ${element.moduleEntry.defaultBranch}`;
-			const summaryText = element.moduleEntry.description ? element.moduleEntry.description : 'No description';
-			const line3 = `> summary: ${truncate(summaryText, 86)}`;
+			const topicsText = topics.length > 0 ? topics.join(', ') : t('topicsNone');
+			const line2 = t('treeTopicsLine', {
+				topicsLabel: t('topicsLabel').toLowerCase(),
+				topics: truncate(topicsText, 64),
+				branchLabel: t('branchLabel'),
+				branch: element.moduleEntry.defaultBranch,
+			});
+			const summaryText = element.moduleEntry.description ? element.moduleEntry.description : t('noRepositoryDescription');
+			const line3 = t('treeSummaryLine', {
+				summaryLabel: t('summaryLabel'),
+				summary: truncate(summaryText, 86),
+			});
 			return [
 				new ModuleDetailItem(line2, 'tag'),
 				new ModuleDetailItem(line3, 'info'),
@@ -124,7 +133,7 @@ export class ModuleTreeDataProvider implements vscode.TreeDataProvider<ModuleTre
 			return [new vscode.TreeItem(this.message, vscode.TreeItemCollapsibleState.None)];
 		}
 		return [
-			new ModuleActionItem('Sign in to GitHub', 'csmModules.login', 'Sign in to GitHub to load modules.', 'account'),
+			new ModuleActionItem(t('treeSignInLabel'), 'csmModules.login', t('signInToLoadModules'), 'account'),
 			new vscode.TreeItem(this.message, vscode.TreeItemCollapsibleState.None),
 		];
 	}

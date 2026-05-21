@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { OUTPUT_CHANNEL_NAME } from './constants';
+import { t } from './messages';
 
 export type Logger = vscode.LogOutputChannel;
 
@@ -32,12 +33,12 @@ export function wrapCommand<T extends unknown[]>(
 		try {
 			await fn(...args);
 		} catch (error) {
-			const message = error instanceof Error ? error.message : 'Unexpected error';
+			const message = error instanceof Error ? error.message : t('unexpectedError');
 			logger.error(`[${commandName}] ${message}`);
 			if (error instanceof Error && error.stack) {
 				logger.error(error.stack);
 			}
-			void vscode.window.showErrorMessage(`CSM Module Manager: ${message}`);
+			void vscode.window.showErrorMessage(t('commandErrorPrefix', { message }));
 		}
 	};
 }

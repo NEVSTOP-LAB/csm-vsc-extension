@@ -4,6 +4,7 @@ import { CsmModuleEntry } from './types';
 import { ViewState } from './moduleTreeDataProvider';
 import { IModuleViewProvider, ModuleSortDirection, ModuleSortField, ModuleSortState, SidebarWorkspaceContext } from './interfaces';
 import { DEFAULT_MODULE_SORT_STATE, isModuleSortDirection, isModuleSortField, normalizeModuleSortState, sortModules } from './sort';
+import { getHtmlLang, getVisibilityLabel, t } from './messages';
 
 interface ModuleSidebarActions {
 	onLogin: () => void;
@@ -60,8 +61,14 @@ function createNonce(): string {
 }
 
 function getToolbarMetaText(appliedCount: number, totalCount: number, filteredCount: number, selectedCount: number): string {
-	const visibilityText = filteredCount === totalCount ? `${totalCount} available` : `${filteredCount} of ${totalCount} shown`;
-	return `${appliedCount} applied | ${visibilityText} | ${selectedCount} selected`;
+	const visibilityText = filteredCount === totalCount
+		? t('toolbarMetaAvailable', { total: totalCount })
+		: t('toolbarMetaShown', { filtered: filteredCount, total: totalCount });
+	return t('toolbarMeta', {
+		applied: appliedCount,
+		visibility: visibilityText,
+		selected: selectedCount,
+	});
 }
 
 type IconName = 'close' | 'filter' | 'readme' | 'refresh' | 'search';
@@ -85,7 +92,7 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IM
 	private view: vscode.WebviewView | undefined;
 	private modules: CsmModuleEntry[] = [];
 	private state: ViewState = 'loading';
-	private message = 'Loading modules...';
+	private message = t('loadingModules');
 	private signedIn = false;
 	private canInitializeWorkspace = false;
 	private readonly selectedModuleKeys = new Set<string>();
@@ -127,7 +134,7 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IM
 		this.render();
 	}
 
-	public setLoading(message = 'Loading modules...'): void {
+	public setLoading(message = t('loadingModules')): void {
 		this.state = 'loading';
 		this.message = message;
 		this.render();
@@ -144,7 +151,7 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IM
 		this.renderLimit = ModuleSidebarViewProvider.INITIAL_RENDER_LIMIT;
 		if (modules.length === 0) {
 			this.state = 'empty';
-			this.message = 'No repositories with topic csm-modsets were found.';
+			this.message = t('noRepositoriesFound');
 		} else {
 			this.state = 'ready';
 		}
@@ -289,7 +296,7 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IM
 						moduleKey,
 						title: entry.name,
 						status: 'error',
-						message: error instanceof Error ? error.message : 'Unable to load README preview.',
+						message: error instanceof Error ? error.message : t('unableToLoadReadmePreview'),
 					};
 				}
 				this.render();
@@ -365,24 +372,29 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IM
 		const toolbarMetaText = getToolbarMetaText(appliedCount, moduleCount, filteredCount, selectedCount);
 		const filterButtonTitle = this.getFilterButtonTitle();
 		const sortFieldOptions: Array<{ value: ModuleSortField; label: string }> = [
-			{ value: 'name', label: 'Name' },
-			{ value: 'owner', label: 'Owner' },
-			{ value: 'updatedAt', label: 'Updated' },
-			{ value: 'applied', label: 'Applied Status' },
+			{ value: 'name', label: t('sortFieldName') },
+			{ value: 'owner', label: t('sortFieldOwner') },
+			{ value: 'updatedAt', label: t('sortFieldUpdated') },
+			{ value: 'applied', label: t('sortFieldApplied') },
 		];
 		const sortDirectionOptions: Array<{ value: ModuleSortDirection; label: string }> = [
-			{ value: 'asc', label: 'Ascending' },
-			{ value: 'desc', label: 'Descending' },
+			{ value: 'asc', label: t('sortDirectionAsc') },
+			{ value: 'desc', label: t('sortDirectionDesc') },
 		];
 		const content = this.renderContent();
+		const clientStrings = JSON.stringify({
+			toolbarMetaAvailable: t('toolbarMetaAvailable'),
+			toolbarMetaShown: t('toolbarMetaShown'),
+			toolbarMeta: t('toolbarMeta'),
+		}).replace(/</g, '\\u003c');
 
 		return `<!DOCTYPE html>
-<html lang="en">
+<html lang="${getHtmlLang()}">
 <head>
 	<meta charset="UTF-8">
 	<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${imgCspSource} https:; style-src 'nonce-${nonce}'; script-src 'nonce-${nonce}';">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
-	<title>CSM Modules</title>
+	<title>${escapeHtml(t('outputChannelName'))}</title>
 	<style nonce="${nonce}">
 		:root {
 			color-scheme: light dark;
@@ -864,34 +876,35 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IM
 		<div class="search-shell">
 			<div class="search-box" data-role="search-box">
 				<span class="search-icon">${renderIcon('search')}</span>
-				<input type="text" value="${escapeHtml(this.filterQuery)}" data-role="filter-input" placeholder="Search modules" aria-label="Search modules">
-				<button class="icon-button" data-action="clearFilter" data-role="clear-filter" title="Clear search" aria-label="Clear search" ${this.filterQuery ? '' : 'hidden'}>${renderIcon('close')}</button>
+				<input type="text" value="${escapeHtml(this.filterQuery)}" data-role="filter-input" placeholder="${escapeHtml(t('searchModules'))}" aria-label="${escapeHtml(t('searchModules'))}">
+				<button class="icon-button" data-action="clearFilter" data-role="clear-filter" title="${escapeHtml(t('clearSearch'))}" aria-label="${escapeHtml(t('clearSearch'))}" ${this.filterQuery ? '' : 'hidden'}>${renderIcon('close')}</button>
 				<button class="icon-button filter-button" data-action="toggleFilterMenu" data-role="filter-button" title="${escapeHtml(filterButtonTitle)}" aria-label="${escapeHtml(filterButtonTitle)}" aria-haspopup="menu" aria-expanded="false">${renderIcon('filter')}</button>
 			</div>
 			<div class="filter-menu" data-role="filter-menu" role="menu" hidden>
 				<div class="filter-menu-section">
-					<span class="filter-menu-label">Type</span>
+					<span class="filter-menu-label">${escapeHtml(t('filterMenuType'))}</span>
 					${sortFieldOptions.map((option) => this.renderFilterMenuOption('field', option.value, option.label, this.sortState.field === option.value)).join('')}
 				</div>
 				<div class="filter-menu-section">
-					<span class="filter-menu-label">Order</span>
+					<span class="filter-menu-label">${escapeHtml(t('filterMenuOrder'))}</span>
 					${sortDirectionOptions.map((option) => this.renderFilterMenuOption('direction', option.value, option.label, this.sortState.direction === option.value)).join('')}
 				</div>
 			</div>
 		</div>
 		<div class="toolbar-row">
 			<div class="toolbar">
-				<button class="toolbar-button callout" data-action="applySelected" data-role="apply-selected" ${selectedCount === 0 ? 'hidden' : ''}>Apply Selected</button>
-				${this.signedIn ? '' : '<button class="toolbar-button callout" data-action="login">Sign in</button>'}
+				<button class="toolbar-button callout" data-action="applySelected" data-role="apply-selected" ${selectedCount === 0 ? 'hidden' : ''}>${escapeHtml(t('applySelected'))}</button>
+				${this.signedIn ? '' : `<button class="toolbar-button callout" data-action="login">${escapeHtml(t('signIn'))}</button>`}
 			</div>
 			<span class="toolbar-meta" data-role="toolbar-meta" data-applied-count="${appliedCount}" data-total-count="${moduleCount}" data-filtered-count="${filteredCount}">${toolbarMetaText}</span>
 		</div>
-		${this.workspaceLabel && this.moduleRoot ? `<div class="workspace-summary"><span>Root: ${escapeHtml(this.moduleRoot)}/</span></div>` : ''}
-		${this.introTipVisible ? `<section class="notice" data-role="intro-tip"><div><strong>Tip</strong><span>Use the checkboxes to build a selection, then apply modules from the toolbar or open individual README files from each card.</span></div><div class="notice-actions"><button class="icon-button" data-action="dismissIntroTip" title="Dismiss tip" aria-label="Dismiss tip">${renderIcon('close')}</button></div></section>` : ''}
-		${this.canInitializeWorkspace ? `<section class="notice"><div><strong>Workspace hint</strong><span>Detected an existing csm/ layout and LabVIEW project files in the current repository.</span></div><div class="notice-actions"><button class="toolbar-button callout" data-action="initializeWorkspace">Initialize</button></div></section>` : ''}
+		${this.workspaceLabel && this.moduleRoot ? `<div class="workspace-summary"><span>${escapeHtml(t('rootLabel'))}: ${escapeHtml(this.moduleRoot)}/</span></div>` : ''}
+		${this.introTipVisible ? `<section class="notice" data-role="intro-tip"><div><strong>${escapeHtml(t('tipTitle'))}</strong><span>${escapeHtml(t('tipBody'))}</span></div><div class="notice-actions"><button class="icon-button" data-action="dismissIntroTip" title="${escapeHtml(t('dismissTip'))}" aria-label="${escapeHtml(t('dismissTip'))}">${renderIcon('close')}</button></div></section>` : ''}
+		${this.canInitializeWorkspace ? `<section class="notice"><div><strong>${escapeHtml(t('workspaceHintTitle'))}</strong><span>${escapeHtml(t('workspaceHintBody'))}</span></div><div class="notice-actions"><button class="toolbar-button callout" data-action="initializeWorkspace">${escapeHtml(t('initializeAction'))}</button></div></section>` : ''}
 	</section>
 	${content}
 	<script nonce="${nonce}">
+		const uiStrings = ${clientStrings};
 		const vscode = acquireVsCodeApi();
 		const filterInput = document.querySelector('[data-role="filter-input"]');
 		const clearFilterButton = document.querySelector('[data-role="clear-filter"]');
@@ -901,9 +914,19 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IM
 		const applySelectedButton = document.querySelector('[data-role="apply-selected"]');
 		const filterEmptyState = document.querySelector('[data-role="filter-empty"]');
 
+		function formatMessage(template, values) {
+			return String(template).replace(/\{([A-Za-z0-9_]+)\}/g, (match, token) => token in values ? String(values[token]) : match);
+		}
+
 		function getToolbarMetaText(appliedCount, totalCount, filteredCount, selectedCount) {
-			const visibilityText = filteredCount === totalCount ? totalCount + ' available' : filteredCount + ' of ' + totalCount + ' shown';
-			return appliedCount + ' applied | ' + visibilityText + ' | ' + selectedCount + ' selected';
+			const visibilityText = filteredCount === totalCount
+				? formatMessage(uiStrings.toolbarMetaAvailable, { total: totalCount })
+				: formatMessage(uiStrings.toolbarMetaShown, { filtered: filteredCount, total: totalCount });
+			return formatMessage(uiStrings.toolbarMeta, {
+				applied: appliedCount,
+				visibility: visibilityText,
+				selected: selectedCount,
+			});
 		}
 
 		function openFilterMenu() {
@@ -1136,45 +1159,48 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IM
 	private getSortFieldLabel(field: ModuleSortField): string {
 		switch (field) {
 			case 'owner':
-				return 'Owner';
+				return t('sortFieldOwner');
 			case 'updatedAt':
-				return 'Updated';
+				return t('sortFieldUpdated');
 			case 'applied':
-				return 'Applied Status';
+				return t('sortFieldApplied');
 			case 'name':
 			default:
-				return 'Name';
+				return t('sortFieldName');
 		}
 	}
 
 	private getSortDirectionLabel(direction: ModuleSortDirection): string {
-		return direction === 'asc' ? 'Ascending' : 'Descending';
+		return direction === 'asc' ? t('sortDirectionAsc') : t('sortDirectionDesc');
 	}
 
 	private getFilterButtonTitle(): string {
-		return `Filter and sort modules. Current: ${this.getSortFieldLabel(this.sortState.field)}, ${this.getSortDirectionLabel(this.sortState.direction)}.`;
+		return t('filterAndSortTitle', {
+			field: this.getSortFieldLabel(this.sortState.field),
+			direction: this.getSortDirectionLabel(this.sortState.direction),
+		});
 	}
 
 	private getSortDirectionTitle(direction: ModuleSortDirection): string {
 		switch (this.sortState.field) {
 			case 'updatedAt':
-				return direction === 'asc' ? 'Sort by oldest first' : 'Sort by newest first';
+				return direction === 'asc' ? t('sortOldestFirst') : t('sortNewestFirst');
 			case 'applied':
-				return direction === 'asc' ? 'Sort by unapplied modules first' : 'Sort by applied modules first';
+				return direction === 'asc' ? t('sortUnappliedFirst') : t('sortAppliedFirst');
 			case 'owner':
-				return direction === 'asc' ? 'Sort owner A to Z' : 'Sort owner Z to A';
+				return direction === 'asc' ? t('sortOwnerAsc') : t('sortOwnerDesc');
 			case 'name':
 			default:
-				return direction === 'asc' ? 'Sort name A to Z' : 'Sort name Z to A';
+				return direction === 'asc' ? t('sortNameAsc') : t('sortNameDesc');
 		}
 	}
 
 	private renderContent(): string {
 		if (!this.signedIn && this.modules.length === 0 && this.state !== 'ready') {
 			return this.renderEmptyState(
-				'Sign in to GitHub',
+				t('emptySignInTitle'),
 				this.message,
-				'<button class="primary" data-action="login">Connect GitHub</button>',
+				`<button class="primary" data-action="login">${escapeHtml(t('connectGitHub'))}</button>`,
 			);
 		}
 
@@ -1184,26 +1210,26 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IM
 
 		if (this.state === 'error' && this.modules.length === 0) {
 			return this.renderEmptyState(
-				'Unable to load modules',
+				t('unableToLoadModulesTitle'),
 				this.message,
 			);
 		}
 
 		if (this.modules.length === 0) {
 			return this.renderEmptyState(
-				'No modules found',
+				t('noModulesFoundTitle'),
 				this.message,
 			);
 		}
 
 		const statusBanner = this.state === 'loading'
-			? `<section class="notice"><div><strong>Refreshing module catalog</strong><span>${escapeHtml(this.message)}</span></div></section>`
+			? `<section class="notice"><div><strong>${escapeHtml(t('refreshingCatalogTitle'))}</strong><span>${escapeHtml(this.message)}</span></div></section>`
 			: this.state === 'error'
-				? `<section class="notice"><div><strong>Catalog refresh failed</strong><span>${escapeHtml(this.message)}</span></div></section>`
+				? `<section class="notice"><div><strong>${escapeHtml(t('catalogRefreshFailedTitle'))}</strong><span>${escapeHtml(this.message)}</span></div></section>`
 				: '';
 
 		const offlineBanner = this.offlineMode
-			? `<section class="notice offline"><div><strong>Offline mode</strong><span>Showing cached module list. Sign in to refresh.</span></div></section>`
+			? `<section class="notice offline"><div><strong>${escapeHtml(t('offlineModeTitle'))}</strong><span>${escapeHtml(t('offlineModeBody'))}</span></div></section>`
 			: '';
 
 		// Virtualization-lite (review item 5.3): cap initial render at INITIAL_RENDER_LIMIT cards
@@ -1213,10 +1239,10 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IM
 		const visible = sortedAll.slice(0, this.renderLimit);
 		const hiddenCount = Math.max(0, total - visible.length);
 		const showMoreButton = hiddenCount > 0
-			? `<section class="notice"><div><strong>${hiddenCount} more module(s) hidden</strong><span>Use search to narrow the list, or load more below.</span></div><button class="toolbar-button" data-action="showMore">Show ${Math.min(hiddenCount, ModuleSidebarViewProvider.INITIAL_RENDER_LIMIT)} more</button></section>`
+			? `<section class="notice"><div><strong>${escapeHtml(t('hiddenModulesTitle', { count: hiddenCount }))}</strong><span>${escapeHtml(t('hiddenModulesBody'))}</span></div><button class="toolbar-button" data-action="showMore">${escapeHtml(t('showMore', { count: Math.min(hiddenCount, ModuleSidebarViewProvider.INITIAL_RENDER_LIMIT) }))}</button></section>`
 			: '';
 
-		return `${offlineBanner}${statusBanner}<section class="list">${visible.map((entry) => this.renderModuleCard(entry)).join('')}</section>${showMoreButton}<section class="empty-state" data-role="filter-empty" hidden><h2>No modules match this filter</h2><p>Try another keyword or clear the current filter to see the full catalog again.</p><div class="action-toolbar"><button class="toolbar-button callout" data-action="clearFilter">Clear Filter</button></div></section>`;
+		return `${offlineBanner}${statusBanner}<section class="list">${visible.map((entry) => this.renderModuleCard(entry)).join('')}</section>${showMoreButton}<section class="empty-state" data-role="filter-empty" hidden><h2>${escapeHtml(t('filterNoMatchesTitle'))}</h2><p>${escapeHtml(t('filterNoMatchesBody'))}</p><div class="action-toolbar"><button class="toolbar-button callout" data-action="clearFilter">${escapeHtml(t('clearFilter'))}</button></div></section>`;
 	}
 
 	private renderModuleCard(entry: CsmModuleEntry): string {
@@ -1227,9 +1253,11 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IM
 		const stale = this.staleModuleKeys.has(moduleKey);
 		const topics = entry.topics.filter((topic) => topic !== 'csm-modsets').slice(0, 3);
 		const topicBadges = topics.map((topic) => `<span class="badge">${escapeHtml(topic)}</span>`).join('');
-		const summary = entry.description.trim().length > 0 ? entry.description.trim() : 'No repository description provided.';
+		const summary = entry.description.trim().length > 0 ? entry.description.trim() : t('noRepositoryDescription');
 		const footerNote = applied && this.workspaceLabel
-			? `<div class="card-footer-note">Already recorded for ${escapeHtml(this.workspaceLabel)}${this.moduleRoot ? ` under ${escapeHtml(this.moduleRoot)}/` : ''}.${stale ? ' <span class="badge stale">stale: directory missing</span>' : ''}</div>`
+			? `<div class="card-footer-note">${escapeHtml(this.moduleRoot
+				? t('recordedUnderRoot', { workspace: this.workspaceLabel, root: this.moduleRoot })
+				: t('recordedForWorkspace', { workspace: this.workspaceLabel }))}${stale ? ` <span class="badge stale">${escapeHtml(t('staleDirectoryMissing'))}</span>` : ''}</div>`
 			: '<span class="card-footer-spacer"></span>';
 		const searchText = escapeHtml(this.getSearchText(entry));
 		const vscodeContext = escapeHtml(JSON.stringify({
@@ -1243,19 +1271,19 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IM
 
 		return `<article class="module-card${selected ? ' selected' : ''}${applied ? ' applied' : ''}" data-role="module-card" data-module-key="${escapeHtml(moduleKey)}" data-module-applied="${applied ? 'true' : 'false'}" data-module-selected="${selected ? 'true' : 'false'}" data-search-text="${searchText}" data-vscode-context="${vscodeContext}">
 			<div class="module-header">
-				<div class="module-main module-preview-trigger" data-action="togglePreview" data-module-key="${escapeHtml(moduleKey)}" tabindex="0" role="button" aria-expanded="${previewOpen ? 'true' : 'false'}" aria-label="Toggle README preview for ${escapeHtml(entry.name)}">
+				<div class="module-main module-preview-trigger" data-action="togglePreview" data-module-key="${escapeHtml(moduleKey)}" tabindex="0" role="button" aria-expanded="${previewOpen ? 'true' : 'false'}" aria-label="${escapeHtml(t('toggleReadmePreviewAria', { name: entry.name }))}">
 					<div class="title-row">
 						<span class="module-name" title="${escapeHtml(entry.name)}">${escapeHtml(truncate(entry.name, 44))}</span>
-						${applied ? '<span class="badge applied">Applied</span>' : ''}
+						${applied ? `<span class="badge applied">${escapeHtml(t('appliedBadge'))}</span>` : ''}
 					</div>
 					<div class="module-owner">@${escapeHtml(entry.owner)}</div>
 				</div>
 				<div class="module-header-tools">
-					<label class="select-toolbar-item" title="Select module" aria-label="Select module">
-						<input class="module-select" type="checkbox" data-role="select-toggle" data-action="toggleSelection" data-module-key="${escapeHtml(moduleKey)}" ${selected ? 'checked' : ''} aria-label="Select ${escapeHtml(entry.name)}">
+					<label class="select-toolbar-item" title="${escapeHtml(t('selectModule'))}" aria-label="${escapeHtml(t('selectModule'))}">
+						<input class="module-select" type="checkbox" data-role="select-toggle" data-action="toggleSelection" data-module-key="${escapeHtml(moduleKey)}" ${selected ? 'checked' : ''} aria-label="${escapeHtml(t('selectNamedModule', { name: entry.name }))}">
 					</label>
 					<div class="action-toolbar">
-						<button class="icon-button" data-action="openReadme" data-module-key="${escapeHtml(moduleKey)}" title="Open README" aria-label="Open README">${renderIcon('readme')}</button>
+						<button class="icon-button" data-action="openReadme" data-module-key="${escapeHtml(moduleKey)}" title="${escapeHtml(t('openReadme'))}" aria-label="${escapeHtml(t('openReadme'))}">${renderIcon('readme')}</button>
 					</div>
 				</div>
 			</div>
@@ -1265,8 +1293,8 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IM
 			</div>
 			${preview}
 			<div class="meta-row">
-				<span class="badge ${entry.visibility === 'private' ? 'private' : ''}">${entry.visibility === 'private' ? 'Private' : 'Public'}</span>
-				<span class="badge">Branch: ${escapeHtml(entry.defaultBranch)}</span>
+				<span class="badge ${entry.visibility === 'private' ? 'private' : ''}">${escapeHtml(getVisibilityLabel(entry.visibility))}</span>
+				<span class="badge">${escapeHtml(t('branchBadge', { branch: entry.defaultBranch }))}</span>
 				${topicBadges}
 			</div>
 		</article>`;
@@ -1278,12 +1306,12 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IM
 		}
 		const title = escapeHtml(this.previewState.title);
 		if (this.previewState.status === 'loading') {
-			return `<section class="readme-preview" data-role="readme-preview"><div class="readme-preview-header"><span>README Preview</span><span>${title}</span></div><div class="readme-preview-loading"><div class="skeleton-line medium"></div><div class="skeleton-line"></div><div class="skeleton-line short"></div></div></section>`;
+			return `<section class="readme-preview" data-role="readme-preview"><div class="readme-preview-header"><span>${escapeHtml(t('readmePreviewTitle'))}</span><span>${title}</span></div><div class="readme-preview-loading"><div class="skeleton-line medium"></div><div class="skeleton-line"></div><div class="skeleton-line short"></div></div></section>`;
 		}
 		if (this.previewState.status === 'error') {
-			return `<section class="readme-preview" data-role="readme-preview"><div class="readme-preview-header"><span>README Preview</span><span>${title}</span></div><div class="readme-preview-status readme-preview-error">${escapeHtml(this.previewState.message ?? 'Unable to load README preview.')}</div></section>`;
+			return `<section class="readme-preview" data-role="readme-preview"><div class="readme-preview-header"><span>${escapeHtml(t('readmePreviewTitle'))}</span><span>${title}</span></div><div class="readme-preview-status readme-preview-error">${escapeHtml(this.previewState.message ?? t('unableToLoadReadmePreview'))}</div></section>`;
 		}
-		return `<section class="readme-preview" data-role="readme-preview"><div class="readme-preview-header"><span>README Preview</span><span>${title}</span></div><div class="readme-preview-body">${this.previewState.html ?? ''}</div></section>`;
+		return `<section class="readme-preview" data-role="readme-preview"><div class="readme-preview-header"><span>${escapeHtml(t('readmePreviewTitle'))}</span><span>${title}</span></div><div class="readme-preview-body">${this.previewState.html ?? ''}</div></section>`;
 	}
 
 	private renderEmptyState(title: string, message: string, actionHtml = ''): string {

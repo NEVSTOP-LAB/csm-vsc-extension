@@ -16,6 +16,8 @@
 
 ## 功能特性
 
+- ✅ 本地化：扩展中的用户可见字符串已支持根据 VS Code 显示语言在中文 / English 间切换，覆盖命令标题、活动栏/设置页文案、模块管理提示与 Hover 说明
+
 ### `.csmlog` 文件支持
 
 - ✅ 事件类型高亮（Error、User Log、Sync/Async Message、State Change 等）
