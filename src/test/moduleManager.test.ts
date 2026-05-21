@@ -127,7 +127,7 @@ suite('Module Manager Tests', () => {
 			owner: 'org',
 			name: 'module-a',
 			description: 'A demo module',
-			topics: ['csm-modsets', 'automation'],
+			topics: ['csm-modsets', 'labview-csm', 'automation'],
 			visibility: 'private' as const,
 			defaultBranch: 'main',
 			repoUrl: 'https://github.com/org/module-a',
@@ -144,7 +144,9 @@ suite('Module Manager Tests', () => {
 		assert.deepStrictEqual(highlights, [[0, 'module-a'.length]]);
 		assert.ok(description.includes('@org'));
 		assert.strictEqual(item.collapsibleState, 2);
-		assert.ok(tooltip.includes('Topics: csm-modsets, automation'));
+		assert.ok(tooltip.includes('Topics: automation'));
+		assert.ok(!tooltip.includes('csm-modsets'));
+		assert.ok(!tooltip.includes('labview-csm'));
 		assert.strictEqual(item.command, undefined);
 	});
 
@@ -190,7 +192,7 @@ suite('Module Manager Tests', () => {
 				owner: 'org',
 				name: 'module-a',
 				description: 'A demo module',
-				topics: ['csm-modsets', 'automation'],
+				topics: ['csm-modsets', 'labview-csm', 'automation'],
 				visibility: 'private',
 				defaultBranch: 'main',
 				repoUrl: 'https://github.com/org/module-a',
@@ -222,11 +224,15 @@ suite('Module Manager Tests', () => {
 		assert.ok(rendered?.html.includes('module-a'));
 		assert.ok(rendered?.html.includes('@org'));
 		assert.ok(rendered?.html.includes('automation'));
+		assert.ok(!rendered?.html.includes('csm-modsets'));
+		assert.ok(!rendered?.html.includes('labview-csm'));
 		assert.ok(rendered?.html.includes('placeholder="Search modules"'));
 		assert.ok(rendered?.html.includes('data-role="search-box"'));
 		assert.ok(rendered?.html.includes('data-role="filter-button"'));
 		assert.ok(rendered?.html.includes('data-role="filter-menu"'));
 		assert.ok(rendered?.html.includes('Filter and sort modules. Current: Name, Ascending.'));
+		assert.ok(rendered?.html.includes('--module-font-md: 13px;'));
+		assert.ok(rendered?.html.includes('--module-icon-size: 16px;'));
 		assert.ok(rendered?.html.includes('data-action="togglePreview"'));
 		assert.ok(rendered?.html.includes('type="text"'));
 		assert.ok(rendered?.html.includes('data-module-applied="true"'));
@@ -241,12 +247,11 @@ suite('Module Manager Tests', () => {
 		assert.ok(rendered?.html.includes('opacity: 0;'));
 		assert.ok(rendered?.html.includes('pointer-events: none;'));
 		assert.ok(rendered?.html.includes('data-action="openReadme" data-module-key="org&#47;module-a" title="Open README" aria-label="Open README"'));
-		assert.ok(rendered ? rendered.html.indexOf('placeholder="Search modules"') < rendered.html.indexOf('data-role="apply-selected"') : false);
 		assert.ok(!rendered?.html.includes('Workspace: repo'));
 		assert.ok(rendered?.html.includes('Root: csm/'));
 		assert.ok(rendered?.html.includes('1 applied | 2 available | 0 selected'));
 		assert.ok(rendered?.html.includes('Applied'));
-		assert.ok(rendered?.html.includes('data-role="apply-selected" hidden'));
+		assert.ok(!rendered?.html.includes('data-role="apply-selected"'));
 		assert.ok(rendered?.html.includes('title="Open README"'));
 		assert.ok(!rendered?.html.includes('class="avatar"'));
 		assert.ok(!rendered?.html.includes('title="Refresh modules"'));
@@ -254,8 +259,7 @@ suite('Module Manager Tests', () => {
 
 		provider.setSelection(['org/module-a']);
 		const selectedRender = mocked.__getLastWebviewView();
-		assert.ok(selectedRender?.html.includes('data-role="apply-selected"'));
-		assert.ok(!selectedRender?.html.includes('data-role="apply-selected" hidden'));
+		assert.ok(selectedRender?.html.includes('1 applied | 2 available | 1 selected'));
 		assert.ok(selectedRender?.html.includes('moduleSelected&quot;:true'));
 
 		resolved?.fireMessage({ type: 'dismissIntroTip' });
@@ -352,12 +356,50 @@ suite('Module Manager Tests', () => {
 		const rerendered = mocked.__getLastWebviewView();
 		assert.ok(rerendered?.html.includes('value="module-a"'));
 		assert.ok(rerendered?.html.includes('0 applied | 1 of 2 shown | 1 selected'));
-		assert.ok(rerendered?.html.includes('data-role="apply-selected"'));
+		assert.ok(!rerendered?.html.includes('data-role="apply-selected"'));
 		assert.deepStrictEqual(selectionUpdates[selectionUpdates.length - 1], ['org/module-a']);
 		assert.strictEqual(openedReadmeName, 'module-a');
 		assert.strictEqual(appliedModuleName, 'module-a');
 		assert.strictEqual(removedModuleName, 'module-a');
 		assert.strictEqual(updatedModuleName, 'module-a');
+		disposable.dispose();
+	});
+
+	test('ModuleSidebarViewProvider keeps login and batch apply in the title bar', () => {
+		const provider = new ModuleSidebarViewProvider({
+			onLogin: () => undefined,
+			onRefresh: () => undefined,
+			onInitializeWorkspace: () => undefined,
+			onOpenReadme: () => undefined,
+			onPreviewReadme: async () => '<p>Preview</p>',
+			onApplySelection: () => undefined,
+			onRemoveModule: () => undefined,
+			onUpdateModule: () => undefined,
+			onSelectionChange: () => undefined,
+			onSortChange: () => undefined,
+		});
+
+		provider.setAuthenticated(false);
+		provider.setModules([
+			{
+				id: 1,
+				owner: 'org',
+				name: 'module-a',
+				description: 'A demo module',
+				topics: ['csm-modsets'],
+				visibility: 'public',
+				defaultBranch: 'main',
+				repoUrl: 'https://github.com/org/module-a',
+			},
+		]);
+
+		const disposable = vscode.window.registerWebviewViewProvider('csmModules.view', provider);
+		mocked.__resolveWebviewView('csmModules.view');
+		const rendered = mocked.__getLastWebviewView();
+
+		assert.ok(rendered?.html.includes('1 available | 0 selected'));
+		assert.ok(!rendered?.html.includes('data-action="login"'));
+		assert.ok(!rendered?.html.includes('data-role="apply-selected"'));
 		disposable.dispose();
 	});
 

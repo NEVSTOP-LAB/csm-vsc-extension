@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import * as crypto from 'crypto';
 import { CsmModuleEntry } from './types';
 import { ViewState } from './moduleTreeDataProvider';
+import { getVisibleModuleTopics } from './topics';
 import { IModuleViewProvider, ModuleSortDirection, ModuleSortField, ModuleSortState, SidebarWorkspaceContext } from './interfaces';
 import { DEFAULT_MODULE_SORT_STATE, isModuleSortDirection, isModuleSortField, normalizeModuleSortState, sortModules } from './sort';
 import { getHtmlLang, getVisibilityLabel, t } from './messages';
@@ -398,6 +399,11 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IM
 	<style nonce="${nonce}">
 		:root {
 			color-scheme: light dark;
+			--module-font-xs: 11px;
+			--module-font-sm: 12px;
+			--module-font-md: 13px;
+			--module-font-lg: 15px;
+			--module-icon-size: 16px;
 		}
 		[hidden] {
 			display: none !important;
@@ -406,6 +412,8 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IM
 			margin: 0;
 			padding: 10px;
 			font-family: var(--vscode-font-family);
+			font-size: var(--module-font-md);
+			line-height: 1.45;
 			color: var(--vscode-foreground);
 			background: var(--vscode-sideBar-background);
 		}
@@ -447,15 +455,15 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IM
 			align-items: center;
 			justify-content: center;
 			gap: 6px;
-			height: 26px;
-			padding: 0 7px;
+			height: 28px;
+			padding: 0 8px;
 			color: var(--vscode-descriptionForeground);
 		}
 		.toolbar-button svg,
 		.search-box svg,
 		.icon-button svg {
-			width: 14px;
-			height: 14px;
+			width: var(--module-icon-size);
+			height: var(--module-icon-size);
 		}
 		.toolbar-button.callout {
 			color: var(--vscode-foreground);
@@ -463,24 +471,23 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IM
 			background: var(--vscode-editorWidget-background, var(--vscode-button-secondaryBackground));
 		}
 		.toolbar-meta {
-			font-size: 11px;
+			font-size: var(--module-font-sm);
 			color: var(--vscode-descriptionForeground);
 			white-space: nowrap;
-			margin-left: auto;
 		}
 		.workspace-summary {
 			display: flex;
 			flex-wrap: wrap;
 			gap: 6px;
-			font-size: 11px;
+			font-size: var(--module-font-sm);
 			color: var(--vscode-descriptionForeground);
 		}
 		.search-box {
 			display: flex;
 			align-items: center;
 			gap: 4px;
-			height: 30px;
-			padding: 0 4px 0 8px;
+			height: 32px;
+			padding: 0 6px 0 10px;
 			border-radius: 4px;
 			background: var(--vscode-input-background);
 			border: 1px solid var(--vscode-input-border, var(--vscode-panel-border));
@@ -506,14 +513,14 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IM
 			background: transparent;
 			color: var(--vscode-input-foreground, var(--vscode-foreground));
 			font: inherit;
-			font-size: 12px;
+			font-size: var(--module-font-md);
 		}
 		.search-box input::placeholder {
 			color: var(--vscode-input-placeholderForeground);
 		}
 		.search-box .icon-button {
-			width: 22px;
-			height: 22px;
+			width: 24px;
+			height: 24px;
 			color: var(--vscode-descriptionForeground);
 		}
 		.filter-button[aria-expanded="true"] {
@@ -541,7 +548,7 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IM
 		.filter-menu-label {
 			display: block;
 			padding: 2px 6px 4px;
-			font-size: 10px;
+			font-size: var(--module-font-xs);
 			font-weight: 600;
 			letter-spacing: 0.04em;
 			text-transform: uppercase;
@@ -572,7 +579,7 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IM
 			opacity: 1;
 		}
 		.filter-menu-option-label {
-			font-size: 12px;
+			font-size: var(--module-font-md);
 		}
 		.notice {
 			display: flex;
@@ -587,12 +594,12 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IM
 		}
 		.notice strong {
 			display: block;
-			font-size: 12px;
+			font-size: var(--module-font-md);
 		}
 		.notice span {
 			display: block;
 			margin-top: 2px;
-			font-size: 11px;
+			font-size: var(--module-font-sm);
 			color: var(--vscode-descriptionForeground);
 		}
 		.notice-actions {
@@ -643,8 +650,8 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IM
 		}
 		.module-select {
 			margin: 0;
-			width: 14px;
-			height: 14px;
+			width: 16px;
+			height: 16px;
 		}
 		.module-header-tools {
 			display: flex;
@@ -660,19 +667,19 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IM
 			flex-wrap: wrap;
 		}
 		.module-name {
-			font-size: 12px;
+			font-size: var(--module-font-md);
 			font-weight: 600;
 			line-height: 1.4;
 			min-width: 0;
 		}
 		.module-owner {
-			font-size: 10px;
+			font-size: var(--module-font-xs);
 			color: var(--vscode-descriptionForeground);
 			min-width: 0;
 		}
 		.summary {
 			margin-top: 4px;
-			font-size: 11px;
+			font-size: var(--module-font-sm);
 			line-height: 1.4;
 			color: var(--vscode-descriptionForeground);
 		}
@@ -689,9 +696,9 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IM
 		.badge {
 			display: inline-flex;
 			align-items: center;
-			padding: 0 5px;
+			padding: 0 6px;
 			border-radius: 10px;
-			font-size: 9px;
+			font-size: var(--module-font-xs);
 			border: 1px solid var(--vscode-panel-border);
 			color: var(--vscode-descriptionForeground);
 			background: transparent;
@@ -713,7 +720,7 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IM
 		}
 		.card-footer-note {
 			flex: 1 1 auto;
-			font-size: 10px;
+			font-size: var(--module-font-xs);
 			line-height: 1.4;
 			color: var(--vscode-descriptionForeground);
 		}
@@ -732,7 +739,7 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IM
 			align-items: center;
 			justify-content: space-between;
 			gap: 8px;
-			font-size: 10px;
+			font-size: var(--module-font-xs);
 			letter-spacing: 0.04em;
 			text-transform: uppercase;
 			color: var(--vscode-descriptionForeground);
@@ -741,7 +748,7 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IM
 			max-height: 280px;
 			overflow: auto;
 			padding-right: 4px;
-			font-size: 11px;
+			font-size: var(--module-font-sm);
 			line-height: 1.55;
 			color: var(--vscode-foreground);
 		}
@@ -758,7 +765,7 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IM
 		.readme-preview-body h5,
 		.readme-preview-body h6 {
 			margin: 1.1em 0 0.5em;
-			font-size: 12px;
+			font-size: var(--module-font-md);
 		}
 		.readme-preview-body p,
 		.readme-preview-body ul,
@@ -792,7 +799,7 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IM
 			border-radius: 6px;
 		}
 		.readme-preview-status {
-			font-size: 11px;
+			font-size: var(--module-font-sm);
 			color: var(--vscode-descriptionForeground);
 		}
 		.readme-preview-error {
@@ -811,8 +818,8 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IM
 			display: inline-flex;
 			align-items: center;
 			justify-content: center;
-			width: 24px;
-			height: 24px;
+			width: 26px;
+			height: 26px;
 			border-radius: 4px;
 			opacity: 0;
 			pointer-events: none;
@@ -830,8 +837,8 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IM
 			display: inline-flex;
 			align-items: center;
 			justify-content: center;
-			width: 24px;
-			height: 24px;
+			width: 26px;
+			height: 26px;
 			padding: 0;
 			color: var(--vscode-descriptionForeground);
 		}
@@ -843,11 +850,11 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IM
 		}
 		.empty-state h2 {
 			margin: 0;
-			font-size: 14px;
+			font-size: var(--module-font-lg);
 		}
 		.empty-state p {
 			margin: 8px 0 0;
-			font-size: 12px;
+			font-size: var(--module-font-md);
 			line-height: 1.5;
 			color: var(--vscode-descriptionForeground);
 		}
@@ -892,10 +899,6 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IM
 			</div>
 		</div>
 		<div class="toolbar-row">
-			<div class="toolbar">
-				<button class="toolbar-button callout" data-action="applySelected" data-role="apply-selected" ${selectedCount === 0 ? 'hidden' : ''}>${escapeHtml(t('applySelected'))}</button>
-				${this.signedIn ? '' : `<button class="toolbar-button callout" data-action="login">${escapeHtml(t('signIn'))}</button>`}
-			</div>
 			<span class="toolbar-meta" data-role="toolbar-meta" data-applied-count="${appliedCount}" data-total-count="${moduleCount}" data-filtered-count="${filteredCount}">${toolbarMetaText}</span>
 		</div>
 		${this.workspaceLabel && this.moduleRoot ? `<div class="workspace-summary"><span>${escapeHtml(t('rootLabel'))}: ${escapeHtml(this.moduleRoot)}/</span></div>` : ''}
@@ -911,7 +914,6 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IM
 		const filterMenu = document.querySelector('[data-role="filter-menu"]');
 		const filterMenuButton = document.querySelector('[data-role="filter-button"]');
 		const toolbarMeta = document.querySelector('[data-role="toolbar-meta"]');
-		const applySelectedButton = document.querySelector('[data-role="apply-selected"]');
 		const filterEmptyState = document.querySelector('[data-role="filter-empty"]');
 
 		function formatMessage(template, values) {
@@ -1006,9 +1008,6 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IM
 			const selectedCount = document.querySelectorAll('[data-role="select-toggle"]:checked').length;
 			toolbarMeta.setAttribute('data-filtered-count', String(filteredCount));
 			toolbarMeta.textContent = getToolbarMetaText(appliedCount, totalCount, filteredCount, selectedCount);
-			if (applySelectedButton instanceof HTMLElement) {
-				applySelectedButton.toggleAttribute('hidden', selectedCount === 0);
-			}
 		}
 
 		function applyFilter(shouldNotify) {
@@ -1135,7 +1134,7 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IM
 			entry.description,
 			entry.defaultBranch,
 			entry.visibility,
-			...entry.topics,
+			...getVisibleModuleTopics(entry.topics),
 		].join(' ').toLowerCase();
 	}
 
@@ -1251,7 +1250,7 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IM
 		const applied = this.isModuleApplied(moduleKey);
 		const previewOpen = this.previewState?.moduleKey === moduleKey;
 		const stale = this.staleModuleKeys.has(moduleKey);
-		const topics = entry.topics.filter((topic) => topic !== 'csm-modsets').slice(0, 3);
+		const topics = getVisibleModuleTopics(entry.topics).slice(0, 3);
 		const topicBadges = topics.map((topic) => `<span class="badge">${escapeHtml(topic)}</span>`).join('');
 		const summary = entry.description.trim().length > 0 ? entry.description.trim() : t('noRepositoryDescription');
 		const footerNote = applied && this.workspaceLabel

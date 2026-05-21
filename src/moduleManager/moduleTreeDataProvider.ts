@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { CsmModuleEntry } from './types';
 import { getVisibilityLabel, getVisibilityTag, t } from './messages';
+import { getVisibleModuleTopics } from './topics';
 
 export type ViewState = 'loading' | 'ready' | 'empty' | 'error';
 
@@ -36,7 +37,7 @@ function truncate(text: string, maxLength: number): string {
 export class ModuleTreeItem extends vscode.TreeItem {
 	constructor(public readonly moduleEntry: CsmModuleEntry) {
 		super(moduleEntry.name, vscode.TreeItemCollapsibleState.Expanded);
-		const topics = moduleEntry.topics ?? [];
+		const topics = getVisibleModuleTopics(moduleEntry.topics);
 		const visibilityLabel = getVisibilityLabel(moduleEntry.visibility);
 		const shortName = truncate(moduleEntry.name, 36);
 		const visibilityTag = getVisibilityTag(moduleEntry.visibility);
@@ -108,7 +109,7 @@ export class ModuleTreeDataProvider implements vscode.TreeDataProvider<ModuleTre
 
 	public getChildren(element?: ModuleTreeItem | vscode.TreeItem): Array<ModuleTreeItem | vscode.TreeItem> {
 		if (element instanceof ModuleTreeItem) {
-			const topics = element.moduleEntry.topics ?? [];
+			const topics = getVisibleModuleTopics(element.moduleEntry.topics);
 			const topicsText = topics.length > 0 ? topics.join(', ') : t('topicsNone');
 			const line2 = t('treeTopicsLine', {
 				topicsLabel: t('topicsLabel').toLowerCase(),
