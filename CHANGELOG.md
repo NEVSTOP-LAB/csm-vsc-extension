@@ -19,6 +19,10 @@
 
 - 阶段一：模块发现改为基于 GitHub 全局 `topic:csm-modsets` 搜索，未登录时即可浏览 public 模块；检测到 GitHub 会话后会自动补齐当前账号可访问的 private 模块
 - 阶段四：public 模块 README 支持未登录时匿名加载，避免公共模块浏览流程被 GitHub 登录前置阻断
+- 构建：`@types/js-yaml` 已移入 `devDependencies`，`tsconfig.json` 明确 `outDir = out`，并清理过时的 `skipLibCheck` 注释
+- CI：VSIX 校验步骤改为在 Linux / Windows 上统一使用 PowerShell `Expand-Archive`，并在发布到 Marketplace 前显式检查 `VSCE_PAT`
+- 维护：拆分 module manager 的 README 预览 / 用户可见错误转换服务，以及侧边栏 webview HTML 渲染模块；`moduleManagerController` 测试开始迁移到依赖注入式 mock，减少 `as any`
+- 文档：补充 `CONTRIBUTING.md` 的本地开发、调试、VSIX 验证与 PR 规范，并完善工作区 `.vscode/settings.json`
 - UI：`CSM Modules` 侧边栏样式收敛为更接近扩展列表的扁平卡片布局，移除左侧头像图标；单卡 `Apply` 按钮已移除，`README` 保留在卡片右上角，checkbox 仅在 hover 或已选中时显示
 - UI：顶部搜索框固定在最上方，原有头部摘要内容下移到搜索框下方；批量 `Apply Selected` 改由视图标题栏在存在勾选模块时提供，Webview 内不再重复放置登录 / 刷新 / 批量 Apply 按钮
 - UI：模块卡片重新整理为“顶行标题/provider + 工具条、全宽摘要、底部全宽 tags”布局，减少左右分栏造成的压缩感

@@ -563,6 +563,7 @@
     "release:local": "npm run hook:finish"
   },
   "devDependencies": {
+    "@types/js-yaml": "^4.0.9",
     "@types/mocha": "^10.0.10",
     "@types/node": "22.x",
     "@types/vscode": "^1.60.0",
@@ -576,7 +577,6 @@
     "typescript-eslint": "^8.56.1"
   },
   "dependencies": {
-    "@types/js-yaml": "^4.0.9",
     "js-yaml": "^4.1.0"
   }
 }

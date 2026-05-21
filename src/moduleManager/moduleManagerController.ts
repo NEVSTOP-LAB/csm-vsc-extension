@@ -13,7 +13,9 @@ import { DEFAULT_LOCAL_MODULE_ROOT, LEGACY_LOCAL_MODULE_CONFIG_FILE, LOCAL_MODUL
 import { COMMAND_IDS, CONFIG_KEYS, CONFIG_SECTIONS, CONTEXT_KEYS, VIEW_IDS } from './constants';
 import { Logger, getLogger, wrapCommand } from './logger';
 import { getApplyMethodLabel, t } from './messages';
+import { buildReadmePreviewHtml, getUnavailableReadmeMarkdown, loadReadmeMarkdown, type ReadmePreviewServiceDeps } from './readmePreviewService';
 import { DEFAULT_MODULE_SORT_STATE, isModuleSortField, normalizeModuleSortState, sortModules } from './sort';
+import { getUserFacingErrorMessage } from './userFacingErrors';
 
 const LOCAL_MODULE_CONFIG_GLOB = `**/{${LOCAL_MODULE_CONFIG_FILE},${LEGACY_LOCAL_MODULE_CONFIG_FILE}}`;
 const WORKSPACE_INIT_CONTEXT_KEY = CONTEXT_KEYS.canInitializeWorkspace;
@@ -30,8 +32,6 @@ interface PendingWorkspaceInitialization {
 	repoRoot: string;
 }
 
-type UserFacingErrorContext = 'refresh' | 'apply' | 'update' | 'remove' | 'config';
-
 type WebviewModuleContext = {
 	moduleKey?: string;
 	moduleApplied?: boolean;
@@ -39,6 +39,11 @@ type WebviewModuleContext = {
 	webviewSection?: string;
 	preventDefaultContextMenuItems?: boolean;
 };
+
+type ModuleManagerAuthService = Pick<AuthService, 'getSessionSilently' | 'getSessionInteractively'>
+	& Partial<Pick<AuthService, 'verifyScopes'>>;
+
+type ModuleManagerGithubService = Pick<GitHubModuleService, 'fetchModules' | 'fetchReadme'>;
 
 /**
  * Optional dependencies for {@link ModuleManagerController}.
@@ -48,8 +53,8 @@ type WebviewModuleContext = {
  * fields via `as any` (review items 2.1 / 6.1).
  */
 export interface ModuleManagerControllerDeps {
-	authService?: AuthService;
-	githubService?: GitHubModuleService;
+	authService?: ModuleManagerAuthService;
+	githubService?: ModuleManagerGithubService;
 	workspaceModuleService?: WorkspaceModuleService;
 	viewProvider?: IModuleViewProvider;
 	logger?: Logger;
@@ -57,8 +62,8 @@ export interface ModuleManagerControllerDeps {
 
 export class ModuleManagerController {
 	private readonly logger: Logger;
-	private readonly authService: AuthService;
-	private readonly githubService: GitHubModuleService;
+	private readonly authService: ModuleManagerAuthService;
+	private readonly githubService: ModuleManagerGithubService;
 	private readonly cacheStore: ModuleCacheStore;
 	private readonly sidebarViewProvider: ModuleSidebarViewProvider = new ModuleSidebarViewProvider({
 		onLogin: () => {
@@ -73,7 +78,7 @@ export class ModuleManagerController {
 		onOpenReadme: (entry) => {
 			void this.openReadmeCommand(entry);
 		},
-		onPreviewReadme: (entry, webview) => this.buildReadmePreviewHtml(entry, webview),
+		onPreviewReadme: (entry, webview) => buildReadmePreviewHtml(entry, webview, this.getReadmeServiceDeps()),
 		onApplySelection: (entry) => {
 			void this.applyToWorkspaceCommand(entry);
 		},
@@ -117,6 +122,16 @@ export class ModuleManagerController {
 		// asset cache is the single source of truth (review item 3.5).
 		this.readmeCache = this.cacheStore.getReadmeCache();
 		void this.cacheStore.clearReadmeCache();
+	}
+
+	private getReadmeServiceDeps(): ReadmePreviewServiceDeps {
+		return {
+			readmeCache: this.readmeCache,
+			readmeAssetCache: this.readmeAssetCache,
+			githubService: this.githubService,
+			logger: this.logger,
+			ensureToken: (interactive) => this.ensureToken(interactive),
+		};
 	}
 
 	public register(subscriptions: vscode.Disposable[]): void {
@@ -326,7 +341,7 @@ export class ModuleManagerController {
 				},
 			);
 		} catch (error) {
-			const message = this.getUserFacingErrorMessage(error, 'apply');
+			const message = getUserFacingErrorMessage(error, 'apply');
 			const prefix = appliedCount > 0
 				? t('applyPartialFailure', { appliedCount, selectedCount: selectedEntries.length })
 				: t('applyFailed');
@@ -394,7 +409,7 @@ export class ModuleManagerController {
 				},
 			);
 		} catch (error) {
-			const message = this.getUserFacingErrorMessage(error, 'remove');
+			const message = getUserFacingErrorMessage(error, 'remove');
 			this.logger.error(`Failed to remove module ${target.owner}/${target.name}: ${message}`);
 			void vscode.window.showErrorMessage(t('removeFailed', { message }));
 			return;
@@ -447,7 +462,7 @@ export class ModuleManagerController {
 				ref: updated?.ref ?? t('latestRef'),
 			}));
 		} catch (error) {
-			const message = this.getUserFacingErrorMessage(error, 'update');
+			const message = getUserFacingErrorMessage(error, 'update');
 			this.logger.error(`Failed to update module ${target.owner}/${target.name}: ${message}`);
 			void vscode.window.showErrorMessage(t('updateFailed', { message }));
 			return;
@@ -679,7 +694,7 @@ export class ModuleManagerController {
 				void vscode.window.showInformationMessage(t('modulesRefreshed', { count: modules.length }));
 			}
 		} catch (error) {
-			const message = this.getUserFacingErrorMessage(error, 'refresh');
+			const message = getUserFacingErrorMessage(error, 'refresh');
 			this.logger.error(`Failed to refresh modules: ${message}`);
 			this.treeDataProvider.setError(message);
 			if (options.showErrorMessage) {
@@ -707,7 +722,7 @@ export class ModuleManagerController {
 				if (!moduleEntry) {
 					continue;
 				}
-				const key = this.getReadmeCacheKey(moduleEntry);
+				const key = `${moduleEntry.owner}/${moduleEntry.name}`;
 				try {
 					const markdown = await this.githubService.fetchReadme(moduleEntry.owner, moduleEntry.name, token);
 					refreshed[key] = markdown;
@@ -723,119 +738,17 @@ export class ModuleManagerController {
 		return refreshed;
 	}
 
-	private getUnavailableReadmeMarkdown(): string {
-		return `${t('readmeUnavailableTitle')}\n\n${t('readmeUnavailableBody')}`;
-	}
-
-	private getUserFacingErrorMessage(error: unknown, context: UserFacingErrorContext): string {
-		const rawMessage = error instanceof Error ? error.message : String(error);
-		const segments = rawMessage.split('; ').map((segment) => segment.trim()).filter((segment) => segment.length > 0);
-		if (segments.length === 0) {
-			return t('unexpectedError');
-		}
-		return segments.map((segment) => this.mapUserFacingErrorSegment(segment, context)).join('; ');
-	}
-
-	private mapUserFacingErrorSegment(segment: string, context: UserFacingErrorContext): string {
-		const modulePrefixMatch = segment.match(/^([^:]+\/[^:]+):\s+(.*)$/);
-		if (modulePrefixMatch) {
-			return `${modulePrefixMatch[1]}: ${this.mapSingleUserFacingError(modulePrefixMatch[2] ?? '', context)}`;
-		}
-		return this.mapSingleUserFacingError(segment, context);
-	}
-
-	private mapSingleUserFacingError(message: string, context: UserFacingErrorContext): string {
-		const githubStatusMatch = message.match(/GitHub (?:API|README) request failed: (\d{3})/);
-		if (githubStatusMatch) {
-			return this.mapGitHubStatusToUserMessage(Number(githubStatusMatch[1]), context);
-		}
-		if (/Failed to parse YAML config:/i.test(message)) {
-			return t('invalidYamlConfig');
-		}
-		if (/spawn .*ENOENT|is not recognized as an internal or external command|The system cannot find the file specified/i.test(message)) {
-			return t('gitUnavailable');
-		}
-		if (/Authentication failed|Permission denied|could not read Username|Repository not found|access denied/i.test(message)) {
-			return t('gitCannotAccessRepo');
-		}
-		if (/ENOTFOUND|ECONNRESET|ECONNREFUSED|ETIMEDOUT|fetch failed|network/i.test(message)) {
-			return t('networkRequestFailed');
-		}
-		return message;
-	}
-
-	private mapGitHubStatusToUserMessage(status: number, context: UserFacingErrorContext): string {
-		switch (status) {
-			case 401:
-				return t('github401');
-			case 403:
-				return t('github403');
-			case 404:
-				return context === 'refresh'
-					? t('github404Module')
-					: t('github404Readme');
-			default:
-				if (status === 429 || status >= 500) {
-					return t('githubTemporaryUnavailable', { status });
-				}
-				return t('githubRequestFailed', { status });
-		}
-	}
-
-	private async loadReadmeMarkdown(entry: CsmModuleEntry, options: { warnOnMissingSession: boolean }): Promise<string | undefined> {
-		const key = this.getReadmeCacheKey(entry);
-		let readme = Object.prototype.hasOwnProperty.call(this.readmeCache, key)
-			? this.readmeCache[key]
-			: undefined;
-		if (typeof readme !== 'string') {
-			const cachedMarkdown = await this.readmeAssetCache.readMarkdown(entry);
-			if (typeof cachedMarkdown === 'string') {
-				readme = cachedMarkdown;
-				this.readmeCache[key] = cachedMarkdown;
-			}
-		}
-		if (typeof readme === 'string') {
-			return readme;
-		}
-
-		const token = await this.ensureToken(false);
-		if (!token && entry.visibility === 'private') {
-			if (options.warnOnMissingSession) {
-				void vscode.window.showWarningMessage(t('noCachedReadmeAndNoSession'));
-				return undefined;
-			}
-			return '';
-		}
-
-		try {
-			readme = await this.githubService.fetchReadme(entry.owner, entry.name, token);
-			this.readmeCache[key] = readme;
-			await this.readmeAssetCache.saveMarkdown(entry, readme);
-			return readme;
-		} catch (error) {
-			this.logger.warn(`Failed to fetch README for ${entry.owner}/${entry.name}: ${error instanceof Error ? error.message : String(error)}`);
-			this.readmeCache[key] = '';
-			return '';
-		}
-	}
-
-	private async buildReadmePreviewHtml(entry: CsmModuleEntry, webview: vscode.Webview): Promise<string> {
-		const readme = await this.loadReadmeMarkdown(entry, { warnOnMissingSession: false });
-		const markdownContent = readme || this.getUnavailableReadmeMarkdown();
-		return this.readmeAssetCache.renderMarkdownFragment(entry, markdownContent, webview);
-	}
-
 	public async openReadmeCommand(entry?: CsmModuleEntry | ModuleTreeItem): Promise<void> {
 		const resolvedEntry = this.resolveModuleEntry(entry);
 		if (!resolvedEntry) {
 			return;
 		}
-		const readme = await this.loadReadmeMarkdown(resolvedEntry, { warnOnMissingSession: true });
+		const readme = await loadReadmeMarkdown(resolvedEntry, { warnOnMissingSession: true }, this.getReadmeServiceDeps());
 		if (typeof readme === 'undefined') {
 			return;
 		}
 
-		const markdownContent = readme || this.getUnavailableReadmeMarkdown();
+		const markdownContent = readme || getUnavailableReadmeMarkdown();
 		const panel = vscode.window.createWebviewPanel(
 			'csmModulesReadme',
 			t('readmePanelTitle', { name: resolvedEntry.name }),
@@ -887,10 +800,6 @@ export class ModuleManagerController {
 
 	public contextClearModuleSelectionCommand(context?: WebviewModuleContext): void {
 		this.setContextModuleSelection(context, false);
-	}
-
-	private getReadmeCacheKey(entry: CsmModuleEntry): string {
-		return `${entry.owner}/${entry.name}`;
 	}
 
 	private resolveContextModuleEntry(context?: WebviewModuleContext): CsmModuleEntry | undefined {

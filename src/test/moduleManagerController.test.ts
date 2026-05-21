@@ -3,8 +3,8 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import * as vscode from 'vscode';
-import { DEFAULT_LOCAL_MODULE_ROOT, LEGACY_LOCAL_MODULE_CONFIG_FILE, LOCAL_MODULE_CONFIG_FILE } from '../moduleManager';
-import { ModuleManagerController } from '../moduleManager/moduleManagerController';
+import { DEFAULT_LOCAL_MODULE_ROOT, IModuleViewProvider, LEGACY_LOCAL_MODULE_CONFIG_FILE, LOCAL_MODULE_CONFIG_FILE } from '../moduleManager';
+import { ModuleManagerController, ModuleManagerControllerDeps } from '../moduleManager/moduleManagerController';
 import { ModuleTreeItem } from '../moduleManager/moduleTreeDataProvider';
 import { CsmModuleEntry, LocalModuleConfig, ModuleCacheSnapshot } from '../moduleManager/types';
 
@@ -45,13 +45,38 @@ class FakeMemento {
 	}
 }
 
-function createController(globalState = new FakeMemento()): ModuleManagerController {
+function createController(globalState: FakeMemento = new FakeMemento(), deps: ModuleManagerControllerDeps = {}): ModuleManagerController {
 	const storageRoot = vscode.Uri.file(path.join(os.tmpdir(), `csm-vsc-support-tests-${Date.now()}`));
 	const context = {
 		globalState,
 		globalStorageUri: storageRoot,
 	} as unknown as vscode.ExtensionContext;
-	return new ModuleManagerController(context);
+	return new ModuleManagerController(context, deps);
+}
+
+function createViewProvider(overrides: Partial<IModuleViewProvider> = {}): IModuleViewProvider {
+	return {
+		setAuthenticated: () => undefined,
+		setLoading: () => undefined,
+		setError: () => undefined,
+		setModules: () => undefined,
+		setSelection: () => undefined,
+		setWorkspaceContext: () => undefined,
+		setCanInitializeWorkspace: () => undefined,
+		...overrides,
+	};
+}
+
+function createSession(token = 'token', label = 'tester'): vscode.AuthenticationSession {
+	return {
+		id: `${label}-session`,
+		accessToken: token,
+		account: {
+			id: label,
+			label,
+		},
+		scopes: [],
+	};
 }
 
 function createCachedSnapshot(modules: CsmModuleEntry[], lastRefreshAt = new Date().toISOString()): ModuleCacheSnapshot {
@@ -82,43 +107,41 @@ suite('ModuleManagerController Regression Tests', () => {
 	});
 
 	test('refresh without session still fetches public modules', async () => {
-		const controller = createController() as any;
 		let moduleCount = -1;
 		let receivedToken = 'unset';
-			mocked.__setWarningMessageResponse('Refresh');
+		mocked.__setWarningMessageResponse('Refresh');
 
-		controller.authService = {
-			getSessionSilently: async () => undefined,
-			getSessionInteractively: async () => undefined,
-		};
-		controller.githubService = {
-			fetchModules: async (token?: string) => {
-				receivedToken = token ?? 'undefined';
-				return {
-					modules: [
-						{
-							id: 1,
-							owner: 'org',
-							name: 'module-a',
-							description: 'demo',
-							topics: ['csm-modsets'],
-							visibility: 'public',
-							defaultBranch: 'main',
-							repoUrl: 'https://github.com/org/module-a',
-						},
-					],
-				};
+		const controller = createController(undefined, {
+			authService: {
+				getSessionSilently: async () => undefined,
+				getSessionInteractively: async () => undefined,
 			},
-			fetchReadme: async () => '',
-		};
-		controller.treeDataProvider = {
-			setAuthenticated: () => undefined,
-			setError: () => undefined,
-			setLoading: () => undefined,
-			setModules: (modules: CsmModuleEntry[]) => {
-				moduleCount = modules.length;
+			githubService: {
+				fetchModules: async (token?: string) => {
+					receivedToken = token ?? 'undefined';
+					return {
+						modules: [
+							{
+								id: 1,
+								owner: 'org',
+								name: 'module-a',
+								description: 'demo',
+								topics: ['csm-modsets'],
+								visibility: 'public',
+								defaultBranch: 'main',
+								repoUrl: 'https://github.com/org/module-a',
+							},
+						],
+					};
+				},
+				fetchReadme: async () => '',
 			},
-		};
+			viewProvider: createViewProvider({
+				setModules: (modules: CsmModuleEntry[]) => {
+					moduleCount = modules.length;
+				},
+			}),
+		});
 
 		await controller.refreshCommand();
 
@@ -129,28 +152,26 @@ suite('ModuleManagerController Regression Tests', () => {
 	});
 
 	test('refresh github error sets tree error and error toast', async () => {
-		const controller = createController() as any;
 		let setErrorText = '';
-			mocked.__setWarningMessageResponse('Refresh');
+		mocked.__setWarningMessageResponse('Refresh');
 
-		controller.authService = {
-			getSessionSilently: async () => ({ accessToken: 'token', account: { label: 'tester' } }),
-			getSessionInteractively: async () => undefined,
-		};
-		controller.githubService = {
-			fetchModules: async () => {
-				throw new Error('GitHub API request failed: 503');
+		const controller = createController(undefined, {
+			authService: {
+				getSessionSilently: async () => createSession(),
+				getSessionInteractively: async () => undefined,
 			},
-			fetchReadme: async () => '',
-		};
-		controller.treeDataProvider = {
-			setAuthenticated: () => undefined,
-			setError: (message: string) => {
-				setErrorText = message;
+			githubService: {
+				fetchModules: async () => {
+					throw new Error('GitHub API request failed: 503');
+				},
+				fetchReadme: async () => '',
 			},
-			setLoading: () => undefined,
-			setModules: () => undefined,
-		};
+			viewProvider: createViewProvider({
+				setError: (message: string) => {
+					setErrorText = message;
+				},
+			}),
+		});
 
 		await controller.refreshCommand();
 
@@ -160,7 +181,6 @@ suite('ModuleManagerController Regression Tests', () => {
 	});
 
 	test('openReadme without cache and token fetches public README anonymously', async () => {
-		const controller = createController() as any;
 		const entry: CsmModuleEntry = {
 			id: 1,
 			owner: 'org',
@@ -172,17 +192,20 @@ suite('ModuleManagerController Regression Tests', () => {
 			repoUrl: 'https://github.com/org/module-a',
 		};
 
-		controller.authService = {
-			getSessionSilently: async () => undefined,
-			getSessionInteractively: async () => undefined,
-		};
 		let receivedToken = 'unset';
-		controller.githubService = {
-			fetchReadme: async (_owner: string, _repo: string, token?: string) => {
-				receivedToken = token ?? 'undefined';
-				return '# demo';
+		const controller = createController(undefined, {
+			authService: {
+				getSessionSilently: async () => undefined,
+				getSessionInteractively: async () => undefined,
 			},
-		};
+			githubService: {
+				fetchReadme: async (_owner: string, _repo: string, token?: string) => {
+					receivedToken = token ?? 'undefined';
+					return '# demo';
+				},
+				fetchModules: async () => ({ modules: [] }),
+			},
+		});
 
 		await controller.openReadmeCommand(entry);
 
@@ -195,7 +218,6 @@ suite('ModuleManagerController Regression Tests', () => {
 	});
 
 	test('openReadme without cache and token still warns for private modules', async () => {
-		const controller = createController() as any;
 		const entry: CsmModuleEntry = {
 			id: 2,
 			owner: 'org',
@@ -207,10 +229,16 @@ suite('ModuleManagerController Regression Tests', () => {
 			repoUrl: 'https://github.com/org/module-private',
 		};
 
-		controller.authService = {
-			getSessionSilently: async () => undefined,
-			getSessionInteractively: async () => undefined,
-		};
+		const controller = createController(undefined, {
+			authService: {
+				getSessionSilently: async () => undefined,
+				getSessionInteractively: async () => undefined,
+			},
+			githubService: {
+				fetchModules: async () => ({ modules: [] }),
+				fetchReadme: async () => '',
+			},
+		});
 
 		await controller.openReadmeCommand(entry);
 
@@ -242,39 +270,36 @@ suite('ModuleManagerController Regression Tests', () => {
 	});
 
 	test('login success triggers immediate module refresh', async () => {
-		const controller = createController() as any;
 		let moduleCount = -1;
 
-		controller.authService = {
-			getSessionSilently: async () => undefined,
-			getSessionInteractively: async () => ({
-				accessToken: 'token',
-				account: { label: 'tester' },
-			}),
-		};
-		controller.githubService = {
-			fetchModules: async () => ({ modules: [
-				{
-					id: 1,
-					owner: 'org',
-					name: 'module-a',
-					description: 'demo',
-					topics: ['csm-modsets'],
-					visibility: 'public',
-					defaultBranch: 'main',
-					repoUrl: 'https://github.com/org/module-a',
-				},
-			]}),
-			fetchReadme: async () => '# demo',
-		};
-		controller.treeDataProvider = {
-			setAuthenticated: () => undefined,
-			setError: () => undefined,
-			setLoading: () => undefined,
-			setModules: (modules: CsmModuleEntry[]) => {
-				moduleCount = modules.length;
+		const controller = createController(undefined, {
+			authService: {
+				getSessionSilently: async () => undefined,
+				getSessionInteractively: async () => createSession(),
 			},
-		};
+			githubService: {
+				fetchModules: async () => ({
+					modules: [
+						{
+							id: 1,
+							owner: 'org',
+							name: 'module-a',
+							description: 'demo',
+							topics: ['csm-modsets'],
+							visibility: 'public',
+							defaultBranch: 'main',
+							repoUrl: 'https://github.com/org/module-a',
+						},
+					]
+				}),
+				fetchReadme: async () => '# demo',
+			},
+			viewProvider: createViewProvider({
+				setModules: (modules: CsmModuleEntry[]) => {
+					moduleCount = modules.length;
+				},
+			}),
+		});
 
 		await controller.loginCommand();
 
@@ -283,10 +308,28 @@ suite('ModuleManagerController Regression Tests', () => {
 	});
 
 	test('login clears loading banner when GitHub reports modules unchanged', async () => {
-		const controller = createController() as any;
 		let loadingCalls = 0;
 		let renderedModuleCount = -1;
-		controller.availableModules = [
+		const controller = createController(undefined, {
+			authService: {
+				getSessionSilently: async () => undefined,
+				getSessionInteractively: async () => createSession(),
+			},
+			githubService: {
+				fetchModules: async () => ({ modules: [], notModified: true }),
+				fetchReadme: async () => '# demo',
+			},
+			viewProvider: createViewProvider({
+				setLoading: () => {
+					loadingCalls += 1;
+				},
+				setModules: (modules: CsmModuleEntry[]) => {
+					renderedModuleCount = modules.length;
+				},
+			}),
+		});
+		const controllerInternals = controller as unknown as { availableModules: CsmModuleEntry[] };
+		controllerInternals.availableModules = [
 			{
 				id: 1,
 				owner: 'org',
@@ -298,28 +341,6 @@ suite('ModuleManagerController Regression Tests', () => {
 				repoUrl: 'https://github.com/org/cached-module',
 			},
 		];
-
-		controller.authService = {
-			getSessionSilently: async () => undefined,
-			getSessionInteractively: async () => ({
-				accessToken: 'token',
-				account: { label: 'tester' },
-			}),
-		};
-		controller.githubService = {
-			fetchModules: async () => ({ modules: [], notModified: true }),
-			fetchReadme: async () => '# demo',
-		};
-		controller.treeDataProvider = {
-			setAuthenticated: () => undefined,
-			setError: () => undefined,
-			setLoading: () => {
-				loadingCalls += 1;
-			},
-			setModules: (modules: CsmModuleEntry[]) => {
-				renderedModuleCount = modules.length;
-			},
-		};
 
 		await controller.loginCommand();
 
@@ -394,26 +415,22 @@ suite('ModuleManagerController Regression Tests', () => {
 	});
 
 	test('refresh cancellation does not fetch modules', async () => {
-		const controller = createController() as any;
 		let fetched = false;
 
-		controller.authService = {
-			getSessionSilently: async () => ({ accessToken: 'token', account: { label: 'tester' } }),
-			getSessionInteractively: async () => undefined,
-		};
-		controller.githubService = {
-			fetchModules: async () => {
-				fetched = true;
-				return { modules: [] };
+		const controller = createController(undefined, {
+			authService: {
+				getSessionSilently: async () => createSession(),
+				getSessionInteractively: async () => undefined,
 			},
-			fetchReadme: async () => '',
-		};
-		controller.treeDataProvider = {
-			setAuthenticated: () => undefined,
-			setError: () => undefined,
-			setLoading: () => undefined,
-			setModules: () => undefined,
-		};
+			githubService: {
+				fetchModules: async () => {
+					fetched = true;
+					return { modules: [] };
+				},
+				fetchReadme: async () => '',
+			},
+			viewProvider: createViewProvider(),
+		});
 		mocked.__resetMessageLog();
 		mocked.__setWarningMessageResponse(undefined);
 
@@ -436,29 +453,26 @@ suite('ModuleManagerController Regression Tests', () => {
 				repoUrl: 'https://github.com/org/cached-module',
 			},
 		]));
-		const controller = createController(memento) as any;
 		let fetched = false;
 		let visibleModuleCount = 0;
-
-		controller.authService = {
-			getSessionSilently: async () => undefined,
-			getSessionInteractively: async () => undefined,
-		};
-		controller.githubService = {
-			fetchModules: async () => {
-				fetched = true;
-				return { modules: [] };
+		const controller = createController(memento, {
+			authService: {
+				getSessionSilently: async () => undefined,
+				getSessionInteractively: async () => undefined,
 			},
-			fetchReadme: async () => '',
-		};
-		controller.treeDataProvider = {
-			setAuthenticated: () => undefined,
-			setError: () => undefined,
-			setLoading: () => undefined,
-			setModules: (modules: CsmModuleEntry[]) => {
-				visibleModuleCount = modules.length;
+			githubService: {
+				fetchModules: async () => {
+					fetched = true;
+					return { modules: [] };
+				},
+				fetchReadme: async () => '',
 			},
-		};
+			viewProvider: createViewProvider({
+				setModules: (modules: CsmModuleEntry[]) => {
+					visibleModuleCount = modules.length;
+				},
+			}),
+		});
 		mocked.__setConfigurationValue('csmModules.cache.ttlMinutes', 60);
 
 		controller.register([]);
@@ -483,52 +497,50 @@ suite('ModuleManagerController Regression Tests', () => {
 				repoUrl: 'https://github.com/org/cached-module',
 			},
 		]));
-		const controller = createController(memento) as any;
 		let fetched = false;
 		let visibleModuleCount = 0;
 
-		controller.authService = {
-			getSessionSilently: async () => ({ accessToken: 'token', account: { label: 'tester' } }),
-			getSessionInteractively: async () => undefined,
-		};
-		controller.githubService = {
-			fetchModules: async () => {
-				fetched = true;
-				return {
-					modules: [
-						{
-							id: 1,
-							owner: 'org',
-							name: 'cached-module',
-							description: 'cached',
-							topics: ['csm-modsets'],
-							visibility: 'public',
-							defaultBranch: 'main',
-							repoUrl: 'https://github.com/org/cached-module',
-						},
-						{
-							id: 2,
-							owner: 'org',
-							name: 'private-module',
-							description: 'private',
-							topics: ['csm-modsets'],
-							visibility: 'private',
-							defaultBranch: 'main',
-							repoUrl: 'https://github.com/org/private-module',
-						},
-					],
-				};
+		const controller = createController(memento, {
+			authService: {
+				getSessionSilently: async () => createSession(),
+				getSessionInteractively: async () => undefined,
 			},
-			fetchReadme: async () => '',
-		};
-		controller.treeDataProvider = {
-			setAuthenticated: () => undefined,
-			setError: () => undefined,
-			setLoading: () => undefined,
-			setModules: (modules: CsmModuleEntry[]) => {
-				visibleModuleCount = modules.length;
+			githubService: {
+				fetchModules: async () => {
+					fetched = true;
+					return {
+						modules: [
+							{
+								id: 1,
+								owner: 'org',
+								name: 'cached-module',
+								description: 'cached',
+								topics: ['csm-modsets'],
+								visibility: 'public',
+								defaultBranch: 'main',
+								repoUrl: 'https://github.com/org/cached-module',
+							},
+							{
+								id: 2,
+								owner: 'org',
+								name: 'private-module',
+								description: 'private',
+								topics: ['csm-modsets'],
+								visibility: 'private',
+								defaultBranch: 'main',
+								repoUrl: 'https://github.com/org/private-module',
+							},
+						],
+					};
+				},
+				fetchReadme: async () => '',
 			},
-		};
+			viewProvider: createViewProvider({
+				setModules: (modules: CsmModuleEntry[]) => {
+					visibleModuleCount = modules.length;
+				},
+			}),
+		});
 		mocked.__setConfigurationValue('csmModules.cache.ttlMinutes', 60);
 
 		controller.register([]);

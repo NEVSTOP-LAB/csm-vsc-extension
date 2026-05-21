@@ -195,18 +195,29 @@ jobs:
           name: ${{ needs.build-vsix.outputs.artifact_name }}
 
       - name: 验证 VSIX 结构与 manifest
-        shell: bash
+        shell: pwsh
         run: |
-          VSIX=$(ls *.vsix | head -1)
-          echo "验证 VSIX: $VSIX"
+          $vsix = Get-ChildItem -Path . -Filter *.vsix | Select-Object -First 1
+          if (-not $vsix) {
+            throw 'FAILED: No VSIX artifact found.'
+          }
+          Write-Host "验证 VSIX: $($vsix.Name)"
 
           # 1. ZIP 完整性检查
-          unzip -t "$VSIX"
-          echo "✓ ZIP 结构完整"
+          $extractDir = Join-Path (Get-Location) 'vsix-unpacked'
+          if (Test-Path $extractDir) {
+            Remove-Item -LiteralPath $extractDir -Recurse -Force
+          }
+          Expand-Archive -LiteralPath $vsix.FullName -DestinationPath $extractDir -Force
+          Write-Host '✓ ZIP 结构完整'
 
           # 2. 解析 extension/package.json，验证版本号与必需字段
-          unzip -p "$VSIX" extension/package.json > ./vsix-pkg.json
-          node << 'JSEOF'
+          $packageJsonPath = Join-Path $extractDir 'extension/package.json'
+          if (-not (Test-Path $packageJsonPath)) {
+            throw 'FAILED: extension/package.json not found in VSIX.'
+          }
+          Copy-Item -LiteralPath $packageJsonPath -Destination ./vsix-pkg.json -Force
+          @'
           const fs = require('fs');
           const pkg = JSON.parse(fs.readFileSync('./vsix-pkg.json', 'utf8'));
           // 版本号须为有效 semver（如 2026.4.42）
@@ -237,15 +248,18 @@ jobs:
             }
           }
           console.log('✓ 扩展必需字段完整 (main, contributes)');
-          JSEOF
+          '@ | node
 
           # 3. 验证主入口文件存在于 VSIX 中
-          MAIN=$(node -e "const fs=require('fs');const p=JSON.parse(fs.readFileSync('./vsix-pkg.json','utf8'));process.stdout.write(p.main||'')")
-          MAIN_IN_VSIX="extension/${MAIN#./}"
-          unzip -p "$VSIX" "$MAIN_IN_VSIX" > /dev/null
-          echo "✓ 主入口文件存在: $MAIN_IN_VSIX"
+          $main = node -e "const fs=require('fs');const p=JSON.parse(fs.readFileSync('./vsix-pkg.json','utf8'));process.stdout.write(p.main||'')"
+          $mainRelativePath = if ($main.StartsWith('./')) { $main.Substring(2) } else { $main }
+          $mainInVsix = Join-Path $extractDir (Join-Path 'extension' $mainRelativePath)
+          if (-not (Test-Path $mainInVsix)) {
+            throw "FAILED: main entry not found in VSIX: extension/$mainRelativePath"
+          }
+          Write-Host "✓ 主入口文件存在: extension/$mainRelativePath"
 
-          echo "✓ VSIX 验证通过，可正常被 VS Code 加载"
+          Write-Host '✓ VSIX 验证通过，可正常被 VS Code 加载'
 
   upload-to-release:
     name: 上传 VSIX 到 GitHub Release
@@ -292,8 +306,19 @@ jobs:
         with:
           name: ${{ needs.build-vsix.outputs.artifact_name }}
 
+      - name: 检查 Marketplace PAT
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+        run: |
+          if [ -z "$VSCE_PAT" ]; then
+            echo "::error::VSCE_PAT secret 未配置，无法发布到 Marketplace"
+            exit 1
+          fi
+
       - name: 发布到 VS Code Marketplace
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
         run: |
           VSIX=$(ls *.vsix | head -1)
           echo "发布 VSIX: $VSIX"
-          npx @vscode/vsce@3.7.1 publish --packagePath "$VSIX" --pat "${{ secrets.VSCE_PAT }}"
+          npx @vscode/vsce@3.7.1 publish --packagePath "$VSIX" --pat "$VSCE_PAT"
