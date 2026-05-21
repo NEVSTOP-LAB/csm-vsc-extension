@@ -221,6 +221,73 @@ suite('ModuleManagerController Regression Tests', () => {
 		await controller.loginCommand();
 
 		assert.strictEqual(moduleCount, 1);
+		assert.strictEqual(mocked.__getContextValue('csmModules.signedIn'), true);
+	});
+
+	test('selection state toggles apply toolbar context', () => {
+		const controller = createController() as any;
+		controller.availableModules = [
+			{
+				id: 1,
+				owner: 'org',
+				name: 'module-a',
+				description: 'demo',
+				topics: ['csm-modsets'],
+				visibility: 'public',
+				defaultBranch: 'main',
+				repoUrl: 'https://github.com/org/module-a',
+			},
+		];
+		controller.treeDataProvider = {
+			setAuthenticated: () => undefined,
+			setError: () => undefined,
+			setLoading: () => undefined,
+			setModules: () => undefined,
+			setSelection: () => undefined,
+		};
+
+		controller.setSelectedModuleKeys(['org/module-a']);
+		assert.strictEqual(mocked.__getContextValue('csmModules.hasSelection'), true);
+
+		controller.setSelectedModuleKeys([]);
+		assert.strictEqual(mocked.__getContextValue('csmModules.hasSelection'), false);
+	});
+
+	test('missing session clears signed-in toolbar context', async () => {
+		const controller = createController() as any;
+
+		controller.authService = {
+			getSessionSilently: async () => undefined,
+			getSessionInteractively: async () => ({
+				accessToken: 'token',
+				account: { label: 'tester' },
+			}),
+		};
+		controller.githubService = {
+			fetchModules: async () => ({ modules: [] }),
+			fetchReadme: async () => '# demo',
+		};
+		controller.treeDataProvider = {
+			setAuthenticated: () => undefined,
+			setError: () => undefined,
+			setLoading: () => undefined,
+			setModules: () => undefined,
+		};
+
+		await controller.loginCommand();
+		assert.strictEqual(mocked.__getContextValue('csmModules.signedIn'), true);
+
+		controller.currentToken = 'expired-token';
+		controller.lastTokenVerifiedAt = 0;
+		controller.authService = {
+			getSessionSilently: async () => undefined,
+			getSessionInteractively: async () => undefined,
+		};
+		mocked.__setWarningMessageResponse('Refresh');
+
+		await controller.refreshCommand();
+
+		assert.strictEqual(mocked.__getContextValue('csmModules.signedIn'), false);
 	});
 
 	test('refresh cancellation does not fetch modules', async () => {
@@ -339,9 +406,7 @@ suite('ModuleManagerController Regression Tests', () => {
 		mocked.__setConfigurationValue('csmModules.cache.ttlMinutes', 1);
 
 		controller.register([]);
-		await Promise.resolve();
-		await Promise.resolve();
-		await Promise.resolve();
+		await new Promise<void>((resolve) => setImmediate(resolve));
 
 		assert.strictEqual(fetched, true);
 		assert.strictEqual(loadingCalls, 0);

@@ -109,7 +109,7 @@
         },
         {
           "command": "csmModules.applyToWorkspace",
-          "when": "view == csmModules.view",
+          "when": "view == csmModules.view && csmModules.hasSelection",
           "group": "navigation@1"
         },
         {
@@ -119,7 +119,7 @@
         },
         {
           "command": "csmModules.login",
-          "when": "view == csmModules.view",
+          "when": "view == csmModules.view && !csmModules.signedIn",
           "group": "navigation@3"
         }
       ],

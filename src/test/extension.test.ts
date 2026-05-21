@@ -323,6 +323,8 @@ const viewContainers = pkg.contributes?.viewsContainers?.activitybar ?? [];
 const views = pkg.contributes?.views?.csmModules ?? [];
 const viewTitleMenus: Array<{ command: string; when?: string }> = pkg.contributes?.menus?.['view/title'] ?? [];
 const initMenu = viewTitleMenus.find((menu) => menu.command === 'csmModules.initializeWorkspace');
+const applyMenu = viewTitleMenus.find((menu) => menu.command === 'csmModules.applyToWorkspace');
+const loginMenu = viewTitleMenus.find((menu) => menu.command === 'csmModules.login');
 assert.ok(commands.some((c) => c.command === 'csmModules.login'), 'csmModules.login command should be declared');
 assert.ok(commands.some((c) => c.command === 'csmModules.refresh'), 'csmModules.refresh command should be declared');
 assert.ok(commands.some((c) => c.command === 'csmModules.initializeWorkspace'), 'csmModules.initializeWorkspace command should be declared');
@@ -332,7 +334,11 @@ assert.ok(commands.every((c) => typeof c.icon === 'string' && c.icon.startsWith(
 assert.ok(viewContainers.some((v: { id: string }) => v.id === 'csmModules'), 'csmModules activity bar container should be declared');
 assert.ok(views.some((v: { id: string }) => v.id === 'csmModules.view'), 'csmModules.view should be declared');
 assert.ok(initMenu, 'csmModules.initializeWorkspace should be available from the view title toolbar');
+assert.ok(applyMenu, 'csmModules.applyToWorkspace should be available from the view title toolbar');
+assert.ok(loginMenu, 'csmModules.login should be available from the view title toolbar');
 assert.ok(initMenu?.when?.includes('csmModules.canInitializeWorkspace'), 'initialize toolbar entry should only show when a workspace needs initialization');
+assert.ok(applyMenu?.when?.includes('csmModules.hasSelection'), 'apply toolbar entry should only show when at least one module is selected');
+assert.ok(loginMenu?.when?.includes('!csmModules.signedIn'), 'login toolbar entry should hide after GitHub sign-in succeeds');
 assert.strictEqual(pkg.contributes?.snippets, undefined, 'contributes.snippets should not be declared');
 });
 

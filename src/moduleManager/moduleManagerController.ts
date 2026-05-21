@@ -15,6 +15,8 @@ import { Logger, getLogger, wrapCommand } from './logger';
 
 const LOCAL_MODULE_CONFIG_GLOB = `**/{${LOCAL_MODULE_CONFIG_FILE},${LEGACY_LOCAL_MODULE_CONFIG_FILE}}`;
 const WORKSPACE_INIT_CONTEXT_KEY = CONTEXT_KEYS.canInitializeWorkspace;
+const SIGNED_IN_CONTEXT_KEY = CONTEXT_KEYS.signedIn;
+const HAS_SELECTION_CONTEXT_KEY = CONTEXT_KEYS.hasSelection;
 const LVPROJ_GLOB = '**/*.lvproj';
 const WORKSPACE_INIT_PROMPT = 'Detected csm/ and .lvproj files but no local CSM module config. Initialize CSM module management for this repository?';
 
@@ -114,6 +116,8 @@ export class ModuleManagerController {
 		} else {
 			this.treeDataProvider.setLoading('Sign in to GitHub to load modules.');
 		}
+		void this.setAuthenticationState(false);
+		void this.setApplySelectionContext(false);
 
 		if (!hasCachedModules || this.cacheStore.isModuleSnapshotExpired(cached, this.getCacheTtlMinutes())) {
 			void this.loadModules({
@@ -484,7 +488,7 @@ export class ModuleManagerController {
 		}
 		this.currentToken = session.accessToken;
 		this.lastTokenVerifiedAt = Date.now();
-		this.treeDataProvider.setAuthenticated(true);
+		await this.setAuthenticationState(true);
 		void vscode.window.showInformationMessage(`Signed in as ${session.account.label}`);
 		// Best-effort scope verification, logged when missing scopes are detected (7.5).
 		if (typeof this.authService.verifyScopes === 'function') {
@@ -503,11 +507,12 @@ export class ModuleManagerController {
 		if (silentSession) {
 			this.currentToken = silentSession.accessToken;
 			this.lastTokenVerifiedAt = Date.now();
-			this.treeDataProvider.setAuthenticated(true);
+			await this.setAuthenticationState(true);
 			return this.currentToken;
 		}
 		this.currentToken = undefined;
 		this.lastTokenVerifiedAt = 0;
+		await this.setAuthenticationState(false);
 		if (!interactive) {
 			return undefined;
 		}
@@ -517,6 +522,7 @@ export class ModuleManagerController {
 		}
 		this.currentToken = session.accessToken;
 		this.lastTokenVerifiedAt = Date.now();
+		await this.setAuthenticationState(true);
 		return this.currentToken;
 	}
 
@@ -562,7 +568,6 @@ export class ModuleManagerController {
 		if (typeof this.treeDataProvider.setOfflineMode === 'function') {
 			this.treeDataProvider.setOfflineMode(false);
 		}
-		this.treeDataProvider.setAuthenticated(true);
 
 		if (!options.preserveVisibleModules) {
 			this.treeDataProvider.setLoading('Refreshing modules from GitHub...');
@@ -712,6 +717,16 @@ export class ModuleManagerController {
 		if (typeof this.treeDataProvider.setSelection === 'function') {
 			this.treeDataProvider.setSelection([...this.selectedModuleKeys]);
 		}
+		void this.setApplySelectionContext(this.selectedModuleKeys.size > 0);
+	}
+
+	private async setAuthenticationState(signedIn: boolean): Promise<void> {
+		this.treeDataProvider.setAuthenticated(signedIn);
+		await vscode.commands.executeCommand('setContext', SIGNED_IN_CONTEXT_KEY, signedIn);
+	}
+
+	private async setApplySelectionContext(hasSelection: boolean): Promise<void> {
+		await vscode.commands.executeCommand('setContext', HAS_SELECTION_CONTEXT_KEY, hasSelection);
 	}
 
 	private resolveModuleEntry(entry?: CsmModuleEntry | ModuleTreeItem): CsmModuleEntry | undefined {
