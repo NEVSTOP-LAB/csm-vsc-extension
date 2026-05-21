@@ -50,27 +50,25 @@ function createNonce(): string {
 	return crypto.randomBytes(16).toString('base64');
 }
 
-function getToolbarMetaText(totalCount: number, filteredCount: number, selectedCount: number): string {
+function getToolbarMetaText(appliedCount: number, totalCount: number, filteredCount: number, selectedCount: number): string {
 	const visibilityText = filteredCount === totalCount ? `${totalCount} available` : `${filteredCount} of ${totalCount} shown`;
-	return `${visibilityText} | ${selectedCount} selected`;
+	return `${appliedCount} applied | ${visibilityText} | ${selectedCount} selected`;
 }
 
-type IconName = 'close' | 'readme' | 'refresh' | 'search' | 'sortAsc' | 'sortDesc';
+type IconName = 'close' | 'filter' | 'readme' | 'refresh' | 'search';
 
 function renderIcon(name: IconName): string {
 	switch (name) {
 		case 'close':
 			return '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" aria-hidden="true"><path d="M4 4l8 8"></path><path d="M12 4l-8 8"></path></svg>';
+		case 'filter':
+			return '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 4h11"></path><path d="M4.75 8h6.5"></path><path d="M6.75 12h2.5"></path></svg>';
 		case 'readme':
 			return '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 2.5h4.5a2 2 0 0 1 2 2V13a2 2 0 0 0-2-2H3z"></path><path d="M13 2.5H8.5a2 2 0 0 0-2 2V13a2 2 0 0 1 2-2H13z"></path></svg>';
 		case 'refresh':
 			return '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 2.5v3.5H9.5"></path><path d="M13 6A5.5 5.5 0 1 0 14 8"></path></svg>';
 		case 'search':
 			return '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="7" cy="7" r="4.5"></circle><path d="M10.5 10.5L14 14"></path></svg>';
-		case 'sortAsc':
-			return '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5.5 12.5V3.5"></path><path d="M3.5 5.5l2-2 2 2"></path><path d="M9 4.5h3.5"></path><path d="M9 8h2.5"></path><path d="M9 11.5h1.5"></path></svg>';
-		case 'sortDesc':
-			return '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5.5 3.5v9"></path><path d="M3.5 10.5l2 2 2-2"></path><path d="M9 4.5h1.5"></path><path d="M9 8h2.5"></path><path d="M9 11.5h3.5"></path></svg>';
 	}
 }
 
@@ -303,15 +301,18 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IM
 		const selectedCount = this.selectedModuleKeys.size;
 		const moduleCount = this.modules.length;
 		const filteredCount = this.getFilteredModules(this.filterQuery).length;
-		const toolbarMetaText = getToolbarMetaText(moduleCount, filteredCount, selectedCount);
 		const appliedCount = this.appliedModuleKeys.size;
-		const nextSortDirection: ModuleSortDirection = this.sortState.direction === 'asc' ? 'desc' : 'asc';
-		const directionTitle = this.getSortDirectionTitle(nextSortDirection);
+		const toolbarMetaText = getToolbarMetaText(appliedCount, moduleCount, filteredCount, selectedCount);
+		const filterButtonTitle = this.getFilterButtonTitle();
 		const sortFieldOptions: Array<{ value: ModuleSortField; label: string }> = [
 			{ value: 'name', label: 'Name' },
 			{ value: 'owner', label: 'Owner' },
 			{ value: 'updatedAt', label: 'Updated' },
 			{ value: 'applied', label: 'Applied Status' },
+		];
+		const sortDirectionOptions: Array<{ value: ModuleSortDirection; label: string }> = [
+			{ value: 'asc', label: 'Ascending' },
+			{ value: 'desc', label: 'Descending' },
 		];
 		const content = this.renderContent();
 
@@ -403,14 +404,23 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IM
 			color: var(--vscode-descriptionForeground);
 		}
 		.search-box {
-			display: inline-flex;
+			display: flex;
 			align-items: center;
-			gap: 6px;
+			gap: 4px;
 			height: 30px;
-			padding: 0 7px;
+			padding: 0 4px 0 8px;
 			border-radius: 4px;
 			background: var(--vscode-input-background);
 			border: 1px solid var(--vscode-input-border, var(--vscode-panel-border));
+		}
+		.search-shell {
+			position: relative;
+		}
+		.search-icon {
+			display: inline-flex;
+			align-items: center;
+			justify-content: center;
+			color: var(--vscode-input-placeholderForeground, var(--vscode-descriptionForeground));
 		}
 		.search-box:focus-within {
 			border-color: var(--vscode-focusBorder);
@@ -424,39 +434,73 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IM
 			background: transparent;
 			color: var(--vscode-input-foreground, var(--vscode-foreground));
 			font: inherit;
+			font-size: 12px;
 		}
 		.search-box input::placeholder {
 			color: var(--vscode-input-placeholderForeground);
 		}
-		.sort-row {
-			display: flex;
-			align-items: center;
-			gap: 8px;
-			flex-wrap: wrap;
-		}
-		.sort-controls {
-			display: inline-flex;
-			align-items: center;
-			gap: 6px;
-			min-width: 0;
-		}
-		.sort-label {
-			font-size: 11px;
+		.search-box .icon-button {
+			width: 22px;
+			height: 22px;
 			color: var(--vscode-descriptionForeground);
 		}
-		.sort-select {
-			height: 28px;
-			min-width: 120px;
-			border-radius: 4px;
-			border: 1px solid var(--vscode-input-border, var(--vscode-panel-border));
-			background: var(--vscode-dropdown-background, var(--vscode-input-background));
-			color: var(--vscode-dropdown-foreground, var(--vscode-input-foreground, var(--vscode-foreground)));
-			font: inherit;
-			padding: 0 6px;
+		.filter-button[aria-expanded="true"] {
+			background: var(--vscode-toolbar-hoverBackground, var(--vscode-list-hoverBackground));
+			color: var(--vscode-foreground);
 		}
-		.sort-select:focus {
-			outline: 1px solid var(--vscode-focusBorder);
-			outline-offset: 1px;
+		.filter-menu {
+			position: absolute;
+			top: calc(100% + 4px);
+			right: 0;
+			min-width: 220px;
+			padding: 6px;
+			border-radius: 6px;
+			background: var(--vscode-menu-background, var(--vscode-editorWidget-background));
+			border: 1px solid var(--vscode-menu-border, var(--vscode-panel-border));
+			box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+			z-index: 20;
+			display: grid;
+			gap: 6px;
+		}
+		.filter-menu-section + .filter-menu-section {
+			padding-top: 6px;
+			border-top: 1px solid var(--vscode-menu-separatorBackground, var(--vscode-panel-border));
+		}
+		.filter-menu-label {
+			display: block;
+			padding: 2px 6px 4px;
+			font-size: 10px;
+			font-weight: 600;
+			letter-spacing: 0.04em;
+			text-transform: uppercase;
+			color: var(--vscode-descriptionForeground);
+		}
+		.filter-menu-option {
+			display: grid;
+			grid-template-columns: 14px minmax(0, 1fr);
+			align-items: center;
+			width: 100%;
+			padding: 5px 6px;
+			border-radius: 4px;
+			color: var(--vscode-menu-foreground, var(--vscode-foreground));
+			text-align: left;
+		}
+		.filter-menu-option.selected {
+			background: var(--vscode-list-activeSelectionBackground, var(--vscode-toolbar-hoverBackground, var(--vscode-list-hoverBackground)));
+			color: var(--vscode-list-activeSelectionForeground, var(--vscode-foreground));
+		}
+		.filter-menu-option:hover {
+			background: var(--vscode-menu-selectionBackground, var(--vscode-list-hoverBackground));
+		}
+		.filter-menu-check {
+			font-size: 11px;
+			opacity: 0;
+		}
+		.filter-menu-option.selected .filter-menu-check {
+			opacity: 1;
+		}
+		.filter-menu-option-label {
+			font-size: 12px;
 		}
 		.notice {
 			display: flex;
@@ -663,18 +707,22 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IM
 </head>
 <body>
 	<section class="header">
-		<div class="search-box" data-role="search-box">
-			${renderIcon('search')}
-			<input type="text" value="${escapeHtml(this.filterQuery)}" data-role="filter-input" placeholder="Search modules" aria-label="Search modules">
-			<button class="icon-button" data-action="clearFilter" data-role="clear-filter" title="Clear search" aria-label="Clear search" ${this.filterQuery ? '' : 'hidden'}>${renderIcon('close')}</button>
-		</div>
-		<div class="sort-row">
-			<div class="sort-controls">
-				<label class="sort-label" for="module-sort-field">Sort</label>
-				<select class="sort-select" id="module-sort-field" data-role="sort-field" aria-label="Sort modules">
-					${sortFieldOptions.map((option) => `<option value="${option.value}" ${this.sortState.field === option.value ? 'selected' : ''}>${option.label}</option>`).join('')}
-				</select>
-				<button class="icon-button" data-action="setSortDirection" data-role="sort-direction" data-sort-direction="${nextSortDirection}" title="${escapeHtml(directionTitle)}" aria-label="${escapeHtml(directionTitle)}">${renderIcon(this.sortState.direction === 'asc' ? 'sortAsc' : 'sortDesc')}</button>
+		<div class="search-shell">
+			<div class="search-box" data-role="search-box">
+				<span class="search-icon">${renderIcon('search')}</span>
+				<input type="text" value="${escapeHtml(this.filterQuery)}" data-role="filter-input" placeholder="Search modules" aria-label="Search modules">
+				<button class="icon-button" data-action="clearFilter" data-role="clear-filter" title="Clear search" aria-label="Clear search" ${this.filterQuery ? '' : 'hidden'}>${renderIcon('close')}</button>
+				<button class="icon-button filter-button" data-action="toggleFilterMenu" data-role="filter-button" title="${escapeHtml(filterButtonTitle)}" aria-label="${escapeHtml(filterButtonTitle)}" aria-haspopup="menu" aria-expanded="false">${renderIcon('filter')}</button>
+			</div>
+			<div class="filter-menu" data-role="filter-menu" role="menu" hidden>
+				<div class="filter-menu-section">
+					<span class="filter-menu-label">Type</span>
+					${sortFieldOptions.map((option) => this.renderFilterMenuOption('field', option.value, option.label, this.sortState.field === option.value)).join('')}
+				</div>
+				<div class="filter-menu-section">
+					<span class="filter-menu-label">Order</span>
+					${sortDirectionOptions.map((option) => this.renderFilterMenuOption('direction', option.value, option.label, this.sortState.direction === option.value)).join('')}
+				</div>
 			</div>
 		</div>
 		<div class="toolbar-row">
@@ -682,9 +730,9 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IM
 				<button class="toolbar-button callout" data-action="applySelected" data-role="apply-selected" ${selectedCount === 0 ? 'hidden' : ''}>Apply Selected</button>
 				${this.signedIn ? '' : '<button class="toolbar-button callout" data-action="login">Sign in</button>'}
 			</div>
-			<span class="toolbar-meta" data-role="toolbar-meta" data-total-count="${moduleCount}" data-filtered-count="${filteredCount}">${toolbarMetaText}</span>
+			<span class="toolbar-meta" data-role="toolbar-meta" data-applied-count="${appliedCount}" data-total-count="${moduleCount}" data-filtered-count="${filteredCount}">${toolbarMetaText}</span>
 		</div>
-		${this.workspaceLabel ? `<div class="workspace-summary">${this.moduleRoot ? `<span>Root: ${escapeHtml(this.moduleRoot)}/</span>` : ''}<span>${appliedCount} applied</span></div>` : ''}
+		${this.workspaceLabel && this.moduleRoot ? `<div class="workspace-summary"><span>Root: ${escapeHtml(this.moduleRoot)}/</span></div>` : ''}
 		${this.introTipVisible ? `<section class="notice" data-role="intro-tip"><div><strong>Tip</strong><span>Use the checkboxes to build a selection, then apply modules from the toolbar or open individual README files from each card.</span></div><div class="notice-actions"><button class="icon-button" data-action="dismissIntroTip" title="Dismiss tip" aria-label="Dismiss tip">${renderIcon('close')}</button></div></section>` : ''}
 		${this.canInitializeWorkspace ? `<section class="notice"><div><strong>Workspace hint</strong><span>Detected an existing csm/ layout and LabVIEW project files in the current repository.</span></div><div class="notice-actions"><button class="toolbar-button callout" data-action="initializeWorkspace">Initialize</button></div></section>` : ''}
 	</section>
@@ -693,14 +741,42 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IM
 		const vscode = acquireVsCodeApi();
 		const filterInput = document.querySelector('[data-role="filter-input"]');
 		const clearFilterButton = document.querySelector('[data-role="clear-filter"]');
-		const sortFieldSelect = document.querySelector('[data-role="sort-field"]');
+		const filterMenu = document.querySelector('[data-role="filter-menu"]');
+		const filterMenuButton = document.querySelector('[data-role="filter-button"]');
 		const toolbarMeta = document.querySelector('[data-role="toolbar-meta"]');
 		const applySelectedButton = document.querySelector('[data-role="apply-selected"]');
 		const filterEmptyState = document.querySelector('[data-role="filter-empty"]');
 
-		function getToolbarMetaText(totalCount, filteredCount, selectedCount) {
+		function getToolbarMetaText(appliedCount, totalCount, filteredCount, selectedCount) {
 			const visibilityText = filteredCount === totalCount ? totalCount + ' available' : filteredCount + ' of ' + totalCount + ' shown';
-			return visibilityText + ' | ' + selectedCount + ' selected';
+			return appliedCount + ' applied | ' + visibilityText + ' | ' + selectedCount + ' selected';
+		}
+
+		function openFilterMenu() {
+			if (!(filterMenu instanceof HTMLElement) || !(filterMenuButton instanceof HTMLElement)) {
+				return;
+			}
+			filterMenu.hidden = false;
+			filterMenuButton.setAttribute('aria-expanded', 'true');
+		}
+
+		function closeFilterMenu() {
+			if (!(filterMenu instanceof HTMLElement) || !(filterMenuButton instanceof HTMLElement)) {
+				return;
+			}
+			filterMenu.hidden = true;
+			filterMenuButton.setAttribute('aria-expanded', 'false');
+		}
+
+		function toggleFilterMenu() {
+			if (!(filterMenu instanceof HTMLElement)) {
+				return;
+			}
+			if (filterMenu.hidden) {
+				openFilterMenu();
+				return;
+			}
+			closeFilterMenu();
 		}
 
 		function getCards() {
@@ -747,11 +823,12 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IM
 			if (!toolbarMeta) {
 				return;
 			}
+			const appliedCount = Number(toolbarMeta.getAttribute('data-applied-count') || '0');
 			const totalCount = Number(toolbarMeta.getAttribute('data-total-count') || '0');
 			const filteredCount = getCards().filter((card) => !card.hasAttribute('hidden')).length;
 			const selectedCount = document.querySelectorAll('[data-role="select-toggle"]:checked').length;
 			toolbarMeta.setAttribute('data-filtered-count', String(filteredCount));
-			toolbarMeta.textContent = getToolbarMetaText(totalCount, filteredCount, selectedCount);
+			toolbarMeta.textContent = getToolbarMetaText(appliedCount, totalCount, filteredCount, selectedCount);
 			if (applySelectedButton instanceof HTMLElement) {
 				applySelectedButton.toggleAttribute('hidden', selectedCount === 0);
 			}
@@ -781,7 +858,11 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IM
 		}
 
 		document.addEventListener('click', (event) => {
-			const target = event.target instanceof Element ? event.target.closest('[data-action]') : null;
+			const rawTarget = event.target instanceof Element ? event.target : null;
+			if (rawTarget && !rawTarget.closest('[data-role="filter-menu"]') && !rawTarget.closest('[data-role="filter-button"]')) {
+				closeFilterMenu();
+			}
+			const target = rawTarget ? rawTarget.closest('[data-action]') : null;
 			if (!target) {
 				return;
 			}
@@ -789,6 +870,10 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IM
 				return;
 			}
 			const action = target.getAttribute('data-action');
+			if (action === 'toggleFilterMenu') {
+				toggleFilterMenu();
+				return;
+			}
 			if (action === 'clearFilter') {
 				if (filterInput instanceof HTMLInputElement) {
 					filterInput.value = '';
@@ -796,8 +881,15 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IM
 				}
 				return;
 			}
+			if (action === 'setSortField') {
+				const sortField = target.getAttribute('data-sort-field') || undefined;
+				closeFilterMenu();
+				vscode.postMessage({ type: 'setSortField', sortField });
+				return;
+			}
 			if (action === 'setSortDirection') {
 				const sortDirection = target.getAttribute('data-sort-direction') || undefined;
+				closeFilterMenu();
 				vscode.postMessage({ type: 'setSortDirection', sortDirection });
 				return;
 			}
@@ -812,11 +904,11 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IM
 				applyFilter(true);
 			});
 		}
-		if (sortFieldSelect instanceof HTMLSelectElement) {
-			sortFieldSelect.addEventListener('change', () => {
-				vscode.postMessage({ type: 'setSortField', sortField: sortFieldSelect.value });
-			});
-		}
+		document.addEventListener('keydown', (event) => {
+			if (event.key === 'Escape') {
+				closeFilterMenu();
+			}
+		});
 		document.addEventListener('change', (event) => {
 			const target = event.target;
 			if (!(target instanceof HTMLInputElement)) {
@@ -863,6 +955,41 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IM
 
 	private isModuleApplied(moduleKey: string): boolean {
 		return this.appliedModuleKeys.has(moduleKey);
+	}
+
+	private renderFilterMenuOption(
+		kind: 'field' | 'direction',
+		value: ModuleSortField | ModuleSortDirection,
+		label: string,
+		selected: boolean,
+	): string {
+		const action = kind === 'field' ? 'setSortField' : 'setSortDirection';
+		const dataAttribute = kind === 'field'
+			? `data-sort-field="${escapeHtml(String(value))}"`
+			: `data-sort-direction="${escapeHtml(String(value))}"`;
+		return `<button class="filter-menu-option${selected ? ' selected' : ''}" data-action="${action}" ${dataAttribute} role="menuitemradio" aria-checked="${selected ? 'true' : 'false'}"><span class="filter-menu-check">&#10003;</span><span class="filter-menu-option-label">${escapeHtml(label)}</span></button>`;
+	}
+
+	private getSortFieldLabel(field: ModuleSortField): string {
+		switch (field) {
+			case 'owner':
+				return 'Owner';
+			case 'updatedAt':
+				return 'Updated';
+			case 'applied':
+				return 'Applied Status';
+			case 'name':
+			default:
+				return 'Name';
+		}
+	}
+
+	private getSortDirectionLabel(direction: ModuleSortDirection): string {
+		return direction === 'asc' ? 'Ascending' : 'Descending';
+	}
+
+	private getFilterButtonTitle(): string {
+		return `Filter and sort modules. Current: ${this.getSortFieldLabel(this.sortState.field)}, ${this.getSortDirectionLabel(this.sortState.direction)}.`;
 	}
 
 	private getSortDirectionTitle(direction: ModuleSortDirection): string {
