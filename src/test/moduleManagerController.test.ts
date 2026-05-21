@@ -407,7 +407,8 @@ suite('ModuleManagerController Regression Tests', () => {
 		await controller.refreshSidebarWorkspaceState();
 
 		const rendered = mocked.__getLastWebviewView();
-		assert.ok(rendered?.html.includes('Workspace: repo'));
+		assert.ok(!rendered?.html.includes('Workspace: repo'));
+		assert.ok(rendered?.html.includes('Root: csm/'));
 		assert.ok(rendered?.html.includes('1 applied'));
 		assert.ok(rendered?.html.includes('Already recorded for repo under csm/'));
 		assert.ok(rendered?.html.includes('module-a'));

@@ -599,7 +599,7 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IM
 			</div>
 			<span class="toolbar-meta" data-role="toolbar-meta" data-total-count="${moduleCount}" data-filtered-count="${filteredCount}">${toolbarMetaText}</span>
 		</div>
-		${this.workspaceLabel ? `<div class="workspace-summary"><span>Workspace: ${escapeHtml(this.workspaceLabel)}</span>${this.moduleRoot ? `<span>Root: ${escapeHtml(this.moduleRoot)}/</span>` : ''}<span>${appliedCount} applied</span></div>` : ''}
+		${this.workspaceLabel ? `<div class="workspace-summary">${this.moduleRoot ? `<span>Root: ${escapeHtml(this.moduleRoot)}/</span>` : ''}<span>${appliedCount} applied</span></div>` : ''}
 		${this.introTipVisible ? `<section class="notice" data-role="intro-tip"><div><strong>Tip</strong><span>Use the checkboxes to build a selection, then apply modules from the toolbar or open individual README files from each card.</span></div><div class="notice-actions"><button class="icon-button" data-action="dismissIntroTip" title="Dismiss tip" aria-label="Dismiss tip">${renderIcon('close')}</button></div></section>` : ''}
 		${this.canInitializeWorkspace ? `<section class="notice"><div><strong>Workspace hint</strong><span>Detected an existing csm/ layout and LabVIEW project files in the current repository.</span></div><div class="notice-actions"><button class="toolbar-button callout" data-action="initializeWorkspace">Initialize</button></div></section>` : ''}
 	</section>

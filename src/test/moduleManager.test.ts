@@ -222,7 +222,8 @@ suite('Module Manager Tests', () => {
 		assert.ok(rendered?.html.includes('data-role="search-box"'));
 		assert.ok(rendered?.html.includes('type="text"'));
 		assert.ok(rendered ? rendered.html.indexOf('placeholder="Search modules"') < rendered.html.indexOf('data-role="apply-selected"') : false);
-		assert.ok(rendered?.html.includes('Workspace: repo'));
+		assert.ok(!rendered?.html.includes('Workspace: repo'));
+		assert.ok(rendered?.html.includes('Root: csm/'));
 		assert.ok(rendered?.html.includes('Applied'));
 		assert.ok(rendered?.html.includes('data-role="apply-selected" hidden'));
 		assert.ok(rendered?.html.includes('title="Apply module"'));
