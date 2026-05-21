@@ -483,8 +483,7 @@ suite('ModuleManagerController Regression Tests', () => {
 		mocked.__setConfigurationValue('csmModules.cache.ttlMinutes', 60);
 
 		controller.register([]);
-		await Promise.resolve();
-		await Promise.resolve();
+		await controller.refreshSidebarWorkspaceState();
 
 		assert.deepStrictEqual(renderedSortState, { field: 'applied', direction: 'desc' });
 		assert.deepStrictEqual(visibleModuleKeys, ['org/module-b', 'org/module-a']);
