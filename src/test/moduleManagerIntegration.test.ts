@@ -54,6 +54,12 @@ suite('Module Manager Integration Tests', () => {
 			'csmModules.applyToWorkspace',
 			'csmModules.removeModule',
 			'csmModules.updateModule',
+			'csmModules.contextApplyModule',
+			'csmModules.contextOpenReadme',
+			'csmModules.contextRemoveModule',
+			'csmModules.contextUpdateModule',
+			'csmModules.contextSelectModule',
+			'csmModules.contextClearModuleSelection',
 			'csmModules.setSortOrder',
 		];
 		for (const command of expected) {

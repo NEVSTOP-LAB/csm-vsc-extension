@@ -17,6 +17,12 @@ export const COMMAND_IDS = {
 	applyToWorkspace: 'csmModules.applyToWorkspace',
 	removeModule: 'csmModules.removeModule',
 	updateModule: 'csmModules.updateModule',
+	contextApplyModule: 'csmModules.contextApplyModule',
+	contextOpenReadme: 'csmModules.contextOpenReadme',
+	contextRemoveModule: 'csmModules.contextRemoveModule',
+	contextUpdateModule: 'csmModules.contextUpdateModule',
+	contextSelectModule: 'csmModules.contextSelectModule',
+	contextClearModuleSelection: 'csmModules.contextClearModuleSelection',
 	setSortOrder: 'csmModules.setSortOrder',
 } as const;
 

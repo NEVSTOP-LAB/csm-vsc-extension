@@ -318,18 +318,26 @@ Object.prototype.hasOwnProperty.call(lvcsmDefaults, 'files.autoGuessEncoding'),
 test('package.json declares module manager commands and views', () => {
 const pkgPath = path.resolve(__dirname, '../../package.json');
 const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));
-const commands: Array<{ command: string; icon?: string }> = pkg.contributes?.commands ?? [];
+const commands: Array<{ command: string; icon?: string; enablement?: string }> = pkg.contributes?.commands ?? [];
 const viewContainers = pkg.contributes?.viewsContainers?.activitybar ?? [];
 const views = pkg.contributes?.views?.csmModules ?? [];
 const viewTitleMenus: Array<{ command: string; when?: string }> = pkg.contributes?.menus?.['view/title'] ?? [];
+const webviewContextMenus: Array<{ command: string; when?: string }> = pkg.contributes?.menus?.['webview/context'] ?? [];
 const initMenu = viewTitleMenus.find((menu) => menu.command === 'csmModules.initializeWorkspace');
 const applyMenu = viewTitleMenus.find((menu) => menu.command === 'csmModules.applyToWorkspace');
 const loginMenu = viewTitleMenus.find((menu) => menu.command === 'csmModules.login');
+const contextApplyCommand = commands.find((c) => c.command === 'csmModules.contextApplyModule');
+const contextRemoveCommand = commands.find((c) => c.command === 'csmModules.contextRemoveModule');
+const contextUpdateCommand = commands.find((c) => c.command === 'csmModules.contextUpdateModule');
+const contextOpenReadmeMenu = webviewContextMenus.find((menu) => menu.command === 'csmModules.contextOpenReadme');
 assert.ok(commands.some((c) => c.command === 'csmModules.login'), 'csmModules.login command should be declared');
 assert.ok(commands.some((c) => c.command === 'csmModules.refresh'), 'csmModules.refresh command should be declared');
 assert.ok(commands.some((c) => c.command === 'csmModules.initializeWorkspace'), 'csmModules.initializeWorkspace command should be declared');
 assert.ok(commands.some((c) => c.command === 'csmModules.openReadme'), 'csmModules.openReadme command should be declared');
 assert.ok(commands.some((c) => c.command === 'csmModules.applyToWorkspace'), 'csmModules.applyToWorkspace command should be declared');
+assert.ok(contextApplyCommand, 'csmModules.contextApplyModule command should be declared');
+assert.ok(contextRemoveCommand, 'csmModules.contextRemoveModule command should be declared');
+assert.ok(contextUpdateCommand, 'csmModules.contextUpdateModule command should be declared');
 assert.ok(commands.every((c) => typeof c.icon === 'string' && c.icon.startsWith('$(')), 'module manager commands should declare product icons for toolbar buttons');
 assert.ok(viewContainers.some((v: { id: string }) => v.id === 'csmModules'), 'csmModules activity bar container should be declared');
 assert.ok(views.some((v: { id: string }) => v.id === 'csmModules.view'), 'csmModules.view should be declared');
@@ -339,6 +347,11 @@ assert.ok(loginMenu, 'csmModules.login should be available from the view title t
 assert.ok(initMenu?.when?.includes('csmModules.canInitializeWorkspace'), 'initialize toolbar entry should only show when a workspace needs initialization');
 assert.ok(applyMenu?.when?.includes('csmModules.hasSelection'), 'apply toolbar entry should only show when at least one module is selected');
 assert.ok(loginMenu?.when?.includes('!csmModules.signedIn'), 'login toolbar entry should hide after GitHub sign-in succeeds');
+assert.strictEqual(contextApplyCommand?.enablement, '!moduleApplied', 'context apply command should disable for applied modules');
+assert.strictEqual(contextRemoveCommand?.enablement, 'moduleApplied', 'context remove command should only enable for applied modules');
+assert.strictEqual(contextUpdateCommand?.enablement, 'moduleApplied', 'context update command should only enable for applied modules');
+assert.ok(contextOpenReadmeMenu?.when?.includes("webviewId == csmModules.view"), 'webview context menus should target the CSM modules webview');
+assert.ok(contextOpenReadmeMenu?.when?.includes('webviewSection == moduleCard'), 'webview context menus should only show on module cards');
 assert.strictEqual(pkg.contributes?.snippets, undefined, 'contributes.snippets should not be declared');
 });
 

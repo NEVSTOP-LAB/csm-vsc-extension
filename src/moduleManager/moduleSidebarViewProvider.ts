@@ -40,7 +40,6 @@ function escapeHtml(value: string): string {
 		.replace(/`/g, '&#96;')
 		.replace(/\//g, '&#47;')
 		.replace(/\\/g, '&#92;')
-		// eslint-disable-next-line no-control-regex
 		.replace(/[\u0000-\u001F\u007F]/g, (char) => `&#${char.charCodeAt(0)};`);
 }
 
@@ -599,35 +598,6 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IM
 		.skeleton-line.medium {
 			width: 68%;
 		}
-		.context-menu {
-			position: fixed;
-			min-width: 190px;
-			padding: 4px;
-			border-radius: 6px;
-			background: var(--vscode-menu-background, var(--vscode-editorWidget-background, var(--vscode-sideBar-background)));
-			border: 1px solid var(--vscode-menu-border, var(--vscode-panel-border));
-			box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
-			z-index: 50;
-		}
-		.context-menu-item {
-			display: flex;
-			align-items: center;
-			justify-content: flex-start;
-			width: 100%;
-			height: 28px;
-			padding: 0 10px;
-			border-radius: 4px;
-			color: var(--vscode-menu-foreground, var(--vscode-foreground));
-		}
-		.context-menu-item:hover:not(:disabled) {
-			background: var(--vscode-menu-selectionBackground, var(--vscode-list-hoverBackground));
-			color: var(--vscode-menu-selectionForeground, var(--vscode-foreground));
-		}
-		.context-menu-separator {
-			height: 1px;
-			margin: 4px 6px;
-			background: var(--vscode-menu-separatorBackground, var(--vscode-panel-border));
-		}
 	</style>
 </head>
 <body>
@@ -649,15 +619,6 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IM
 		${this.canInitializeWorkspace ? `<section class="notice"><div><strong>Workspace hint</strong><span>Detected an existing csm/ layout and LabVIEW project files in the current repository.</span></div><div class="notice-actions"><button class="toolbar-button callout" data-action="initializeWorkspace">Initialize</button></div></section>` : ''}
 	</section>
 	${content}
-	<div class="context-menu" data-role="module-context-menu" role="menu" hidden>
-		<button class="context-menu-item" type="button" role="menuitem" data-context-action="applyOne">Apply to Workspace</button>
-		<button class="context-menu-item" type="button" role="menuitem" data-context-action="updateModule">Update Applied Module</button>
-		<button class="context-menu-item" type="button" role="menuitem" data-context-action="removeModule">Remove from Workspace</button>
-		<div class="context-menu-separator" role="separator"></div>
-		<button class="context-menu-item" type="button" role="menuitem" data-context-action="openReadme">Open README</button>
-		<div class="context-menu-separator" role="separator"></div>
-		<button class="context-menu-item" type="button" role="menuitem" data-context-action="toggleSelection">Select Module</button>
-	</div>
 	<script nonce="${nonce}">
 		const vscode = acquireVsCodeApi();
 		const filterInput = document.querySelector('[data-role="filter-input"]');
@@ -665,10 +626,6 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IM
 		const toolbarMeta = document.querySelector('[data-role="toolbar-meta"]');
 		const applySelectedButton = document.querySelector('[data-role="apply-selected"]');
 		const filterEmptyState = document.querySelector('[data-role="filter-empty"]');
-		const contextMenu = document.querySelector('[data-role="module-context-menu"]');
-		const contextActionButtons = contextMenu ? Array.from(contextMenu.querySelectorAll('[data-context-action]')) : [];
-		let contextMenuModuleKey;
-		let contextMenuCard = null;
 
 		function getToolbarMetaText(totalCount, filteredCount, selectedCount) {
 			const visibilityText = filteredCount === totalCount ? totalCount + ' available' : filteredCount + ' of ' + totalCount + ' shown';
@@ -687,6 +644,16 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IM
 			return card.getAttribute('data-module-selected') === 'true';
 		}
 
+		function updateCardContext(card) {
+			card.setAttribute('data-vscode-context', JSON.stringify({
+				webviewSection: 'moduleCard',
+				moduleKey: card.getAttribute('data-module-key') || undefined,
+				moduleApplied: isCardApplied(card),
+				moduleSelected: isCardSelected(card),
+				preventDefaultContextMenuItems: true,
+			}));
+		}
+
 		function setCardSelection(card, selected, shouldNotify) {
 			const checkbox = card.querySelector('[data-role="select-toggle"]');
 			if (checkbox instanceof HTMLInputElement) {
@@ -694,6 +661,7 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IM
 			}
 			card.classList.toggle('selected', selected);
 			card.setAttribute('data-module-selected', selected ? 'true' : 'false');
+			updateCardContext(card);
 			if (shouldNotify) {
 				vscode.postMessage({
 					type: 'toggleSelection',
@@ -702,67 +670,6 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IM
 				});
 			}
 			updateToolbarMeta();
-		}
-
-		function closeContextMenu() {
-			if (contextMenu instanceof HTMLElement) {
-				contextMenu.setAttribute('hidden', '');
-			}
-			contextMenuModuleKey = undefined;
-			contextMenuCard = null;
-		}
-
-		function updateContextMenuItems(card) {
-			const applied = isCardApplied(card);
-			const selected = isCardSelected(card);
-			for (const button of contextActionButtons) {
-				if (!(button instanceof HTMLButtonElement)) {
-					continue;
-				}
-				const action = button.getAttribute('data-context-action');
-				if (action === 'applyOne') {
-					button.textContent = 'Apply to Workspace';
-					button.disabled = applied;
-					continue;
-				}
-				if (action === 'updateModule') {
-					button.textContent = 'Update Applied Module';
-					button.disabled = !applied;
-					continue;
-				}
-				if (action === 'removeModule') {
-					button.textContent = 'Remove from Workspace';
-					button.disabled = !applied;
-					continue;
-				}
-				if (action === 'openReadme') {
-					button.textContent = 'Open README';
-					button.disabled = false;
-					continue;
-				}
-				if (action === 'toggleSelection') {
-					button.textContent = selected ? 'Clear Selection' : 'Select Module';
-					button.disabled = false;
-				}
-			}
-		}
-
-		function openContextMenu(card, clientX, clientY) {
-			if (!(contextMenu instanceof HTMLElement)) {
-				return;
-			}
-			contextMenuCard = card;
-			contextMenuModuleKey = card.getAttribute('data-module-key') || undefined;
-			updateContextMenuItems(card);
-			contextMenu.removeAttribute('hidden');
-			contextMenu.style.left = '0px';
-			contextMenu.style.top = '0px';
-			const menuWidth = contextMenu.offsetWidth || 190;
-			const menuHeight = contextMenu.offsetHeight || 180;
-			const left = Math.max(8, Math.min(clientX, window.innerWidth - menuWidth - 8));
-			const top = Math.max(8, Math.min(clientY, window.innerHeight - menuHeight - 8));
-			contextMenu.style.left = left + 'px';
-			contextMenu.style.top = top + 'px';
 		}
 
 		function updateToolbarMeta() {
@@ -803,25 +710,6 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IM
 		}
 
 		document.addEventListener('click', (event) => {
-			const contextTarget = event.target instanceof Element ? event.target.closest('[data-context-action]') : null;
-			if (contextTarget instanceof HTMLButtonElement) {
-				const action = contextTarget.getAttribute('data-context-action');
-				if (!action || contextTarget.disabled || !contextMenuModuleKey) {
-					closeContextMenu();
-					return;
-				}
-				if (action === 'toggleSelection' && contextMenuCard instanceof HTMLElement) {
-					setCardSelection(contextMenuCard, !isCardSelected(contextMenuCard), true);
-					closeContextMenu();
-					return;
-				}
-				vscode.postMessage({ type: action, moduleKey: contextMenuModuleKey });
-				closeContextMenu();
-				return;
-			}
-			if (contextMenu instanceof HTMLElement && !contextMenu.hasAttribute('hidden')) {
-				closeContextMenu();
-			}
 			const target = event.target instanceof Element ? event.target.closest('[data-action]') : null;
 			if (!target) {
 				return;
@@ -846,33 +734,6 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IM
 		if (filterInput instanceof HTMLInputElement) {
 			filterInput.addEventListener('input', () => {
 				applyFilter(true);
-			});
-		}
-		document.addEventListener('contextmenu', (event) => {
-			const target = event.target;
-			if (!(target instanceof Element)) {
-				closeContextMenu();
-				return;
-			}
-			const card = target.closest('[data-role="module-card"]');
-			if (!(card instanceof HTMLElement)) {
-				closeContextMenu();
-				return;
-			}
-			event.preventDefault();
-			openContextMenu(card, event.clientX, event.clientY);
-		});
-		document.addEventListener('keydown', (event) => {
-			if (event.key === 'Escape') {
-				closeContextMenu();
-			}
-		});
-		document.addEventListener('scroll', () => {
-			closeContextMenu();
-		}, true);
-		if (contextMenu instanceof HTMLElement) {
-			contextMenu.addEventListener('contextmenu', (event) => {
-				event.preventDefault();
 			});
 		}
 		document.addEventListener('change', (event) => {
@@ -1002,8 +863,15 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IM
 			? `<div class="card-footer-note">Already recorded for ${escapeHtml(this.workspaceLabel)}${this.moduleRoot ? ` under ${escapeHtml(this.moduleRoot)}/` : ''}.${stale ? ' <span class="badge stale">stale: directory missing</span>' : ''}</div>`
 			: '<span class="card-footer-spacer"></span>';
 		const searchText = escapeHtml(this.getSearchText(entry));
+		const vscodeContext = escapeHtml(JSON.stringify({
+			webviewSection: 'moduleCard',
+			moduleKey,
+			moduleApplied: applied,
+			moduleSelected: selected,
+			preventDefaultContextMenuItems: true,
+		}));
 
-		return `<article class="module-card${selected ? ' selected' : ''}${applied ? ' applied' : ''}" data-role="module-card" data-module-key="${escapeHtml(moduleKey)}" data-module-applied="${applied ? 'true' : 'false'}" data-module-selected="${selected ? 'true' : 'false'}" data-search-text="${searchText}">
+		return `<article class="module-card${selected ? ' selected' : ''}${applied ? ' applied' : ''}" data-role="module-card" data-module-key="${escapeHtml(moduleKey)}" data-module-applied="${applied ? 'true' : 'false'}" data-module-selected="${selected ? 'true' : 'false'}" data-search-text="${searchText}" data-vscode-context="${vscodeContext}">
 			<div class="module-header">
 				<div class="module-main">
 					<div class="title-row">

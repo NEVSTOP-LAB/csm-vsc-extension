@@ -77,6 +77,39 @@
         "icon": "$(sync)"
       },
       {
+        "command": "csmModules.contextApplyModule",
+        "title": "Apply to Workspace",
+        "icon": "$(repo-pull)",
+        "enablement": "!moduleApplied"
+      },
+      {
+        "command": "csmModules.contextOpenReadme",
+        "title": "Open README",
+        "icon": "$(book)"
+      },
+      {
+        "command": "csmModules.contextRemoveModule",
+        "title": "Remove from Workspace",
+        "icon": "$(trash)",
+        "enablement": "moduleApplied"
+      },
+      {
+        "command": "csmModules.contextUpdateModule",
+        "title": "Update Applied Module",
+        "icon": "$(sync)",
+        "enablement": "moduleApplied"
+      },
+      {
+        "command": "csmModules.contextSelectModule",
+        "title": "Select Module",
+        "icon": "$(check)"
+      },
+      {
+        "command": "csmModules.contextClearModuleSelection",
+        "title": "Clear Selection",
+        "icon": "$(close)"
+      },
+      {
         "command": "csmModules.setSortOrder",
         "title": "CSM Modules: Change Sort Order",
         "icon": "$(list-ordered)"
@@ -133,6 +166,64 @@
           "command": "csmModules.openReadme",
           "when": "view == csmModules.view && viewItem == csmModuleEntry",
           "group": "inline@2"
+        }
+      ],
+      "webview/context": [
+        {
+          "command": "csmModules.contextApplyModule",
+          "when": "webviewId == csmModules.view && webviewSection == moduleCard",
+          "group": "1_actions@1"
+        },
+        {
+          "command": "csmModules.contextUpdateModule",
+          "when": "webviewId == csmModules.view && webviewSection == moduleCard",
+          "group": "1_actions@2"
+        },
+        {
+          "command": "csmModules.contextRemoveModule",
+          "when": "webviewId == csmModules.view && webviewSection == moduleCard",
+          "group": "1_actions@3"
+        },
+        {
+          "command": "csmModules.contextOpenReadme",
+          "when": "webviewId == csmModules.view && webviewSection == moduleCard",
+          "group": "2_open@1"
+        },
+        {
+          "command": "csmModules.contextSelectModule",
+          "when": "webviewId == csmModules.view && webviewSection == moduleCard && !moduleSelected",
+          "group": "3_selection@1"
+        },
+        {
+          "command": "csmModules.contextClearModuleSelection",
+          "when": "webviewId == csmModules.view && webviewSection == moduleCard && moduleSelected",
+          "group": "3_selection@2"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "csmModules.contextApplyModule",
+          "when": "false"
+        },
+        {
+          "command": "csmModules.contextOpenReadme",
+          "when": "false"
+        },
+        {
+          "command": "csmModules.contextRemoveModule",
+          "when": "false"
+        },
+        {
+          "command": "csmModules.contextUpdateModule",
+          "when": "false"
+        },
+        {
+          "command": "csmModules.contextSelectModule",
+          "when": "false"
+        },
+        {
+          "command": "csmModules.contextClearModuleSelection",
+          "when": "false"
         }
       ]
     },

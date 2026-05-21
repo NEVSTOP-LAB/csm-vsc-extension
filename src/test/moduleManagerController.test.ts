@@ -781,4 +781,61 @@ suite('ModuleManagerController Regression Tests', () => {
 		const infos = mocked.__getMessageLog().filter((message) => message.level === 'info').map((message) => message.text);
 		assert.ok(infos.some((text) => text.includes('Recovered local CSM module config from existing submodules')));
 	});
+
+	test('webview context commands target the clicked module and update selection', async () => {
+		const controller = createController() as any;
+		const entry: CsmModuleEntry = {
+			id: 1,
+			owner: 'org',
+			name: 'module-a',
+			description: 'demo',
+			topics: ['csm-modsets'],
+			visibility: 'public',
+			defaultBranch: 'main',
+			repoUrl: 'https://github.com/org/module-a',
+		};
+		const selectionUpdates: string[][] = [];
+		let appliedEntry: CsmModuleEntry | undefined;
+		let applyUsedSingleEntry = false;
+		let openedReadmeName = '';
+		let removedModuleName = '';
+		let updatedModuleName = '';
+
+		controller.availableModules = [entry];
+		controller.treeDataProvider = {
+			setSelection: (moduleKeys: string[]) => {
+				selectionUpdates.push(moduleKeys);
+			},
+			setAuthenticated: () => undefined,
+			setLoading: () => undefined,
+			setModules: () => undefined,
+		};
+		controller.applyToWorkspaceCommand = async (target?: CsmModuleEntry, useOnlyEntry = false) => {
+			appliedEntry = target;
+			applyUsedSingleEntry = useOnlyEntry;
+		};
+		controller.openReadmeCommand = async (target?: CsmModuleEntry) => {
+			openedReadmeName = target?.name ?? '';
+		};
+		controller.removeModuleCommand = async (target?: CsmModuleEntry) => {
+			removedModuleName = target?.name ?? '';
+		};
+		controller.updateModuleCommand = async (target?: CsmModuleEntry) => {
+			updatedModuleName = target?.name ?? '';
+		};
+
+		await controller.contextApplyModuleCommand({ moduleKey: 'org/module-a', webviewSection: 'moduleCard' });
+		await controller.contextOpenReadmeCommand({ moduleKey: 'org/module-a', webviewSection: 'moduleCard' });
+		await controller.contextRemoveModuleCommand({ moduleKey: 'org/module-a', webviewSection: 'moduleCard' });
+		await controller.contextUpdateModuleCommand({ moduleKey: 'org/module-a', webviewSection: 'moduleCard' });
+		controller.contextSelectModuleCommand({ moduleKey: 'org/module-a', webviewSection: 'moduleCard' });
+		controller.contextClearModuleSelectionCommand({ moduleKey: 'org/module-a', webviewSection: 'moduleCard' });
+
+		assert.strictEqual(appliedEntry?.name, 'module-a');
+		assert.strictEqual(applyUsedSingleEntry, true);
+		assert.strictEqual(openedReadmeName, 'module-a');
+		assert.strictEqual(removedModuleName, 'module-a');
+		assert.strictEqual(updatedModuleName, 'module-a');
+		assert.deepStrictEqual(selectionUpdates, [['org/module-a'], []]);
+	});
 });
