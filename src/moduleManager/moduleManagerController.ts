@@ -79,6 +79,9 @@ export class ModuleManagerController {
 		onSelectionChange: (moduleKeys) => {
 			this.setSelectedModuleKeys(moduleKeys);
 		},
+		onSortChange: (sortState) => {
+			this.updateSortState(sortState);
+		},
 	});
 	// IModuleViewProvider abstraction (review item 2.2). Tests can swap this out.
 	private treeDataProvider: IModuleViewProvider;

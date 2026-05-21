@@ -3,7 +3,7 @@ import * as crypto from 'crypto';
 import { CsmModuleEntry } from './types';
 import { ViewState } from './moduleTreeDataProvider';
 import { IModuleViewProvider, ModuleSortDirection, ModuleSortField, ModuleSortState, SidebarWorkspaceContext } from './interfaces';
-import { DEFAULT_MODULE_SORT_STATE, normalizeModuleSortState, sortModules } from './sort';
+import { DEFAULT_MODULE_SORT_STATE, isModuleSortDirection, isModuleSortField, normalizeModuleSortState, sortModules } from './sort';
 
 interface ModuleSidebarActions {
 	onLogin: () => void;
@@ -14,10 +14,11 @@ interface ModuleSidebarActions {
 	onRemoveModule: (entry: CsmModuleEntry) => void;
 	onUpdateModule: (entry: CsmModuleEntry) => void;
 	onSelectionChange: (moduleKeys: string[]) => void;
+	onSortChange: (sortState: Partial<ModuleSortState>) => void;
 }
 
 type WebviewMessage = {
-	type: 'login' | 'refresh' | 'initializeWorkspace' | 'applySelected' | 'openReadme' | 'applyOne' | 'toggleSelection' | 'setFilterQuery' | 'clearFilter' | 'dismissIntroTip' | 'removeModule' | 'updateModule' | 'setSortField' | 'showMore';
+	type: 'login' | 'refresh' | 'initializeWorkspace' | 'applySelected' | 'openReadme' | 'applyOne' | 'toggleSelection' | 'setFilterQuery' | 'clearFilter' | 'dismissIntroTip' | 'removeModule' | 'updateModule' | 'setSortField' | 'setSortDirection' | 'showMore';
 	moduleKey?: string;
 	selected?: boolean;
 	query?: string;
@@ -54,7 +55,7 @@ function getToolbarMetaText(totalCount: number, filteredCount: number, selectedC
 	return `${visibilityText} | ${selectedCount} selected`;
 }
 
-type IconName = 'close' | 'readme' | 'refresh' | 'search';
+type IconName = 'close' | 'readme' | 'refresh' | 'search' | 'sortAsc' | 'sortDesc';
 
 function renderIcon(name: IconName): string {
 	switch (name) {
@@ -66,6 +67,10 @@ function renderIcon(name: IconName): string {
 			return '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 2.5v3.5H9.5"></path><path d="M13 6A5.5 5.5 0 1 0 14 8"></path></svg>';
 		case 'search':
 			return '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="7" cy="7" r="4.5"></circle><path d="M10.5 10.5L14 14"></path></svg>';
+		case 'sortAsc':
+			return '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5.5 12.5V3.5"></path><path d="M3.5 5.5l2-2 2 2"></path><path d="M9 4.5h3.5"></path><path d="M9 8h2.5"></path><path d="M9 11.5h1.5"></path></svg>';
+		case 'sortDesc':
+			return '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5.5 3.5v9"></path><path d="M3.5 10.5l2 2 2-2"></path><path d="M9 4.5h1.5"></path><path d="M9 8h2.5"></path><path d="M9 11.5h3.5"></path></svg>';
 	}
 }
 
@@ -204,6 +209,16 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IM
 			case 'clearFilter':
 				this.filterQuery = '';
 				return;
+			case 'setSortField':
+				if (isModuleSortField(message.sortField)) {
+					this.actions.onSortChange({ field: message.sortField });
+				}
+				return;
+			case 'setSortDirection':
+				if (isModuleSortDirection(message.sortDirection)) {
+					this.actions.onSortChange({ direction: message.sortDirection });
+				}
+				return;
 			case 'dismissIntroTip':
 				this.introTipVisible = false;
 				this.render();
@@ -290,6 +305,14 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IM
 		const filteredCount = this.getFilteredModules(this.filterQuery).length;
 		const toolbarMetaText = getToolbarMetaText(moduleCount, filteredCount, selectedCount);
 		const appliedCount = this.appliedModuleKeys.size;
+		const nextSortDirection: ModuleSortDirection = this.sortState.direction === 'asc' ? 'desc' : 'asc';
+		const directionTitle = this.getSortDirectionTitle(nextSortDirection);
+		const sortFieldOptions: Array<{ value: ModuleSortField; label: string }> = [
+			{ value: 'name', label: 'Name' },
+			{ value: 'owner', label: 'Owner' },
+			{ value: 'updatedAt', label: 'Updated' },
+			{ value: 'applied', label: 'Applied Status' },
+		];
 		const content = this.renderContent();
 
 		return `<!DOCTYPE html>
@@ -404,6 +427,36 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IM
 		}
 		.search-box input::placeholder {
 			color: var(--vscode-input-placeholderForeground);
+		}
+		.sort-row {
+			display: flex;
+			align-items: center;
+			gap: 8px;
+			flex-wrap: wrap;
+		}
+		.sort-controls {
+			display: inline-flex;
+			align-items: center;
+			gap: 6px;
+			min-width: 0;
+		}
+		.sort-label {
+			font-size: 11px;
+			color: var(--vscode-descriptionForeground);
+		}
+		.sort-select {
+			height: 28px;
+			min-width: 120px;
+			border-radius: 4px;
+			border: 1px solid var(--vscode-input-border, var(--vscode-panel-border));
+			background: var(--vscode-dropdown-background, var(--vscode-input-background));
+			color: var(--vscode-dropdown-foreground, var(--vscode-input-foreground, var(--vscode-foreground)));
+			font: inherit;
+			padding: 0 6px;
+		}
+		.sort-select:focus {
+			outline: 1px solid var(--vscode-focusBorder);
+			outline-offset: 1px;
 		}
 		.notice {
 			display: flex;
@@ -615,6 +668,15 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IM
 			<input type="text" value="${escapeHtml(this.filterQuery)}" data-role="filter-input" placeholder="Search modules" aria-label="Search modules">
 			<button class="icon-button" data-action="clearFilter" data-role="clear-filter" title="Clear search" aria-label="Clear search" ${this.filterQuery ? '' : 'hidden'}>${renderIcon('close')}</button>
 		</div>
+		<div class="sort-row">
+			<div class="sort-controls">
+				<label class="sort-label" for="module-sort-field">Sort</label>
+				<select class="sort-select" id="module-sort-field" data-role="sort-field" aria-label="Sort modules">
+					${sortFieldOptions.map((option) => `<option value="${option.value}" ${this.sortState.field === option.value ? 'selected' : ''}>${option.label}</option>`).join('')}
+				</select>
+				<button class="icon-button" data-action="setSortDirection" data-role="sort-direction" data-sort-direction="${nextSortDirection}" title="${escapeHtml(directionTitle)}" aria-label="${escapeHtml(directionTitle)}">${renderIcon(this.sortState.direction === 'asc' ? 'sortAsc' : 'sortDesc')}</button>
+			</div>
+		</div>
 		<div class="toolbar-row">
 			<div class="toolbar">
 				<button class="toolbar-button callout" data-action="applySelected" data-role="apply-selected" ${selectedCount === 0 ? 'hidden' : ''}>Apply Selected</button>
@@ -631,6 +693,7 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IM
 		const vscode = acquireVsCodeApi();
 		const filterInput = document.querySelector('[data-role="filter-input"]');
 		const clearFilterButton = document.querySelector('[data-role="clear-filter"]');
+		const sortFieldSelect = document.querySelector('[data-role="sort-field"]');
 		const toolbarMeta = document.querySelector('[data-role="toolbar-meta"]');
 		const applySelectedButton = document.querySelector('[data-role="apply-selected"]');
 		const filterEmptyState = document.querySelector('[data-role="filter-empty"]');
@@ -733,6 +796,11 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IM
 				}
 				return;
 			}
+			if (action === 'setSortDirection') {
+				const sortDirection = target.getAttribute('data-sort-direction') || undefined;
+				vscode.postMessage({ type: 'setSortDirection', sortDirection });
+				return;
+			}
 			const moduleKey = target.getAttribute('data-module-key') || undefined;
 			if (!action || action === 'toggleSelection') {
 				return;
@@ -742,6 +810,11 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IM
 		if (filterInput instanceof HTMLInputElement) {
 			filterInput.addEventListener('input', () => {
 				applyFilter(true);
+			});
+		}
+		if (sortFieldSelect instanceof HTMLSelectElement) {
+			sortFieldSelect.addEventListener('change', () => {
+				vscode.postMessage({ type: 'setSortField', sortField: sortFieldSelect.value });
 			});
 		}
 		document.addEventListener('change', (event) => {
@@ -790,6 +863,20 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IM
 
 	private isModuleApplied(moduleKey: string): boolean {
 		return this.appliedModuleKeys.has(moduleKey);
+	}
+
+	private getSortDirectionTitle(direction: ModuleSortDirection): string {
+		switch (this.sortState.field) {
+			case 'updatedAt':
+				return direction === 'asc' ? 'Sort by oldest first' : 'Sort by newest first';
+			case 'applied':
+				return direction === 'asc' ? 'Sort by unapplied modules first' : 'Sort by applied modules first';
+			case 'owner':
+				return direction === 'asc' ? 'Sort owner A to Z' : 'Sort owner Z to A';
+			case 'name':
+			default:
+				return direction === 'asc' ? 'Sort name A to Z' : 'Sort name Z to A';
+		}
 	}
 
 	private renderContent(): string {
