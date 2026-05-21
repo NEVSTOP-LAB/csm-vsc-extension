@@ -12,6 +12,7 @@
 - 阶段二：首次应用模块时可初始化本地模块目录，默认生成 `csm/csm-modules.yaml`，也支持仓库内自定义相对目录
 - 阶段二：支持 `submodule` / `copy` 两种模块引入方式，并将模块名、源仓库地址、锁定版本、默认分支与本地路径写入本地 YAML 配置文件
 - 阶段二：当仓库已存在 `csm/` 目录及其中的 submodule，但缺少配置文件时，可自动反向生成 `csm/csm-modules.yaml`
+- 阶段四：新增设置项 `csmModules.defaultModuleRoot`，用于为首次初始化 / 首次应用预设默认模块根目录
 
 ### 变更
 
@@ -21,10 +22,13 @@
 - UI：侧边栏继续显示当前工作区摘要，已应用到当前仓库配置的模块会显示 `Applied` 状态徽标
 - UI：模块卡片右键菜单改为 VS Code 原生 `webview/context` 菜单，`Apply` / `Update` / `Remove` / `Open README` / 选择操作会按当前模块状态自动启用、禁用或切换
 - UI：侧边栏顶部搜索框改为更接近扩展市场的搜索栏样式，末尾集成 `Filter` 菜单；菜单内拆分 `Type` 与 `Order` 两组排序选项，并将 `applied / available / selected` 状态信息合并到同一行展示
+- UI：点击模块卡片正文可在侧边栏内展开 README Markdown 预览，右上角 `README` 按钮继续保留完整 README 面板入口
 - 交互：当仓库存在 `csm/` 目录与 `*.lvproj` 但尚未初始化本地模块管理时，打开侧边栏会主动弹出初始化提示，并显示专用标题栏初始化按钮
+- 交互：工作区初始化、首次应用与主动初始化提示会遵循 `csmModules.defaultModuleRoot` 作为默认目录；若仓库内已存在 `csm-modules.yaml`，仍以配置文件中的 `root` 为准
 - 缓存：启动时优先复用模块列表与 README 缓存，并按 `csmModules.cache.ttlMinutes` 在后台自动失效刷新；升级扩展后无需手动刷新缓存
 - 兼容：旧版 `csm-modules.lvcsm` 配置可继续读取，并在后续写回时迁移到 YAML
 - 交互：应用模块前增加方式选择与二次确认，并补齐非 Git 仓库、重复目标路径、copy 目标已存在等基础错误提示
+- 错误处理：刷新 / 应用 / 更新 / 删除模块时，会把常见 GitHub HTTP 状态、Git 权限失败、Git 缺失、网络错误与 YAML 解析错误转换为更可操作的提示
 
 ## [0.0.25] - 2026-05-20
 

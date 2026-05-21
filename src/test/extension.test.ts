@@ -315,6 +315,17 @@ Object.prototype.hasOwnProperty.call(lvcsmDefaults, 'files.autoGuessEncoding'),
 );
 });
 
+test('package.json contributes module manager default root setting', () => {
+const pkgPath = path.resolve(__dirname, '../../package.json');
+const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));
+const configuration = pkg.contributes?.configuration ?? {};
+const properties = configuration.properties ?? {};
+const defaultRoot = properties['csmModules.defaultModuleRoot'];
+assert.ok(defaultRoot, 'csmModules.defaultModuleRoot should be declared in package.json');
+assert.strictEqual(defaultRoot.type, 'string', 'csmModules.defaultModuleRoot should be a string setting');
+assert.strictEqual(defaultRoot.default, 'csm', 'csmModules.defaultModuleRoot should default to csm');
+});
+
 test('package.json declares module manager commands and views', () => {
 const pkgPath = path.resolve(__dirname, '../../package.json');
 const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));

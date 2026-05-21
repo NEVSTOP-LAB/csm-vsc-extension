@@ -14,7 +14,6 @@ function escapeHtml(value: string): string {
 		.replace(/\//g, '&#47;')
 		.replace(/\\/g, '&#92;')
 		// Strip control characters that could break out of attribute contexts.
-		// eslint-disable-next-line no-control-regex
 		.replace(/[\u0000-\u001F\u007F]/g, (char) => `&#${char.charCodeAt(0)};`);
 }
 
@@ -157,9 +156,7 @@ export class ReadmeAssetCache {
 		}
 	}
 
-	public async renderMarkdown(entry: CsmModuleEntry, markdown: string, webview: vscode.Webview): Promise<string> {
-		await ensureDir(this.getEntryDir(entry));
-		const nonce = crypto.randomBytes(16).toString('base64');
+	private async renderMarkdownBlocks(entry: CsmModuleEntry, markdown: string, webview: vscode.Webview): Promise<string[]> {
 		const lines = markdown.split(/\r?\n/);
 		const blocks: string[] = [];
 		let index = 0;
@@ -206,6 +203,20 @@ export class ReadmeAssetCache {
 			blocks.push(`<p>${await this.renderInline(entry, line, webview)}</p>`);
 			index += 1;
 		}
+
+		return blocks;
+	}
+
+	public async renderMarkdownFragment(entry: CsmModuleEntry, markdown: string, webview: vscode.Webview): Promise<string> {
+		await ensureDir(this.getEntryDir(entry));
+		const blocks = await this.renderMarkdownBlocks(entry, markdown, webview);
+		return blocks.join('\n');
+	}
+
+	public async renderMarkdown(entry: CsmModuleEntry, markdown: string, webview: vscode.Webview): Promise<string> {
+		await ensureDir(this.getEntryDir(entry));
+		const nonce = crypto.randomBytes(16).toString('base64');
+		const blocks = await this.renderMarkdownBlocks(entry, markdown, webview);
 
 		return `<!doctype html>
 <html lang="en">

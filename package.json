@@ -230,6 +230,12 @@
     "configuration": {
       "title": "CSM Modules",
       "properties": {
+        "csmModules.defaultModuleRoot": {
+          "type": "string",
+          "default": "csm",
+          "scope": "resource",
+          "description": "Default relative directory used when initializing local CSM module management for a repository that does not already have a csm-modules.yaml file."
+        },
         "csmModules.cache.ttlMinutes": {
           "type": "number",
           "default": 60,

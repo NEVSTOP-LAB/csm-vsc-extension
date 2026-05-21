@@ -26,8 +26,13 @@ export const COMMAND_IDS = {
 	setSortOrder: 'csmModules.setSortOrder',
 } as const;
 
-export const CONFIG_SECTION = 'csmModules.cache';
+export const CONFIG_SECTIONS = {
+	moduleManager: 'csmModules',
+	cache: 'csmModules.cache',
+} as const;
+
 export const CONFIG_KEYS = {
+	defaultModuleRoot: 'defaultModuleRoot',
 	cacheTtlMinutes: 'ttlMinutes',
 } as const;
 

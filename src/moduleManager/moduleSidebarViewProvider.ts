@@ -10,6 +10,7 @@ interface ModuleSidebarActions {
 	onRefresh: () => void;
 	onInitializeWorkspace: () => void;
 	onOpenReadme: (entry: CsmModuleEntry) => void;
+	onPreviewReadme: (entry: CsmModuleEntry, webview: vscode.Webview) => Promise<string>;
 	onApplySelection: (entry?: CsmModuleEntry) => void;
 	onRemoveModule: (entry: CsmModuleEntry) => void;
 	onUpdateModule: (entry: CsmModuleEntry) => void;
@@ -18,12 +19,20 @@ interface ModuleSidebarActions {
 }
 
 type WebviewMessage = {
-	type: 'login' | 'refresh' | 'initializeWorkspace' | 'applySelected' | 'openReadme' | 'applyOne' | 'toggleSelection' | 'setFilterQuery' | 'clearFilter' | 'dismissIntroTip' | 'removeModule' | 'updateModule' | 'setSortField' | 'setSortDirection' | 'showMore';
+	type: 'login' | 'refresh' | 'initializeWorkspace' | 'applySelected' | 'openReadme' | 'togglePreview' | 'applyOne' | 'toggleSelection' | 'setFilterQuery' | 'clearFilter' | 'dismissIntroTip' | 'removeModule' | 'updateModule' | 'setSortField' | 'setSortDirection' | 'showMore';
 	moduleKey?: string;
 	selected?: boolean;
 	query?: string;
 	sortField?: ModuleSortField;
 	sortDirection?: ModuleSortDirection;
+};
+
+type ReadmePreviewState = {
+	moduleKey: string;
+	title: string;
+	status: 'loading' | 'ready' | 'error';
+	html?: string;
+	message?: string;
 };
 
 function truncate(text: string, maxLength: number): string {
@@ -88,6 +97,7 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IM
 	private offlineMode = false;
 	private sortState: ModuleSortState = DEFAULT_MODULE_SORT_STATE;
 	private readonly staleModuleKeys = new Set<string>();
+	private previewState: ReadmePreviewState | undefined;
 	private static readonly INITIAL_RENDER_LIMIT = 100;
 	private renderLimit = ModuleSidebarViewProvider.INITIAL_RENDER_LIMIT;
 
@@ -139,6 +149,7 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IM
 			this.state = 'ready';
 		}
 		this.pruneSelection();
+		this.prunePreview();
 		this.render();
 	}
 
@@ -242,6 +253,48 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IM
 				}
 				return;
 			}
+			case 'togglePreview': {
+				const entry = message.moduleKey ? this.findEntry(message.moduleKey) : undefined;
+				if (!entry || !this.view) {
+					return;
+				}
+				const moduleKey = ModuleSidebarViewProvider.getModuleKey(entry);
+				if (this.previewState?.moduleKey === moduleKey && this.previewState.status !== 'loading') {
+					this.previewState = undefined;
+					this.render();
+					return;
+				}
+				this.previewState = {
+					moduleKey,
+					title: entry.name,
+					status: 'loading',
+				};
+				this.render();
+				try {
+					const html = await this.actions.onPreviewReadme(entry, this.view.webview);
+					if (this.previewState?.moduleKey !== moduleKey) {
+						return;
+					}
+					this.previewState = {
+						moduleKey,
+						title: entry.name,
+						status: 'ready',
+						html,
+					};
+				} catch (error) {
+					if (this.previewState?.moduleKey !== moduleKey) {
+						return;
+					}
+					this.previewState = {
+						moduleKey,
+						title: entry.name,
+						status: 'error',
+						message: error instanceof Error ? error.message : 'Unable to load README preview.',
+					};
+				}
+				this.render();
+				return;
+			}
 			case 'applyOne': {
 				const entry = message.moduleKey ? this.findEntry(message.moduleKey) : undefined;
 				if (entry) {
@@ -288,6 +341,12 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IM
 		}
 	}
 
+	private prunePreview(): void {
+		if (this.previewState && !this.findEntry(this.previewState.moduleKey)) {
+			this.previewState = undefined;
+		}
+	}
+
 	private render(): void {
 		if (!this.view) {
 			return;
@@ -298,6 +357,7 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IM
 
 	private getHtml(): string {
 		const nonce = createNonce();
+		const imgCspSource = this.view?.webview.cspSource ?? 'https:';
 		const selectedCount = this.selectedModuleKeys.size;
 		const moduleCount = this.modules.length;
 		const filteredCount = this.getFilteredModules(this.filterQuery).length;
@@ -320,7 +380,7 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IM
 <html lang="en">
 <head>
 	<meta charset="UTF-8">
-	<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'nonce-${nonce}'; script-src 'nonce-${nonce}';">
+	<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${imgCspSource} https:; style-src 'nonce-${nonce}'; script-src 'nonce-${nonce}';">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
 	<title>CSM Modules</title>
 	<style nonce="${nonce}">
@@ -561,6 +621,14 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IM
 			display: grid;
 			gap: 1px;
 		}
+		.module-preview-trigger {
+			cursor: pointer;
+			border-radius: 4px;
+		}
+		.module-preview-trigger:focus-visible {
+			outline: 1px solid var(--vscode-focusBorder, var(--vscode-textLink-foreground));
+			outline-offset: 2px;
+		}
 		.module-select {
 			margin: 0;
 			width: 14px;
@@ -595,6 +663,10 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IM
 			font-size: 11px;
 			line-height: 1.4;
 			color: var(--vscode-descriptionForeground);
+		}
+		.summary.module-preview-trigger:hover,
+		.module-main.module-preview-trigger:hover .module-name {
+			color: var(--vscode-foreground);
 		}
 		.meta-row {
 			display: flex;
@@ -635,6 +707,88 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IM
 		}
 		.card-footer-spacer {
 			flex: 1 1 auto;
+		}
+		.readme-preview {
+			margin-top: 8px;
+			padding-top: 8px;
+			border-top: 1px solid var(--vscode-panel-border);
+			display: grid;
+			gap: 8px;
+		}
+		.readme-preview-header {
+			display: flex;
+			align-items: center;
+			justify-content: space-between;
+			gap: 8px;
+			font-size: 10px;
+			letter-spacing: 0.04em;
+			text-transform: uppercase;
+			color: var(--vscode-descriptionForeground);
+		}
+		.readme-preview-body {
+			max-height: 280px;
+			overflow: auto;
+			padding-right: 4px;
+			font-size: 11px;
+			line-height: 1.55;
+			color: var(--vscode-foreground);
+		}
+		.readme-preview-body > :first-child {
+			margin-top: 0;
+		}
+		.readme-preview-body > :last-child {
+			margin-bottom: 0;
+		}
+		.readme-preview-body h1,
+		.readme-preview-body h2,
+		.readme-preview-body h3,
+		.readme-preview-body h4,
+		.readme-preview-body h5,
+		.readme-preview-body h6 {
+			margin: 1.1em 0 0.5em;
+			font-size: 12px;
+		}
+		.readme-preview-body p,
+		.readme-preview-body ul,
+		.readme-preview-body ol,
+		.readme-preview-body pre,
+		.readme-preview-body blockquote {
+			margin: 0 0 8px;
+		}
+		.readme-preview-body ul,
+		.readme-preview-body ol {
+			padding-left: 1.25em;
+		}
+		.readme-preview-body a {
+			color: var(--vscode-textLink-foreground);
+		}
+		.readme-preview-body code,
+		.readme-preview-body pre {
+			background: var(--vscode-textCodeBlock-background, rgba(110, 118, 129, 0.18));
+			border-radius: 6px;
+		}
+		.readme-preview-body code {
+			padding: 0.1rem 0.3rem;
+		}
+		.readme-preview-body pre {
+			padding: 10px;
+			overflow: auto;
+		}
+		.readme-preview-body img {
+			max-width: 100%;
+			height: auto;
+			border-radius: 6px;
+		}
+		.readme-preview-status {
+			font-size: 11px;
+			color: var(--vscode-descriptionForeground);
+		}
+		.readme-preview-error {
+			color: var(--vscode-errorForeground, var(--vscode-foreground));
+		}
+		.readme-preview-loading {
+			display: grid;
+			gap: 8px;
 		}
 		.action-toolbar {
 			display: flex;
@@ -905,6 +1059,15 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IM
 			});
 		}
 		document.addEventListener('keydown', (event) => {
+			const previewTarget = event.target instanceof HTMLElement ? event.target.closest('[data-action="togglePreview"]') : null;
+			if ((event.key === 'Enter' || event.key === ' ') && previewTarget instanceof HTMLElement) {
+				event.preventDefault();
+				vscode.postMessage({
+					type: 'togglePreview',
+					moduleKey: previewTarget.getAttribute('data-module-key') || undefined,
+				});
+				return;
+			}
 			if (event.key === 'Escape') {
 				closeFilterMenu();
 			}
@@ -1060,6 +1223,7 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IM
 		const moduleKey = ModuleSidebarViewProvider.getModuleKey(entry);
 		const selected = this.selectedModuleKeys.has(moduleKey);
 		const applied = this.isModuleApplied(moduleKey);
+		const previewOpen = this.previewState?.moduleKey === moduleKey;
 		const stale = this.staleModuleKeys.has(moduleKey);
 		const topics = entry.topics.filter((topic) => topic !== 'csm-modsets').slice(0, 3);
 		const topicBadges = topics.map((topic) => `<span class="badge">${escapeHtml(topic)}</span>`).join('');
@@ -1075,10 +1239,11 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IM
 			moduleSelected: selected,
 			preventDefaultContextMenuItems: true,
 		}));
+		const preview = previewOpen ? this.renderReadmePreview(moduleKey) : '';
 
 		return `<article class="module-card${selected ? ' selected' : ''}${applied ? ' applied' : ''}" data-role="module-card" data-module-key="${escapeHtml(moduleKey)}" data-module-applied="${applied ? 'true' : 'false'}" data-module-selected="${selected ? 'true' : 'false'}" data-search-text="${searchText}" data-vscode-context="${vscodeContext}">
 			<div class="module-header">
-				<div class="module-main">
+				<div class="module-main module-preview-trigger" data-action="togglePreview" data-module-key="${escapeHtml(moduleKey)}" tabindex="0" role="button" aria-expanded="${previewOpen ? 'true' : 'false'}" aria-label="Toggle README preview for ${escapeHtml(entry.name)}">
 					<div class="title-row">
 						<span class="module-name" title="${escapeHtml(entry.name)}">${escapeHtml(truncate(entry.name, 44))}</span>
 						${applied ? '<span class="badge applied">Applied</span>' : ''}
@@ -1094,16 +1259,31 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IM
 					</div>
 				</div>
 			</div>
-			<div class="summary">${escapeHtml(truncate(summary, 132))}</div>
-			<div class="card-footer">
+			<div class="summary module-preview-trigger" data-action="togglePreview" data-module-key="${escapeHtml(moduleKey)}">${escapeHtml(truncate(summary, 132))}</div>
+			<div class="card-footer module-preview-trigger" data-action="togglePreview" data-module-key="${escapeHtml(moduleKey)}">
 				${footerNote}
 			</div>
+			${preview}
 			<div class="meta-row">
 				<span class="badge ${entry.visibility === 'private' ? 'private' : ''}">${entry.visibility === 'private' ? 'Private' : 'Public'}</span>
 				<span class="badge">Branch: ${escapeHtml(entry.defaultBranch)}</span>
 				${topicBadges}
 			</div>
 		</article>`;
+	}
+
+	private renderReadmePreview(moduleKey: string): string {
+		if (!this.previewState || this.previewState.moduleKey !== moduleKey) {
+			return '';
+		}
+		const title = escapeHtml(this.previewState.title);
+		if (this.previewState.status === 'loading') {
+			return `<section class="readme-preview" data-role="readme-preview"><div class="readme-preview-header"><span>README Preview</span><span>${title}</span></div><div class="readme-preview-loading"><div class="skeleton-line medium"></div><div class="skeleton-line"></div><div class="skeleton-line short"></div></div></section>`;
+		}
+		if (this.previewState.status === 'error') {
+			return `<section class="readme-preview" data-role="readme-preview"><div class="readme-preview-header"><span>README Preview</span><span>${title}</span></div><div class="readme-preview-status readme-preview-error">${escapeHtml(this.previewState.message ?? 'Unable to load README preview.')}</div></section>`;
+		}
+		return `<section class="readme-preview" data-role="readme-preview"><div class="readme-preview-header"><span>README Preview</span><span>${title}</span></div><div class="readme-preview-body">${this.previewState.html ?? ''}</div></section>`;
 	}
 
 	private renderEmptyState(title: string, message: string, actionHtml = ''): string {

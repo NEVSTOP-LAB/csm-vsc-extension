@@ -10,7 +10,7 @@ import { ModuleSidebarViewProvider } from './moduleSidebarViewProvider';
 import { IModuleViewProvider, ModuleSortField, ModuleSortState, SidebarWorkspaceContext } from './interfaces';
 import { ReadmeAssetCache } from './readmeAssetCache';
 import { DEFAULT_LOCAL_MODULE_ROOT, LEGACY_LOCAL_MODULE_CONFIG_FILE, LOCAL_MODULE_CONFIG_FILE, WorkspaceModuleService } from './workspaceModuleService';
-import { COMMAND_IDS, CONFIG_KEYS, CONFIG_SECTION, CONTEXT_KEYS, VIEW_IDS } from './constants';
+import { COMMAND_IDS, CONFIG_KEYS, CONFIG_SECTIONS, CONTEXT_KEYS, VIEW_IDS } from './constants';
 import { Logger, getLogger, wrapCommand } from './logger';
 import { DEFAULT_MODULE_SORT_STATE, isModuleSortField, normalizeModuleSortState, sortModules } from './sort';
 
@@ -19,12 +19,17 @@ const WORKSPACE_INIT_CONTEXT_KEY = CONTEXT_KEYS.canInitializeWorkspace;
 const SIGNED_IN_CONTEXT_KEY = CONTEXT_KEYS.signedIn;
 const HAS_SELECTION_CONTEXT_KEY = CONTEXT_KEYS.hasSelection;
 const LVPROJ_GLOB = '**/*.lvproj';
-const WORKSPACE_INIT_PROMPT = 'Detected csm/ and .lvproj files but no local CSM module config. Initialize CSM module management for this repository?';
+
+function getWorkspaceInitPrompt(rootPath: string): string {
+	return `Detected ${rootPath}/ and .lvproj files but no local CSM module config. Initialize CSM module management for this repository?`;
+}
 
 interface PendingWorkspaceInitialization {
 	workspaceFolder: vscode.WorkspaceFolder;
 	repoRoot: string;
 }
+
+type UserFacingErrorContext = 'refresh' | 'apply' | 'update' | 'remove' | 'config';
 
 type WebviewModuleContext = {
 	moduleKey?: string;
@@ -67,6 +72,7 @@ export class ModuleManagerController {
 		onOpenReadme: (entry) => {
 			void this.openReadmeCommand(entry);
 		},
+		onPreviewReadme: (entry, webview) => this.buildReadmePreviewHtml(entry, webview),
 		onApplySelection: (entry) => {
 			void this.applyToWorkspaceCommand(entry);
 		},
@@ -302,7 +308,7 @@ export class ModuleManagerController {
 				},
 			);
 		} catch (error) {
-			const message = error instanceof Error ? error.message : 'Unknown error';
+			const message = this.getUserFacingErrorMessage(error, 'apply');
 			const prefix = appliedCount > 0
 				? `Applied ${appliedCount}/${selectedEntries.length} module(s) before failure`
 				: 'Failed to apply CSM modules';
@@ -361,7 +367,7 @@ export class ModuleManagerController {
 				},
 			);
 		} catch (error) {
-			const message = error instanceof Error ? error.message : 'Unknown error';
+			const message = this.getUserFacingErrorMessage(error, 'remove');
 			this.logger.error(`Failed to remove module ${target.owner}/${target.name}: ${message}`);
 			void vscode.window.showErrorMessage(`Failed to remove module: ${message}`);
 			return;
@@ -495,7 +501,8 @@ export class ModuleManagerController {
 			return;
 		}
 
-		const recoveredConfig = await this.workspaceModuleService.recoverConfigFromExistingSubmodules(repoRoot, DEFAULT_LOCAL_MODULE_ROOT);
+		const defaultRoot = this.getConfiguredDefaultModuleRoot();
+		const recoveredConfig = await this.workspaceModuleService.recoverConfigFromExistingSubmodules(repoRoot, defaultRoot);
 		if (recoveredConfig) {
 			void vscode.window.showInformationMessage(
 				`Initialized local CSM module config from existing submodules at ${path.relative(repoRoot, recoveredConfig.configPath).replace(/\\/g, '/')}.`,
@@ -505,7 +512,7 @@ export class ModuleManagerController {
 			return;
 		}
 
-		await this.initializeLocalModuleConfig(repoRoot, WORKSPACE_INIT_PROMPT);
+		await this.initializeLocalModuleConfig(repoRoot, getWorkspaceInitPrompt(defaultRoot));
 		await this.refreshSidebarWorkspaceState();
 		await this.refreshWorkspaceInitializationState({ prompt: false });
 	}
@@ -640,10 +647,10 @@ export class ModuleManagerController {
 				void vscode.window.showInformationMessage(`Refreshed ${modules.length} module(s).`);
 			}
 		} catch (error) {
-			this.logger.error(`Failed to refresh modules: ${error instanceof Error ? error.message : String(error)}`);
-			this.treeDataProvider.setError('Failed to load modules from GitHub.');
+			const message = this.getUserFacingErrorMessage(error, 'refresh');
+			this.logger.error(`Failed to refresh modules: ${message}`);
+			this.treeDataProvider.setError(message);
 			if (options.showErrorMessage) {
-				const message = error instanceof Error ? error.message : 'Unknown error';
 				void vscode.window.showErrorMessage(`Failed to refresh CSM modules: ${message}`);
 			}
 		}
@@ -684,36 +691,119 @@ export class ModuleManagerController {
 		return refreshed;
 	}
 
+	private getUnavailableReadmeMarkdown(): string {
+		return '# README not available\n\nUnable to load README from GitHub for this module.';
+	}
+
+	private getUserFacingErrorMessage(error: unknown, context: UserFacingErrorContext): string {
+		const rawMessage = error instanceof Error ? error.message : String(error);
+		const segments = rawMessage.split('; ').map((segment) => segment.trim()).filter((segment) => segment.length > 0);
+		if (segments.length === 0) {
+			return 'Unknown error';
+		}
+		return segments.map((segment) => this.mapUserFacingErrorSegment(segment, context)).join('; ');
+	}
+
+	private mapUserFacingErrorSegment(segment: string, context: UserFacingErrorContext): string {
+		const modulePrefixMatch = segment.match(/^([^:]+\/[^:]+):\s+(.*)$/);
+		if (modulePrefixMatch) {
+			return `${modulePrefixMatch[1]}: ${this.mapSingleUserFacingError(modulePrefixMatch[2] ?? '', context)}`;
+		}
+		return this.mapSingleUserFacingError(segment, context);
+	}
+
+	private mapSingleUserFacingError(message: string, context: UserFacingErrorContext): string {
+		const githubStatusMatch = message.match(/GitHub (?:API|README) request failed: (\d{3})/);
+		if (githubStatusMatch) {
+			return this.mapGitHubStatusToUserMessage(Number(githubStatusMatch[1]), context);
+		}
+		if (/Failed to parse YAML config:/i.test(message)) {
+			return 'The local CSM module config is not valid YAML. Fix the file or reinitialize the workspace.';
+		}
+		if (/spawn .*ENOENT|is not recognized as an internal or external command|The system cannot find the file specified/i.test(message)) {
+			return 'Git is not available. Install Git or configure git.path in VS Code.';
+		}
+		if (/Authentication failed|Permission denied|could not read Username|Repository not found|access denied/i.test(message)) {
+			return 'Git could not access the module repository. Check your GitHub session and repository permissions.';
+		}
+		if (/ENOTFOUND|ECONNRESET|ECONNREFUSED|ETIMEDOUT|fetch failed|network/i.test(message)) {
+			return 'Network request failed while contacting GitHub. Check your connection and try again.';
+		}
+		return message;
+	}
+
+	private mapGitHubStatusToUserMessage(status: number, context: UserFacingErrorContext): string {
+		switch (status) {
+			case 401:
+				return 'GitHub rejected the request (HTTP 401). Sign in again and try again.';
+			case 403:
+				return 'GitHub rejected the request (HTTP 403). Check repository permissions and token scopes.';
+			case 404:
+				return context === 'refresh'
+					? 'GitHub could not find the requested module data (HTTP 404).'
+					: 'GitHub could not find the requested README or repository data (HTTP 404).';
+			default:
+				if (status === 429 || status >= 500) {
+					return `GitHub is temporarily unavailable (HTTP ${status}). Try again in a moment.`;
+				}
+				return `GitHub request failed (HTTP ${status}).`;
+		}
+	}
+
+	private async loadReadmeMarkdown(entry: CsmModuleEntry, options: { warnOnMissingSession: boolean }): Promise<string | undefined> {
+		const key = this.getReadmeCacheKey(entry);
+		let readme = Object.prototype.hasOwnProperty.call(this.readmeCache, key)
+			? this.readmeCache[key]
+			: undefined;
+		if (typeof readme !== 'string') {
+			const cachedMarkdown = await this.readmeAssetCache.readMarkdown(entry);
+			if (typeof cachedMarkdown === 'string') {
+				readme = cachedMarkdown;
+				this.readmeCache[key] = cachedMarkdown;
+			}
+		}
+		if (typeof readme === 'string') {
+			return readme;
+		}
+
+		const token = await this.ensureToken(false);
+		if (!token) {
+			if (options.warnOnMissingSession) {
+				void vscode.window.showWarningMessage('No cached README and no GitHub session available.');
+				return undefined;
+			}
+			return '';
+		}
+
+		try {
+			readme = await this.githubService.fetchReadme(entry.owner, entry.name, token);
+			this.readmeCache[key] = readme;
+			await this.readmeAssetCache.saveMarkdown(entry, readme);
+			return readme;
+		} catch (error) {
+			this.logger.warn(`Failed to fetch README for ${entry.owner}/${entry.name}: ${error instanceof Error ? error.message : String(error)}`);
+			this.readmeCache[key] = '';
+			return '';
+		}
+	}
+
+	private async buildReadmePreviewHtml(entry: CsmModuleEntry, webview: vscode.Webview): Promise<string> {
+		const readme = await this.loadReadmeMarkdown(entry, { warnOnMissingSession: false });
+		const markdownContent = readme || this.getUnavailableReadmeMarkdown();
+		return this.readmeAssetCache.renderMarkdownFragment(entry, markdownContent, webview);
+	}
+
 	public async openReadmeCommand(entry?: CsmModuleEntry | ModuleTreeItem): Promise<void> {
 		const resolvedEntry = this.resolveModuleEntry(entry);
 		if (!resolvedEntry) {
 			return;
 		}
-		const key = this.getReadmeCacheKey(resolvedEntry);
-		let readme: string | undefined = this.readmeCache[key];
-		if (!readme) {
-			readme = await this.readmeAssetCache.readMarkdown(resolvedEntry);
-			if (readme) {
-				this.readmeCache[key] = readme;
-			}
-		}
-		if (!readme) {
-			const token = await this.ensureToken(false);
-			if (!token) {
-				void vscode.window.showWarningMessage('No cached README and no GitHub session available.');
-				return;
-			}
-			try {
-				readme = await this.githubService.fetchReadme(resolvedEntry.owner, resolvedEntry.name, token);
-				this.readmeCache[key] = readme;
-				await this.readmeAssetCache.saveMarkdown(resolvedEntry, readme);
-			} catch (error) {
-				this.logger.warn(`Failed to fetch README for ${resolvedEntry.owner}/${resolvedEntry.name}: ${error instanceof Error ? error.message : String(error)}`);
-				readme = '';
-			}
+		const readme = await this.loadReadmeMarkdown(resolvedEntry, { warnOnMissingSession: true });
+		if (typeof readme === 'undefined') {
+			return;
 		}
 
-		const markdownContent = readme || '# README not available\n\nUnable to load README from GitHub for this module.';
+		const markdownContent = readme || this.getUnavailableReadmeMarkdown();
 		const panel = vscode.window.createWebviewPanel(
 			'csmModulesReadme',
 			`README: ${resolvedEntry.name}`,
@@ -966,7 +1056,7 @@ export class ModuleManagerController {
 		const matches = await this.findLocalModuleConfigFiles(workspaceFolder);
 
 		if (matches.length === 0) {
-			const recoveredConfig = await this.workspaceModuleService.recoverConfigFromExistingSubmodules(repoRoot, DEFAULT_LOCAL_MODULE_ROOT);
+			const recoveredConfig = await this.workspaceModuleService.recoverConfigFromExistingSubmodules(repoRoot, this.getConfiguredDefaultModuleRoot());
 			if (recoveredConfig) {
 				await this.setWorkspaceInitializationContext(false);
 				void vscode.window.showInformationMessage(
@@ -1028,10 +1118,11 @@ export class ModuleManagerController {
 		repoRoot: string,
 		message = 'No local CSM module config was found. Initialize one for this repository?',
 	): Promise<LocalModuleConfig | undefined> {
+		const defaultRoot = this.getConfiguredDefaultModuleRoot();
 		const choice = await vscode.window.showInformationMessage(
 			message,
 			{ modal: true },
-			`Use ${DEFAULT_LOCAL_MODULE_ROOT}/`,
+			`Use ${defaultRoot}/`,
 			'Choose Directory',
 			'Later',
 		);
@@ -1040,11 +1131,11 @@ export class ModuleManagerController {
 			return undefined;
 		}
 
-		let rootPath = DEFAULT_LOCAL_MODULE_ROOT;
+		let rootPath = defaultRoot;
 		if (choice === 'Choose Directory') {
 			const input = await vscode.window.showInputBox({
 				prompt: 'Enter a directory relative to the repository root for local CSM modules.',
-				value: DEFAULT_LOCAL_MODULE_ROOT,
+				value: defaultRoot,
 				validateInput: (value) => {
 					try {
 						this.workspaceModuleService.normalizeRootPath(value);
@@ -1084,7 +1175,7 @@ export class ModuleManagerController {
 		}
 
 		const choice = await vscode.window.showInformationMessage(
-			WORKSPACE_INIT_PROMPT,
+			getWorkspaceInitPrompt(this.getConfiguredDefaultModuleRoot()),
 			'Initialize',
 			'Later',
 		);
@@ -1106,7 +1197,7 @@ export class ModuleManagerController {
 				continue;
 			}
 
-			if (!await this.hasLocalModuleRoot(repoRoot)) {
+			if (!await this.hasLocalModuleRoot(repoRoot, this.getConfiguredDefaultModuleRoot())) {
 				continue;
 			}
 
@@ -1173,12 +1264,30 @@ export class ModuleManagerController {
 		return source.trim().replace(/\.git$/i, '').replace(/\/+$/g, '').toLowerCase();
 	}
 
-	private async hasLocalModuleRoot(repoRoot: string): Promise<boolean> {
+	private async hasLocalModuleRoot(repoRoot: string, rootRelativePath: string): Promise<boolean> {
 		try {
-			await vscode.workspace.fs.stat(vscode.Uri.file(path.join(repoRoot, DEFAULT_LOCAL_MODULE_ROOT)));
+			await vscode.workspace.fs.stat(vscode.Uri.file(path.join(repoRoot, ...rootRelativePath.split('/'))));
 			return true;
 		} catch {
 			return false;
+		}
+	}
+
+	private getConfiguredDefaultModuleRoot(): string {
+		const configuredRoot = vscode.workspace.getConfiguration(CONFIG_SECTIONS.moduleManager).get<string>(
+			CONFIG_KEYS.defaultModuleRoot,
+			DEFAULT_LOCAL_MODULE_ROOT,
+		);
+		if (typeof configuredRoot !== 'string') {
+			return DEFAULT_LOCAL_MODULE_ROOT;
+		}
+		try {
+			return this.workspaceModuleService.normalizeRootPath(configuredRoot);
+		} catch (error) {
+			this.logger.warn(
+				`Invalid csmModules.defaultModuleRoot setting (${configuredRoot}): ${error instanceof Error ? error.message : String(error)}`,
+			);
+			return DEFAULT_LOCAL_MODULE_ROOT;
 		}
 	}
 
@@ -1199,7 +1308,7 @@ export class ModuleManagerController {
 	}
 
 	private getCacheTtlMinutes(): number {
-		const configuredTtl = vscode.workspace.getConfiguration(CONFIG_SECTION).get<number>(CONFIG_KEYS.cacheTtlMinutes, 60);
+		const configuredTtl = vscode.workspace.getConfiguration(CONFIG_SECTIONS.cache).get<number>(CONFIG_KEYS.cacheTtlMinutes, 60);
 		if (typeof configuredTtl !== 'number' || !Number.isFinite(configuredTtl)) {
 			return 60;
 		}

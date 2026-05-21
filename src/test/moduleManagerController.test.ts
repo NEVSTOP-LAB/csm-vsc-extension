@@ -62,9 +62,9 @@ function createCachedSnapshot(modules: CsmModuleEntry[], lastRefreshAt = new Dat
 	};
 }
 
-function createWorkspaceFolderWithCsmProject(prefix: string): { repoRoot: string; lvprojPath: string } {
+function createWorkspaceFolderWithCsmProject(prefix: string, root = DEFAULT_LOCAL_MODULE_ROOT): { repoRoot: string; lvprojPath: string } {
 	const repoRoot = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
-	fs.mkdirSync(path.join(repoRoot, DEFAULT_LOCAL_MODULE_ROOT), { recursive: true });
+	fs.mkdirSync(path.join(repoRoot, root), { recursive: true });
 	const lvprojPath = path.join(repoRoot, 'demo.lvproj');
 	fs.writeFileSync(lvprojPath, '<Project />', 'utf8');
 	return { repoRoot, lvprojPath };
@@ -117,7 +117,7 @@ suite('ModuleManagerController Regression Tests', () => {
 		};
 		controller.githubService = {
 			fetchModules: async () => {
-				throw new Error('503');
+				throw new Error('GitHub API request failed: 503');
 			},
 			fetchReadme: async () => '',
 		};
@@ -132,9 +132,9 @@ suite('ModuleManagerController Regression Tests', () => {
 
 		await controller.refreshCommand();
 
-		assert.strictEqual(setErrorText, 'Failed to load modules from GitHub.');
+		assert.strictEqual(setErrorText, 'GitHub is temporarily unavailable (HTTP 503). Try again in a moment.');
 		const errors = mocked.__getMessageLog().filter((m) => m.level === 'error').map((m) => m.text);
-		assert.ok(errors.some((text) => text.includes('Failed to refresh CSM modules: 503')));
+		assert.ok(errors.some((text) => text.includes('Failed to refresh CSM modules: GitHub is temporarily unavailable (HTTP 503). Try again in a moment.')));
 	});
 
 	test('openReadme without cache and token shows warning', async () => {
@@ -653,7 +653,8 @@ suite('ModuleManagerController Regression Tests', () => {
 	});
 
 	test('proactive init detection prompts when csm and lvproj exist without config', async () => {
-		const { repoRoot, lvprojPath } = createWorkspaceFolderWithCsmProject('csm-init-detect-');
+		const configuredRoot = 'modules/library';
+		const { repoRoot, lvprojPath } = createWorkspaceFolderWithCsmProject('csm-init-detect-', configuredRoot);
 		const controller = createController() as any;
 
 		controller.authService = {
@@ -662,17 +663,19 @@ suite('ModuleManagerController Regression Tests', () => {
 		};
 		controller.workspaceModuleService = {
 			resolveGitRepositoryRoot: async () => repoRoot,
+			normalizeRootPath: (value: string) => value,
 		};
 
 		mocked.__setWorkspaceFolders([{ name: 'repo', uri: vscode.Uri.file(repoRoot) }]);
 		mocked.__setFindFilesResultForPattern(configSearchPattern, []);
 		mocked.__setFindFilesResultForPattern(lvprojSearchPattern, [vscode.Uri.file(lvprojPath)]);
+		mocked.__setConfigurationValue('csmModules.defaultModuleRoot', configuredRoot);
 		mocked.__setInformationMessageResponse('Later');
 
 		await controller.refreshWorkspaceInitializationState({ prompt: true });
 
 		const infos = mocked.__getMessageLog().filter((message) => message.level === 'info').map((message) => message.text);
-		assert.ok(infos.some((text) => text.includes('Detected csm/ and .lvproj files but no local CSM module config')));
+		assert.ok(infos.some((text) => text.includes(`Detected ${configuredRoot}/ and .lvproj files but no local CSM module config`)));
 		assert.strictEqual(mocked.__getContextValue('csmModules.canInitializeWorkspace'), true);
 	});
 
@@ -725,6 +728,7 @@ suite('ModuleManagerController Regression Tests', () => {
 
 	test('apply initializes config and writes module record', async () => {
 		const controller = createController() as any;
+		const configuredRoot = 'modules/library';
 		const entry: CsmModuleEntry = {
 			id: 1,
 			owner: 'org',
@@ -737,8 +741,8 @@ suite('ModuleManagerController Regression Tests', () => {
 		};
 		const initialConfig: LocalModuleConfig = {
 			version: '2',
-			root: 'csm',
-			configPath: 'd:/repo/csm/csm-modules.yaml',
+			root: configuredRoot,
+			configPath: `d:/repo/${configuredRoot}/csm-modules.yaml`,
 			modules: {},
 		};
 		let writtenConfig: LocalModuleConfig | undefined;
@@ -749,7 +753,7 @@ suite('ModuleManagerController Regression Tests', () => {
 			recoverConfigFromExistingSubmodules: async () => undefined,
 			initializeConfig: async () => initialConfig,
 			loadConfig: async () => initialConfig,
-			getTargetRelativePath: (_config: LocalModuleConfig, moduleEntry: CsmModuleEntry) => `csm/${moduleEntry.name}`,
+			getTargetRelativePath: (config: LocalModuleConfig, moduleEntry: CsmModuleEntry) => `${config.root}/${moduleEntry.name}`,
 			targetExists: async () => false,
 			applyModule: async (_repoRoot: string, _config: LocalModuleConfig, moduleEntry: CsmModuleEntry) => ({
 				key: 'org__module_a',
@@ -757,7 +761,7 @@ suite('ModuleManagerController Regression Tests', () => {
 				owner: moduleEntry.owner,
 				source: moduleEntry.repoUrl,
 				method: 'copy',
-				path: `csm/${moduleEntry.name}`,
+				path: `${configuredRoot}/${moduleEntry.name}`,
 				ref: 'abc123',
 				branch: moduleEntry.defaultBranch,
 			}),
@@ -774,7 +778,8 @@ suite('ModuleManagerController Regression Tests', () => {
 		};
 		mocked.__setWorkspaceFolders([{ name: 'repo', uri: vscode.Uri.file('d:/repo') }]);
 		mocked.__setFindFilesResult([]);
-		mocked.__setInformationMessageResponse('Use csm/');
+		mocked.__setConfigurationValue('csmModules.defaultModuleRoot', configuredRoot);
+		mocked.__setInformationMessageResponse(`Use ${configuredRoot}/`);
 		mocked.__setQuickPickResponse({ method: 'copy' });
 		mocked.__setWarningMessageResponse('Apply');
 
@@ -782,7 +787,7 @@ suite('ModuleManagerController Regression Tests', () => {
 
 		assert.ok(writtenConfig);
 		assert.strictEqual(writtenConfig?.modules.org__module_a?.method, 'copy');
-		assert.strictEqual(writtenConfig?.modules.org__module_a?.path, 'csm/module-a');
+		assert.strictEqual(writtenConfig?.modules.org__module_a?.path, `${configuredRoot}/module-a`);
 		const applyPrompt = mocked.__getLastWarningPrompt();
 		const applyActions = applyPrompt?.items.filter((item): item is string => typeof item === 'string') ?? [];
 		assert.ok(applyActions.includes('Apply'));
@@ -790,6 +795,65 @@ suite('ModuleManagerController Regression Tests', () => {
 		const infos = mocked.__getMessageLog().filter((message) => message.level === 'info').map((message) => message.text);
 		assert.ok(infos.some((text) => text.includes('Initialized local CSM module config')));
 		assert.ok(infos.some((text) => text.includes('Applied 1 module(s) via copy')));
+	});
+
+	test('apply keeps existing config root when default root setting differs', async () => {
+		const controller = createController() as any;
+		const entry: CsmModuleEntry = {
+			id: 3,
+			owner: 'org',
+			name: 'module-c',
+			description: 'demo',
+			topics: ['csm-modsets'],
+			visibility: 'public',
+			defaultBranch: 'main',
+			repoUrl: 'https://github.com/org/module-c',
+		};
+		const existingConfig: LocalModuleConfig = {
+			version: '2',
+			root: 'existing-root',
+			configPath: 'd:/repo/existing-root/csm-modules.yaml',
+			modules: {},
+		};
+		let appliedRoot = '';
+
+		controller.workspaceModuleService = {
+			resolveGitRepositoryRoot: async () => 'd:/repo',
+			normalizeRootPath: (value: string) => value,
+			loadConfig: async () => existingConfig,
+			getTargetRelativePath: (config: LocalModuleConfig, moduleEntry: CsmModuleEntry) => `${config.root}/${moduleEntry.name}`,
+			targetExists: async () => false,
+			applyModule: async (_repoRoot: string, config: LocalModuleConfig, moduleEntry: CsmModuleEntry) => {
+				appliedRoot = config.root;
+				return {
+					key: 'org__module_c',
+					name: moduleEntry.name,
+					owner: moduleEntry.owner,
+					source: moduleEntry.repoUrl,
+					method: 'copy',
+					path: `${config.root}/${moduleEntry.name}`,
+					ref: 'abc123',
+					branch: moduleEntry.defaultBranch,
+				};
+			},
+			withAppliedModule: (config: LocalModuleConfig, moduleEntry: LocalModuleConfig['modules'][string]) => ({
+				...config,
+				modules: {
+					...config.modules,
+					[moduleEntry.key]: moduleEntry,
+				},
+			}),
+			writeConfig: async () => undefined,
+		};
+		mocked.__setWorkspaceFolders([{ name: 'repo', uri: vscode.Uri.file('d:/repo') }]);
+		mocked.__setFindFilesResult([vscode.Uri.file(existingConfig.configPath)]);
+		mocked.__setConfigurationValue('csmModules.defaultModuleRoot', 'configured-root');
+		mocked.__setQuickPickResponse({ method: 'copy' });
+		mocked.__setWarningMessageResponse('Apply');
+
+		await controller.applyToWorkspaceCommand(entry);
+
+		assert.strictEqual(appliedRoot, 'existing-root');
 	});
 
 	test('apply warns when copy target already exists', async () => {
@@ -834,6 +898,48 @@ suite('ModuleManagerController Regression Tests', () => {
 		assert.strictEqual(applyCalled, false);
 		const warnings = mocked.__getMessageLog().filter((message) => message.level === 'warn').map((message) => message.text);
 		assert.ok(warnings.some((text) => text.includes('Copy target already exists: csm/module-b')));
+	});
+
+	test('apply surfaces actionable git permission failures', async () => {
+		const controller = createController() as any;
+		const entry: CsmModuleEntry = {
+			id: 4,
+			owner: 'org',
+			name: 'module-d',
+			description: 'demo',
+			topics: ['csm-modsets'],
+			visibility: 'public',
+			defaultBranch: 'main',
+			repoUrl: 'https://github.com/org/module-d',
+		};
+
+		controller.workspaceModuleService = {
+			resolveGitRepositoryRoot: async () => 'd:/repo',
+			normalizeRootPath: (value: string) => value,
+			recoverConfigFromExistingSubmodules: async () => undefined,
+			loadConfig: async () => ({
+				version: '2',
+				root: 'csm',
+				configPath: 'd:/repo/csm/csm-modules.yaml',
+				modules: {},
+			}),
+			getTargetRelativePath: (_config: LocalModuleConfig, moduleEntry: CsmModuleEntry) => `csm/${moduleEntry.name}`,
+			targetExists: async () => false,
+			applyModule: async () => {
+				throw new Error('fatal: Authentication failed for https://github.com/org/module-d');
+			},
+			withAppliedModule: (config: LocalModuleConfig) => config,
+			writeConfig: async () => undefined,
+		};
+		mocked.__setWorkspaceFolders([{ name: 'repo', uri: vscode.Uri.file('d:/repo') }]);
+		mocked.__setFindFilesResult([vscode.Uri.file('d:/repo/csm/csm-modules.yaml')]);
+		mocked.__setQuickPickResponse({ method: 'copy' });
+		mocked.__setWarningMessageResponse('Apply');
+
+		await controller.applyToWorkspaceCommand(entry);
+
+		const errors = mocked.__getMessageLog().filter((message) => message.level === 'error').map((message) => message.text);
+		assert.ok(errors.some((text) => text.includes('Check your GitHub session and repository permissions.')));
 	});
 
 	test('missing config recovers yaml config from existing csm submodules', async () => {

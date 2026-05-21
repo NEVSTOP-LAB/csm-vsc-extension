@@ -175,6 +175,7 @@ suite('Module Manager Tests', () => {
 			onRefresh: () => undefined,
 			onInitializeWorkspace: () => undefined,
 			onOpenReadme: () => undefined,
+			onPreviewReadme: async () => '<p>Preview</p>',
 			onApplySelection: () => undefined,
 			onRemoveModule: () => undefined,
 			onUpdateModule: () => undefined,
@@ -226,6 +227,7 @@ suite('Module Manager Tests', () => {
 		assert.ok(rendered?.html.includes('data-role="filter-button"'));
 		assert.ok(rendered?.html.includes('data-role="filter-menu"'));
 		assert.ok(rendered?.html.includes('Filter and sort modules. Current: Name, Ascending.'));
+		assert.ok(rendered?.html.includes('data-action="togglePreview"'));
 		assert.ok(rendered?.html.includes('type="text"'));
 		assert.ok(rendered?.html.includes('data-module-applied="true"'));
 		assert.ok(rendered?.html.includes('data-vscode-context="'));
@@ -275,6 +277,7 @@ suite('Module Manager Tests', () => {
 			onOpenReadme: (entry) => {
 				openedReadmeName = entry.name;
 			},
+			onPreviewReadme: async () => '<p>Preview</p>',
 			onApplySelection: (entry) => {
 				appliedModuleName = entry?.name ?? 'selected';
 			},
@@ -358,6 +361,59 @@ suite('Module Manager Tests', () => {
 		disposable.dispose();
 	});
 
+	test('ModuleSidebarViewProvider toggles inline README preview from module clicks', async () => {
+		let previewRequests = 0;
+		const provider = new ModuleSidebarViewProvider({
+			onLogin: () => undefined,
+			onRefresh: () => undefined,
+			onInitializeWorkspace: () => undefined,
+			onOpenReadme: () => undefined,
+			onPreviewReadme: async (entry) => {
+				previewRequests += 1;
+				return `<h1>${entry.name}</h1><p>Rendered README preview</p>`;
+			},
+			onApplySelection: () => undefined,
+			onRemoveModule: () => undefined,
+			onUpdateModule: () => undefined,
+			onSelectionChange: () => undefined,
+			onSortChange: () => undefined,
+		});
+
+		provider.setAuthenticated(true);
+		provider.setModules([
+			{
+				id: 1,
+				owner: 'org',
+				name: 'module-a',
+				description: 'A demo module',
+				topics: ['csm-modsets'],
+				visibility: 'public',
+				defaultBranch: 'main',
+				repoUrl: 'https://github.com/org/module-a',
+			},
+		]);
+
+		const disposable = vscode.window.registerWebviewViewProvider('csmModules.view', provider);
+		const resolved = mocked.__resolveWebviewView('csmModules.view');
+
+		resolved?.fireMessage({ type: 'togglePreview', moduleKey: 'org/module-a' });
+		await Promise.resolve();
+		await Promise.resolve();
+
+		const previewRender = mocked.__getLastWebviewView();
+		assert.strictEqual(previewRequests, 1);
+		assert.ok(previewRender?.html.includes('data-role="readme-preview"'));
+		assert.ok(previewRender?.html.includes('Rendered README preview'));
+
+		resolved?.fireMessage({ type: 'togglePreview', moduleKey: 'org/module-a' });
+		await Promise.resolve();
+
+		const collapsedRender = mocked.__getLastWebviewView();
+		assert.strictEqual(previewRequests, 1);
+		assert.ok(!collapsedRender?.html.includes('data-role="readme-preview"'));
+		disposable.dispose();
+	});
+
 	test('ModuleSidebarViewProvider renders and forwards sort control changes', () => {
 		const sortUpdates: Array<Record<string, string>> = [];
 		const provider = new ModuleSidebarViewProvider({
@@ -365,6 +421,7 @@ suite('Module Manager Tests', () => {
 			onRefresh: () => undefined,
 			onInitializeWorkspace: () => undefined,
 			onOpenReadme: () => undefined,
+			onPreviewReadme: async () => '<p>Preview</p>',
 			onApplySelection: () => undefined,
 			onRemoveModule: () => undefined,
 			onUpdateModule: () => undefined,
