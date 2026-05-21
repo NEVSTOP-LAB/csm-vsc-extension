@@ -52,12 +52,10 @@ function getToolbarMetaText(totalCount: number, filteredCount: number, selectedC
 	return `${visibilityText} | ${selectedCount} selected`;
 }
 
-type IconName = 'apply' | 'close' | 'readme' | 'refresh' | 'search';
+type IconName = 'close' | 'readme' | 'refresh' | 'search';
 
 function renderIcon(name: IconName): string {
 	switch (name) {
-		case 'apply':
-			return '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2.5v7"></path><path d="M5.5 7.5L8 10l2.5-2.5"></path><path d="M3 12.5h10"></path></svg>';
 		case 'close':
 			return '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" aria-hidden="true"><path d="M4 4l8 8"></path><path d="M12 4l-8 8"></path></svg>';
 		case 'readme':
@@ -551,6 +549,14 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IM
 			width: 24px;
 			height: 24px;
 			border-radius: 4px;
+			opacity: 0;
+			pointer-events: none;
+			transition: opacity 120ms ease;
+		}
+		.module-card:hover .select-toolbar-item,
+		.module-card.selected .select-toolbar-item {
+			opacity: 1;
+			pointer-events: auto;
 		}
 		.select-toolbar-item:hover {
 			background: var(--vscode-toolbar-hoverBackground, var(--vscode-list-hoverBackground));
@@ -885,7 +891,6 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IM
 						<input class="module-select" type="checkbox" data-role="select-toggle" data-action="toggleSelection" data-module-key="${escapeHtml(moduleKey)}" ${selected ? 'checked' : ''} aria-label="Select ${escapeHtml(entry.name)}">
 					</label>
 					<div class="action-toolbar">
-						<button class="icon-button" data-action="applyOne" data-module-key="${escapeHtml(moduleKey)}" title="Apply to Workspace" aria-label="Apply to Workspace" ${applied ? 'disabled' : ''}>${renderIcon('apply')}</button>
 						<button class="icon-button" data-action="openReadme" data-module-key="${escapeHtml(moduleKey)}" title="Open README" aria-label="Open README">${renderIcon('readme')}</button>
 					</div>
 				</div>
