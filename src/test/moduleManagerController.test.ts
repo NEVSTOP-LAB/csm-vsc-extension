@@ -412,6 +412,84 @@ suite('ModuleManagerController Regression Tests', () => {
 		assert.strictEqual(fetched, false);
 	});
 
+	test('register restores persisted applied sort state for cached modules', async () => {
+		const memento = new FakeMemento();
+		await memento.update('csmModules.cache.modules', createCachedSnapshot([
+			{
+				id: 1,
+				owner: 'org',
+				name: 'module-a',
+				description: 'cached',
+				topics: ['csm-modsets'],
+				visibility: 'public',
+				defaultBranch: 'main',
+				repoUrl: 'https://github.com/org/module-a',
+			},
+			{
+				id: 2,
+				owner: 'org',
+				name: 'module-b',
+				description: 'cached',
+				topics: ['csm-modsets'],
+				visibility: 'public',
+				defaultBranch: 'main',
+				repoUrl: 'https://github.com/org/module-b',
+			},
+		]));
+		await memento.update('csmModules.sort.state', { field: 'applied', direction: 'desc' });
+		const controller = createController(memento) as any;
+		let visibleModuleKeys: string[] = [];
+		let renderedSortState: Record<string, string> | undefined;
+
+		controller.authService = {
+			getSessionSilently: async () => undefined,
+			getSessionInteractively: async () => undefined,
+		};
+		controller.workspaceModuleService = {
+			resolveGitRepositoryRoot: async () => 'd:/repo',
+			loadConfig: async () => ({
+				version: '2',
+				root: 'csm',
+				configPath: 'd:/repo/csm/csm-modules.yaml',
+				modules: {
+					org__module_b: {
+						key: 'org__module_b',
+						name: 'module-b',
+						owner: 'org',
+						source: 'https://github.com/org/module-b',
+						method: 'copy',
+						path: 'csm/module-b',
+						ref: 'abc123',
+						branch: 'main',
+					},
+				},
+			}),
+		};
+		controller.treeDataProvider = {
+			setAuthenticated: () => undefined,
+			setError: () => undefined,
+			setLoading: () => undefined,
+			setModules: (modules: CsmModuleEntry[]) => {
+				visibleModuleKeys = modules.map((module) => `${module.owner}/${module.name}`);
+			},
+			setSortOrder: (sortState: Record<string, string>) => {
+				renderedSortState = sortState;
+			},
+			setWorkspaceContext: () => undefined,
+		};
+		mocked.__setWorkspaceFolders([{ name: 'repo', uri: vscode.Uri.file('d:/repo') }]);
+		mocked.__setFindFilesResultForPattern(configSearchPattern, [vscode.Uri.file('d:/repo/csm/csm-modules.yaml')]);
+		mocked.__setFindFilesResultForPattern(lvprojSearchPattern, []);
+		mocked.__setConfigurationValue('csmModules.cache.ttlMinutes', 60);
+
+		controller.register([]);
+		await Promise.resolve();
+		await Promise.resolve();
+
+		assert.deepStrictEqual(renderedSortState, { field: 'applied', direction: 'desc' });
+		assert.deepStrictEqual(visibleModuleKeys, ['org/module-b', 'org/module-a']);
+	});
+
 	test('expired cache refreshes in background without replacing visible modules with loading state', async () => {
 		const memento = new FakeMemento();
 		await memento.update('csmModules.cache.modules', createCachedSnapshot([
@@ -456,6 +534,55 @@ suite('ModuleManagerController Regression Tests', () => {
 
 		assert.strictEqual(fetched, true);
 		assert.strictEqual(loadingCalls, 0);
+	});
+
+	test('setSortOrderCommand persists updated field and keeps direction', async () => {
+		const memento = new FakeMemento();
+		await memento.update('csmModules.sort.state', { field: 'updatedAt', direction: 'desc' });
+		const controller = createController(memento) as any;
+		let visibleModuleKeys: string[] = [];
+		let renderedSortState: Record<string, string> | undefined;
+
+		controller.availableModules = [
+			{
+				id: 1,
+				owner: 'alpha',
+				name: 'module-a',
+				description: 'demo',
+				topics: ['csm-modsets'],
+				visibility: 'public',
+				defaultBranch: 'main',
+				repoUrl: 'https://github.com/alpha/module-a',
+			},
+			{
+				id: 2,
+				owner: 'zeta',
+				name: 'module-b',
+				description: 'demo',
+				topics: ['csm-modsets'],
+				visibility: 'public',
+				defaultBranch: 'main',
+				repoUrl: 'https://github.com/zeta/module-b',
+			},
+		];
+		controller.treeDataProvider = {
+			setAuthenticated: () => undefined,
+			setError: () => undefined,
+			setLoading: () => undefined,
+			setModules: (modules: CsmModuleEntry[]) => {
+				visibleModuleKeys = modules.map((module) => `${module.owner}/${module.name}`);
+			},
+			setSortOrder: (sortState: Record<string, string>) => {
+				renderedSortState = sortState;
+			},
+		};
+
+		controller.setSortOrderCommand('owner');
+		await Promise.resolve();
+
+		assert.deepStrictEqual(renderedSortState, { field: 'owner', direction: 'desc' });
+		assert.deepStrictEqual(visibleModuleKeys, ['zeta/module-b', 'alpha/module-a']);
+		assert.deepStrictEqual(memento.get('csmModules.sort.state'), { field: 'owner', direction: 'desc' });
 	});
 
 	test('register marks modules already applied in the current workspace', async () => {
