@@ -15,6 +15,8 @@ import { Logger, getLogger, wrapCommand } from './logger';
 
 const LOCAL_MODULE_CONFIG_GLOB = `**/{${LOCAL_MODULE_CONFIG_FILE},${LEGACY_LOCAL_MODULE_CONFIG_FILE}}`;
 const WORKSPACE_INIT_CONTEXT_KEY = CONTEXT_KEYS.canInitializeWorkspace;
+const SIGNED_IN_CONTEXT_KEY = CONTEXT_KEYS.signedIn;
+const HAS_SELECTION_CONTEXT_KEY = CONTEXT_KEYS.hasSelection;
 const LVPROJ_GLOB = '**/*.lvproj';
 const WORKSPACE_INIT_PROMPT = 'Detected csm/ and .lvproj files but no local CSM module config. Initialize CSM module management for this repository?';
 
@@ -22,6 +24,14 @@ interface PendingWorkspaceInitialization {
 	workspaceFolder: vscode.WorkspaceFolder;
 	repoRoot: string;
 }
+
+type WebviewModuleContext = {
+	moduleKey?: string;
+	moduleApplied?: boolean;
+	moduleSelected?: boolean;
+	webviewSection?: string;
+	preventDefaultContextMenuItems?: boolean;
+};
 
 /**
  * Optional dependencies for {@link ModuleManagerController}.
@@ -58,6 +68,12 @@ export class ModuleManagerController {
 		},
 		onApplySelection: (entry) => {
 			void this.applyToWorkspaceCommand(entry);
+		},
+		onRemoveModule: (entry) => {
+			void this.removeModuleCommand(entry);
+		},
+		onUpdateModule: (entry) => {
+			void this.updateModuleCommand(entry);
 		},
 		onSelectionChange: (moduleKeys) => {
 			this.setSelectedModuleKeys(moduleKeys);
@@ -103,6 +119,12 @@ export class ModuleManagerController {
 			vscode.commands.registerCommand(COMMAND_IDS.applyToWorkspace, wrapCommand(COMMAND_IDS.applyToWorkspace, (entry?: CsmModuleEntry | ModuleTreeItem) => this.applyToWorkspaceCommand(entry), this.logger)),
 			vscode.commands.registerCommand(COMMAND_IDS.removeModule, wrapCommand(COMMAND_IDS.removeModule, (entry?: CsmModuleEntry | ModuleTreeItem) => this.removeModuleCommand(entry), this.logger)),
 			vscode.commands.registerCommand(COMMAND_IDS.updateModule, wrapCommand(COMMAND_IDS.updateModule, (entry?: CsmModuleEntry | ModuleTreeItem) => this.updateModuleCommand(entry), this.logger)),
+			vscode.commands.registerCommand(COMMAND_IDS.contextApplyModule, wrapCommand(COMMAND_IDS.contextApplyModule, (context?: WebviewModuleContext) => this.contextApplyModuleCommand(context), this.logger)),
+			vscode.commands.registerCommand(COMMAND_IDS.contextOpenReadme, wrapCommand(COMMAND_IDS.contextOpenReadme, (context?: WebviewModuleContext) => this.contextOpenReadmeCommand(context), this.logger)),
+			vscode.commands.registerCommand(COMMAND_IDS.contextRemoveModule, wrapCommand(COMMAND_IDS.contextRemoveModule, (context?: WebviewModuleContext) => this.contextRemoveModuleCommand(context), this.logger)),
+			vscode.commands.registerCommand(COMMAND_IDS.contextUpdateModule, wrapCommand(COMMAND_IDS.contextUpdateModule, (context?: WebviewModuleContext) => this.contextUpdateModuleCommand(context), this.logger)),
+			vscode.commands.registerCommand(COMMAND_IDS.contextSelectModule, wrapCommand(COMMAND_IDS.contextSelectModule, (context?: WebviewModuleContext) => this.contextSelectModuleCommand(context), this.logger)),
+			vscode.commands.registerCommand(COMMAND_IDS.contextClearModuleSelection, wrapCommand(COMMAND_IDS.contextClearModuleSelection, (context?: WebviewModuleContext) => this.contextClearModuleSelectionCommand(context), this.logger)),
 			vscode.commands.registerCommand(COMMAND_IDS.setSortOrder, wrapCommand(COMMAND_IDS.setSortOrder, (field?: ModuleSortField) => this.setSortOrderCommand(field), this.logger)),
 		);
 
@@ -114,6 +136,8 @@ export class ModuleManagerController {
 		} else {
 			this.treeDataProvider.setLoading('Sign in to GitHub to load modules.');
 		}
+		void this.setAuthenticationState(false);
+		void this.setApplySelectionContext(false);
 
 		if (!hasCachedModules || this.cacheStore.isModuleSnapshotExpired(cached, this.getCacheTtlMinutes())) {
 			void this.loadModules({
@@ -128,8 +152,11 @@ export class ModuleManagerController {
 		void this.refreshSidebarWorkspaceState();
 	}
 
-	public async applyToWorkspaceCommand(entry?: CsmModuleEntry | ModuleTreeItem): Promise<void> {
-		const selectedEntries = this.getSelectedModules(this.resolveModuleEntry(entry));
+	public async applyToWorkspaceCommand(entry?: CsmModuleEntry | ModuleTreeItem, useOnlyEntry = false): Promise<void> {
+		const resolvedEntry = this.resolveModuleEntry(entry);
+		const selectedEntries = useOnlyEntry
+			? (resolvedEntry ? [resolvedEntry] : [])
+			: this.getSelectedModules(resolvedEntry);
 		if (selectedEntries.length === 0) {
 			void vscode.window.showWarningMessage('Select at least one module to apply to the current repository.');
 			return;
@@ -185,7 +212,6 @@ export class ModuleManagerController {
 			`Apply ${selectedEntries.length} module(s) to ${path.basename(repoRoot)} using ${applyMethod} under ${config.root}/?`,
 			{ modal: true },
 			'Apply',
-			'Cancel',
 		);
 		if (confirmation !== 'Apply') {
 			return;
@@ -307,7 +333,6 @@ export class ModuleManagerController {
 			`Remove module ${target.owner}/${target.name} from ${path.basename(repoRoot)}? This deletes ${target.path}.`,
 			{ modal: true },
 			'Remove',
-			'Cancel',
 		);
 		if (confirmation !== 'Remove') {
 			return;
@@ -484,7 +509,7 @@ export class ModuleManagerController {
 		}
 		this.currentToken = session.accessToken;
 		this.lastTokenVerifiedAt = Date.now();
-		this.treeDataProvider.setAuthenticated(true);
+		await this.setAuthenticationState(true);
 		void vscode.window.showInformationMessage(`Signed in as ${session.account.label}`);
 		// Best-effort scope verification, logged when missing scopes are detected (7.5).
 		if (typeof this.authService.verifyScopes === 'function') {
@@ -503,11 +528,12 @@ export class ModuleManagerController {
 		if (silentSession) {
 			this.currentToken = silentSession.accessToken;
 			this.lastTokenVerifiedAt = Date.now();
-			this.treeDataProvider.setAuthenticated(true);
+			await this.setAuthenticationState(true);
 			return this.currentToken;
 		}
 		this.currentToken = undefined;
 		this.lastTokenVerifiedAt = 0;
+		await this.setAuthenticationState(false);
 		if (!interactive) {
 			return undefined;
 		}
@@ -517,6 +543,7 @@ export class ModuleManagerController {
 		}
 		this.currentToken = session.accessToken;
 		this.lastTokenVerifiedAt = Date.now();
+		await this.setAuthenticationState(true);
 		return this.currentToken;
 	}
 
@@ -530,7 +557,6 @@ export class ModuleManagerController {
 			'Refresh CSM modules from GitHub?',
 			{ modal: true },
 			'Refresh',
-			'Cancel',
 		);
 		if (choice !== 'Refresh') {
 			return;
@@ -562,7 +588,6 @@ export class ModuleManagerController {
 		if (typeof this.treeDataProvider.setOfflineMode === 'function') {
 			this.treeDataProvider.setOfflineMode(false);
 		}
-		this.treeDataProvider.setAuthenticated(true);
 
 		if (!options.preserveVisibleModules) {
 			this.treeDataProvider.setLoading('Refreshing modules from GitHub...');
@@ -572,6 +597,8 @@ export class ModuleManagerController {
 			const fetchResult = await this.githubService.fetchModules(token, { etag: previousEtag });
 			if (fetchResult.notModified) {
 				this.logger.info('Module list unchanged since last fetch (304 Not Modified).');
+				this.treeDataProvider.setModules(this.availableModules);
+				await this.refreshSidebarWorkspaceState();
 				// Touch lastRefreshAt so TTL window resets even when we got 304.
 				if (this.availableModules.length > 0) {
 					await this.cacheStore.setModuleSnapshot(this.availableModules);
@@ -688,8 +715,68 @@ export class ModuleManagerController {
 		panel.webview.html = await this.readmeAssetCache.renderMarkdown(resolvedEntry, markdownContent, panel.webview);
 	}
 
+	public async contextApplyModuleCommand(context?: WebviewModuleContext): Promise<void> {
+		const entry = this.resolveContextModuleEntry(context);
+		if (!entry) {
+			return;
+		}
+		await this.applyToWorkspaceCommand(entry, true);
+	}
+
+	public async contextOpenReadmeCommand(context?: WebviewModuleContext): Promise<void> {
+		const entry = this.resolveContextModuleEntry(context);
+		if (!entry) {
+			return;
+		}
+		await this.openReadmeCommand(entry);
+	}
+
+	public async contextRemoveModuleCommand(context?: WebviewModuleContext): Promise<void> {
+		const entry = this.resolveContextModuleEntry(context);
+		if (!entry) {
+			return;
+		}
+		await this.removeModuleCommand(entry);
+	}
+
+	public async contextUpdateModuleCommand(context?: WebviewModuleContext): Promise<void> {
+		const entry = this.resolveContextModuleEntry(context);
+		if (!entry) {
+			return;
+		}
+		await this.updateModuleCommand(entry);
+	}
+
+	public contextSelectModuleCommand(context?: WebviewModuleContext): void {
+		this.setContextModuleSelection(context, true);
+	}
+
+	public contextClearModuleSelectionCommand(context?: WebviewModuleContext): void {
+		this.setContextModuleSelection(context, false);
+	}
+
 	private getReadmeCacheKey(entry: CsmModuleEntry): string {
 		return `${entry.owner}/${entry.name}`;
+	}
+
+	private resolveContextModuleEntry(context?: WebviewModuleContext): CsmModuleEntry | undefined {
+		if (!context?.moduleKey) {
+			return undefined;
+		}
+		return this.findAvailableModuleByKey(context.moduleKey);
+	}
+
+	private setContextModuleSelection(context: WebviewModuleContext | undefined, selected: boolean): void {
+		if (!context?.moduleKey) {
+			return;
+		}
+		const nextSelection = new Set(this.selectedModuleKeys);
+		if (selected) {
+			nextSelection.add(context.moduleKey);
+		} else {
+			nextSelection.delete(context.moduleKey);
+		}
+		this.setSelectedModuleKeys([...nextSelection]);
 	}
 
 	private getSelectedModules(entry?: CsmModuleEntry): CsmModuleEntry[] {
@@ -712,6 +799,16 @@ export class ModuleManagerController {
 		if (typeof this.treeDataProvider.setSelection === 'function') {
 			this.treeDataProvider.setSelection([...this.selectedModuleKeys]);
 		}
+		void this.setApplySelectionContext(this.selectedModuleKeys.size > 0);
+	}
+
+	private async setAuthenticationState(signedIn: boolean): Promise<void> {
+		this.treeDataProvider.setAuthenticated(signedIn);
+		await vscode.commands.executeCommand('setContext', SIGNED_IN_CONTEXT_KEY, signedIn);
+	}
+
+	private async setApplySelectionContext(hasSelection: boolean): Promise<void> {
+		await vscode.commands.executeCommand('setContext', HAS_SELECTION_CONTEXT_KEY, hasSelection);
 	}
 
 	private resolveModuleEntry(entry?: CsmModuleEntry | ModuleTreeItem): CsmModuleEntry | undefined {
@@ -733,6 +830,10 @@ export class ModuleManagerController {
 
 	private sameModule(left: CsmModuleEntry, right: CsmModuleEntry): boolean {
 		return left.owner === right.owner && left.name === right.name;
+	}
+
+	private findAvailableModuleByKey(moduleKey: string): CsmModuleEntry | undefined {
+		return this.availableModules.find((entry) => this.getModuleKey(entry) === moduleKey);
 	}
 
 	private getModuleKey(entry: CsmModuleEntry): string {

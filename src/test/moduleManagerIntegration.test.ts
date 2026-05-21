@@ -11,6 +11,8 @@
  * the host process, so we must not stub it out.
  */
 import * as assert from 'assert';
+import * as fs from 'fs';
+import * as path from 'path';
 import { suite, test } from 'mocha';
 
 // Lazy-require so this file is a no-op when executed without a real VS Code host
@@ -36,6 +38,13 @@ suite('Module Manager Integration Tests', () => {
 			this.skip();
 			return;
 		}
+		const pkgPath = path.resolve(__dirname, '../../package.json');
+		const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8')) as { publisher?: string; name?: string };
+		const extensionId = `${String(pkg.publisher ?? '').toLowerCase()}.${String(pkg.name ?? '').toLowerCase()}`;
+		const extension = vscode.extensions.getExtension(extensionId);
+		assert.ok(extension, `expected development extension "${extensionId}" to be discoverable`);
+		await extension?.activate();
+
 		const allCommands = await vscode.commands.getCommands(true);
 		const expected = [
 			'csmModules.login',
@@ -45,6 +54,12 @@ suite('Module Manager Integration Tests', () => {
 			'csmModules.applyToWorkspace',
 			'csmModules.removeModule',
 			'csmModules.updateModule',
+			'csmModules.contextApplyModule',
+			'csmModules.contextOpenReadme',
+			'csmModules.contextRemoveModule',
+			'csmModules.contextUpdateModule',
+			'csmModules.contextSelectModule',
+			'csmModules.contextClearModuleSelection',
 			'csmModules.setSortOrder',
 		];
 		for (const command of expected) {

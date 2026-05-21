@@ -20,6 +20,7 @@ type VscodeMock = typeof vscode & {
 	__setWorkspaceFolders: (folders: Array<{ name: string; uri: vscode.Uri }> | undefined) => void;
 	__setConfigurationValue: (key: string, value: unknown) => void;
 	__getContextValue: (key: string) => unknown;
+	__getLastWarningPrompt: () => { message: string; items: unknown[] } | undefined;
 	__getLastWebviewPanel: () => { title: string; html: string } | undefined;
 	__resolveWebviewView: (viewId: string) => { html: string; fireMessage: (message: unknown) => void } | undefined;
 	__getLastWebviewView: () => { viewId: string; html: string } | undefined;
@@ -221,6 +222,118 @@ suite('ModuleManagerController Regression Tests', () => {
 		await controller.loginCommand();
 
 		assert.strictEqual(moduleCount, 1);
+		assert.strictEqual(mocked.__getContextValue('csmModules.signedIn'), true);
+	});
+
+	test('login clears loading banner when GitHub reports modules unchanged', async () => {
+		const controller = createController() as any;
+		let loadingCalls = 0;
+		let renderedModuleCount = -1;
+		controller.availableModules = [
+			{
+				id: 1,
+				owner: 'org',
+				name: 'cached-module',
+				description: 'cached',
+				topics: ['csm-modsets'],
+				visibility: 'public',
+				defaultBranch: 'main',
+				repoUrl: 'https://github.com/org/cached-module',
+			},
+		];
+
+		controller.authService = {
+			getSessionSilently: async () => undefined,
+			getSessionInteractively: async () => ({
+				accessToken: 'token',
+				account: { label: 'tester' },
+			}),
+		};
+		controller.githubService = {
+			fetchModules: async () => ({ modules: [], notModified: true }),
+			fetchReadme: async () => '# demo',
+		};
+		controller.treeDataProvider = {
+			setAuthenticated: () => undefined,
+			setError: () => undefined,
+			setLoading: () => {
+				loadingCalls += 1;
+			},
+			setModules: (modules: CsmModuleEntry[]) => {
+				renderedModuleCount = modules.length;
+			},
+		};
+
+		await controller.loginCommand();
+
+		assert.strictEqual(loadingCalls, 1);
+		assert.strictEqual(renderedModuleCount, 1);
+	});
+
+	test('selection state toggles apply toolbar context', () => {
+		const controller = createController() as any;
+		controller.availableModules = [
+			{
+				id: 1,
+				owner: 'org',
+				name: 'module-a',
+				description: 'demo',
+				topics: ['csm-modsets'],
+				visibility: 'public',
+				defaultBranch: 'main',
+				repoUrl: 'https://github.com/org/module-a',
+			},
+		];
+		controller.treeDataProvider = {
+			setAuthenticated: () => undefined,
+			setError: () => undefined,
+			setLoading: () => undefined,
+			setModules: () => undefined,
+			setSelection: () => undefined,
+		};
+
+		controller.setSelectedModuleKeys(['org/module-a']);
+		assert.strictEqual(mocked.__getContextValue('csmModules.hasSelection'), true);
+
+		controller.setSelectedModuleKeys([]);
+		assert.strictEqual(mocked.__getContextValue('csmModules.hasSelection'), false);
+	});
+
+	test('missing session clears signed-in toolbar context', async () => {
+		const controller = createController() as any;
+
+		controller.authService = {
+			getSessionSilently: async () => undefined,
+			getSessionInteractively: async () => ({
+				accessToken: 'token',
+				account: { label: 'tester' },
+			}),
+		};
+		controller.githubService = {
+			fetchModules: async () => ({ modules: [] }),
+			fetchReadme: async () => '# demo',
+		};
+		controller.treeDataProvider = {
+			setAuthenticated: () => undefined,
+			setError: () => undefined,
+			setLoading: () => undefined,
+			setModules: () => undefined,
+		};
+
+		await controller.loginCommand();
+		assert.strictEqual(mocked.__getContextValue('csmModules.signedIn'), true);
+
+		controller.currentToken = 'expired-token';
+		controller.lastTokenVerifiedAt = 0;
+		controller.authService = {
+			getSessionSilently: async () => undefined,
+			getSessionInteractively: async () => undefined,
+		};
+		mocked.__setWarningMessageResponse('Refresh');
+
+		await controller.refreshCommand();
+
+		assert.strictEqual(mocked.__getContextValue('csmModules.signedIn'), false);
 	});
 
 	test('refresh cancellation does not fetch modules', async () => {
@@ -339,9 +452,7 @@ suite('ModuleManagerController Regression Tests', () => {
 		mocked.__setConfigurationValue('csmModules.cache.ttlMinutes', 1);
 
 		controller.register([]);
-		await Promise.resolve();
-		await Promise.resolve();
-		await Promise.resolve();
+		await new Promise<void>((resolve) => setImmediate(resolve));
 
 		assert.strictEqual(fetched, true);
 		assert.strictEqual(loadingCalls, 0);
@@ -407,7 +518,8 @@ suite('ModuleManagerController Regression Tests', () => {
 		await controller.refreshSidebarWorkspaceState();
 
 		const rendered = mocked.__getLastWebviewView();
-		assert.ok(rendered?.html.includes('Workspace: repo'));
+		assert.ok(!rendered?.html.includes('Workspace: repo'));
+		assert.ok(rendered?.html.includes('Root: csm/'));
 		assert.ok(rendered?.html.includes('1 applied'));
 		assert.ok(rendered?.html.includes('Already recorded for repo under csm/'));
 		assert.ok(rendered?.html.includes('module-a'));
@@ -545,6 +657,10 @@ suite('ModuleManagerController Regression Tests', () => {
 		assert.ok(writtenConfig);
 		assert.strictEqual(writtenConfig?.modules.org__module_a?.method, 'copy');
 		assert.strictEqual(writtenConfig?.modules.org__module_a?.path, 'csm/module-a');
+		const applyPrompt = mocked.__getLastWarningPrompt();
+		const applyActions = applyPrompt?.items.filter((item): item is string => typeof item === 'string') ?? [];
+		assert.ok(applyActions.includes('Apply'));
+		assert.ok(!applyActions.includes('Cancel'));
 		const infos = mocked.__getMessageLog().filter((message) => message.level === 'info').map((message) => message.text);
 		assert.ok(infos.some((text) => text.includes('Initialized local CSM module config')));
 		assert.ok(infos.some((text) => text.includes('Applied 1 module(s) via copy')));
@@ -664,5 +780,62 @@ suite('ModuleManagerController Regression Tests', () => {
 		assert.strictEqual(initializeCalled, false);
 		const infos = mocked.__getMessageLog().filter((message) => message.level === 'info').map((message) => message.text);
 		assert.ok(infos.some((text) => text.includes('Recovered local CSM module config from existing submodules')));
+	});
+
+	test('webview context commands target the clicked module and update selection', async () => {
+		const controller = createController() as any;
+		const entry: CsmModuleEntry = {
+			id: 1,
+			owner: 'org',
+			name: 'module-a',
+			description: 'demo',
+			topics: ['csm-modsets'],
+			visibility: 'public',
+			defaultBranch: 'main',
+			repoUrl: 'https://github.com/org/module-a',
+		};
+		const selectionUpdates: string[][] = [];
+		let appliedEntry: CsmModuleEntry | undefined;
+		let applyUsedSingleEntry = false;
+		let openedReadmeName = '';
+		let removedModuleName = '';
+		let updatedModuleName = '';
+
+		controller.availableModules = [entry];
+		controller.treeDataProvider = {
+			setSelection: (moduleKeys: string[]) => {
+				selectionUpdates.push(moduleKeys);
+			},
+			setAuthenticated: () => undefined,
+			setLoading: () => undefined,
+			setModules: () => undefined,
+		};
+		controller.applyToWorkspaceCommand = async (target?: CsmModuleEntry, useOnlyEntry = false) => {
+			appliedEntry = target;
+			applyUsedSingleEntry = useOnlyEntry;
+		};
+		controller.openReadmeCommand = async (target?: CsmModuleEntry) => {
+			openedReadmeName = target?.name ?? '';
+		};
+		controller.removeModuleCommand = async (target?: CsmModuleEntry) => {
+			removedModuleName = target?.name ?? '';
+		};
+		controller.updateModuleCommand = async (target?: CsmModuleEntry) => {
+			updatedModuleName = target?.name ?? '';
+		};
+
+		await controller.contextApplyModuleCommand({ moduleKey: 'org/module-a', webviewSection: 'moduleCard' });
+		await controller.contextOpenReadmeCommand({ moduleKey: 'org/module-a', webviewSection: 'moduleCard' });
+		await controller.contextRemoveModuleCommand({ moduleKey: 'org/module-a', webviewSection: 'moduleCard' });
+		await controller.contextUpdateModuleCommand({ moduleKey: 'org/module-a', webviewSection: 'moduleCard' });
+		controller.contextSelectModuleCommand({ moduleKey: 'org/module-a', webviewSection: 'moduleCard' });
+		controller.contextClearModuleSelectionCommand({ moduleKey: 'org/module-a', webviewSection: 'moduleCard' });
+
+		assert.strictEqual(appliedEntry?.name, 'module-a');
+		assert.strictEqual(applyUsedSingleEntry, true);
+		assert.strictEqual(openedReadmeName, 'module-a');
+		assert.strictEqual(removedModuleName, 'module-a');
+		assert.strictEqual(updatedModuleName, 'module-a');
+		assert.deepStrictEqual(selectionUpdates, [['org/module-a'], []]);
 	});
 });

@@ -176,6 +176,8 @@ suite('Module Manager Tests', () => {
 			onInitializeWorkspace: () => undefined,
 			onOpenReadme: () => undefined,
 			onApplySelection: () => undefined,
+			onRemoveModule: () => undefined,
+			onUpdateModule: () => undefined,
 			onSelectionChange: () => undefined,
 		});
 
@@ -220,11 +222,24 @@ suite('Module Manager Tests', () => {
 		assert.ok(rendered?.html.includes('automation'));
 		assert.ok(rendered?.html.includes('placeholder="Search modules"'));
 		assert.ok(rendered?.html.includes('data-role="search-box"'));
+		assert.ok(rendered?.html.includes('type="text"'));
+		assert.ok(rendered?.html.includes('data-module-applied="true"'));
+		assert.ok(rendered?.html.includes('data-vscode-context="'));
+		assert.ok(rendered?.html.includes('webviewSection&quot;:&quot;moduleCard&quot;'));
+		assert.ok(rendered?.html.includes('moduleKey&quot;:&quot;org&#47;module-a&quot;'));
+		assert.ok(rendered?.html.includes('moduleApplied&quot;:true'));
+		assert.ok(rendered?.html.includes('preventDefaultContextMenuItems&quot;:true'));
+		assert.ok(!rendered?.html.includes('data-action="applyOne"'));
+		assert.ok(rendered?.html.includes('.module-card:hover .select-toolbar-item,'));
+		assert.ok(rendered?.html.includes('.module-card.selected .select-toolbar-item {'));
+		assert.ok(rendered?.html.includes('opacity: 0;'));
+		assert.ok(rendered?.html.includes('pointer-events: none;'));
+		assert.ok(rendered?.html.includes('data-action="openReadme" data-module-key="org&#47;module-a" title="Open README" aria-label="Open README"'));
 		assert.ok(rendered ? rendered.html.indexOf('placeholder="Search modules"') < rendered.html.indexOf('data-role="apply-selected"') : false);
-		assert.ok(rendered?.html.includes('Workspace: repo'));
+		assert.ok(!rendered?.html.includes('Workspace: repo'));
+		assert.ok(rendered?.html.includes('Root: csm/'));
 		assert.ok(rendered?.html.includes('Applied'));
 		assert.ok(rendered?.html.includes('data-role="apply-selected" hidden'));
-		assert.ok(rendered?.html.includes('title="Apply module"'));
 		assert.ok(rendered?.html.includes('title="Open README"'));
 		assert.ok(!rendered?.html.includes('class="avatar"'));
 		assert.ok(!rendered?.html.includes('title="Refresh modules"'));
@@ -234,6 +249,7 @@ suite('Module Manager Tests', () => {
 		const selectedRender = mocked.__getLastWebviewView();
 		assert.ok(selectedRender?.html.includes('data-role="apply-selected"'));
 		assert.ok(!selectedRender?.html.includes('data-role="apply-selected" hidden'));
+		assert.ok(selectedRender?.html.includes('moduleSelected&quot;:true'));
 
 		resolved?.fireMessage({ type: 'dismissIntroTip' });
 		const dismissedRender = mocked.__getLastWebviewView();
@@ -245,6 +261,8 @@ suite('Module Manager Tests', () => {
 		const selectionUpdates: string[][] = [];
 		let appliedModuleName = '';
 		let openedReadmeName = '';
+		let removedModuleName = '';
+		let updatedModuleName = '';
 		const provider = new ModuleSidebarViewProvider({
 			onLogin: () => undefined,
 			onRefresh: () => undefined,
@@ -254,6 +272,12 @@ suite('Module Manager Tests', () => {
 			},
 			onApplySelection: (entry) => {
 				appliedModuleName = entry?.name ?? 'selected';
+			},
+			onRemoveModule: (entry) => {
+				removedModuleName = entry.name;
+			},
+			onUpdateModule: (entry) => {
+				updatedModuleName = entry.name;
 			},
 			onSelectionChange: (moduleKeys) => {
 				selectionUpdates.push(moduleKeys);
@@ -313,6 +337,8 @@ suite('Module Manager Tests', () => {
 		resolved?.fireMessage({ type: 'toggleSelection', moduleKey: 'org/module-a', selected: true });
 		resolved?.fireMessage({ type: 'openReadme', moduleKey: 'org/module-a' });
 		resolved?.fireMessage({ type: 'applyOne', moduleKey: 'org/module-a' });
+		resolved?.fireMessage({ type: 'removeModule', moduleKey: 'org/module-a' });
+		resolved?.fireMessage({ type: 'updateModule', moduleKey: 'org/module-a' });
 
 		const rerendered = mocked.__getLastWebviewView();
 		assert.ok(rerendered?.html.includes('value="module-a"'));
@@ -321,6 +347,8 @@ suite('Module Manager Tests', () => {
 		assert.deepStrictEqual(selectionUpdates[selectionUpdates.length - 1], ['org/module-a']);
 		assert.strictEqual(openedReadmeName, 'module-a');
 		assert.strictEqual(appliedModuleName, 'module-a');
+		assert.strictEqual(removedModuleName, 'module-a');
+		assert.strictEqual(updatedModuleName, 'module-a');
 		disposable.dispose();
 	});
 

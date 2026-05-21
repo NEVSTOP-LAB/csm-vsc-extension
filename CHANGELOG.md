@@ -15,10 +15,11 @@
 
 ### 变更
 
-- UI：`CSM Modules` 侧边栏样式收敛为更接近扩展列表的扁平卡片布局，移除左侧头像图标，并把 checkbox 与 `Apply` / `README` 归并到卡片右上角的紧凑操作组
+- UI：`CSM Modules` 侧边栏样式收敛为更接近扩展列表的扁平卡片布局，移除左侧头像图标；单卡 `Apply` 按钮已移除，`README` 保留在卡片右上角，checkbox 仅在 hover 或已选中时显示
 - UI：顶部搜索框固定在最上方，原有头部摘要内容下移到搜索框下方；Webview 内移除重复的刷新按钮，`Apply Selected` 仅在存在勾选模块时显示在顶部 toolbar
 - UI：模块卡片重新整理为“顶行标题/provider + 工具条、全宽摘要、底部全宽 tags”布局，减少左右分栏造成的压缩感
 - UI：侧边栏继续显示当前工作区摘要，已应用到当前仓库配置的模块会显示 `Applied` 状态徽标
+- UI：模块卡片右键菜单改为 VS Code 原生 `webview/context` 菜单，`Apply` / `Update` / `Remove` / `Open README` / 选择操作会按当前模块状态自动启用、禁用或切换
 - 交互：当仓库存在 `csm/` 目录与 `*.lvproj` 但尚未初始化本地模块管理时，打开侧边栏会主动弹出初始化提示，并显示专用标题栏初始化按钮
 - 缓存：启动时优先复用模块列表与 README 缓存，并按 `csmModules.cache.ttlMinutes` 在后台自动失效刷新；升级扩展后无需手动刷新缓存
 - 兼容：旧版 `csm-modules.lvcsm` 配置可继续读取，并在后续写回时迁移到 YAML
