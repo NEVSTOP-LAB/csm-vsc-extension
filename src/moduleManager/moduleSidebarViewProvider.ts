@@ -589,7 +589,7 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IM
 	<section class="header">
 		<div class="search-box" data-role="search-box">
 			${renderIcon('search')}
-			<input type="search" value="${escapeHtml(this.filterQuery)}" data-role="filter-input" placeholder="Search modules" aria-label="Search modules">
+			<input type="text" value="${escapeHtml(this.filterQuery)}" data-role="filter-input" placeholder="Search modules" aria-label="Search modules">
 			<button class="icon-button" data-action="clearFilter" data-role="clear-filter" title="Clear search" aria-label="Clear search" ${this.filterQuery ? '' : 'hidden'}>${renderIcon('close')}</button>
 		</div>
 		<div class="toolbar-row">
