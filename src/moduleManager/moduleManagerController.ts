@@ -580,6 +580,8 @@ export class ModuleManagerController {
 			const fetchResult = await this.githubService.fetchModules(token, { etag: previousEtag });
 			if (fetchResult.notModified) {
 				this.logger.info('Module list unchanged since last fetch (304 Not Modified).');
+				this.treeDataProvider.setModules(this.availableModules);
+				await this.refreshSidebarWorkspaceState();
 				// Touch lastRefreshAt so TTL window resets even when we got 304.
 				if (this.availableModules.length > 0) {
 					await this.cacheStore.setModuleSnapshot(this.availableModules);

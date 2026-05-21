@@ -225,6 +225,51 @@ suite('ModuleManagerController Regression Tests', () => {
 		assert.strictEqual(mocked.__getContextValue('csmModules.signedIn'), true);
 	});
 
+	test('login clears loading banner when GitHub reports modules unchanged', async () => {
+		const controller = createController() as any;
+		let loadingCalls = 0;
+		let renderedModuleCount = -1;
+		controller.availableModules = [
+			{
+				id: 1,
+				owner: 'org',
+				name: 'cached-module',
+				description: 'cached',
+				topics: ['csm-modsets'],
+				visibility: 'public',
+				defaultBranch: 'main',
+				repoUrl: 'https://github.com/org/cached-module',
+			},
+		];
+
+		controller.authService = {
+			getSessionSilently: async () => undefined,
+			getSessionInteractively: async () => ({
+				accessToken: 'token',
+				account: { label: 'tester' },
+			}),
+		};
+		controller.githubService = {
+			fetchModules: async () => ({ modules: [], notModified: true }),
+			fetchReadme: async () => '# demo',
+		};
+		controller.treeDataProvider = {
+			setAuthenticated: () => undefined,
+			setError: () => undefined,
+			setLoading: () => {
+				loadingCalls += 1;
+			},
+			setModules: (modules: CsmModuleEntry[]) => {
+				renderedModuleCount = modules.length;
+			},
+		};
+
+		await controller.loginCommand();
+
+		assert.strictEqual(loadingCalls, 1);
+		assert.strictEqual(renderedModuleCount, 1);
+	});
+
 	test('selection state toggles apply toolbar context', () => {
 		const controller = createController() as any;
 		controller.availableModules = [
