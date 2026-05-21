@@ -179,6 +179,7 @@ suite('Module Manager Tests', () => {
 			onRemoveModule: () => undefined,
 			onUpdateModule: () => undefined,
 			onSelectionChange: () => undefined,
+			onSortChange: () => undefined,
 		});
 
 		provider.setAuthenticated(true);
@@ -222,6 +223,9 @@ suite('Module Manager Tests', () => {
 		assert.ok(rendered?.html.includes('automation'));
 		assert.ok(rendered?.html.includes('placeholder="Search modules"'));
 		assert.ok(rendered?.html.includes('data-role="search-box"'));
+		assert.ok(rendered?.html.includes('data-role="filter-button"'));
+		assert.ok(rendered?.html.includes('data-role="filter-menu"'));
+		assert.ok(rendered?.html.includes('Filter and sort modules. Current: Name, Ascending.'));
 		assert.ok(rendered?.html.includes('type="text"'));
 		assert.ok(rendered?.html.includes('data-module-applied="true"'));
 		assert.ok(rendered?.html.includes('data-vscode-context="'));
@@ -238,6 +242,7 @@ suite('Module Manager Tests', () => {
 		assert.ok(rendered ? rendered.html.indexOf('placeholder="Search modules"') < rendered.html.indexOf('data-role="apply-selected"') : false);
 		assert.ok(!rendered?.html.includes('Workspace: repo'));
 		assert.ok(rendered?.html.includes('Root: csm/'));
+		assert.ok(rendered?.html.includes('1 applied | 2 available | 0 selected'));
 		assert.ok(rendered?.html.includes('Applied'));
 		assert.ok(rendered?.html.includes('data-role="apply-selected" hidden'));
 		assert.ok(rendered?.html.includes('title="Open README"'));
@@ -282,6 +287,7 @@ suite('Module Manager Tests', () => {
 			onSelectionChange: (moduleKeys) => {
 				selectionUpdates.push(moduleKeys);
 			},
+			onSortChange: () => undefined,
 		});
 
 		provider.setAuthenticated(true);
@@ -342,13 +348,66 @@ suite('Module Manager Tests', () => {
 
 		const rerendered = mocked.__getLastWebviewView();
 		assert.ok(rerendered?.html.includes('value="module-a"'));
-		assert.ok(rerendered?.html.includes('1 of 2 shown | 1 selected'));
+		assert.ok(rerendered?.html.includes('0 applied | 1 of 2 shown | 1 selected'));
 		assert.ok(rerendered?.html.includes('data-role="apply-selected"'));
 		assert.deepStrictEqual(selectionUpdates[selectionUpdates.length - 1], ['org/module-a']);
 		assert.strictEqual(openedReadmeName, 'module-a');
 		assert.strictEqual(appliedModuleName, 'module-a');
 		assert.strictEqual(removedModuleName, 'module-a');
 		assert.strictEqual(updatedModuleName, 'module-a');
+		disposable.dispose();
+	});
+
+	test('ModuleSidebarViewProvider renders and forwards sort control changes', () => {
+		const sortUpdates: Array<Record<string, string>> = [];
+		const provider = new ModuleSidebarViewProvider({
+			onLogin: () => undefined,
+			onRefresh: () => undefined,
+			onInitializeWorkspace: () => undefined,
+			onOpenReadme: () => undefined,
+			onApplySelection: () => undefined,
+			onRemoveModule: () => undefined,
+			onUpdateModule: () => undefined,
+			onSelectionChange: () => undefined,
+			onSortChange: (sortState) => {
+				sortUpdates.push(sortState as Record<string, string>);
+			},
+		});
+
+		provider.setAuthenticated(true);
+		provider.setSortOrder({ field: 'owner', direction: 'desc' });
+		provider.setModules([
+			{
+				id: 1,
+				owner: 'org',
+				name: 'module-a',
+				description: 'A demo module',
+				topics: ['csm-modsets'],
+				visibility: 'public',
+				defaultBranch: 'main',
+				repoUrl: 'https://github.com/org/module-a',
+			},
+		]);
+
+		const disposable = vscode.window.registerWebviewViewProvider('csmModules.view', provider);
+		const resolved = mocked.__resolveWebviewView('csmModules.view');
+		const rendered = mocked.__getLastWebviewView();
+
+		assert.ok(rendered?.html.includes('data-role="filter-button"'));
+		assert.ok(rendered?.html.includes('Filter and sort modules. Current: Owner, Descending.'));
+		assert.ok(rendered?.html.includes('filter-menu-label">Type</span>'));
+		assert.ok(rendered?.html.includes('filter-menu-label">Order</span>'));
+		assert.ok(rendered?.html.includes('data-sort-field="owner"'));
+		assert.ok(rendered?.html.includes('filter-menu-option selected" data-action="setSortField" data-sort-field="owner"'));
+		assert.ok(rendered?.html.includes('filter-menu-option selected" data-action="setSortDirection" data-sort-direction="desc"'));
+
+		resolved?.fireMessage({ type: 'setSortField', sortField: 'applied' });
+		resolved?.fireMessage({ type: 'setSortDirection', sortDirection: 'asc' });
+
+		assert.deepStrictEqual(sortUpdates, [
+			{ field: 'applied' },
+			{ direction: 'asc' },
+		]);
 		disposable.dispose();
 	});
 

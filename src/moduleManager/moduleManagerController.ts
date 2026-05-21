@@ -7,11 +7,12 @@ import { ModuleCacheStore } from './cacheStore';
 import { CsmModuleEntry, LocalModuleConfig, LocalModuleConfigEntry, ModuleApplyMethod } from './types';
 import { ModuleTreeItem } from './moduleTreeDataProvider';
 import { ModuleSidebarViewProvider } from './moduleSidebarViewProvider';
-import { IModuleViewProvider, ModuleSortField, SidebarWorkspaceContext } from './interfaces';
+import { IModuleViewProvider, ModuleSortField, ModuleSortState, SidebarWorkspaceContext } from './interfaces';
 import { ReadmeAssetCache } from './readmeAssetCache';
 import { DEFAULT_LOCAL_MODULE_ROOT, LEGACY_LOCAL_MODULE_CONFIG_FILE, LOCAL_MODULE_CONFIG_FILE, WorkspaceModuleService } from './workspaceModuleService';
 import { COMMAND_IDS, CONFIG_KEYS, CONFIG_SECTION, CONTEXT_KEYS, VIEW_IDS } from './constants';
 import { Logger, getLogger, wrapCommand } from './logger';
+import { DEFAULT_MODULE_SORT_STATE, isModuleSortField, normalizeModuleSortState, sortModules } from './sort';
 
 const LOCAL_MODULE_CONFIG_GLOB = `**/{${LOCAL_MODULE_CONFIG_FILE},${LEGACY_LOCAL_MODULE_CONFIG_FILE}}`;
 const WORKSPACE_INIT_CONTEXT_KEY = CONTEXT_KEYS.canInitializeWorkspace;
@@ -78,6 +79,9 @@ export class ModuleManagerController {
 		onSelectionChange: (moduleKeys) => {
 			this.setSelectedModuleKeys(moduleKeys);
 		},
+		onSortChange: (sortState) => {
+			this.updateSortState(sortState);
+		},
 	});
 	// IModuleViewProvider abstraction (review item 2.2). Tests can swap this out.
 	private treeDataProvider: IModuleViewProvider;
@@ -85,7 +89,8 @@ export class ModuleManagerController {
 	private readonly workspaceModuleService: WorkspaceModuleService;
 	private readonly readmeCache: Record<string, string>;
 	private availableModules: CsmModuleEntry[] = [];
-	private currentSortField: ModuleSortField = 'name';
+	private currentSortState: ModuleSortState = DEFAULT_MODULE_SORT_STATE;
+	private readonly appliedModuleKeys = new Set<string>();
 	private readonly selectedModuleKeys = new Set<string>();
 	private currentToken: string | undefined;
 	private lastTokenVerifiedAt = 0;
@@ -99,6 +104,7 @@ export class ModuleManagerController {
 		this.treeDataProvider = deps.viewProvider ?? this.sidebarViewProvider;
 		this.cacheStore = new ModuleCacheStore(context.globalState);
 		this.readmeAssetCache = new ReadmeAssetCache(context.globalStorageUri);
+		this.currentSortState = this.cacheStore.getModuleSortState();
 		// Pull any legacy in-memory copy from GlobalState (for backward compat),
 		// but do NOT persist new entries there going forward — the filesystem
 		// asset cache is the single source of truth (review item 3.5).
@@ -132,9 +138,13 @@ export class ModuleManagerController {
 		const hasCachedModules = !!cached && cached.modules.length > 0;
 		if (hasCachedModules) {
 			this.availableModules = cached.modules;
-			this.treeDataProvider.setModules(cached.modules);
+			this.applyModuleSort();
+			this.treeDataProvider.setModules(this.availableModules);
 		} else {
 			this.treeDataProvider.setLoading('Sign in to GitHub to load modules.');
+		}
+		if (typeof this.treeDataProvider.setSortOrder === 'function') {
+			this.treeDataProvider.setSortOrder(this.currentSortState);
 		}
 		void this.setAuthenticationState(false);
 		void this.setApplySelectionContext(false);
@@ -409,30 +419,29 @@ export class ModuleManagerController {
 	}
 
 	public setSortOrderCommand(field?: ModuleSortField): void {
-		const allowed: ModuleSortField[] = ['name', 'owner', 'updatedAt'];
-		const next: ModuleSortField = (field && allowed.includes(field)) ? field : 'name';
-		this.currentSortField = next;
-		this.applyModuleSort();
-		if (typeof this.treeDataProvider.setSortOrder === 'function') {
-			this.treeDataProvider.setSortOrder(next);
-		}
-		this.treeDataProvider.setModules(this.availableModules);
+		const nextField = isModuleSortField(field) ? field : DEFAULT_MODULE_SORT_STATE.field;
+		this.updateSortState({ field: nextField });
 	}
 
 	private applyModuleSort(): void {
-		const field = this.currentSortField;
-		const sorted = [...this.availableModules];
-		sorted.sort((a, b) => {
-			if (field === 'owner') {
-				const owner = a.owner.localeCompare(b.owner);
-				return owner !== 0 ? owner : a.name.localeCompare(b.name);
-			}
-			if (field === 'updatedAt') {
-				return (b.updatedAt ?? '').localeCompare(a.updatedAt ?? '');
-			}
-			return a.name.localeCompare(b.name);
+		this.availableModules = sortModules(this.availableModules, this.currentSortState, {
+			appliedModuleKeys: this.appliedModuleKeys,
 		});
-		this.availableModules = sorted;
+	}
+
+	private updateSortState(nextSortState: Partial<ModuleSortState>, persist = true): void {
+		this.currentSortState = normalizeModuleSortState({
+			...this.currentSortState,
+			...nextSortState,
+		});
+		if (persist) {
+			void this.cacheStore.setModuleSortState(this.currentSortState);
+		}
+		this.applyModuleSort();
+		if (typeof this.treeDataProvider.setSortOrder === 'function') {
+			this.treeDataProvider.setSortOrder(this.currentSortState);
+		}
+		this.treeDataProvider.setModules(this.availableModules);
 	}
 
 	private findAppliedEntryFor(config: LocalModuleConfig, entry: CsmModuleEntry | undefined): LocalModuleConfigEntry | undefined {
@@ -578,6 +587,7 @@ export class ModuleManagerController {
 				if (typeof this.treeDataProvider.setOfflineMode === 'function') {
 					this.treeDataProvider.setOfflineMode(true);
 				}
+				this.applyModuleSort();
 				this.treeDataProvider.setModules(this.availableModules);
 			} else if (options.interactiveAuth) {
 				this.treeDataProvider.setError('GitHub sign-in is required to refresh modules.');
@@ -597,6 +607,7 @@ export class ModuleManagerController {
 			const fetchResult = await this.githubService.fetchModules(token, { etag: previousEtag });
 			if (fetchResult.notModified) {
 				this.logger.info('Module list unchanged since last fetch (304 Not Modified).');
+				this.applyModuleSort();
 				this.treeDataProvider.setModules(this.availableModules);
 				await this.refreshSidebarWorkspaceState();
 				// Touch lastRefreshAt so TTL window resets even when we got 304.
@@ -613,6 +624,7 @@ export class ModuleManagerController {
 			}
 			const modules = fetchResult.modules;
 			this.availableModules = modules;
+			this.applyModuleSort();
 			this.setSelectedModuleKeys([...this.selectedModuleKeys]);
 			// Parallelized README prefetch with bounded concurrency to avoid blocking on large lists.
 			const refreshedReadme = await this.fetchReadmesParallel(modules, token, 5);
@@ -622,7 +634,7 @@ export class ModuleManagerController {
 			if (fetchResult.etag) {
 				await this.cacheStore.setModuleEtag(fetchResult.etag);
 			}
-			this.treeDataProvider.setModules(modules);
+			this.treeDataProvider.setModules(this.availableModules);
 			await this.refreshSidebarWorkspaceState();
 			if (options.showSuccessMessage) {
 				void vscode.window.showInformationMessage(`Refreshed ${modules.length} module(s).`);
@@ -842,6 +854,14 @@ export class ModuleManagerController {
 
 	private async refreshSidebarWorkspaceState(): Promise<void> {
 		const setContext = (context: SidebarWorkspaceContext): void => {
+			this.appliedModuleKeys.clear();
+			for (const moduleKey of context.appliedModuleKeys) {
+				this.appliedModuleKeys.add(moduleKey);
+			}
+			if (this.currentSortState.field === 'applied') {
+				this.applyModuleSort();
+				this.treeDataProvider.setModules(this.availableModules);
+			}
 			if (typeof this.treeDataProvider.setWorkspaceContext === 'function') {
 				this.treeDataProvider.setWorkspaceContext(context);
 			}
