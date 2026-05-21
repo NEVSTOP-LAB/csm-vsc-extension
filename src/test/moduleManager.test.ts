@@ -176,6 +176,8 @@ suite('Module Manager Tests', () => {
 			onInitializeWorkspace: () => undefined,
 			onOpenReadme: () => undefined,
 			onApplySelection: () => undefined,
+			onRemoveModule: () => undefined,
+			onUpdateModule: () => undefined,
 			onSelectionChange: () => undefined,
 		});
 
@@ -221,12 +223,18 @@ suite('Module Manager Tests', () => {
 		assert.ok(rendered?.html.includes('placeholder="Search modules"'));
 		assert.ok(rendered?.html.includes('data-role="search-box"'));
 		assert.ok(rendered?.html.includes('type="text"'));
+		assert.ok(rendered?.html.includes('data-role="module-context-menu"'));
+		assert.ok(rendered?.html.includes('data-context-action="removeModule"'));
+		assert.ok(rendered?.html.includes('data-context-action="updateModule"'));
+		assert.ok(rendered?.html.includes('data-module-applied="true"'));
+		assert.ok(rendered?.html.includes('data-action="applyOne" data-module-key="org&#47;module-a" title="Apply to Workspace" aria-label="Apply to Workspace" disabled'));
+		assert.ok(rendered?.html.includes('data-action="openReadme" data-module-key="org&#47;module-a" title="Open README" aria-label="Open README"'));
 		assert.ok(rendered ? rendered.html.indexOf('placeholder="Search modules"') < rendered.html.indexOf('data-role="apply-selected"') : false);
 		assert.ok(!rendered?.html.includes('Workspace: repo'));
 		assert.ok(rendered?.html.includes('Root: csm/'));
 		assert.ok(rendered?.html.includes('Applied'));
 		assert.ok(rendered?.html.includes('data-role="apply-selected" hidden'));
-		assert.ok(rendered?.html.includes('title="Apply module"'));
+		assert.ok(rendered?.html.includes('title="Apply to Workspace"'));
 		assert.ok(rendered?.html.includes('title="Open README"'));
 		assert.ok(!rendered?.html.includes('class="avatar"'));
 		assert.ok(!rendered?.html.includes('title="Refresh modules"'));
@@ -247,6 +255,8 @@ suite('Module Manager Tests', () => {
 		const selectionUpdates: string[][] = [];
 		let appliedModuleName = '';
 		let openedReadmeName = '';
+		let removedModuleName = '';
+		let updatedModuleName = '';
 		const provider = new ModuleSidebarViewProvider({
 			onLogin: () => undefined,
 			onRefresh: () => undefined,
@@ -256,6 +266,12 @@ suite('Module Manager Tests', () => {
 			},
 			onApplySelection: (entry) => {
 				appliedModuleName = entry?.name ?? 'selected';
+			},
+			onRemoveModule: (entry) => {
+				removedModuleName = entry.name;
+			},
+			onUpdateModule: (entry) => {
+				updatedModuleName = entry.name;
 			},
 			onSelectionChange: (moduleKeys) => {
 				selectionUpdates.push(moduleKeys);
@@ -315,6 +331,8 @@ suite('Module Manager Tests', () => {
 		resolved?.fireMessage({ type: 'toggleSelection', moduleKey: 'org/module-a', selected: true });
 		resolved?.fireMessage({ type: 'openReadme', moduleKey: 'org/module-a' });
 		resolved?.fireMessage({ type: 'applyOne', moduleKey: 'org/module-a' });
+		resolved?.fireMessage({ type: 'removeModule', moduleKey: 'org/module-a' });
+		resolved?.fireMessage({ type: 'updateModule', moduleKey: 'org/module-a' });
 
 		const rerendered = mocked.__getLastWebviewView();
 		assert.ok(rerendered?.html.includes('value="module-a"'));
@@ -323,6 +341,8 @@ suite('Module Manager Tests', () => {
 		assert.deepStrictEqual(selectionUpdates[selectionUpdates.length - 1], ['org/module-a']);
 		assert.strictEqual(openedReadmeName, 'module-a');
 		assert.strictEqual(appliedModuleName, 'module-a');
+		assert.strictEqual(removedModuleName, 'module-a');
+		assert.strictEqual(updatedModuleName, 'module-a');
 		disposable.dispose();
 	});
 

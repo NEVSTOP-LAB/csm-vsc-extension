@@ -61,6 +61,12 @@ export class ModuleManagerController {
 		onApplySelection: (entry) => {
 			void this.applyToWorkspaceCommand(entry);
 		},
+		onRemoveModule: (entry) => {
+			void this.removeModuleCommand(entry);
+		},
+		onUpdateModule: (entry) => {
+			void this.updateModuleCommand(entry);
+		},
 		onSelectionChange: (moduleKeys) => {
 			this.setSelectedModuleKeys(moduleKeys);
 		},
