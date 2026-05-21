@@ -20,6 +20,7 @@ type VscodeMock = typeof vscode & {
 	__setWorkspaceFolders: (folders: Array<{ name: string; uri: vscode.Uri }> | undefined) => void;
 	__setConfigurationValue: (key: string, value: unknown) => void;
 	__getContextValue: (key: string) => unknown;
+	__getLastWarningPrompt: () => { message: string; items: unknown[] } | undefined;
 	__getLastWebviewPanel: () => { title: string; html: string } | undefined;
 	__resolveWebviewView: (viewId: string) => { html: string; fireMessage: (message: unknown) => void } | undefined;
 	__getLastWebviewView: () => { viewId: string; html: string } | undefined;
@@ -611,6 +612,10 @@ suite('ModuleManagerController Regression Tests', () => {
 		assert.ok(writtenConfig);
 		assert.strictEqual(writtenConfig?.modules.org__module_a?.method, 'copy');
 		assert.strictEqual(writtenConfig?.modules.org__module_a?.path, 'csm/module-a');
+		const applyPrompt = mocked.__getLastWarningPrompt();
+		const applyActions = applyPrompt?.items.filter((item): item is string => typeof item === 'string') ?? [];
+		assert.ok(applyActions.includes('Apply'));
+		assert.ok(!applyActions.includes('Cancel'));
 		const infos = mocked.__getMessageLog().filter((message) => message.level === 'info').map((message) => message.text);
 		assert.ok(infos.some((text) => text.includes('Initialized local CSM module config')));
 		assert.ok(infos.some((text) => text.includes('Applied 1 module(s) via copy')));

@@ -299,6 +299,7 @@ let configurationValues = new Map<string, unknown>();
 let contextValues = new Map<string, unknown>();
 let lastWebviewPanel: { title: string; html: string } | undefined;
 let lastWebviewView: { viewId: string; html: string } | undefined;
+let lastWarningPrompt: { message: string; items: unknown[] } | undefined;
 
 const webviewViewProviders = new Map<string, { resolveWebviewView: (webviewView: unknown, context: unknown, token: unknown) => void }>();
 const webviewViews = new Map<string, MockWebviewView>();
@@ -357,6 +358,7 @@ export const window = {
     },
     async showWarningMessage(message: string, ..._items: unknown[]): Promise<string | undefined> {
         messageLog.push({ level: 'warn', text: message });
+        lastWarningPrompt = { message, items: [..._items] };
         return warningResponse;
     },
     async showInformationMessage(message: string, ...items: unknown[]): Promise<unknown> {
@@ -533,6 +535,10 @@ export function __getLastWebviewView(): { viewId: string; html: string } | undef
     return lastWebviewView ? { ...lastWebviewView } : undefined;
 }
 
+export function __getLastWarningPrompt(): { message: string; items: unknown[] } | undefined {
+    return lastWarningPrompt ? { message: lastWarningPrompt.message, items: [...lastWarningPrompt.items] } : undefined;
+}
+
 export function __resetUiState(): void {
     warningResponse = undefined;
     informationResponse = undefined;
@@ -545,6 +551,7 @@ export function __resetUiState(): void {
     contextValues = new Map<string, unknown>();
     lastWebviewPanel = undefined;
     lastWebviewView = undefined;
+    lastWarningPrompt = undefined;
     webviewViewProviders.clear();
     webviewViews.clear();
     workspace.workspaceFolders = undefined;

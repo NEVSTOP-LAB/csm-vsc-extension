@@ -189,7 +189,6 @@ export class ModuleManagerController {
 			`Apply ${selectedEntries.length} module(s) to ${path.basename(repoRoot)} using ${applyMethod} under ${config.root}/?`,
 			{ modal: true },
 			'Apply',
-			'Cancel',
 		);
 		if (confirmation !== 'Apply') {
 			return;
@@ -311,7 +310,6 @@ export class ModuleManagerController {
 			`Remove module ${target.owner}/${target.name} from ${path.basename(repoRoot)}? This deletes ${target.path}.`,
 			{ modal: true },
 			'Remove',
-			'Cancel',
 		);
 		if (confirmation !== 'Remove') {
 			return;
@@ -536,7 +534,6 @@ export class ModuleManagerController {
 			'Refresh CSM modules from GitHub?',
 			{ modal: true },
 			'Refresh',
-			'Cancel',
 		);
 		if (choice !== 'Refresh') {
 			return;
