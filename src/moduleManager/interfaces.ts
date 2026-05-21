@@ -1,6 +1,12 @@
 import { CsmModuleEntry } from './types';
 
-export type ModuleSortField = 'name' | 'owner' | 'updatedAt';
+export type ModuleSortField = 'name' | 'owner' | 'updatedAt' | 'applied';
+export type ModuleSortDirection = 'asc' | 'desc';
+
+export interface ModuleSortState {
+	field: ModuleSortField;
+	direction: ModuleSortDirection;
+}
 
 export interface SidebarWorkspaceContext {
 	workspaceLabel?: string;
@@ -23,5 +29,5 @@ export interface IModuleViewProvider {
 	setWorkspaceContext(context: SidebarWorkspaceContext): void;
 	setCanInitializeWorkspace(canInitializeWorkspace: boolean): void;
 	setOfflineMode?(offline: boolean): void;
-	setSortOrder?(field: ModuleSortField): void;
+	setSortOrder?(sortState: ModuleSortState): void;
 }

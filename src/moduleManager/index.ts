@@ -11,7 +11,16 @@ export {
 export { GitService } from './gitService';
 export { AuthService } from './authService';
 export { GitHubModuleService } from './githubModuleService';
-export type { IModuleViewProvider, ModuleSortField, SidebarWorkspaceContext } from './interfaces';
+export {
+	DEFAULT_MODULE_SORT_STATE,
+	isModuleSortDirection,
+	isModuleSortField,
+	MODULE_SORT_DIRECTIONS,
+	MODULE_SORT_FIELDS,
+	normalizeModuleSortState,
+	sortModules,
+} from './sort';
+export type { IModuleViewProvider, ModuleSortDirection, ModuleSortField, ModuleSortState, SidebarWorkspaceContext } from './interfaces';
 export {
 	LoginCommand,
 	RefreshCommand,

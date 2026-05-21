@@ -2,7 +2,8 @@ import * as vscode from 'vscode';
 import * as crypto from 'crypto';
 import { CsmModuleEntry } from './types';
 import { ViewState } from './moduleTreeDataProvider';
-import { IModuleViewProvider, SidebarWorkspaceContext } from './interfaces';
+import { IModuleViewProvider, ModuleSortDirection, ModuleSortField, ModuleSortState, SidebarWorkspaceContext } from './interfaces';
+import { DEFAULT_MODULE_SORT_STATE, normalizeModuleSortState, sortModules } from './sort';
 
 interface ModuleSidebarActions {
 	onLogin: () => void;
@@ -20,7 +21,8 @@ type WebviewMessage = {
 	moduleKey?: string;
 	selected?: boolean;
 	query?: string;
-	sortField?: 'name' | 'owner' | 'updatedAt';
+	sortField?: ModuleSortField;
+	sortDirection?: ModuleSortDirection;
 };
 
 function truncate(text: string, maxLength: number): string {
@@ -81,7 +83,7 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IM
 	private filterQuery = '';
 	private introTipVisible = true;
 	private offlineMode = false;
-	private sortField: 'name' | 'owner' | 'updatedAt' = 'name';
+	private sortState: ModuleSortState = DEFAULT_MODULE_SORT_STATE;
 	private readonly staleModuleKeys = new Set<string>();
 	private static readonly INITIAL_RENDER_LIMIT = 100;
 	private renderLimit = ModuleSidebarViewProvider.INITIAL_RENDER_LIMIT;
@@ -173,8 +175,8 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IM
 		this.render();
 	}
 
-	public setSortOrder(field: 'name' | 'owner' | 'updatedAt'): void {
-		this.sortField = field;
+	public setSortOrder(sortState: ModuleSortState): void {
+		this.sortState = normalizeModuleSortState(sortState);
 		this.render();
 	}
 
@@ -770,25 +772,8 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IM
 	}
 
 	private getSortedModules(modules: CsmModuleEntry[]): CsmModuleEntry[] {
-		const field = this.sortField;
-		return [...modules].sort((left, right) => {
-			const leftApplied = this.isModuleApplied(ModuleSidebarViewProvider.getModuleKey(left)) ? 1 : 0;
-			const rightApplied = this.isModuleApplied(ModuleSidebarViewProvider.getModuleKey(right)) ? 1 : 0;
-			if (leftApplied !== rightApplied) {
-				return rightApplied - leftApplied;
-			}
-			if (field === 'owner') {
-				const owner = left.owner.localeCompare(right.owner);
-				return owner !== 0 ? owner : left.name.localeCompare(right.name);
-			}
-			if (field === 'updatedAt') {
-				return (right.updatedAt ?? '').localeCompare(left.updatedAt ?? '');
-			}
-			const nameCompare = left.name.localeCompare(right.name);
-			if (nameCompare !== 0) {
-				return nameCompare;
-			}
-			return left.owner.localeCompare(right.owner);
+		return sortModules(modules, this.sortState, {
+			appliedModuleKeys: this.appliedModuleKeys,
 		});
 	}
 
