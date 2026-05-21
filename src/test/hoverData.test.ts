@@ -39,6 +39,12 @@ const hoverData = require(
     provideContentHover: (doc: FakeDocument, pos: any) => any;
 };
 
+// ---------------------------------------------------------------------------
+// Tests (all wrapped in a parent suite so setup/teardown stays scoped)
+// ---------------------------------------------------------------------------
+
+suite('hoverData', () => {
+
 setup(() => {
     __setLanguageOverrideForTests('zh-cn');
 });
@@ -46,10 +52,6 @@ setup(() => {
 teardown(() => {
     __setLanguageOverrideForTests(undefined);
 });
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
 
 suite('hoverData – anchor cache cleanup', () => {
     test('clearAnchorCache does not throw for unknown URI', () => {
@@ -177,3 +179,5 @@ suite('hoverData – section header hover range', () => {
         assert.strictEqual(hoverOutsideHeader, undefined, 'Should not provide section hover outside [SECTION]');
     });
 });
+
+}); // suite('hoverData')

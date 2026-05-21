@@ -80,6 +80,12 @@ const LINE_CONFIG_ENABLE  = '- PeriodicLog.Enable | 1';
 const LINE_CONFIG_THRESH  = '- PeriodicLog.Threshold(#/s) | 2.00';
 const LINE_CONFIG_PERIOD  = '- PeriodicLog.CheckPeriod(s) | 1.00';
 
+// ---------------------------------------------------------------------------
+// Tests (all wrapped in a parent suite so setup/teardown stays scoped)
+// ---------------------------------------------------------------------------
+
+suite('CSMLogHoverProvider', () => {
+
 setup(() => {
     __setLanguageOverrideForTests('zh-cn');
 });
@@ -87,10 +93,6 @@ setup(() => {
 teardown(() => {
     __setLanguageOverrideForTests(undefined);
 });
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
 
 suite('CSMLogHoverProvider – event types', () => {
     test('[State Change] hover contains "状态变化"', () => {
@@ -288,3 +290,5 @@ suite('CSMLogHoverProvider – no spurious hovers', () => {
         assert.strictEqual(hover('', 0), undefined);
     });
 });
+
+}); // suite('CSMLogHoverProvider')
