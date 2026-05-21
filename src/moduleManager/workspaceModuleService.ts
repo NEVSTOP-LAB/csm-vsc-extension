@@ -1,11 +1,10 @@
-import { execFile } from 'child_process';
 import * as fs from 'fs/promises';
 import * as os from 'os';
 import * as path from 'path';
-import { promisify } from 'util';
+import * as yaml from 'js-yaml';
 import { CsmModuleEntry, LocalModuleConfig, LocalModuleConfigEntry, ModuleApplyMethod } from './types';
+import { GitService, IGitRunner } from './gitService';
 
-const execFileAsync = promisify(execFile);
 const CONFIG_VERSION = '2';
 const SECTION_ROOT = 'csmModules';
 
@@ -30,28 +29,6 @@ function toPosixPath(value: string): string {
 	return value.replace(/\\/g, '/');
 }
 
-function yamlScalar(value: string): string {
-	return JSON.stringify(value);
-}
-
-function parseStructuredScalar(value: string): string {
-	const trimmed = value.trim();
-	if (!trimmed) {
-		return '';
-	}
-	if (trimmed.startsWith('"') && trimmed.endsWith('"')) {
-		try {
-			return JSON.parse(trimmed) as string;
-		} catch {
-			return trimmed.slice(1, -1);
-		}
-	}
-	if (trimmed.startsWith("'") && trimmed.endsWith("'")) {
-		return trimmed.slice(1, -1).replace(/''/g, "'");
-	}
-	return trimmed;
-}
-
 function sanitizeModuleKeyPart(value: string): string {
 	return value.replace(/[^a-zA-Z0-9_-]+/g, '_');
 }
@@ -60,16 +37,9 @@ function stripGitSuffix(value: string): string {
 	return value.replace(/\.git$/i, '');
 }
 
-function formatCommandError(error: unknown): string {
-	if (error && typeof error === 'object') {
-		const stderr = 'stderr' in error ? String((error as { stderr?: unknown }).stderr ?? '').trim() : '';
-		const message = 'message' in error ? String((error as { message?: unknown }).message ?? '').trim() : '';
-		return stderr || message || 'Unknown command failure.';
-	}
-	return 'Unknown command failure.';
-}
-
 export class WorkspaceModuleService {
+	constructor(private readonly gitRunner: IGitRunner = new GitService()) {}
+
 	public normalizeRootPath(value: string): string {
 		const trimmed = value.trim();
 		if (!trimmed) {
@@ -173,6 +143,83 @@ export class WorkspaceModuleService {
 				[entry.key]: entry,
 			},
 		};
+	}
+
+	/** Drop a module from the in-memory config (review item 7.1). */
+	public withoutModule(config: LocalModuleConfig, moduleKey: string): LocalModuleConfig {
+		const { [moduleKey]: _omitted, ...rest } = config.modules;
+		return { ...config, modules: rest };
+	}
+
+	/**
+	 * Remove a module from the workspace: deinit the submodule (if any), delete the
+	 * working tree, and erase any stale `.git/modules/<path>` cache.
+	 *
+	 * Review item 7.1 — implements `csmModules.removeModule` end-to-end.
+	 */
+	public async removeModule(repoRoot: string, entry: LocalModuleConfigEntry): Promise<void> {
+		const targetAbsolute = this.toAbsoluteTargetPath(repoRoot, entry.path);
+		if (entry.method === 'submodule') {
+			try {
+				await this.runGit(repoRoot, ['submodule', 'deinit', '-f', '--', entry.path]);
+			} catch {
+				// already deinitialized; continue
+			}
+			try {
+				await this.runGit(repoRoot, ['rm', '-rf', '--', entry.path]);
+			} catch {
+				// fall through to manual removal
+			}
+			const submoduleGitDir = path.join(repoRoot, '.git', 'modules', ...entry.path.split('/'));
+			try {
+				await fs.rm(submoduleGitDir, { recursive: true, force: true });
+			} catch {
+				// best effort
+			}
+		}
+		try {
+			await fs.rm(targetAbsolute, { recursive: true, force: true });
+		} catch {
+			// best effort: directory may not exist
+		}
+	}
+
+	/**
+	 * Update an applied module to the latest commit on its tracked branch.
+	 *
+	 * For submodules, runs `git submodule update --remote`. For copies, recreates the
+	 * working tree from a fresh shallow clone (review item 7.2).
+	 */
+	public async updateModule(
+		repoRoot: string,
+		entry: LocalModuleConfigEntry,
+		moduleEntry: CsmModuleEntry,
+		authToken?: string,
+	): Promise<LocalModuleConfigEntry> {
+		const targetRelativePath = entry.path;
+		const targetAbsolute = this.toAbsoluteTargetPath(repoRoot, targetRelativePath);
+
+		if (entry.method === 'submodule') {
+			await this.runGit(repoRoot, ['submodule', 'update', '--remote', '--', targetRelativePath], authToken, entry.source);
+			const head = await this.runGit(targetAbsolute, ['rev-parse', 'HEAD']);
+			return { ...entry, ref: head };
+		}
+
+		// copy mode: rewrite the directory from a fresh shallow clone.
+		await fs.rm(targetAbsolute, { recursive: true, force: true });
+		const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'csm-update-'));
+		try {
+			const branch = entry.branch || moduleEntry.defaultBranch;
+			await this.runGit(tmpDir, ['clone', '--depth', '1', '--branch', branch, entry.source, 'src'], authToken, entry.source);
+			const cloneRoot = path.join(tmpDir, 'src');
+			const head = await this.runGit(cloneRoot, ['rev-parse', 'HEAD']);
+			await fs.mkdir(path.dirname(targetAbsolute), { recursive: true });
+			await fs.cp(cloneRoot, targetAbsolute, { recursive: true });
+			await fs.rm(path.join(targetAbsolute, '.git'), { recursive: true, force: true });
+			return { ...entry, ref: head, branch };
+		} finally {
+			await fs.rm(tmpDir, { recursive: true, force: true });
+		}
 	}
 
 	public async targetExists(repoRoot: string, targetRelativePath: string): Promise<boolean> {
@@ -356,33 +403,7 @@ export class WorkspaceModuleService {
 	}
 
 	private async runGit(cwd: string, args: string[], authToken?: string, repoUrl?: string): Promise<string> {
-		const commandArgs = [...this.buildGitAuthArgs(repoUrl, authToken), ...args];
-		try {
-			const { stdout } = await execFileAsync('git', commandArgs, {
-				cwd,
-				encoding: 'utf8',
-			});
-			return stdout.trim();
-		} catch (error) {
-			throw new Error(formatCommandError(error));
-		}
-	}
-
-	private buildGitAuthArgs(repoUrl: string | undefined, authToken: string | undefined): string[] {
-		if (!repoUrl || !authToken) {
-			return [];
-		}
-		try {
-			const parsedUrl = new URL(repoUrl);
-			if (parsedUrl.protocol !== 'https:') {
-				return [];
-			}
-			const serverUrl = `${parsedUrl.protocol}//${parsedUrl.host}/`;
-			const encoded = Buffer.from(`x-access-token:${authToken}`, 'utf8').toString('base64');
-			return ['-c', `http.${serverUrl}.extraheader=AUTHORIZATION: basic ${encoded}`];
-		} catch {
-			return [];
-		}
+		return this.gitRunner.exec({ cwd, args, authToken, repoUrl });
 	}
 
 	private async resolveExistingSubmoduleRef(repoRoot: string, targetRelativePath: string): Promise<string> {
@@ -554,56 +575,39 @@ export class WorkspaceModuleService {
 	}
 
 	private parseYamlConfig(raw: string): ParsedConfigShape {
-		const modules: Record<string, LocalModuleConfigEntry> = {};
-		let root: string | undefined;
-		let version: string | undefined;
-		let currentModuleKey: string | undefined;
-		let currentModule: Partial<LocalModuleConfigEntry> | undefined;
-
-		for (const rawLine of raw.split(/\r?\n/)) {
-			const line = rawLine.replace(/\t/g, '    ');
-			const trimmed = line.trim();
-			if (!trimmed || trimmed.startsWith('#')) {
-				continue;
-			}
-
-			const rootMatch = line.match(/^(version|root):\s*(.+)?$/);
-			if (rootMatch) {
-				if (currentModuleKey && currentModule) {
-					modules[currentModuleKey] = this.finalizeModuleSection(currentModule);
-					currentModuleKey = undefined;
-					currentModule = undefined;
-				}
-				if (rootMatch[1] === 'version') {
-					version = parseStructuredScalar(rootMatch[2] ?? '');
-				} else {
-					root = parseStructuredScalar(rootMatch[2] ?? '');
-				}
-				continue;
-			}
-
-			if (/^modules:\s*(\{\})?\s*$/.test(trimmed)) {
-				continue;
-			}
-
-			const moduleMatch = line.match(/^  ([A-Za-z0-9_-]+):\s*$/);
-			if (moduleMatch) {
-				if (currentModuleKey && currentModule) {
-					modules[currentModuleKey] = this.finalizeModuleSection(currentModule);
-				}
-				currentModuleKey = moduleMatch[1];
-				currentModule = { key: currentModuleKey };
-				continue;
-			}
-
-			const fieldMatch = line.match(/^    ([a-zA-Z]+):\s*(.+)?$/);
-			if (fieldMatch && currentModule) {
-				(currentModule as Record<string, string>)[fieldMatch[1]] = parseStructuredScalar(fieldMatch[2] ?? '');
-			}
+		let parsed: unknown;
+		try {
+			parsed = yaml.load(raw, { schema: yaml.JSON_SCHEMA });
+		} catch (error) {
+			throw new Error(`Failed to parse YAML config: ${error instanceof Error ? error.message : String(error)}`);
+		}
+		if (!parsed || typeof parsed !== 'object') {
+			return { modules: {} };
 		}
 
-		if (currentModuleKey && currentModule) {
-			modules[currentModuleKey] = this.finalizeModuleSection(currentModule);
+		const obj = parsed as Record<string, unknown>;
+		const version = typeof obj.version === 'string' ? obj.version : (obj.version !== undefined && obj.version !== null ? String(obj.version) : undefined);
+		const root = typeof obj.root === 'string' ? obj.root : undefined;
+		const modules: Record<string, LocalModuleConfigEntry> = {};
+
+		const modulesRaw = obj.modules;
+		if (modulesRaw && typeof modulesRaw === 'object' && !Array.isArray(modulesRaw)) {
+			for (const [key, value] of Object.entries(modulesRaw as Record<string, unknown>)) {
+				if (!value || typeof value !== 'object' || Array.isArray(value)) {
+					continue;
+				}
+				const entry = value as Record<string, unknown>;
+				modules[key] = this.finalizeModuleSection({
+					key,
+					name: typeof entry.name === 'string' ? entry.name : undefined,
+					owner: typeof entry.owner === 'string' ? entry.owner : undefined,
+					source: typeof entry.source === 'string' ? entry.source : undefined,
+					method: entry.method === 'copy' ? 'copy' : 'submodule',
+					path: typeof entry.path === 'string' ? entry.path : undefined,
+					ref: typeof entry.ref === 'string' ? entry.ref : undefined,
+					branch: typeof entry.branch === 'string' ? entry.branch : undefined,
+				});
+			}
 		}
 
 		return { version, root, modules };
@@ -623,24 +627,31 @@ export class WorkspaceModuleService {
 	}
 
 	private serializeConfig(config: LocalModuleConfig): string {
-		const lines: string[] = [
-			`version: ${yamlScalar(config.version || CONFIG_VERSION)}`,
-			`root: ${yamlScalar(config.root)}`,
-			'modules:',
-		];
-
+		const moduleEntries: Record<string, Omit<LocalModuleConfigEntry, 'key'>> = {};
 		for (const key of Object.keys(config.modules).sort((left, right) => left.localeCompare(right))) {
 			const module = config.modules[key];
-			lines.push(`  ${key}:`);
-			lines.push(`    name: ${yamlScalar(module.name)}`);
-			lines.push(`    owner: ${yamlScalar(module.owner)}`);
-			lines.push(`    source: ${yamlScalar(module.source)}`);
-			lines.push(`    method: ${yamlScalar(module.method)}`);
-			lines.push(`    path: ${yamlScalar(module.path)}`);
-			lines.push(`    ref: ${yamlScalar(module.ref)}`);
-			lines.push(`    branch: ${yamlScalar(module.branch)}`);
+			moduleEntries[key] = {
+				name: module.name,
+				owner: module.owner,
+				source: module.source,
+				method: module.method,
+				path: module.path,
+				ref: module.ref,
+				branch: module.branch,
+			};
 		}
-
-		return `${lines.join('\n').trimEnd()}\n`;
+		const document = {
+			version: config.version || CONFIG_VERSION,
+			root: config.root,
+			modules: moduleEntries,
+		};
+		return yaml.dump(document, {
+			schema: yaml.JSON_SCHEMA,
+			lineWidth: 120,
+			noRefs: true,
+			sortKeys: false,
+			quotingType: '"',
+			forceQuotes: true,
+		});
 	}
 }

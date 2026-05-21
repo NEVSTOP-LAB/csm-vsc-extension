@@ -195,7 +195,7 @@ suite('ModuleManagerController Regression Tests', () => {
 			}),
 		};
 		controller.githubService = {
-			fetchModules: async () => ([
+			fetchModules: async () => ({ modules: [
 				{
 					id: 1,
 					owner: 'org',
@@ -206,7 +206,7 @@ suite('ModuleManagerController Regression Tests', () => {
 					defaultBranch: 'main',
 					repoUrl: 'https://github.com/org/module-a',
 				},
-			]),
+			]}),
 			fetchReadme: async () => '# demo',
 		};
 		controller.treeDataProvider = {
@@ -234,7 +234,7 @@ suite('ModuleManagerController Regression Tests', () => {
 		controller.githubService = {
 			fetchModules: async () => {
 				fetched = true;
-				return [];
+				return { modules: [] };
 			},
 			fetchReadme: async () => '',
 		};
@@ -277,7 +277,7 @@ suite('ModuleManagerController Regression Tests', () => {
 		controller.githubService = {
 			fetchModules: async () => {
 				fetched = true;
-				return [];
+				return { modules: [] };
 			},
 			fetchReadme: async () => '',
 		};
@@ -324,7 +324,7 @@ suite('ModuleManagerController Regression Tests', () => {
 		controller.githubService = {
 			fetchModules: async () => {
 				fetched = true;
-				return [];
+				return { modules: [] };
 			},
 			fetchReadme: async () => '',
 		};

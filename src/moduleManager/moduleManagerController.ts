@@ -1,16 +1,20 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
+import * as fs from 'fs/promises';
 import { AuthService } from './authService';
 import { GitHubModuleService } from './githubModuleService';
 import { ModuleCacheStore } from './cacheStore';
-import { CsmModuleEntry, LocalModuleConfig, ModuleApplyMethod } from './types';
+import { CsmModuleEntry, LocalModuleConfig, LocalModuleConfigEntry, ModuleApplyMethod } from './types';
 import { ModuleTreeItem } from './moduleTreeDataProvider';
 import { ModuleSidebarViewProvider } from './moduleSidebarViewProvider';
+import { IModuleViewProvider, ModuleSortField, SidebarWorkspaceContext } from './interfaces';
 import { ReadmeAssetCache } from './readmeAssetCache';
 import { DEFAULT_LOCAL_MODULE_ROOT, LEGACY_LOCAL_MODULE_CONFIG_FILE, LOCAL_MODULE_CONFIG_FILE, WorkspaceModuleService } from './workspaceModuleService';
+import { COMMAND_IDS, CONFIG_KEYS, CONFIG_SECTION, CONTEXT_KEYS, VIEW_IDS } from './constants';
+import { Logger, getLogger, wrapCommand } from './logger';
 
 const LOCAL_MODULE_CONFIG_GLOB = `**/{${LOCAL_MODULE_CONFIG_FILE},${LEGACY_LOCAL_MODULE_CONFIG_FILE}}`;
-const WORKSPACE_INIT_CONTEXT_KEY = 'csmModules.canInitializeWorkspace';
+const WORKSPACE_INIT_CONTEXT_KEY = CONTEXT_KEYS.canInitializeWorkspace;
 const LVPROJ_GLOB = '**/*.lvproj';
 const WORKSPACE_INIT_PROMPT = 'Detected csm/ and .lvproj files but no local CSM module config. Initialize CSM module management for this repository?';
 
@@ -19,11 +23,27 @@ interface PendingWorkspaceInitialization {
 	repoRoot: string;
 }
 
+/**
+ * Optional dependencies for {@link ModuleManagerController}.
+ *
+ * Allowing tests (and future command-handler refactors) to inject mocks of the
+ * underlying services replaces the prior pattern of overwriting `private`
+ * fields via `as any` (review items 2.1 / 6.1).
+ */
+export interface ModuleManagerControllerDeps {
+	authService?: AuthService;
+	githubService?: GitHubModuleService;
+	workspaceModuleService?: WorkspaceModuleService;
+	viewProvider?: IModuleViewProvider;
+	logger?: Logger;
+}
+
 export class ModuleManagerController {
-	private readonly authService = new AuthService();
-	private readonly githubService = new GitHubModuleService();
+	private readonly logger: Logger;
+	private readonly authService: AuthService;
+	private readonly githubService: GitHubModuleService;
 	private readonly cacheStore: ModuleCacheStore;
-	private readonly treeDataProvider = new ModuleSidebarViewProvider({
+	private readonly sidebarViewProvider: ModuleSidebarViewProvider = new ModuleSidebarViewProvider({
 		onLogin: () => {
 			void this.loginCommand();
 		},
@@ -43,32 +63,47 @@ export class ModuleManagerController {
 			this.setSelectedModuleKeys(moduleKeys);
 		},
 	});
+	// IModuleViewProvider abstraction (review item 2.2). Tests can swap this out.
+	private treeDataProvider: IModuleViewProvider;
 	private readonly readmeAssetCache: ReadmeAssetCache;
-	private readonly workspaceModuleService = new WorkspaceModuleService();
+	private readonly workspaceModuleService: WorkspaceModuleService;
 	private readonly readmeCache: Record<string, string>;
 	private availableModules: CsmModuleEntry[] = [];
+	private currentSortField: ModuleSortField = 'name';
 	private readonly selectedModuleKeys = new Set<string>();
 	private currentToken: string | undefined;
+	private lastTokenVerifiedAt = 0;
+	private static readonly TOKEN_VERIFY_INTERVAL_MS = 10 * 60 * 1000; // 10 minutes
 
-	constructor(private readonly context: vscode.ExtensionContext) {
+	constructor(private readonly context: vscode.ExtensionContext, deps: ModuleManagerControllerDeps = {}) {
+		this.logger = deps.logger ?? getLogger();
+		this.authService = deps.authService ?? new AuthService(this.logger);
+		this.githubService = deps.githubService ?? new GitHubModuleService(this.logger);
+		this.workspaceModuleService = deps.workspaceModuleService ?? new WorkspaceModuleService();
+		this.treeDataProvider = deps.viewProvider ?? this.sidebarViewProvider;
 		this.cacheStore = new ModuleCacheStore(context.globalState);
 		this.readmeAssetCache = new ReadmeAssetCache(context.globalStorageUri);
+		// Pull any legacy in-memory copy from GlobalState (for backward compat),
+		// but do NOT persist new entries there going forward — the filesystem
+		// asset cache is the single source of truth (review item 3.5).
 		this.readmeCache = this.cacheStore.getReadmeCache();
+		void this.cacheStore.clearReadmeCache();
 	}
 
 	public register(subscriptions: vscode.Disposable[]): void {
-		if (this.treeDataProvider instanceof ModuleSidebarViewProvider) {
-			subscriptions.push(vscode.window.registerWebviewViewProvider('csmModules.view', this.treeDataProvider, {
-				webviewOptions: { retainContextWhenHidden: true },
-			}));
-		}
+		subscriptions.push(vscode.window.registerWebviewViewProvider(VIEW_IDS.moduleSidebar, this.sidebarViewProvider, {
+			webviewOptions: { retainContextWhenHidden: true },
+		}));
 
 		subscriptions.push(
-			vscode.commands.registerCommand('csmModules.login', () => this.loginCommand()),
-			vscode.commands.registerCommand('csmModules.refresh', () => this.refreshCommand()),
-			vscode.commands.registerCommand('csmModules.initializeWorkspace', () => this.initializeWorkspaceCommand()),
-			vscode.commands.registerCommand('csmModules.openReadme', (entry?: CsmModuleEntry | ModuleTreeItem) => this.openReadmeCommand(entry)),
-			vscode.commands.registerCommand('csmModules.applyToWorkspace', (entry?: CsmModuleEntry | ModuleTreeItem) => this.applyToWorkspaceCommand(entry)),
+			vscode.commands.registerCommand(COMMAND_IDS.login, wrapCommand(COMMAND_IDS.login, () => this.loginCommand(), this.logger)),
+			vscode.commands.registerCommand(COMMAND_IDS.refresh, wrapCommand(COMMAND_IDS.refresh, () => this.refreshCommand(), this.logger)),
+			vscode.commands.registerCommand(COMMAND_IDS.initializeWorkspace, wrapCommand(COMMAND_IDS.initializeWorkspace, () => this.initializeWorkspaceCommand(), this.logger)),
+			vscode.commands.registerCommand(COMMAND_IDS.openReadme, wrapCommand(COMMAND_IDS.openReadme, (entry?: CsmModuleEntry | ModuleTreeItem) => this.openReadmeCommand(entry), this.logger)),
+			vscode.commands.registerCommand(COMMAND_IDS.applyToWorkspace, wrapCommand(COMMAND_IDS.applyToWorkspace, (entry?: CsmModuleEntry | ModuleTreeItem) => this.applyToWorkspaceCommand(entry), this.logger)),
+			vscode.commands.registerCommand(COMMAND_IDS.removeModule, wrapCommand(COMMAND_IDS.removeModule, (entry?: CsmModuleEntry | ModuleTreeItem) => this.removeModuleCommand(entry), this.logger)),
+			vscode.commands.registerCommand(COMMAND_IDS.updateModule, wrapCommand(COMMAND_IDS.updateModule, (entry?: CsmModuleEntry | ModuleTreeItem) => this.updateModuleCommand(entry), this.logger)),
+			vscode.commands.registerCommand(COMMAND_IDS.setSortOrder, wrapCommand(COMMAND_IDS.setSortOrder, (field?: ModuleSortField) => this.setSortOrderCommand(field), this.logger)),
 		);
 
 		const cached = this.cacheStore.getModuleSnapshot();
@@ -93,7 +128,7 @@ export class ModuleManagerController {
 		void this.refreshSidebarWorkspaceState();
 	}
 
-	private async applyToWorkspaceCommand(entry?: CsmModuleEntry | ModuleTreeItem): Promise<void> {
+	public async applyToWorkspaceCommand(entry?: CsmModuleEntry | ModuleTreeItem): Promise<void> {
 		const selectedEntries = this.getSelectedModules(this.resolveModuleEntry(entry));
 		if (selectedEntries.length === 0) {
 			void vscode.window.showWarningMessage('Select at least one module to apply to the current repository.');
@@ -121,10 +156,11 @@ export class ModuleManagerController {
 			}
 		}
 
-		let config = await this.resolveLocalModuleConfig(workspaceFolder, repoRoot);
-		if (!config) {
+		const initialConfig = await this.resolveLocalModuleConfig(workspaceFolder, repoRoot);
+		if (!initialConfig) {
 			return;
 		}
+		let config: LocalModuleConfig = initialConfig;
 		await this.refreshWorkspaceInitializationState({ prompt: false });
 
 		const applyMethod = await this.promptApplyMethod(selectedEntries.length);
@@ -156,24 +192,85 @@ export class ModuleManagerController {
 		}
 
 		let appliedCount = 0;
+		const writeConfigSafely = async (latest: LocalModuleConfig): Promise<void> => {
+			await this.workspaceModuleService.writeConfig(latest);
+		};
+
 		try {
-			for (const moduleEntry of selectedEntries) {
-				const appliedModule = await this.workspaceModuleService.applyModule(
-					repoRoot,
-					config,
-					moduleEntry,
-					applyMethod,
-					authToken,
-				);
-				config = this.workspaceModuleService.withAppliedModule(config, appliedModule);
-				await this.workspaceModuleService.writeConfig(config);
-				appliedCount += 1;
-			}
+			await vscode.window.withProgress(
+				{
+					location: vscode.ProgressLocation.Notification,
+					title: `Applying ${selectedEntries.length} module(s) via ${applyMethod}...`,
+					cancellable: false,
+				},
+				async (progress) => {
+					if (applyMethod === 'copy') {
+						// Copy mode is independent per-module; run in parallel and collect results,
+						// then atomically merge into config in one write (review item 2.4).
+						const settled = await Promise.allSettled(
+							selectedEntries.map(async (moduleEntry) => {
+								const applied = await this.workspaceModuleService.applyModule(
+									repoRoot,
+									config,
+									moduleEntry,
+									applyMethod,
+									authToken,
+								);
+								progress.report({
+									increment: 100 / selectedEntries.length,
+									message: `${moduleEntry.owner}/${moduleEntry.name}`,
+								});
+								return applied;
+							}),
+						);
+						const successes: LocalModuleConfigEntry[] = [];
+						const failures: string[] = [];
+						for (let i = 0; i < settled.length; i += 1) {
+							const result = settled[i];
+							const moduleEntry = selectedEntries[i];
+							if (result.status === 'fulfilled') {
+								successes.push(result.value);
+							} else {
+								failures.push(`${moduleEntry.owner}/${moduleEntry.name}: ${result.reason instanceof Error ? result.reason.message : String(result.reason)}`);
+							}
+						}
+						for (const applied of successes) {
+							config = this.workspaceModuleService.withAppliedModule(config, applied);
+						}
+						appliedCount = successes.length;
+						if (successes.length > 0) {
+							await writeConfigSafely(config);
+						}
+						if (failures.length > 0) {
+							throw new Error(failures.join('; '));
+						}
+					} else {
+						// Submodule mode must run serially because git submodule add can race.
+						for (const moduleEntry of selectedEntries) {
+							const applied = await this.workspaceModuleService.applyModule(
+								repoRoot,
+								config,
+								moduleEntry,
+								applyMethod,
+								authToken,
+							);
+							config = this.workspaceModuleService.withAppliedModule(config, applied);
+							await writeConfigSafely(config);
+							appliedCount += 1;
+							progress.report({
+								increment: 100 / selectedEntries.length,
+								message: `${moduleEntry.owner}/${moduleEntry.name}`,
+							});
+						}
+					}
+				},
+			);
 		} catch (error) {
 			const message = error instanceof Error ? error.message : 'Unknown error';
 			const prefix = appliedCount > 0
 				? `Applied ${appliedCount}/${selectedEntries.length} module(s) before failure`
 				: 'Failed to apply CSM modules';
+			this.logger.error(`${prefix}: ${message}`);
 			void vscode.window.showErrorMessage(`${prefix}: ${message}`);
 			return;
 		}
@@ -184,7 +281,161 @@ export class ModuleManagerController {
 		await this.refreshSidebarWorkspaceState();
 	}
 
-	private async initializeWorkspaceCommand(workspaceFolder?: vscode.WorkspaceFolder): Promise<void> {
+	public async removeModuleCommand(entry?: CsmModuleEntry | ModuleTreeItem): Promise<void> {
+		const resolvedEntry = this.resolveModuleEntry(entry);
+		const workspaceFolder = await this.resolveWorkspaceFolder();
+		if (!workspaceFolder) {
+			void vscode.window.showWarningMessage('Open the target repository as a workspace folder before removing modules.');
+			return;
+		}
+		const repoRoot = await this.workspaceModuleService.resolveGitRepositoryRoot(workspaceFolder.uri.fsPath);
+		if (!repoRoot) {
+			void vscode.window.showErrorMessage('The current workspace folder is not a Git repository.');
+			return;
+		}
+		let config = await this.tryLoadSidebarLocalModuleConfig(workspaceFolder, repoRoot);
+		if (!config) {
+			void vscode.window.showWarningMessage('No CSM module configuration found in this workspace.');
+			return;
+		}
+		const target = this.findAppliedEntryFor(config, resolvedEntry);
+		if (!target) {
+			void vscode.window.showWarningMessage('Selected module is not currently applied to this workspace.');
+			return;
+		}
+		const confirmation = await vscode.window.showWarningMessage(
+			`Remove module ${target.owner}/${target.name} from ${path.basename(repoRoot)}? This deletes ${target.path}.`,
+			{ modal: true },
+			'Remove',
+			'Cancel',
+		);
+		if (confirmation !== 'Remove') {
+			return;
+		}
+		try {
+			await vscode.window.withProgress(
+				{
+					location: vscode.ProgressLocation.Notification,
+					title: `Removing ${target.owner}/${target.name}...`,
+					cancellable: false,
+				},
+				async () => {
+					await this.workspaceModuleService.removeModule(repoRoot, target);
+					config = this.workspaceModuleService.withoutModule(config!, target.key);
+					await this.workspaceModuleService.writeConfig(config);
+				},
+			);
+		} catch (error) {
+			const message = error instanceof Error ? error.message : 'Unknown error';
+			this.logger.error(`Failed to remove module ${target.owner}/${target.name}: ${message}`);
+			void vscode.window.showErrorMessage(`Failed to remove module: ${message}`);
+			return;
+		}
+		void vscode.window.showInformationMessage(`Removed module ${target.owner}/${target.name}.`);
+		await this.refreshSidebarWorkspaceState();
+	}
+
+	public async updateModuleCommand(entry?: CsmModuleEntry | ModuleTreeItem): Promise<void> {
+		const resolvedEntry = this.resolveModuleEntry(entry);
+		const workspaceFolder = await this.resolveWorkspaceFolder();
+		if (!workspaceFolder) {
+			void vscode.window.showWarningMessage('Open the target repository as a workspace folder before updating modules.');
+			return;
+		}
+		const repoRoot = await this.workspaceModuleService.resolveGitRepositoryRoot(workspaceFolder.uri.fsPath);
+		if (!repoRoot) {
+			void vscode.window.showErrorMessage('The current workspace folder is not a Git repository.');
+			return;
+		}
+		let config = await this.tryLoadSidebarLocalModuleConfig(workspaceFolder, repoRoot);
+		if (!config) {
+			void vscode.window.showWarningMessage('No CSM module configuration found in this workspace.');
+			return;
+		}
+		const target = this.findAppliedEntryFor(config, resolvedEntry);
+		if (!target) {
+			void vscode.window.showWarningMessage('Selected module is not currently applied to this workspace.');
+			return;
+		}
+		const moduleEntry = this.findAvailableModule(target.owner, target.name) ?? this.synthesizeModuleEntry(target);
+		const authToken = await this.ensureToken(moduleEntry.visibility === 'private');
+		try {
+			let updated: LocalModuleConfigEntry | undefined;
+			await vscode.window.withProgress(
+				{
+					location: vscode.ProgressLocation.Notification,
+					title: `Updating ${target.owner}/${target.name}...`,
+					cancellable: false,
+				},
+				async () => {
+					updated = await this.workspaceModuleService.updateModule(repoRoot, target, moduleEntry, authToken);
+					config = this.workspaceModuleService.withAppliedModule(config!, updated);
+					await this.workspaceModuleService.writeConfig(config);
+				},
+			);
+			void vscode.window.showInformationMessage(`Updated ${target.owner}/${target.name} to ${updated?.ref ?? 'latest'}.`);
+		} catch (error) {
+			const message = error instanceof Error ? error.message : 'Unknown error';
+			this.logger.error(`Failed to update module ${target.owner}/${target.name}: ${message}`);
+			void vscode.window.showErrorMessage(`Failed to update module: ${message}`);
+			return;
+		}
+		await this.refreshSidebarWorkspaceState();
+	}
+
+	public setSortOrderCommand(field?: ModuleSortField): void {
+		const allowed: ModuleSortField[] = ['name', 'owner', 'updatedAt'];
+		const next: ModuleSortField = (field && allowed.includes(field)) ? field : 'name';
+		this.currentSortField = next;
+		this.applyModuleSort();
+		if (typeof this.treeDataProvider.setSortOrder === 'function') {
+			this.treeDataProvider.setSortOrder(next);
+		}
+		this.treeDataProvider.setModules(this.availableModules);
+	}
+
+	private applyModuleSort(): void {
+		const field = this.currentSortField;
+		const sorted = [...this.availableModules];
+		sorted.sort((a, b) => {
+			if (field === 'owner') {
+				const owner = a.owner.localeCompare(b.owner);
+				return owner !== 0 ? owner : a.name.localeCompare(b.name);
+			}
+			if (field === 'updatedAt') {
+				return (b.updatedAt ?? '').localeCompare(a.updatedAt ?? '');
+			}
+			return a.name.localeCompare(b.name);
+		});
+		this.availableModules = sorted;
+	}
+
+	private findAppliedEntryFor(config: LocalModuleConfig, entry: CsmModuleEntry | undefined): LocalModuleConfigEntry | undefined {
+		const candidates = Object.values(config.modules);
+		if (!entry) {
+			return candidates.length === 1 ? candidates[0] : undefined;
+		}
+		return candidates.find((m) => m.owner === entry.owner && m.name === entry.name);
+	}
+
+	private findAvailableModule(owner: string, name: string): CsmModuleEntry | undefined {
+		return this.availableModules.find((m) => m.owner === owner && m.name === name);
+	}
+
+	private synthesizeModuleEntry(entry: LocalModuleConfigEntry): CsmModuleEntry {
+		return {
+			id: 0,
+			owner: entry.owner,
+			name: entry.name,
+			description: '',
+			topics: [],
+			visibility: 'public',
+			defaultBranch: entry.branch || 'main',
+			repoUrl: entry.source,
+		};
+	}
+
+	public async initializeWorkspaceCommand(workspaceFolder?: vscode.WorkspaceFolder): Promise<void> {
 		const targetFolder = workspaceFolder ?? await this.resolveWorkspaceFolder();
 		if (!targetFolder) {
 			void vscode.window.showWarningMessage('Open the target repository as a workspace folder before initializing CSM module management.');
@@ -225,28 +476,38 @@ export class ModuleManagerController {
 		await this.refreshWorkspaceInitializationState({ prompt: false });
 	}
 
-	private async loginCommand(): Promise<void> {
+	public async loginCommand(): Promise<void> {
 		const session = await this.authService.getSessionInteractively();
 		if (!session) {
 			void vscode.window.showWarningMessage('GitHub sign-in was cancelled.');
 			return;
 		}
 		this.currentToken = session.accessToken;
+		this.lastTokenVerifiedAt = Date.now();
 		this.treeDataProvider.setAuthenticated(true);
 		void vscode.window.showInformationMessage(`Signed in as ${session.account.label}`);
+		// Best-effort scope verification, logged when missing scopes are detected (7.5).
+		if (typeof this.authService.verifyScopes === 'function') {
+			void this.authService.verifyScopes(session.accessToken);
+		}
 		await this.loadModules({ interactiveAuth: false, showSuccessMessage: true, showErrorMessage: true });
 	}
 
 	private async ensureToken(interactive: boolean): Promise<string | undefined> {
-		if (this.currentToken) {
+		if (this.currentToken && this.isCachedTokenFresh()) {
 			return this.currentToken;
 		}
+		// Re-validate cached token via a fresh silent session (which the editor will
+		// invalidate if the underlying credentials were revoked).
 		const silentSession = await this.authService.getSessionSilently();
 		if (silentSession) {
 			this.currentToken = silentSession.accessToken;
+			this.lastTokenVerifiedAt = Date.now();
 			this.treeDataProvider.setAuthenticated(true);
 			return this.currentToken;
 		}
+		this.currentToken = undefined;
+		this.lastTokenVerifiedAt = 0;
 		if (!interactive) {
 			return undefined;
 		}
@@ -255,10 +516,16 @@ export class ModuleManagerController {
 			return undefined;
 		}
 		this.currentToken = session.accessToken;
+		this.lastTokenVerifiedAt = Date.now();
 		return this.currentToken;
 	}
 
-	private async refreshCommand(): Promise<void> {
+	private isCachedTokenFresh(): boolean {
+		return this.lastTokenVerifiedAt > 0
+			&& Date.now() - this.lastTokenVerifiedAt < ModuleManagerController.TOKEN_VERIFY_INTERVAL_MS;
+	}
+
+	public async refreshCommand(): Promise<void> {
 		const choice = await vscode.window.showWarningMessage(
 			'Refresh CSM modules from GitHub?',
 			{ modal: true },
@@ -279,11 +546,21 @@ export class ModuleManagerController {
 	}): Promise<void> {
 		const token = await this.ensureToken(options.interactiveAuth);
 		if (!token) {
-			if (options.interactiveAuth) {
+			// Offline mode (review item 7.4): if we have a cached snapshot, surface it
+			// instead of an error so users can browse the catalog without GitHub access.
+			if (this.availableModules.length > 0) {
+				if (typeof this.treeDataProvider.setOfflineMode === 'function') {
+					this.treeDataProvider.setOfflineMode(true);
+				}
+				this.treeDataProvider.setModules(this.availableModules);
+			} else if (options.interactiveAuth) {
 				this.treeDataProvider.setError('GitHub sign-in is required to refresh modules.');
 				void vscode.window.showWarningMessage('Unable to refresh modules without a GitHub session.');
 			}
 			return;
+		}
+		if (typeof this.treeDataProvider.setOfflineMode === 'function') {
+			this.treeDataProvider.setOfflineMode(false);
 		}
 		this.treeDataProvider.setAuthenticated(true);
 
@@ -291,29 +568,40 @@ export class ModuleManagerController {
 			this.treeDataProvider.setLoading('Refreshing modules from GitHub...');
 		}
 		try {
-			const modules = await this.githubService.fetchModules(token);
+			const previousEtag = this.cacheStore.getModuleEtag();
+			const fetchResult = await this.githubService.fetchModules(token, { etag: previousEtag });
+			if (fetchResult.notModified) {
+				this.logger.info('Module list unchanged since last fetch (304 Not Modified).');
+				// Touch lastRefreshAt so TTL window resets even when we got 304.
+				if (this.availableModules.length > 0) {
+					await this.cacheStore.setModuleSnapshot(this.availableModules);
+				}
+				if (fetchResult.etag) {
+					await this.cacheStore.setModuleEtag(fetchResult.etag);
+				}
+				if (options.showSuccessMessage) {
+					void vscode.window.showInformationMessage('CSM modules are up to date.');
+				}
+				return;
+			}
+			const modules = fetchResult.modules;
 			this.availableModules = modules;
 			this.setSelectedModuleKeys([...this.selectedModuleKeys]);
-			const refreshedReadme: Record<string, string> = {};
-			for (const moduleEntry of modules) {
-				const key = this.getReadmeCacheKey(moduleEntry);
-				try {
-					const markdown = await this.githubService.fetchReadme(moduleEntry.owner, moduleEntry.name, token);
-					refreshedReadme[key] = markdown;
-					await this.readmeAssetCache.saveMarkdown(moduleEntry, markdown);
-				} catch {
-					refreshedReadme[key] = '';
-				}
-			}
+			// Parallelized README prefetch with bounded concurrency to avoid blocking on large lists.
+			const refreshedReadme = await this.fetchReadmesParallel(modules, token, 5);
 			Object.assign(this.readmeCache, refreshedReadme);
 			await this.cacheStore.setModuleSnapshot(modules);
-			await this.cacheStore.setReadmeCache(this.readmeCache);
+			// README content is persisted via the filesystem asset cache only (3.5).
+			if (fetchResult.etag) {
+				await this.cacheStore.setModuleEtag(fetchResult.etag);
+			}
 			this.treeDataProvider.setModules(modules);
 			await this.refreshSidebarWorkspaceState();
 			if (options.showSuccessMessage) {
 				void vscode.window.showInformationMessage(`Refreshed ${modules.length} module(s).`);
 			}
 		} catch (error) {
+			this.logger.error(`Failed to refresh modules: ${error instanceof Error ? error.message : String(error)}`);
 			this.treeDataProvider.setError('Failed to load modules from GitHub.');
 			if (options.showErrorMessage) {
 				const message = error instanceof Error ? error.message : 'Unknown error';
@@ -322,7 +610,42 @@ export class ModuleManagerController {
 		}
 	}
 
-	private async openReadmeCommand(entry?: CsmModuleEntry | ModuleTreeItem): Promise<void> {
+	/**
+	 * Fetch READMEs in parallel with a bounded concurrency limit to keep
+	 * GitHub API usage reasonable while avoiding O(N) serial latency.
+	 */
+	private async fetchReadmesParallel(
+		modules: CsmModuleEntry[],
+		token: string,
+		concurrency: number,
+	): Promise<Record<string, string>> {
+		const refreshed: Record<string, string> = {};
+		let cursor = 0;
+		const worker = async (): Promise<void> => {
+			while (cursor < modules.length) {
+				const index = cursor;
+				cursor += 1;
+				const moduleEntry = modules[index];
+				if (!moduleEntry) {
+					continue;
+				}
+				const key = this.getReadmeCacheKey(moduleEntry);
+				try {
+					const markdown = await this.githubService.fetchReadme(moduleEntry.owner, moduleEntry.name, token);
+					refreshed[key] = markdown;
+					await this.readmeAssetCache.saveMarkdown(moduleEntry, markdown);
+				} catch (error) {
+					this.logger.warn(`Failed to fetch README for ${moduleEntry.owner}/${moduleEntry.name}: ${error instanceof Error ? error.message : String(error)}`);
+					refreshed[key] = '';
+				}
+			}
+		};
+		const workerCount = Math.max(1, Math.min(concurrency, modules.length));
+		await Promise.all(Array.from({ length: workerCount }, () => worker()));
+		return refreshed;
+	}
+
+	public async openReadmeCommand(entry?: CsmModuleEntry | ModuleTreeItem): Promise<void> {
 		const resolvedEntry = this.resolveModuleEntry(entry);
 		if (!resolvedEntry) {
 			return;
@@ -344,9 +667,9 @@ export class ModuleManagerController {
 			try {
 				readme = await this.githubService.fetchReadme(resolvedEntry.owner, resolvedEntry.name, token);
 				this.readmeCache[key] = readme;
-				await this.cacheStore.setReadmeCache(this.readmeCache);
 				await this.readmeAssetCache.saveMarkdown(resolvedEntry, readme);
-			} catch {
+			} catch (error) {
+				this.logger.warn(`Failed to fetch README for ${resolvedEntry.owner}/${resolvedEntry.name}: ${error instanceof Error ? error.message : String(error)}`);
 				readme = '';
 			}
 		}
@@ -386,7 +709,7 @@ export class ModuleManagerController {
 				this.selectedModuleKeys.add(moduleKey);
 			}
 		}
-		if (this.treeDataProvider instanceof ModuleSidebarViewProvider) {
+		if (typeof this.treeDataProvider.setSelection === 'function') {
 			this.treeDataProvider.setSelection([...this.selectedModuleKeys]);
 		}
 	}
@@ -417,19 +740,20 @@ export class ModuleManagerController {
 	}
 
 	private async refreshSidebarWorkspaceState(): Promise<void> {
-		if (!(this.treeDataProvider instanceof ModuleSidebarViewProvider)) {
-			return;
-		}
-
+		const setContext = (context: SidebarWorkspaceContext): void => {
+			if (typeof this.treeDataProvider.setWorkspaceContext === 'function') {
+				this.treeDataProvider.setWorkspaceContext(context);
+			}
+		};
 		const workspaceFolder = this.getPreferredWorkspaceFolder();
 		if (!workspaceFolder) {
-			this.treeDataProvider.setWorkspaceContext({ appliedModuleKeys: [] });
+			setContext({ appliedModuleKeys: [] });
 			return;
 		}
 
 		const repoRoot = await this.workspaceModuleService.resolveGitRepositoryRoot(workspaceFolder.uri.fsPath);
 		if (!repoRoot) {
-			this.treeDataProvider.setWorkspaceContext({
+			setContext({
 				workspaceLabel: workspaceFolder.name,
 				appliedModuleKeys: [],
 			});
@@ -437,11 +761,33 @@ export class ModuleManagerController {
 		}
 
 		const config = await this.tryLoadSidebarLocalModuleConfig(workspaceFolder, repoRoot);
-		this.treeDataProvider.setWorkspaceContext({
+		setContext({
 			workspaceLabel: path.basename(repoRoot) || workspaceFolder.name,
 			moduleRoot: config?.root,
 			appliedModuleKeys: this.mapAppliedModuleKeys(config),
+			staleModuleKeys: await this.computeStaleModuleKeys(repoRoot, config),
 		});
+	}
+
+	/**
+	 * Identify modules whose configured filesystem path is missing on disk
+	 * (e.g. someone deleted the directory after applying the module). The UI
+	 * surfaces these as "stale" so users know their config drifted (review item 7.6).
+	 */
+	private async computeStaleModuleKeys(repoRoot: string, config: LocalModuleConfig | undefined): Promise<string[]> {
+		if (!config) {
+			return [];
+		}
+		const stale: string[] = [];
+		await Promise.all(Object.values(config.modules).map(async (module) => {
+			const target = path.resolve(repoRoot, module.path);
+			try {
+				await fs.access(target);
+			} catch {
+				stale.push(`${module.owner}/${module.name}`);
+			}
+		}));
+		return stale;
 	}
 
 	private getPreferredWorkspaceFolder(): vscode.WorkspaceFolder | undefined {
@@ -544,19 +890,15 @@ export class ModuleManagerController {
 		workspaceFolder: vscode.WorkspaceFolder,
 		repoRoot: string,
 	): Promise<LocalModuleConfig | undefined> {
-		const workspaceService = this.workspaceModuleService as Partial<WorkspaceModuleService>;
-		if (typeof workspaceService.loadConfig !== 'function') {
-			return undefined;
-		}
-
 		const matches = this.sortLocalModuleConfigMatches(await this.findLocalModuleConfigFiles(workspaceFolder));
 		if (matches.length === 0) {
 			return undefined;
 		}
 
 		try {
-			return await workspaceService.loadConfig.call(this.workspaceModuleService, repoRoot, matches[0].fsPath);
-		} catch {
+			return await this.workspaceModuleService.loadConfig(repoRoot, matches[0].fsPath);
+		} catch (error) {
+			this.logger.warn(`Failed to load local module config at ${matches[0].fsPath}: ${error instanceof Error ? error.message : String(error)}`);
 			return undefined;
 		}
 	}
@@ -729,14 +1071,14 @@ export class ModuleManagerController {
 	}
 
 	private async setWorkspaceInitializationContext(canInitializeWorkspace: boolean): Promise<void> {
-		if (this.treeDataProvider instanceof ModuleSidebarViewProvider) {
+		if (typeof this.treeDataProvider.setCanInitializeWorkspace === 'function') {
 			this.treeDataProvider.setCanInitializeWorkspace(canInitializeWorkspace);
 		}
 		await vscode.commands.executeCommand('setContext', WORKSPACE_INIT_CONTEXT_KEY, canInitializeWorkspace);
 	}
 
 	private getCacheTtlMinutes(): number {
-		const configuredTtl = vscode.workspace.getConfiguration('csmModules.cache').get<number>('ttlMinutes', 60);
+		const configuredTtl = vscode.workspace.getConfiguration(CONFIG_SECTION).get<number>(CONFIG_KEYS.cacheTtlMinutes, 60);
 		if (typeof configuredTtl !== 'number' || !Number.isFinite(configuredTtl)) {
 			return 60;
 		}

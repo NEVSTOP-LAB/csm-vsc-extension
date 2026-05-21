@@ -259,6 +259,12 @@ export enum ViewColumn {
     One = 1,
 }
 
+export enum ProgressLocation {
+    SourceControl = 1,
+    Window = 10,
+    Notification = 15,
+}
+
 export class Uri {
     constructor(public readonly fsPath: string) {}
     static joinPath(base: Uri, ...segments: string[]): Uri {
@@ -369,7 +375,41 @@ export const window = {
     async showTextDocument(): Promise<void> {
         return;
     },
+    createOutputChannel(_name: string, _options?: unknown): {
+        appendLine: (value: string) => void;
+        append: (value: string) => void;
+        clear: () => void;
+        dispose: () => void;
+        replace: (value: string) => void;
+        show: () => void;
+        hide: () => void;
+        name: string;
+        info: (message: string, ...args: unknown[]) => void;
+        warn: (message: string, ...args: unknown[]) => void;
+        error: (message: string | Error, ...args: unknown[]) => void;
+        debug: (message: string, ...args: unknown[]) => void;
+        trace: (message: string, ...args: unknown[]) => void;
+    } {
+        return {
+            name: _name,
+            appendLine: () => {},
+            append: () => {},
+            clear: () => {},
+            dispose: () => {},
+            replace: () => {},
+            show: () => {},
+            hide: () => {},
+            info: () => {},
+            warn: () => {},
+            error: () => {},
+            debug: () => {},
+            trace: () => {},
+        };
+    },
     activeTextEditor: undefined as { document: { uri: Uri } } | undefined,
+    async withProgress<T>(_options: unknown, task: (progress: { report: (value: unknown) => void }, token: { isCancellationRequested: boolean }) => Thenable<T> | T): Promise<T> {
+        return await task({ report: () => {} }, { isCancellationRequested: false });
+    },
 };
 
 export const workspace = {

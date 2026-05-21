@@ -1,6 +1,8 @@
 import * as vscode from 'vscode';
+import * as crypto from 'crypto';
 import { CsmModuleEntry } from './types';
 import { ViewState } from './moduleTreeDataProvider';
+import { IModuleViewProvider, SidebarWorkspaceContext } from './interfaces';
 
 interface ModuleSidebarActions {
 	onLogin: () => void;
@@ -11,17 +13,12 @@ interface ModuleSidebarActions {
 	onSelectionChange: (moduleKeys: string[]) => void;
 }
 
-interface SidebarWorkspaceContext {
-	workspaceLabel?: string;
-	moduleRoot?: string;
-	appliedModuleKeys: string[];
-}
-
 type WebviewMessage = {
-	type: 'login' | 'refresh' | 'initializeWorkspace' | 'applySelected' | 'openReadme' | 'applyOne' | 'toggleSelection' | 'setFilterQuery' | 'clearFilter' | 'dismissIntroTip';
+	type: 'login' | 'refresh' | 'initializeWorkspace' | 'applySelected' | 'openReadme' | 'applyOne' | 'toggleSelection' | 'setFilterQuery' | 'clearFilter' | 'dismissIntroTip' | 'removeModule' | 'updateModule' | 'setSortField' | 'showMore';
 	moduleKey?: string;
 	selected?: boolean;
 	query?: string;
+	sortField?: 'name' | 'owner' | 'updatedAt';
 };
 
 function truncate(text: string, maxLength: number): string {
@@ -37,11 +34,16 @@ function escapeHtml(value: string): string {
 		.replace(/</g, '&lt;')
 		.replace(/>/g, '&gt;')
 		.replace(/"/g, '&quot;')
-		.replace(/'/g, '&#39;');
+		.replace(/'/g, '&#39;')
+		.replace(/`/g, '&#96;')
+		.replace(/\//g, '&#47;')
+		.replace(/\\/g, '&#92;')
+		// eslint-disable-next-line no-control-regex
+		.replace(/[\u0000-\u001F\u007F]/g, (char) => `&#${char.charCodeAt(0)};`);
 }
 
 function createNonce(): string {
-	return `${Math.random().toString(36).slice(2)}${Math.random().toString(36).slice(2)}`;
+	return crypto.randomBytes(16).toString('base64');
 }
 
 function getToolbarMetaText(totalCount: number, filteredCount: number, selectedCount: number): string {
@@ -66,7 +68,7 @@ function renderIcon(name: IconName): string {
 	}
 }
 
-export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider {
+export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IModuleViewProvider {
 	private view: vscode.WebviewView | undefined;
 	private modules: CsmModuleEntry[] = [];
 	private state: ViewState = 'loading';
@@ -79,6 +81,11 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider {
 	private moduleRoot: string | undefined;
 	private filterQuery = '';
 	private introTipVisible = true;
+	private offlineMode = false;
+	private sortField: 'name' | 'owner' | 'updatedAt' = 'name';
+	private readonly staleModuleKeys = new Set<string>();
+	private static readonly INITIAL_RENDER_LIMIT = 100;
+	private renderLimit = ModuleSidebarViewProvider.INITIAL_RENDER_LIMIT;
 
 	constructor(private readonly actions: ModuleSidebarActions) {}
 
@@ -120,6 +127,7 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider {
 
 	public setModules(modules: CsmModuleEntry[]): void {
 		this.modules = modules;
+		this.renderLimit = ModuleSidebarViewProvider.INITIAL_RENDER_LIMIT;
 		if (modules.length === 0) {
 			this.state = 'empty';
 			this.message = 'No repositories with topic csm-modsets were found.';
@@ -154,6 +162,20 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider {
 				this.appliedModuleKeys.add(moduleKey);
 			}
 		}
+		this.staleModuleKeys.clear();
+		for (const key of context.staleModuleKeys ?? []) {
+			this.staleModuleKeys.add(key);
+		}
+		this.render();
+	}
+
+	public setOfflineMode(offline: boolean): void {
+		this.offlineMode = offline;
+		this.render();
+	}
+
+	public setSortOrder(field: 'name' | 'owner' | 'updatedAt'): void {
+		this.sortField = field;
 		this.render();
 	}
 
@@ -213,6 +235,11 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider {
 				}
 				return;
 			}
+			case 'showMore': {
+				this.renderLimit += ModuleSidebarViewProvider.INITIAL_RENDER_LIMIT;
+				this.render();
+				return;
+			}
 		}
 	}
 
@@ -254,10 +281,10 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider {
 <html lang="en">
 <head>
 	<meta charset="UTF-8">
-	<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';">
+	<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'nonce-${nonce}'; script-src 'nonce-${nonce}';">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
 	<title>CSM Modules</title>
-	<style>
+	<style nonce="${nonce}">
 		:root {
 			color-scheme: light dark;
 		}
@@ -689,11 +716,19 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider {
 	}
 
 	private getSortedModules(modules: CsmModuleEntry[]): CsmModuleEntry[] {
+		const field = this.sortField;
 		return [...modules].sort((left, right) => {
 			const leftApplied = this.isModuleApplied(ModuleSidebarViewProvider.getModuleKey(left)) ? 1 : 0;
 			const rightApplied = this.isModuleApplied(ModuleSidebarViewProvider.getModuleKey(right)) ? 1 : 0;
 			if (leftApplied !== rightApplied) {
 				return rightApplied - leftApplied;
+			}
+			if (field === 'owner') {
+				const owner = left.owner.localeCompare(right.owner);
+				return owner !== 0 ? owner : left.name.localeCompare(right.name);
+			}
+			if (field === 'updatedAt') {
+				return (right.updatedAt ?? '').localeCompare(left.updatedAt ?? '');
 			}
 			const nameCompare = left.name.localeCompare(right.name);
 			if (nameCompare !== 0) {
@@ -751,18 +786,33 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider {
 				? `<section class="notice"><div><strong>Catalog refresh failed</strong><span>${escapeHtml(this.message)}</span></div></section>`
 				: '';
 
-		return `${statusBanner}<section class="list">${this.getSortedModules(this.modules).map((entry) => this.renderModuleCard(entry)).join('')}</section><section class="empty-state" data-role="filter-empty" hidden><h2>No modules match this filter</h2><p>Try another keyword or clear the current filter to see the full catalog again.</p><div class="action-toolbar"><button class="toolbar-button callout" data-action="clearFilter">Clear Filter</button></div></section>`;
+		const offlineBanner = this.offlineMode
+			? `<section class="notice offline"><div><strong>Offline mode</strong><span>Showing cached module list. Sign in to refresh.</span></div></section>`
+			: '';
+
+		// Virtualization-lite (review item 5.3): cap initial render at INITIAL_RENDER_LIMIT cards
+		// and offer a "Show more" affordance for catalogs with hundreds of modules.
+		const sortedAll = this.getSortedModules(this.modules);
+		const total = sortedAll.length;
+		const visible = sortedAll.slice(0, this.renderLimit);
+		const hiddenCount = Math.max(0, total - visible.length);
+		const showMoreButton = hiddenCount > 0
+			? `<section class="notice"><div><strong>${hiddenCount} more module(s) hidden</strong><span>Use search to narrow the list, or load more below.</span></div><button class="toolbar-button" data-action="showMore">Show ${Math.min(hiddenCount, ModuleSidebarViewProvider.INITIAL_RENDER_LIMIT)} more</button></section>`
+			: '';
+
+		return `${offlineBanner}${statusBanner}<section class="list">${visible.map((entry) => this.renderModuleCard(entry)).join('')}</section>${showMoreButton}<section class="empty-state" data-role="filter-empty" hidden><h2>No modules match this filter</h2><p>Try another keyword or clear the current filter to see the full catalog again.</p><div class="action-toolbar"><button class="toolbar-button callout" data-action="clearFilter">Clear Filter</button></div></section>`;
 	}
 
 	private renderModuleCard(entry: CsmModuleEntry): string {
 		const moduleKey = ModuleSidebarViewProvider.getModuleKey(entry);
 		const selected = this.selectedModuleKeys.has(moduleKey);
 		const applied = this.isModuleApplied(moduleKey);
+		const stale = this.staleModuleKeys.has(moduleKey);
 		const topics = entry.topics.filter((topic) => topic !== 'csm-modsets').slice(0, 3);
 		const topicBadges = topics.map((topic) => `<span class="badge">${escapeHtml(topic)}</span>`).join('');
 		const summary = entry.description.trim().length > 0 ? entry.description.trim() : 'No repository description provided.';
 		const footerNote = applied && this.workspaceLabel
-			? `<div class="card-footer-note">Already recorded for ${escapeHtml(this.workspaceLabel)}${this.moduleRoot ? ` under ${escapeHtml(this.moduleRoot)}/` : ''}.</div>`
+			? `<div class="card-footer-note">Already recorded for ${escapeHtml(this.workspaceLabel)}${this.moduleRoot ? ` under ${escapeHtml(this.moduleRoot)}/` : ''}.${stale ? ' <span class="badge stale">stale: directory missing</span>' : ''}</div>`
 			: '<span class="card-footer-spacer"></span>';
 		const searchText = escapeHtml(this.getSearchText(entry));
 
