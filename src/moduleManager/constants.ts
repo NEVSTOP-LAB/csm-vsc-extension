@@ -35,6 +35,7 @@ export const STORAGE_KEYS = {
 	moduleCache: 'csmModules.cache.modules',
 	readmeCache: 'csmModules.cache.readme',
 	moduleEtag: 'csmModules.cache.modulesEtag',
+	moduleSortState: 'csmModules.sort.state',
 } as const;
 
 export const CONTEXT_KEYS = {

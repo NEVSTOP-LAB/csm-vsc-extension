@@ -1,10 +1,13 @@
 import * as vscode from 'vscode';
+import { ModuleSortState } from './interfaces';
+import { normalizeModuleSortState } from './sort';
 import { CsmModuleEntry, ModuleCacheSnapshot } from './types';
 import { STORAGE_KEYS } from './constants';
 
 const MODULE_CACHE_KEY = STORAGE_KEYS.moduleCache;
 const README_CACHE_KEY = STORAGE_KEYS.readmeCache;
 const MODULE_ETAG_KEY = STORAGE_KEYS.moduleEtag;
+const MODULE_SORT_STATE_KEY = STORAGE_KEYS.moduleSortState;
 const MODULE_CACHE_SCHEMA_VERSION = 1;
 
 function isModuleSnapshotShape(value: unknown): value is ModuleCacheSnapshot {
@@ -25,6 +28,18 @@ function normalizeSnapshot(snapshot: ModuleCacheSnapshot): ModuleCacheSnapshot {
 
 export class ModuleCacheStore {
 	constructor(private readonly globalState: vscode.Memento) {}
+
+	public getModuleSortState(): ModuleSortState {
+		const value = this.globalState.get<unknown>(MODULE_SORT_STATE_KEY);
+		if (!value || typeof value !== 'object') {
+			return normalizeModuleSortState();
+		}
+		return normalizeModuleSortState(value as Partial<ModuleSortState>);
+	}
+
+	public async setModuleSortState(sortState: ModuleSortState): Promise<void> {
+		await this.globalState.update(MODULE_SORT_STATE_KEY, normalizeModuleSortState(sortState));
+	}
 
 	public getModuleSnapshot(): ModuleCacheSnapshot | undefined {
 		const rawSnapshot = this.globalState.get<unknown>(MODULE_CACHE_KEY);
@@ -89,5 +104,6 @@ export class ModuleCacheStore {
 		await this.globalState.update(MODULE_CACHE_KEY, undefined);
 		await this.globalState.update(README_CACHE_KEY, undefined);
 		await this.globalState.update(MODULE_ETAG_KEY, undefined);
+		await this.globalState.update(MODULE_SORT_STATE_KEY, undefined);
 	}
 }

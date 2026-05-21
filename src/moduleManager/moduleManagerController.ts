@@ -12,7 +12,7 @@ import { ReadmeAssetCache } from './readmeAssetCache';
 import { DEFAULT_LOCAL_MODULE_ROOT, LEGACY_LOCAL_MODULE_CONFIG_FILE, LOCAL_MODULE_CONFIG_FILE, WorkspaceModuleService } from './workspaceModuleService';
 import { COMMAND_IDS, CONFIG_KEYS, CONFIG_SECTION, CONTEXT_KEYS, VIEW_IDS } from './constants';
 import { Logger, getLogger, wrapCommand } from './logger';
-import { DEFAULT_MODULE_SORT_STATE, isModuleSortField, sortModules } from './sort';
+import { DEFAULT_MODULE_SORT_STATE, isModuleSortField, normalizeModuleSortState, sortModules } from './sort';
 
 const LOCAL_MODULE_CONFIG_GLOB = `**/{${LOCAL_MODULE_CONFIG_FILE},${LEGACY_LOCAL_MODULE_CONFIG_FILE}}`;
 const WORKSPACE_INIT_CONTEXT_KEY = CONTEXT_KEYS.canInitializeWorkspace;
@@ -101,6 +101,7 @@ export class ModuleManagerController {
 		this.treeDataProvider = deps.viewProvider ?? this.sidebarViewProvider;
 		this.cacheStore = new ModuleCacheStore(context.globalState);
 		this.readmeAssetCache = new ReadmeAssetCache(context.globalStorageUri);
+		this.currentSortState = this.cacheStore.getModuleSortState();
 		// Pull any legacy in-memory copy from GlobalState (for backward compat),
 		// but do NOT persist new entries there going forward — the filesystem
 		// asset cache is the single source of truth (review item 3.5).
@@ -416,21 +417,28 @@ export class ModuleManagerController {
 
 	public setSortOrderCommand(field?: ModuleSortField): void {
 		const nextField = isModuleSortField(field) ? field : DEFAULT_MODULE_SORT_STATE.field;
-		this.currentSortState = {
-			...this.currentSortState,
-			field: nextField,
-		};
-		this.applyModuleSort();
-		if (typeof this.treeDataProvider.setSortOrder === 'function') {
-			this.treeDataProvider.setSortOrder(this.currentSortState);
-		}
-		this.treeDataProvider.setModules(this.availableModules);
+		this.updateSortState({ field: nextField });
 	}
 
 	private applyModuleSort(): void {
 		this.availableModules = sortModules(this.availableModules, this.currentSortState, {
 			appliedModuleKeys: this.appliedModuleKeys,
 		});
+	}
+
+	private updateSortState(nextSortState: Partial<ModuleSortState>, persist = true): void {
+		this.currentSortState = normalizeModuleSortState({
+			...this.currentSortState,
+			...nextSortState,
+		});
+		if (persist) {
+			void this.cacheStore.setModuleSortState(this.currentSortState);
+		}
+		this.applyModuleSort();
+		if (typeof this.treeDataProvider.setSortOrder === 'function') {
+			this.treeDataProvider.setSortOrder(this.currentSortState);
+		}
+		this.treeDataProvider.setModules(this.availableModules);
 	}
 
 	private findAppliedEntryFor(config: LocalModuleConfig, entry: CsmModuleEntry | undefined): LocalModuleConfigEntry | undefined {
