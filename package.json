@@ -37,7 +37,10 @@
     "onCommand:csmModules.logout",
     "onCommand:csmModules.refresh",
     "onCommand:csmModules.openReadme",
-    "onCommand:csmModules.applyToWorkspace"
+    "onCommand:csmModules.applyToWorkspace",
+    "onCommand:csmModules.removeModule",
+    "onCommand:csmModules.updateModule",
+    "onCommand:csmModules.setSortOrder"
   ],
   "main": "./dist/extension.js",
   "contributes": {

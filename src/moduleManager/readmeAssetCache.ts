@@ -11,8 +11,6 @@ function escapeHtml(value: string): string {
 		.replace(/"/g, '&quot;')
 		.replace(/'/g, '&#39;')
 		.replace(/`/g, '&#96;')
-		.replace(/\//g, '&#47;')
-		.replace(/\\/g, '&#92;')
 		// Strip control characters that could break out of attribute contexts.
 		.replace(/[\u0000-\u001F\u007F]/g, (char) => `&#${char.charCodeAt(0)};`);
 }
@@ -116,28 +114,38 @@ export class ReadmeAssetCache {
 	}
 
 	private async renderInline(entry: CsmModuleEntry, text: string, webview: vscode.Webview): Promise<string> {
-		let rendered = escapeHtml(text);
+		const replacements: string[] = [];
+		const createPlaceholder = (html: string): string => {
+			const token = `__CSM_INLINE_TOKEN_${replacements.length}__`;
+			replacements.push(html);
+			return token;
+		};
 
-		rendered = await replaceAsync(rendered, /!\[([^\]]*)\]\(([^)]+)\)/g, async (match) => {
+		let rendered = await replaceAsync(text, /!\[([^\]]*)\]\(([^)]+)\)/g, async (match) => {
 			const alt = escapeHtml(match[1] ?? '');
 			const source = (match[2] ?? '').trim();
 			try {
 				const assetUri = await this.downloadAsset(entry, source);
-				return `<img alt="${alt}" src="${webview.asWebviewUri(assetUri)}" />`;
+				return createPlaceholder(`<img alt="${alt}" src="${webview.asWebviewUri(assetUri)}" />`);
 			} catch {
 				const fallbackUrl = this.getCacheKeyUrl(entry, source);
-				return `<img alt="${alt}" src="${escapeHtml(fallbackUrl)}" />`;
+				return createPlaceholder(`<img alt="${alt}" src="${escapeHtml(fallbackUrl)}" />`);
 			}
 		});
 
 		rendered = rendered.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_match, label: string, source: string) => {
 			const href = source.trim().startsWith('http') ? source.trim() : this.getCacheKeyUrl(entry, source.trim());
-			return `<a href="${escapeHtml(href)}">${label}</a>`;
+			return createPlaceholder(`<a href="${escapeHtml(href)}">${escapeHtml(label)}</a>`);
 		});
 
-		rendered = rendered.replace(/`([^`]+)`/g, '<code>$1</code>');
-		rendered = rendered.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
-		rendered = rendered.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+		rendered = rendered.replace(/`([^`]+)`/g, (_match, value: string) => createPlaceholder(`<code>${escapeHtml(value)}</code>`));
+		rendered = rendered.replace(/\*\*([^*]+)\*\*/g, (_match, value: string) => createPlaceholder(`<strong>${escapeHtml(value)}</strong>`));
+		rendered = rendered.replace(/\*([^*]+)\*/g, (_match, value: string) => createPlaceholder(`<em>${escapeHtml(value)}</em>`));
+
+		rendered = escapeHtml(rendered);
+		for (const [index, html] of replacements.entries()) {
+			rendered = rendered.replace(`__CSM_INLINE_TOKEN_${index}__`, html);
+		}
 		return rendered;
 	}
 

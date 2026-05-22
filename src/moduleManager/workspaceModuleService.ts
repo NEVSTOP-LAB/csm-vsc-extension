@@ -158,19 +158,20 @@ export class WorkspaceModuleService {
 	 * Review item 7.1 — implements `csmModules.removeModule` end-to-end.
 	 */
 	public async removeModule(repoRoot: string, entry: LocalModuleConfigEntry): Promise<void> {
-		const targetAbsolute = this.toAbsoluteTargetPath(repoRoot, entry.path);
+		const targetRelativePath = this.normalizeRootPath(entry.path);
+		const targetAbsolute = this.toAbsoluteTargetPath(repoRoot, targetRelativePath);
 		if (entry.method === 'submodule') {
 			try {
-				await this.runGit(repoRoot, ['submodule', 'deinit', '-f', '--', entry.path]);
+				await this.runGit(repoRoot, ['submodule', 'deinit', '-f', '--', targetRelativePath]);
 			} catch {
 				// already deinitialized; continue
 			}
 			try {
-				await this.runGit(repoRoot, ['rm', '-rf', '--', entry.path]);
+				await this.runGit(repoRoot, ['rm', '-rf', '--', targetRelativePath]);
 			} catch {
 				// fall through to manual removal
 			}
-			const submoduleGitDir = path.join(repoRoot, '.git', 'modules', ...entry.path.split('/'));
+			const submoduleGitDir = path.join(repoRoot, '.git', 'modules', ...targetRelativePath.split('/'));
 			try {
 				await fs.rm(submoduleGitDir, { recursive: true, force: true });
 			} catch {
@@ -196,7 +197,7 @@ export class WorkspaceModuleService {
 		moduleEntry: CsmModuleEntry,
 		authToken?: string,
 	): Promise<LocalModuleConfigEntry> {
-		const targetRelativePath = entry.path;
+		const targetRelativePath = this.normalizeRootPath(entry.path);
 		const targetAbsolute = this.toAbsoluteTargetPath(repoRoot, targetRelativePath);
 
 		if (entry.method === 'submodule') {
@@ -266,7 +267,14 @@ export class WorkspaceModuleService {
 	}
 
 	private toAbsoluteTargetPath(repoRoot: string, targetRelativePath: string): string {
-		return path.join(repoRoot, ...targetRelativePath.split('/'));
+		const repoRootAbsolute = path.resolve(repoRoot);
+		const safeRelativePath = this.normalizeRootPath(targetRelativePath);
+		const targetAbsolute = path.resolve(repoRootAbsolute, ...safeRelativePath.split('/'));
+		const relativeFromRoot = path.relative(repoRootAbsolute, targetAbsolute);
+		if (!relativeFromRoot || relativeFromRoot.startsWith('..') || path.isAbsolute(relativeFromRoot)) {
+			throw new Error('Target path must stay inside the repository root.');
+		}
+		return targetAbsolute;
 	}
 
 	private async buildExistingSubmoduleEntry(

@@ -40,15 +40,10 @@ suite('Module Manager Boundary Tests', () => {
 			const configPath = path.join(configDir, 'modules.yaml');
 			// Wildly malformed YAML: tabs, unbalanced brackets, embedded null
 			await fs.writeFile(configPath, "version: '1.0'\nroot: csm\nmodules:\n  : invalid\n  - not a map\n", 'utf8');
-			let threw = false;
-			try {
-				await service.loadConfig(tmpDir, configPath);
-			} catch {
-				threw = true;
-			}
-			// Either it parses with empty modules or throws — the important thing is no crash/loop.
-			assert.ok(true, 'parser handled malformed input');
-			void threw;
+			await assert.rejects(
+				() => service.loadConfig(tmpDir, configPath),
+				(error: unknown) => error instanceof Error && /Failed to parse YAML config/.test(error.message),
+			);
 		} finally {
 			await fs.rm(tmpDir, { recursive: true, force: true });
 		}
@@ -98,13 +93,13 @@ suite('Module Manager Boundary Tests', () => {
 	test('targetExists rejects path-traversal style relative paths', async () => {
 		const service = new WorkspaceModuleService();
 		const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'csm-trav-'));
+		const outsideFile = path.join(path.dirname(tmpDir), `csm-outside-${Date.now()}.txt`);
 		try {
-			// "../" segments would, naively concatenated, escape the repoRoot.
-			const exists = await service.targetExists(tmpDir, '../etc/passwd');
-			// We don't require false here; we require the call not to throw
-			// and not to report a path outside tmpDir as existing.
-			assert.strictEqual(typeof exists, 'boolean');
+			await fs.writeFile(outsideFile, 'outside', 'utf8');
+			const exists = await service.targetExists(tmpDir, `../${path.basename(outsideFile)}`);
+			assert.strictEqual(exists, false);
 		} finally {
+			await fs.rm(outsideFile, { force: true });
 			await fs.rm(tmpDir, { recursive: true, force: true });
 		}
 	});
