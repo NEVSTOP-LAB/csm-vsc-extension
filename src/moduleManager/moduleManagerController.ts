@@ -1172,20 +1172,14 @@ export class ModuleManagerController {
 		}
 
 		const repoRoot = await this.workspaceModuleService.resolveGitRepositoryRoot(workspaceFolder.uri.fsPath);
-		if (!repoRoot) {
-			setContext({
-				workspaceLabel: workspaceFolder.name,
-				appliedModuleKeys: [],
-			});
-			return;
-		}
+		const workspaceRoot = repoRoot ?? workspaceFolder.uri.fsPath;
 
-		const config = await this.tryLoadSidebarLocalModuleConfig(workspaceFolder, repoRoot);
+		const config = await this.tryLoadSidebarLocalModuleConfig(workspaceFolder, workspaceRoot);
 		setContext({
-			workspaceLabel: path.basename(repoRoot) || workspaceFolder.name,
+			workspaceLabel: path.basename(workspaceRoot) || workspaceFolder.name,
 			moduleRoot: config?.root,
 			appliedModuleKeys: this.mapAppliedModuleKeys(config),
-			staleModuleKeys: await this.computeStaleModuleKeys(repoRoot, config),
+			staleModuleKeys: await this.computeStaleModuleKeys(workspaceRoot, config),
 		});
 	}
 

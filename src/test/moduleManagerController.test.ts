@@ -1056,6 +1056,72 @@ suite('ModuleManagerController Regression Tests', () => {
 		assert.ok(rendered?.html.includes('module-b'));
 	});
 
+	test('register marks copy modules as applied in a non-git workspace from config file', async () => {
+		const memento = new FakeMemento();
+		await memento.update('csmModules.cache.modules', createCachedSnapshot([
+			{
+				id: 1,
+				owner: 'org',
+				name: 'module-a',
+				description: 'cached',
+				topics: ['csm-modsets'],
+				visibility: 'public',
+				defaultBranch: 'main',
+				repoUrl: 'https://github.com/org/module-a',
+			},
+			{
+				id: 2,
+				owner: 'org',
+				name: 'module-b',
+				description: 'cached',
+				topics: ['csm-modsets'],
+				visibility: 'public',
+				defaultBranch: 'main',
+				repoUrl: 'https://github.com/org/module-b',
+			},
+		]));
+		const controller = createController(memento) as any;
+
+		controller.authService = {
+			getSessionSilently: async () => undefined,
+			getSessionInteractively: async () => undefined,
+		};
+		controller.workspaceModuleService = {
+			resolveGitRepositoryRoot: async () => undefined,
+			loadConfig: async () => ({
+				version: '2',
+				root: 'csm',
+				configPath: 'd:/plain-workspace/csm/csm-modules.yaml',
+				modules: {
+					org__module_a: {
+						key: 'org__module_a',
+						name: 'module-a',
+						owner: 'org',
+						source: 'https://github.com/org/module-a',
+						method: 'copy',
+						path: 'csm/module-a',
+						ref: 'abc123',
+						branch: 'main',
+					},
+				},
+			}),
+		};
+		mocked.__setWorkspaceFolders([{ name: 'plain-workspace', uri: vscode.Uri.file('d:/plain-workspace') }]);
+		mocked.__setFindFilesResultForPattern(configSearchPattern, [vscode.Uri.file('d:/plain-workspace/csm/csm-modules.yaml')]);
+		mocked.__setFindFilesResultForPattern(lvprojSearchPattern, []);
+		controller.register([]);
+		mocked.__resolveWebviewView('csmModules.view');
+		await controller.refreshSidebarWorkspaceState();
+
+		const rendered = mocked.__getLastWebviewView();
+		assert.ok(!rendered?.html.includes('Workspace: plain-workspace'));
+		assert.ok(rendered?.html.includes('Root: csm/'));
+		assert.ok(rendered?.html.includes('1 applied'));
+		assert.ok(rendered?.html.includes('Already recorded for plain-workspace under csm'));
+		assert.ok(rendered?.html.includes('module-a'));
+		assert.ok(rendered?.html.includes('module-b'));
+	});
+
 	test('proactive init detection prompts when csm and lvproj exist without config', async () => {
 		const configuredRoot = 'modules/library';
 		const { repoRoot, lvprojPath } = createWorkspaceFolderWithCsmProject('csm-init-detect-', configuredRoot);
