@@ -181,7 +181,7 @@ class MockWebview {
     private messageListeners: Array<(message: unknown) => void> = [];
     private webviewHtml = '';
     public readonly cspSource = 'vscode-resource:';
-    public options: { enableScripts?: boolean } = {};
+    public options: { enableScripts?: boolean; localResourceRoots?: readonly Uri[] } = {};
     constructor(private readonly onHtmlChange: (html: string) => void) { }
     asWebviewUri(uri: Uri): Uri {
         return uri;
@@ -312,7 +312,12 @@ let workspaceFoldersState: Array<{ name: string; uri: Uri }> | undefined;
 let configurationValues = new Map<string, unknown>();
 let contextValues = new Map<string, unknown>();
 let lastWebviewPanel: { title: string; html: string } | undefined;
-let lastWebviewView: { viewId: string; html: string; description?: string } | undefined;
+let lastWebviewView: {
+    viewId: string;
+    html: string;
+    description?: string;
+    options?: { enableScripts?: boolean; localResourceRoots?: Uri[] };
+} | undefined;
 let lastWarningPrompt: { message: string; items: unknown[] } | undefined;
 
 const webviewViewProviders = new Map<string, { resolveWebviewView: (webviewView: unknown, context: unknown, token: unknown) => void }>();
@@ -428,6 +433,13 @@ export const window = {
     },
 };
 
+function cloneWebviewOptions(options: { enableScripts?: boolean; localResourceRoots?: readonly Uri[] }): { enableScripts?: boolean; localResourceRoots?: Uri[] } {
+    return {
+        enableScripts: options.enableScripts,
+        localResourceRoots: options.localResourceRoots ? [...options.localResourceRoots] : undefined,
+    };
+}
+
 export const workspace = {
     workspaceFolders: workspaceFoldersState as Array<{ name: string; uri: Uri }> | undefined,
     getConfiguration(section?: string): { get: <T>(key: string, defaultValue?: T) => T } {
@@ -533,10 +545,10 @@ export function __resolveWebviewView(viewId: string): { html: string; fireMessag
 
     const view = new MockWebviewView(
         (html: string) => {
-            lastWebviewView = { viewId, html, description: view.description };
+            lastWebviewView = { viewId, html, description: view.description, options: cloneWebviewOptions(view.webview.options) };
         },
         (description: string | undefined) => {
-            lastWebviewView = { viewId, html: view.webview.html, description };
+            lastWebviewView = { viewId, html: view.webview.html, description, options: cloneWebviewOptions(view.webview.options) };
         },
     );
     webviewViews.set(viewId, view);
@@ -550,8 +562,18 @@ export function __resolveWebviewView(viewId: string): { html: string; fireMessag
     };
 }
 
-export function __getLastWebviewView(): { viewId: string; html: string; description?: string } | undefined {
-    return lastWebviewView ? { ...lastWebviewView } : undefined;
+export function __getLastWebviewView(): { viewId: string; html: string; description?: string; options?: { enableScripts?: boolean; localResourceRoots?: Uri[] } } | undefined {
+    return lastWebviewView
+        ? {
+            ...lastWebviewView,
+            options: lastWebviewView.options
+                ? {
+                    ...lastWebviewView.options,
+                    localResourceRoots: lastWebviewView.options.localResourceRoots ? [...lastWebviewView.options.localResourceRoots] : undefined,
+                }
+                : undefined,
+        }
+        : undefined;
 }
 
 export function __getLastWarningPrompt(): { message: string; items: unknown[] } | undefined {

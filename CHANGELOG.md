@@ -31,6 +31,7 @@
 - UI：模块卡片右键菜单改为 VS Code 原生 `webview/context` 菜单，`Apply` / `Update` / `Remove` / `Open README` / 选择操作会按当前模块状态自动启用、禁用或切换
 - UI：侧边栏顶部搜索框改为更接近扩展市场的搜索栏样式，末尾集成 `Filter` 菜单；菜单内拆分 `Type` 与 `Order` 两组排序选项，并将 `applied / available / selected` 状态信息合并到同一行展示
 - UI：点击模块卡片正文可在侧边栏内展开 README Markdown 预览，右上角 `README` 按钮继续保留完整 README 面板入口
+- UI：修复侧边栏 README Markdown 预览中的图片资源加载，仓库内相对图片以及 GitHub `user-attachments` 这类原生 `<img>` 图片现在都可正常显示
 - UI：已登录 GitHub 时，模块卡片会在 `README` 按钮旁显示仓库 `Star` 状态，并支持直接 `Star` / `Unstar`；取消 Star 前会要求二次确认
 - UI：已登录 GitHub 时，`CSM Modules` 标题栏会显示 `Sign Out` 入口，便于从扩展内直接切换账号；侧边栏摘要继续显示当前账号
 - 交互：当仓库存在 `csm/` 目录与 `*.lvproj` 但尚未初始化本地模块管理时，打开侧边栏会主动弹出初始化提示，并显示专用标题栏初始化按钮

@@ -38,7 +38,7 @@
 侧边栏 `CSM Modules` 视图，用于浏览、搜索和管理 CSM 模块仓库：
 
 - ✅ 浏览 GitHub 上满足 `topic:csm-modsets` 的公开模块及当前账号可访问的私有模块
-- ✅ 卡片式列表，支持内联 README 预览
+- ✅ 卡片式列表，支持内联 README 预览与图片显示，包括 GitHub README 中常见的原生 `<img>` 标签
 - ✅ 已登录 GitHub 时，卡片右上角会在 `README` 旁显示 `Star` 按钮，并展示当前仓库是否已 Star
 - ✅ 支持直接在侧边栏内 `Star` / `Unstar` 仓库；取消 Star 前会要求二次确认
 - ✅ 支持按名称、owner、topic、分支等关键字搜索过滤，以及多维度排序

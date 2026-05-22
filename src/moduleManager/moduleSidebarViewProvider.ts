@@ -20,6 +20,10 @@ interface ModuleSidebarActions {
 	onSortChange: (sortState: Partial<ModuleSortState>) => void;
 }
 
+interface ModuleSidebarViewProviderOptions {
+	getLocalResourceRoots?: () => readonly vscode.Uri[];
+}
+
 type WebviewMessage = {
 	type: 'login' | 'refresh' | 'initializeWorkspace' | 'applySelected' | 'toggleStar' | 'openReadme' | 'togglePreview' | 'applyOne' | 'toggleSelection' | 'setFilterQuery' | 'clearFilter' | 'dismissIntroTip' | 'removeModule' | 'updateModule' | 'setSortField' | 'setSortDirection' | 'showMore';
 	moduleKey?: string;
@@ -51,7 +55,10 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IM
 	private static readonly INITIAL_RENDER_LIMIT = 100;
 	private renderLimit = ModuleSidebarViewProvider.INITIAL_RENDER_LIMIT;
 
-	constructor(private readonly actions: ModuleSidebarActions) { }
+	constructor(
+		private readonly actions: ModuleSidebarActions,
+		private readonly options: ModuleSidebarViewProviderOptions = {},
+	) { }
 
 	public static getModuleKey(entry: CsmModuleEntry): string {
 		return `${entry.owner}/${entry.name}`;
@@ -66,6 +73,7 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IM
 		webviewView.description = this.viewDescription;
 		webviewView.webview.options = {
 			enableScripts: true,
+			localResourceRoots: this.options.getLocalResourceRoots?.(),
 		};
 		webviewView.webview.onDidReceiveMessage((message: unknown) => {
 			void this.handleMessage(message);

@@ -98,6 +98,8 @@ export class ModuleManagerController {
 		onSortChange: (sortState) => {
 			this.updateSortState(sortState);
 		},
+	}, {
+		getLocalResourceRoots: () => [this.readmeAssetCache.rootUri],
 	});
 	// IModuleViewProvider abstraction (review item 2.2). Tests can swap this out.
 	private treeDataProvider: IModuleViewProvider;

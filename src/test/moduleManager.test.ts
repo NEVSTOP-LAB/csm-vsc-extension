@@ -4,15 +4,17 @@ import * as fs from 'fs/promises';
 import * as os from 'os';
 import * as path from 'path';
 import { ModuleCacheStore, mapRepoToModuleEntry } from '../moduleManager';
+import { ReadmeAssetCache } from '../moduleManager/readmeAssetCache';
 import { ModuleSidebarViewProvider } from '../moduleManager/moduleSidebarViewProvider';
 import { ModuleTreeDataProvider, ModuleTreeItem } from '../moduleManager/moduleTreeDataProvider';
 import { GitHubRepoSummary } from '../moduleManager';
+import { CsmModuleEntry } from '../moduleManager/types';
 import { LEGACY_LOCAL_MODULE_CONFIG_FILE, LOCAL_MODULE_CONFIG_FILE, WorkspaceModuleService } from '../moduleManager/workspaceModuleService';
 import * as vscode from 'vscode';
 
 type VscodeMock = typeof vscode & {
 	__resolveWebviewView: (viewId: string) => { html: string; fireMessage: (message: unknown) => void } | undefined;
-	__getLastWebviewView: () => { viewId: string; html: string; description?: string } | undefined;
+	__getLastWebviewView: () => { viewId: string; html: string; description?: string; options?: { enableScripts?: boolean; localResourceRoots?: vscode.Uri[] } } | undefined;
 	__resetUiState: () => void;
 };
 
@@ -136,6 +138,45 @@ suite('Module Manager Tests', () => {
 		assert.strictEqual(store.isModuleSnapshotExpired(snapshot, 1), true);
 	});
 
+	test('ReadmeAssetCache renders raw HTML img tags in README previews', async () => {
+		const storageRoot = vscode.Uri.file(path.join(os.tmpdir(), `csm-readme-assets-${Date.now()}`));
+		const cache = new ReadmeAssetCache(storageRoot);
+		const entry: CsmModuleEntry = {
+			id: 1,
+			owner: 'org',
+			name: 'module-a',
+			description: 'A demo module',
+			topics: ['csm-modsets'],
+			visibility: 'public',
+			defaultBranch: 'main',
+			repoUrl: 'https://github.com/org/module-a',
+		};
+		const originalFetch = globalThis.fetch;
+		globalThis.fetch = (async () => ({
+			ok: true,
+			status: 200,
+			arrayBuffer: async () => new Uint8Array([1, 2, 3, 4]).buffer,
+		}) as Response) as typeof fetch;
+
+		try {
+			const panel = vscode.window.createWebviewPanel('csmModulesReadmeTest', 'README', vscode.ViewColumn.One, {});
+			const html = await cache.renderMarkdownFragment(
+				entry,
+				'<img width="385" height="322" alt="image" src="https://github.com/user-attachments/assets/ff122167-f2f9-4ab4-8905-d0d5b468217e" />',
+				panel.webview,
+			);
+
+			assert.ok(html.includes('<img alt="image"'));
+			assert.ok(html.includes('width="385"'));
+			assert.ok(html.includes('height="322"'));
+			assert.ok(html.includes('<p><img'));
+			assert.ok(!html.includes('&lt;img'));
+		} finally {
+			globalThis.fetch = originalFetch;
+			await fs.rm(storageRoot.fsPath, { recursive: true, force: true });
+		}
+	});
+
 	test('ModuleTreeItem includes topic and visibility metadata', () => {
 		const entry = {
 			id: 1,
@@ -187,6 +228,7 @@ suite('Module Manager Tests', () => {
 	});
 
 	test('ModuleSidebarViewProvider renders extension-style module cards', () => {
+		const assetRoot = vscode.Uri.file(path.join(os.tmpdir(), 'csm-sidebar-readme-assets'));
 		const provider = new ModuleSidebarViewProvider({
 			onLogin: () => undefined,
 			onRefresh: () => undefined,
@@ -199,6 +241,8 @@ suite('Module Manager Tests', () => {
 			onUpdateModule: () => undefined,
 			onSelectionChange: () => undefined,
 			onSortChange: () => undefined,
+		}, {
+			getLocalResourceRoots: () => [assetRoot],
 		});
 
 		provider.setAuthenticated(true, 'tester');
@@ -242,6 +286,7 @@ suite('Module Manager Tests', () => {
 		assert.strictEqual(rendered?.viewId, 'csmModules.view');
 		assert.strictEqual(rendered?.description, 'Updated 5 minutes ago');
 		assert.ok(rendered?.html.includes('module-card'));
+		assert.deepStrictEqual(rendered?.options?.localResourceRoots?.map((uri) => uri.fsPath), [assetRoot.fsPath]);
 		assert.ok(rendered?.html.includes('module-a'));
 		assert.ok(rendered?.html.includes('@org'));
 		assert.ok(rendered?.html.includes('automation'));
