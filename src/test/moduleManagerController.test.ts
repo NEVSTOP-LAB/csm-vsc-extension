@@ -430,7 +430,7 @@ suite('ModuleManagerController Regression Tests', () => {
 		assert.ok(panel?.html.includes('demo'));
 	});
 
-	test('login reveals cached private modules for the same cached account without refreshing', async () => {
+	test('login reveals cached private modules immediately and then refreshes from GitHub', async () => {
 		const memento = new FakeMemento();
 		await memento.update('csmModules.cache.modules', createCachedSnapshot([
 			{
@@ -457,8 +457,9 @@ suite('ModuleManagerController Regression Tests', () => {
 			refreshAccountId: 'tester',
 			refreshAccountLabel: 'tester',
 		}));
-		let moduleCount = -1;
-		let fetched = false;
+		const moduleCounts: number[] = [];
+		let loadingCalls = 0;
+		let fetched = 0;
 
 		const controller = createController(memento, {
 			authService: {
@@ -467,14 +468,50 @@ suite('ModuleManagerController Regression Tests', () => {
 			},
 			githubService: {
 				fetchModules: async () => {
-					fetched = true;
-					return { modules: [] };
+					fetched += 1;
+					return {
+						modules: [
+							{
+								id: 1,
+								owner: 'org',
+								name: 'module-a',
+								description: 'demo',
+								topics: ['csm-modsets'],
+								visibility: 'public',
+								defaultBranch: 'main',
+								repoUrl: 'https://github.com/org/module-a',
+							},
+							{
+								id: 2,
+								owner: 'org',
+								name: 'module-private',
+								description: 'private',
+								topics: ['csm-modsets'],
+								visibility: 'private',
+								defaultBranch: 'main',
+								repoUrl: 'https://github.com/org/module-private',
+							},
+							{
+								id: 3,
+								owner: 'org',
+								name: 'module-new',
+								description: 'new',
+								topics: ['csm-modsets'],
+								visibility: 'public',
+								defaultBranch: 'main',
+								repoUrl: 'https://github.com/org/module-new',
+							},
+						],
+					};
 				},
 				fetchReadme: async () => '# demo',
 			},
 			viewProvider: createViewProvider({
+				setLoading: () => {
+					loadingCalls += 1;
+				},
 				setModules: (modules: CsmModuleEntry[]) => {
-					moduleCount = modules.length;
+					moduleCounts.push(modules.length);
 				},
 			}),
 		});
@@ -482,8 +519,9 @@ suite('ModuleManagerController Regression Tests', () => {
 		controller.register([]);
 		await controller.loginCommand();
 
-		assert.strictEqual(fetched, false);
-		assert.strictEqual(moduleCount, 2);
+		assert.strictEqual(fetched, 1);
+		assert.strictEqual(loadingCalls, 0);
+		assert.deepStrictEqual(moduleCounts.slice(-2), [2, 3]);
 		assert.strictEqual(mocked.__getContextValue('csmModules.signedIn'), true);
 	});
 

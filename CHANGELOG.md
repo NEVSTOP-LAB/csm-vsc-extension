@@ -17,7 +17,7 @@
 
 ### 变更
 
-- 阶段一：模块发现继续基于 GitHub 全局 `topic:csm-modsets` 搜索；侧边栏启动时改为只显示本地缓存，手动刷新时再同步当前账号可访问的 public / private 模块
+- 阶段一：模块发现继续基于 GitHub 全局 `topic:csm-modsets` 搜索；侧边栏启动时改为只显示本地缓存，登录成功后会自动执行一次网络刷新，之后仍通过手动刷新同步当前账号可访问的 public / private 模块
 - 阶段四：public 模块 README 支持未登录时匿名加载，避免公共模块浏览流程被 GitHub 登录前置阻断
 - 构建：`@types/js-yaml` 已移入 `devDependencies`，`tsconfig.json` 明确 `outDir = out`，并清理过时的 `skipLibCheck` 注释
 - CI：VSIX 校验步骤改为在 Linux / Windows 上统一使用 PowerShell `Expand-Archive`，并在发布到 Marketplace 前显式检查 `VSCE_PAT`
@@ -36,7 +36,7 @@
 - 交互：当仓库存在 `csm/` 目录与 `*.lvproj` 但尚未初始化本地模块管理时，打开侧边栏会主动弹出初始化提示，并显示专用标题栏初始化按钮
 - 交互：工作区初始化、首次应用与主动初始化提示会遵循 `csmModules.defaultModuleRoot` 作为默认目录；若仓库内已存在 `csm-modules.yaml`，仍以配置文件中的 `root` 为准
 - 交互：已登录 GitHub 时，通过模块管理器把社区模块引入当前仓库后，会自动为对应 GitHub 仓库补 Star
-- 缓存：启动时仅复用本地模块列表与 README 缓存，不再在后台偷偷刷新；若本地记录仍是同一 GitHub 账号，会直接展示对应 private 缓存，并在标题栏显示上次刷新时间
+- 缓存：启动时仅复用本地模块列表与 README 缓存，不再在后台偷偷刷新；若本地记录仍是同一 GitHub 账号，会直接展示对应 private 缓存；`Cached list` 横幅已移除，仅在标题栏显示上次刷新时间
 - 兼容：旧版 `csm-modules.lvcsm` 配置可继续读取，并在后续写回时迁移到 YAML
 - 交互：应用模块前增加方式选择与二次确认，并补齐非 Git 仓库、重复目标路径、copy 目标已存在等基础错误提示
 - 错误处理：刷新 / 应用 / 更新 / 删除模块时，会把常见 GitHub HTTP 状态、Git 权限失败、Git 缺失、网络错误与 YAML 解析错误转换为更可操作的提示

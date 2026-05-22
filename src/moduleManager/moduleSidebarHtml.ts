@@ -992,10 +992,6 @@ function renderContent(state: ModuleSidebarRenderState): string {
 			? `<section class="notice"><div><strong>${escapeHtml(t('catalogRefreshFailedTitle'))}</strong><span>${escapeHtml(state.message)}</span></div></section>`
 			: '';
 
-	const offlineBanner = state.offlineMode
-		? `<section class="notice offline"><div><strong>${escapeHtml(t('offlineModeTitle'))}</strong><span>${escapeHtml(t('offlineModeBody'))}</span></div></section>`
-		: '';
-
 	const sortedAll = getSortedModules(state.modules, state);
 	const total = sortedAll.length;
 	const visible = sortedAll.slice(0, state.renderLimit);
@@ -1004,7 +1000,7 @@ function renderContent(state: ModuleSidebarRenderState): string {
 		? `<section class="notice"><div><strong>${escapeHtml(t('hiddenModulesTitle', { count: hiddenCount }))}</strong><span>${escapeHtml(t('hiddenModulesBody'))}</span></div><button class="toolbar-button" data-action="showMore">${escapeHtml(t('showMore', { count: Math.min(hiddenCount, state.initialRenderLimit) }))}</button></section>`
 		: '';
 
-	return `${offlineBanner}${statusBanner}<section class="list">${visible.map((entry) => renderModuleCard(entry, state)).join('')}</section>${showMoreButton}<section class="empty-state" data-role="filter-empty" hidden><h2>${escapeHtml(t('filterNoMatchesTitle'))}</h2><p>${escapeHtml(t('filterNoMatchesBody'))}</p><div class="action-toolbar"><button class="toolbar-button callout" data-action="clearFilter">${escapeHtml(t('clearFilter'))}</button></div></section>`;
+	return `${statusBanner}<section class="list">${visible.map((entry) => renderModuleCard(entry, state)).join('')}</section>${showMoreButton}<section class="empty-state" data-role="filter-empty" hidden><h2>${escapeHtml(t('filterNoMatchesTitle'))}</h2><p>${escapeHtml(t('filterNoMatchesBody'))}</p><div class="action-toolbar"><button class="toolbar-button callout" data-action="clearFilter">${escapeHtml(t('clearFilter'))}</button></div></section>`;
 }
 
 function renderModuleCard(entry: CsmModuleEntry, state: ModuleSidebarRenderState): string {

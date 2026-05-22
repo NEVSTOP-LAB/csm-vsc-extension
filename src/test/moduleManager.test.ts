@@ -231,6 +231,7 @@ suite('Module Manager Tests', () => {
 			moduleRoot: 'csm',
 			appliedModuleKeys: ['org/module-a'],
 		});
+		provider.setOfflineMode(true);
 		provider.setViewDescription('Updated 5 minutes ago');
 
 		const disposable = vscode.window.registerWebviewViewProvider('csmModules.view', provider);
@@ -278,6 +279,7 @@ suite('Module Manager Tests', () => {
 		assert.ok(rendered?.html.includes('title="Open README"'));
 		assert.ok(!rendered?.html.includes('class="avatar"'));
 		assert.ok(!rendered?.html.includes('title="Refresh modules"'));
+		assert.ok(!rendered?.html.includes('Cached list'));
 		assert.ok(rendered ? rendered.html.indexOf('Already recorded for repo') < rendered.html.indexOf('>automation</span>') : false);
 
 		provider.setSelection(['org/module-a']);

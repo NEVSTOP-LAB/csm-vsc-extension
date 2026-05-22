@@ -573,6 +573,12 @@ export class ModuleManagerController {
 			void this.authService.verifyScopes(session.accessToken);
 		}
 		this.applyCachedModules(this.cacheStore.getModuleSnapshot());
+		await this.loadModules({
+			interactiveAuth: false,
+			showSuccessMessage: false,
+			showErrorMessage: true,
+			preserveVisibleModules: this.availableModules.length > 0,
+		});
 	}
 
 	public async logoutCommand(): Promise<void> {
