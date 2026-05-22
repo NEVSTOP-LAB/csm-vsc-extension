@@ -40,7 +40,7 @@
 - ✅ 支持搜索、筛选、排序和批量选择
 - ✅ 支持 README 预览与图片显示
 - ✅ 支持仓库 `Star` / `Unstar`
-- ✅ 支持将模块引入当前仓库，可选 `submodule` 或 `copy`
+- ✅ 支持将模块引入当前工作区，Git 仓库可选 `submodule` 或 `copy`，非 Git 工作区自动限制为 `copy`
 - ✅ 支持批量应用模块
 
 > 详细功能说明参见 [docs/module-management.md](docs/module-management.md)

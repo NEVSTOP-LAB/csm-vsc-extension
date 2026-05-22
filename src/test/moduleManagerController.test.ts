@@ -20,6 +20,7 @@ type VscodeMock = typeof vscode & {
 	__setWorkspaceFolders: (folders: Array<{ name: string; uri: vscode.Uri }> | undefined) => void;
 	__setConfigurationValue: (key: string, value: unknown) => void;
 	__getContextValue: (key: string) => unknown;
+	__getLastQuickPick: () => { items: unknown[]; options?: unknown } | undefined;
 	__getLastWarningPrompt: () => { message: string; items: unknown[] } | undefined;
 	__getLastWebviewPanel: () => { title: string; html: string } | undefined;
 	__resolveWebviewView: (viewId: string) => { html: string; fireMessage: (message: unknown) => void } | undefined;
@@ -1257,6 +1258,85 @@ suite('ModuleManagerController Regression Tests', () => {
 		await controller.applyToWorkspaceCommand(entry);
 
 		assert.strictEqual(appliedRoot, 'existing-root');
+	});
+
+	test('apply in a non-git workspace still offers copy mode and does not error immediately', async () => {
+		const controller = createController() as any;
+		const entry: CsmModuleEntry = {
+			id: 9,
+			owner: 'org',
+			name: 'module-non-git',
+			description: 'demo',
+			topics: ['csm-modsets'],
+			visibility: 'public',
+			defaultBranch: 'main',
+			repoUrl: 'https://github.com/org/module-non-git',
+		};
+		let appliedRoot = '';
+		let writtenConfig: LocalModuleConfig | undefined;
+
+		controller.workspaceModuleService = {
+			resolveGitRepositoryRoot: async () => undefined,
+			normalizeRootPath: (value: string) => value,
+			recoverConfigFromExistingSubmodules: async () => undefined,
+			initializeConfig: async (repoRoot: string, rootRelativePath: string) => ({
+				version: '2',
+				root: rootRelativePath,
+				configPath: `${repoRoot}/${rootRelativePath}/csm-modules.yaml`,
+				modules: {},
+			}),
+			loadConfig: async () => ({
+				version: '2',
+				root: 'csm',
+				configPath: 'd:/plain-workspace/csm/csm-modules.yaml',
+				modules: {},
+			}),
+			getTargetRelativePath: (_config: LocalModuleConfig, moduleEntry: CsmModuleEntry) => `csm/${moduleEntry.name}`,
+			targetExists: async () => false,
+			applyModule: async (repoRoot: string, _config: LocalModuleConfig, moduleEntry: CsmModuleEntry) => {
+				appliedRoot = repoRoot;
+				return {
+					key: 'org__module_non_git',
+					name: moduleEntry.name,
+					owner: moduleEntry.owner,
+					source: moduleEntry.repoUrl,
+					method: 'copy',
+					path: `csm/${moduleEntry.name}`,
+					ref: 'abc123',
+					branch: moduleEntry.defaultBranch,
+				};
+			},
+			withAppliedModule: (config: LocalModuleConfig, moduleEntry: LocalModuleConfig['modules'][string]) => ({
+				...config,
+				modules: {
+					...config.modules,
+					[moduleEntry.key]: moduleEntry,
+				},
+			}),
+			writeConfig: async (config: LocalModuleConfig) => {
+				writtenConfig = config;
+			},
+		};
+		mocked.__setWorkspaceFolders([{ name: 'plain-workspace', uri: vscode.Uri.file('d:/plain-workspace') }]);
+		mocked.__setFindFilesResult([]);
+		mocked.__setConfigurationValue('csmModules.defaultModuleRoot', 'csm');
+		mocked.__setInformationMessageResponse('Use csm/');
+		mocked.__setQuickPickResponse({ method: 'copy' });
+		mocked.__setWarningMessageResponse('Apply');
+
+		await controller.applyToWorkspaceCommand(entry);
+
+		assert.strictEqual(appliedRoot, 'd:/plain-workspace');
+		assert.strictEqual(writtenConfig?.modules.org__module_non_git?.method, 'copy');
+		const quickPick = mocked.__getLastQuickPick();
+		const quickPickItems = quickPick?.items as Array<{ label?: string; method?: string; kind?: vscode.QuickPickItemKind }> | undefined;
+		assert.ok(quickPickItems?.some((item) => item.label?.includes('submodule')));
+		assert.ok(!quickPickItems?.some((item) => item.method === 'submodule'));
+		assert.strictEqual(quickPickItems?.[0]?.kind, vscode.QuickPickItemKind.Separator);
+		const quickPickOptions = quickPick?.options as { prompt?: string } | undefined;
+		assert.ok(quickPickOptions?.prompt?.includes('not a Git repository'));
+		const errors = mocked.__getMessageLog().filter((message) => message.level === 'error').map((message) => message.text);
+		assert.ok(!errors.some((text) => text.includes('not a Git repository')));
 	});
 
 	test('apply auto-stars imported community modules for signed-in users', async () => {

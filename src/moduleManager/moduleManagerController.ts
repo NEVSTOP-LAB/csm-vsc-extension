@@ -40,6 +40,10 @@ type WebviewModuleContext = {
 	preventDefaultContextMenuItems?: boolean;
 };
 
+type ApplyMethodQuickPickItem = vscode.QuickPickItem & {
+	method?: ModuleApplyMethod;
+};
+
 type ModuleManagerAuthService = Pick<AuthService, 'getSessionSilently' | 'getSessionInteractively'>
 	& Partial<Pick<AuthService, 'signOut' | 'verifyScopes'>>;
 
@@ -205,10 +209,7 @@ export class ModuleManagerController {
 		}
 
 		const repoRoot = await this.workspaceModuleService.resolveGitRepositoryRoot(workspaceFolder.uri.fsPath);
-		if (!repoRoot) {
-			void vscode.window.showErrorMessage(t('workspaceNotGitRepo'));
-			return;
-		}
+		const applyRoot = repoRoot ?? workspaceFolder.uri.fsPath;
 
 		let authToken = await this.ensureToken(false);
 		if (!authToken && selectedEntries.some((moduleEntry) => moduleEntry.visibility === 'private')) {
@@ -219,14 +220,14 @@ export class ModuleManagerController {
 			}
 		}
 
-		const initialConfig = await this.resolveLocalModuleConfig(workspaceFolder, repoRoot);
+		const initialConfig = await this.resolveLocalModuleConfig(workspaceFolder, applyRoot);
 		if (!initialConfig) {
 			return;
 		}
 		let config: LocalModuleConfig = initialConfig;
 		await this.refreshWorkspaceInitializationState({ prompt: false });
 
-		const applyMethod = await this.promptApplyMethod(selectedEntries.length);
+		const applyMethod = await this.promptApplyMethod(selectedEntries.length, { gitAvailable: !!repoRoot });
 		if (!applyMethod) {
 			return;
 		}
@@ -237,7 +238,7 @@ export class ModuleManagerController {
 			return;
 		}
 
-		const occupiedTargets = await this.findOccupiedTargetPaths(repoRoot, config, selectedEntries);
+		const occupiedTargets = await this.findOccupiedTargetPaths(applyRoot, config, selectedEntries);
 		if (occupiedTargets.length > 0) {
 			const prefix = applyMethod === 'copy' ? t('copyTargetExists') : t('targetPathExists');
 			void vscode.window.showWarningMessage(`${prefix}: ${occupiedTargets.join(', ')}`);
@@ -248,7 +249,7 @@ export class ModuleManagerController {
 		const confirmation = await vscode.window.showWarningMessage(
 			t('applyConfirmation', {
 				count: selectedEntries.length,
-				repository: path.basename(repoRoot),
+				repository: path.basename(applyRoot),
 				method: applyMethodLabel,
 				root: config.root,
 			}),
@@ -279,7 +280,7 @@ export class ModuleManagerController {
 						const settled = await Promise.allSettled(
 							selectedEntries.map(async (moduleEntry) => {
 								const applied = await this.workspaceModuleService.applyModule(
-									repoRoot,
+									applyRoot,
 									config,
 									moduleEntry,
 									applyMethod,
@@ -318,7 +319,7 @@ export class ModuleManagerController {
 						// Submodule mode must run serially because git submodule add can race.
 						for (const moduleEntry of selectedEntries) {
 							const applied = await this.workspaceModuleService.applyModule(
-								repoRoot,
+								applyRoot,
 								config,
 								moduleEntry,
 								applyMethod,
@@ -353,7 +354,7 @@ export class ModuleManagerController {
 			t('applySuccess', {
 				count: selectedEntries.length,
 				method: applyMethodLabel,
-				configPath: path.relative(repoRoot, config.configPath).replace(/\\/g, '/'),
+				configPath: path.relative(applyRoot, config.configPath).replace(/\\/g, '/'),
 			}),
 		);
 		await this.refreshSidebarWorkspaceState();
@@ -1520,23 +1521,44 @@ export class ModuleManagerController {
 		await vscode.commands.executeCommand('setContext', WORKSPACE_INIT_CONTEXT_KEY, canInitializeWorkspace);
 	}
 
-	private async promptApplyMethod(moduleCount: number): Promise<ModuleApplyMethod | undefined> {
-		const pick = await vscode.window.showQuickPick(
-			[
+	private async promptApplyMethod(
+		moduleCount: number,
+		options: { gitAvailable: boolean },
+	): Promise<ModuleApplyMethod | undefined> {
+		const items: ApplyMethodQuickPickItem[] = options.gitAvailable
+			? [
 				{
 					label: t('applyMethodSubmoduleLabel'),
 					description: t('applyMethodSubmoduleDescription'),
 					detail: t('applyMethodSubmoduleDetail', { count: moduleCount }),
-					method: 'submodule' as const,
+					method: 'submodule',
 				},
 				{
 					label: t('applyMethodCopyLabel'),
 					description: t('applyMethodCopyDescription'),
 					detail: t('applyMethodCopyDetail', { count: moduleCount }),
-					method: 'copy' as const,
+					method: 'copy',
 				},
-			],
-			{ placeHolder: t('chooseApplyMethodPlaceholder') },
+			]
+			: [
+				{
+					label: t('applyMethodSubmoduleUnavailableLabel'),
+					kind: vscode.QuickPickItemKind.Separator,
+				},
+				{
+					label: t('applyMethodCopyLabel'),
+					description: t('applyMethodCopyDescription'),
+					detail: t('applyMethodCopyDetail', { count: moduleCount }),
+					method: 'copy',
+				},
+			];
+
+		const pick = await vscode.window.showQuickPick(
+			items,
+			{
+				placeHolder: t('chooseApplyMethodPlaceholder'),
+				prompt: options.gitAvailable ? undefined : t('applyMethodSubmoduleUnavailablePrompt'),
+			},
 		);
 		return pick?.method;
 	}

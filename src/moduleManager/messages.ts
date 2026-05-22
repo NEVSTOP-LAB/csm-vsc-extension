@@ -318,6 +318,14 @@ const messages = {
 		en: 'Runs git submodule add + git submodule update for {count} selected module(s).',
 		zh: '对所选的 {count} 个模块执行 git submodule add 和 git submodule update。',
 	},
+	applyMethodSubmoduleUnavailableLabel: {
+		en: 'submodule (unavailable)',
+		zh: '子模块（不可用）',
+	},
+	applyMethodSubmoduleUnavailablePrompt: {
+		en: 'The current workspace folder is not a Git repository, so only copy mode is available and submodule mode cannot be used.',
+		zh: '当前工作区文件夹不是 Git 仓库，因此只能使用 copy 模式，无法使用 submodule 模式。',
+	},
 	applyMethodCopyLabel: {
 		en: 'copy',
 		zh: '复制',

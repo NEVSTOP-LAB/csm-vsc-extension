@@ -50,6 +50,11 @@ export enum CompletionItemKind {
     TypeParameter = 24,
 }
 
+export enum QuickPickItemKind {
+    Separator = -1,
+    Default = 0,
+}
+
 export class SnippetString {
     constructor(public value: string) { }
 }
@@ -331,6 +336,7 @@ let lastWebviewView: {
     options?: { enableScripts?: boolean; localResourceRoots?: Uri[] };
 } | undefined;
 let lastWarningPrompt: { message: string; items: unknown[] } | undefined;
+let lastQuickPick: { items: unknown[]; options?: unknown } | undefined;
 
 const webviewViewProviders = new Map<string, { resolveWebviewView: (webviewView: unknown, context: unknown, token: unknown) => void }>();
 const webviewViews = new Map<string, MockWebviewView>();
@@ -400,6 +406,8 @@ export const window = {
         messageLog.push({ level: 'error', text: message });
     },
     async showQuickPick<T>(_items: readonly T[] | Promise<readonly T[]>, _options?: unknown): Promise<T | undefined> {
+        const items = await Promise.resolve(_items);
+        lastQuickPick = { items: [...items], options: _options };
         return quickPickResponse as T | undefined;
     },
     async showInputBox(_options?: unknown): Promise<string | undefined> {
@@ -595,6 +603,12 @@ export function __getLastWarningPrompt(): { message: string; items: unknown[] } 
     return lastWarningPrompt ? { message: lastWarningPrompt.message, items: [...lastWarningPrompt.items] } : undefined;
 }
 
+export function __getLastQuickPick(): { items: unknown[]; options?: unknown } | undefined {
+    return lastQuickPick
+        ? { items: [...lastQuickPick.items], options: lastQuickPick.options }
+        : undefined;
+}
+
 export function __resetUiState(): void {
     warningResponse = undefined;
     informationResponse = undefined;
@@ -608,6 +622,7 @@ export function __resetUiState(): void {
     lastWebviewPanel = undefined;
     lastWebviewView = undefined;
     lastWarningPrompt = undefined;
+    lastQuickPick = undefined;
     webviewViewProviders.clear();
     webviewViews.clear();
     workspace.workspaceFolders = undefined;
