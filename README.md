@@ -4,10 +4,11 @@
 
 ## 项目简介
 
-当前版本扩展聚焦两类文件：
+当前版本主要提供三类能力：
 
-- `.csmlog`：CSM 日志文件（语法高亮 + 悬停提示 + 大纲）
-- `.lvcsm`：CSM 配置文件（基于 INI 语法高亮 + 大纲）
+- `.csmlog` 日志查看与辅助阅读
+- `.lvcsm` 配置文件编辑支持
+- `CSM Modules` 侧边栏模块管理
 
 ## 安装要求
 
@@ -19,38 +20,34 @@
 
 ### `.csmlog` 文件支持
 
-- ✅ 事件类型高亮（Error、User Log、Sync/Async Message、State Change 等）
-- ✅ 时间戳与模块名高亮
-- ✅ 参数 `key:` 前缀高亮（粗体 + 斜体 + 下划线）
-- ✅ Hover 悬停提示（事件类型、时间戳、配置键、部分操作符）
-- ✅ Outline 大纲（配置项、Module Created/Destroyed、Logger 系统消息）
-- ✅ 默认开启 `files.autoGuessEncoding`，降低 GBK/GB2312 文件乱码风险
+- ✅ 日志事件、时间戳、模块名和关键参数高亮
+- ✅ Hover 悬停提示，便于快速查看常见字段含义
+- ✅ Outline 大纲，便于定位关键配置和系统消息
+- ✅ 默认开启 `files.autoGuessEncoding`，降低常见中文日志乱码风险
 
 ### `.lvcsm` 文件支持
 
-- ✅ 注册独立语言 `lvcsm`
-- ✅ 语法通过 `source.ini` 复用 INI 高亮规则
-- ✅ Outline 大纲（INI 节 `[section]` 作为大纲条目）
-- ✅ 默认开启 `files.autoGuessEncoding`，降低 GBK/GB2312 文件乱码风险
+- ✅ 配置文件语法高亮
+- ✅ Outline 大纲，便于快速浏览配置节
+- ✅ 默认开启 `files.autoGuessEncoding`，降低常见中文配置文件乱码风险
 
 ### CSM 模块管理
 
 侧边栏 `CSM Modules` 视图，用于浏览、搜索和管理 CSM 模块仓库：
 
-- ✅ 浏览 GitHub 上满足 `topic:csm-modsets` 的公开模块及当前账号可访问的私有模块
-- ✅ 卡片式列表，支持内联 README 预览
-- ✅ 支持按名称、owner、topic、分支等关键字搜索过滤，以及多维度排序
-- ✅ 支持 `submodule` / `copy` 两种方式将模块引入本地仓库
-- ✅ 支持批量选择与批量应用
-- ✅ 本地 YAML 配置文件（`csm/csm-modules.yaml`）记录已应用模块，支持自定义目录
-- ✅ 模块列表与 README 自动缓存，后台按时效刷新
+- ✅ 浏览可用的 CSM 模块仓库
+- ✅ 支持 GitHub 登录后查看更多可访问模块
+- ✅ 支持搜索、筛选、排序和批量选择
+- ✅ 支持 README 预览与图片显示
+- ✅ 支持仓库 `Star` / `Unstar`
+- ✅ 支持将模块引入当前仓库，可选 `submodule` 或 `copy`
+- ✅ 支持批量应用模块
 
 > 详细功能说明参见 [docs/module-management.md](docs/module-management.md)
 
 ### 扩展设置
 
-- `csmModules.defaultModuleRoot`：默认值 `csm`，用于新仓库首次初始化时的默认模块根目录
-- `csmModules.cache.ttlMinutes`：默认值 `60`，控制模块列表缓存自动刷新的时间窗口（分钟）
+- `csmModules.defaultModuleRoot`：用于首次引入模块时的默认目录名
 
 ## 文件图标主题
 

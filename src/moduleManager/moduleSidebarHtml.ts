@@ -71,6 +71,35 @@ function getToolbarMetaText(appliedCount: number, totalCount: number, filteredCo
 	});
 }
 
+function getSignedInToolbarMetaText(
+	appliedCount: number,
+	filteredCount: number,
+	selectedCount: number,
+	publicCount: number,
+	privateCount: number,
+	totalCount: number,
+): string {
+	const visibilityText = filteredCount === totalCount
+		? getVisibilityBreakdownText(publicCount, privateCount)
+		: t('toolbarMetaShown', { filtered: filteredCount, total: totalCount });
+	return t('toolbarMeta', {
+		applied: appliedCount,
+		visibility: visibilityText,
+		selected: selectedCount,
+	});
+}
+
+function getVisibilityBreakdownText(publicCount: number, privateCount: number): string {
+	const segments: string[] = [];
+	if (publicCount > 0 || privateCount === 0) {
+		segments.push(`${publicCount} ${t('publicVisibility')}`);
+	}
+	if (privateCount > 0) {
+		segments.push(`${privateCount} ${t('privateVisibility')}`);
+	}
+	return segments.join(' | ');
+}
+
 function getModuleKey(entry: CsmModuleEntry): string {
 	return `${entry.owner}/${entry.name}`;
 }
@@ -79,13 +108,10 @@ function getCatalogScopeSummaryText(state: ModuleSidebarRenderState): string | u
 	if (state.modules.length === 0) {
 		return undefined;
 	}
-	const privateCount = state.modules.filter((entry) => entry.visibility === 'private').length;
 	if (!state.signedIn) {
 		return t('catalogScopePublicLoggedOut', { count: state.modules.length });
 	}
-	return privateCount > 0
-		? t('catalogScopeSignedInWithPrivate', { count: state.modules.length })
-		: t('catalogScopeSignedInPublicOnly', { count: state.modules.length });
+	return undefined;
 }
 
 type IconName = 'close' | 'filter' | 'readme' | 'search';
@@ -101,6 +127,10 @@ function renderIcon(name: IconName): string {
 		case 'search':
 			return '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="7" cy="7" r="4.5"></circle><path d="M10.5 10.5L14 14"></path></svg>';
 	}
+}
+
+function renderStarIcon(filled: boolean): string {
+	return `<svg viewBox="0 0 16 16" fill="${filled ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round" aria-hidden="true"><path d="M8 2.1l1.67 3.38 3.73.54-2.7 2.63.64 3.72L8 10.62 4.66 12.37l.64-3.72-2.7-2.63 3.73-.54L8 2.1z"></path></svg>`;
 }
 
 function getFilteredModules(state: ModuleSidebarRenderState): CsmModuleEntry[] {
@@ -135,17 +165,30 @@ function isModuleApplied(moduleKey: string, state: ModuleSidebarRenderState): bo
 	return state.appliedModuleKeys.has(moduleKey);
 }
 
+function renderStarButton(entry: CsmModuleEntry, moduleKey: string, signedIn: boolean): string {
+	if (!signedIn) {
+		return '';
+	}
+	const starred = entry.starred;
+	const title = typeof starred === 'boolean'
+		? (starred ? t('unstarRepository') : t('starRepository'))
+		: t('loadingStarStatus');
+	const active = starred === true;
+	return `<button class="icon-button${active ? ' active' : ''}" data-action="toggleStar" data-module-key="${escapeHtml(moduleKey)}" title="${escapeHtml(title)}" aria-label="${escapeHtml(title)}" aria-pressed="${active ? 'true' : 'false'}" ${typeof starred === 'boolean' ? '' : 'disabled aria-disabled="true"'}>${renderStarIcon(active)}</button>`;
+}
+
 export function renderModuleSidebarHtml(state: ModuleSidebarRenderState): string {
 	const nonce = createNonce();
 	const imgCspSource = state.webviewCspSource ?? 'https:';
 	const selectedCount = state.selectedModuleKeys.size;
 	const moduleCount = state.modules.length;
+	const publicCount = state.modules.filter((entry) => entry.visibility === 'public').length;
+	const privateCount = moduleCount - publicCount;
 	const filteredCount = getFilteredModules(state).length;
 	const appliedCount = state.appliedModuleKeys.size;
-	const toolbarMetaText = getToolbarMetaText(appliedCount, moduleCount, filteredCount, selectedCount);
-	const accountSummaryText = state.signedIn && state.signedInAccountLabel
-		? t('signedInAs', { account: state.signedInAccountLabel })
-		: undefined;
+	const toolbarMetaText = state.signedIn
+		? getSignedInToolbarMetaText(appliedCount, filteredCount, selectedCount, publicCount, privateCount, moduleCount)
+		: getToolbarMetaText(appliedCount, moduleCount, filteredCount, selectedCount);
 	const catalogScopeSummaryText = getCatalogScopeSummaryText(state);
 	const filterButtonTitle = getFilterButtonTitle(state.sortState);
 	const sortFieldOptions: Array<{ value: ModuleSortField; label: string }> = [
@@ -163,6 +206,8 @@ export function renderModuleSidebarHtml(state: ModuleSidebarRenderState): string
 		toolbarMetaAvailable: t('toolbarMetaAvailable'),
 		toolbarMetaShown: t('toolbarMetaShown'),
 		toolbarMeta: t('toolbarMeta'),
+		publicVisibility: t('publicVisibility'),
+		privateVisibility: t('privateVisibility'),
 	}).replace(/</g, '\\u003c');
 
 	return `<!DOCTYPE html>
@@ -219,6 +264,12 @@ export function renderModuleSidebarHtml(state: ModuleSidebarRenderState): string
 			align-items: center;
 			justify-content: space-between;
 			gap: 6px;
+			flex-wrap: wrap;
+		}
+		.toolbar-account {
+			font-size: var(--module-font-sm);
+			color: var(--vscode-descriptionForeground);
+			min-width: 0;
 		}
 		.toolbar {
 			display: flex;
@@ -618,6 +669,13 @@ export function renderModuleSidebarHtml(state: ModuleSidebarRenderState): string
 			padding: 0;
 			color: var(--vscode-descriptionForeground);
 		}
+		.icon-button.active {
+			color: var(--vscode-charts-yellow, var(--vscode-textLink-foreground));
+		}
+		.icon-button[disabled] {
+			opacity: 0.5;
+			cursor: default;
+		}
 		.empty-state {
 			padding: 20px 16px;
 			border-radius: 6px;
@@ -675,10 +733,10 @@ export function renderModuleSidebarHtml(state: ModuleSidebarRenderState): string
 			</div>
 		</div>
 		<div class="toolbar-row">
-			<span class="toolbar-meta" data-role="toolbar-meta" data-applied-count="${appliedCount}" data-total-count="${moduleCount}" data-filtered-count="${filteredCount}">${toolbarMetaText}</span>
+			<span class="toolbar-meta" data-role="toolbar-meta" data-applied-count="${appliedCount}" data-total-count="${moduleCount}" data-filtered-count="${filteredCount}" data-public-count="${publicCount}" data-private-count="${privateCount}" data-signed-in="${state.signedIn ? 'true' : 'false'}">${toolbarMetaText}</span>
 		</div>
-		${accountSummaryText || catalogScopeSummaryText || (state.workspaceLabel && state.moduleRoot)
-			? `<div class="workspace-summary">${accountSummaryText ? `<span>${escapeHtml(accountSummaryText)}</span>` : ''}${catalogScopeSummaryText ? `<span>${escapeHtml(catalogScopeSummaryText)}</span>` : ''}${state.workspaceLabel && state.moduleRoot ? `<span>${escapeHtml(t('rootLabel'))}: ${escapeHtml(state.moduleRoot)}/</span>` : ''}</div>`
+			${catalogScopeSummaryText || (state.workspaceLabel && state.moduleRoot)
+			? `<div class="workspace-summary">${catalogScopeSummaryText ? `<span>${escapeHtml(catalogScopeSummaryText)}</span>` : ''}${state.workspaceLabel && state.moduleRoot ? `<span>${escapeHtml(t('rootLabel'))}: ${escapeHtml(state.moduleRoot)}/</span>` : ''}</div>`
 			: ''}
 		${state.introTipVisible ? `<section class="notice" data-role="intro-tip"><div><strong>${escapeHtml(t('tipTitle'))}</strong><span>${escapeHtml(t('tipBody'))}</span></div><div class="notice-actions"><button class="icon-button" data-action="dismissIntroTip" title="${escapeHtml(t('dismissTip'))}" aria-label="${escapeHtml(t('dismissTip'))}">${renderIcon('close')}</button></div></section>` : ''}
 		${state.canInitializeWorkspace ? `<section class="notice"><div><strong>${escapeHtml(t('workspaceHintTitle'))}</strong><span>${escapeHtml(t('workspaceHintBody'))}</span></div><div class="notice-actions"><button class="toolbar-button callout" data-action="initializeWorkspace">${escapeHtml(t('initializeAction'))}</button></div></section>` : ''}
@@ -701,6 +759,28 @@ export function renderModuleSidebarHtml(state: ModuleSidebarRenderState): string
 		function getToolbarMetaText(appliedCount, totalCount, filteredCount, selectedCount) {
 			const visibilityText = filteredCount === totalCount
 				? formatMessage(uiStrings.toolbarMetaAvailable, { total: totalCount })
+				: formatMessage(uiStrings.toolbarMetaShown, { filtered: filteredCount, total: totalCount });
+			return formatMessage(uiStrings.toolbarMeta, {
+				applied: appliedCount,
+				visibility: visibilityText,
+				selected: selectedCount,
+			});
+		}
+
+		function getVisibilityBreakdownText(publicCount, privateCount) {
+			const segments = [];
+			if (publicCount > 0 || privateCount === 0) {
+				segments.push(String(publicCount) + ' ' + uiStrings.publicVisibility);
+			}
+			if (privateCount > 0) {
+				segments.push(String(privateCount) + ' ' + uiStrings.privateVisibility);
+			}
+			return segments.join(' | ');
+		}
+
+		function getSignedInToolbarMetaText(appliedCount, totalCount, filteredCount, selectedCount, publicCount, privateCount) {
+			const visibilityText = filteredCount === totalCount
+				? getVisibilityBreakdownText(publicCount, privateCount)
 				: formatMessage(uiStrings.toolbarMetaShown, { filtered: filteredCount, total: totalCount });
 			return formatMessage(uiStrings.toolbarMeta, {
 				applied: appliedCount,
@@ -782,10 +862,15 @@ export function renderModuleSidebarHtml(state: ModuleSidebarRenderState): string
 			}
 			const appliedCount = Number(toolbarMeta.getAttribute('data-applied-count') || '0');
 			const totalCount = Number(toolbarMeta.getAttribute('data-total-count') || '0');
+			const publicCount = Number(toolbarMeta.getAttribute('data-public-count') || '0');
+			const privateCount = Number(toolbarMeta.getAttribute('data-private-count') || '0');
+			const signedIn = toolbarMeta.getAttribute('data-signed-in') === 'true';
 			const filteredCount = getCards().filter((card) => !card.hasAttribute('hidden')).length;
 			const selectedCount = document.querySelectorAll('[data-role="select-toggle"]:checked').length;
 			toolbarMeta.setAttribute('data-filtered-count', String(filteredCount));
-			toolbarMeta.textContent = getToolbarMetaText(appliedCount, totalCount, filteredCount, selectedCount);
+			toolbarMeta.textContent = signedIn
+				? getSignedInToolbarMetaText(appliedCount, totalCount, filteredCount, selectedCount, publicCount, privateCount)
+				: getToolbarMetaText(appliedCount, totalCount, filteredCount, selectedCount);
 		}
 
 		function applyFilter(shouldNotify) {
@@ -930,6 +1015,13 @@ function getFilterButtonTitle(sortState: ModuleSortState): string {
 }
 
 function renderContent(state: ModuleSidebarRenderState): string {
+	if (state.offlineMode && state.state === 'error' && state.modules.length === 0) {
+		return renderEmptyState(
+			t('noCachedModulesTitle'),
+			state.message,
+		);
+	}
+
 	if (!state.signedIn && state.modules.length === 0 && state.state !== 'ready') {
 		return renderEmptyState(
 			t('emptySignInTitle'),
@@ -962,10 +1054,6 @@ function renderContent(state: ModuleSidebarRenderState): string {
 			? `<section class="notice"><div><strong>${escapeHtml(t('catalogRefreshFailedTitle'))}</strong><span>${escapeHtml(state.message)}</span></div></section>`
 			: '';
 
-	const offlineBanner = state.offlineMode
-		? `<section class="notice offline"><div><strong>${escapeHtml(t('offlineModeTitle'))}</strong><span>${escapeHtml(t('offlineModeBody'))}</span></div></section>`
-		: '';
-
 	const sortedAll = getSortedModules(state.modules, state);
 	const total = sortedAll.length;
 	const visible = sortedAll.slice(0, state.renderLimit);
@@ -974,7 +1062,7 @@ function renderContent(state: ModuleSidebarRenderState): string {
 		? `<section class="notice"><div><strong>${escapeHtml(t('hiddenModulesTitle', { count: hiddenCount }))}</strong><span>${escapeHtml(t('hiddenModulesBody'))}</span></div><button class="toolbar-button" data-action="showMore">${escapeHtml(t('showMore', { count: Math.min(hiddenCount, state.initialRenderLimit) }))}</button></section>`
 		: '';
 
-	return `${offlineBanner}${statusBanner}<section class="list">${visible.map((entry) => renderModuleCard(entry, state)).join('')}</section>${showMoreButton}<section class="empty-state" data-role="filter-empty" hidden><h2>${escapeHtml(t('filterNoMatchesTitle'))}</h2><p>${escapeHtml(t('filterNoMatchesBody'))}</p><div class="action-toolbar"><button class="toolbar-button callout" data-action="clearFilter">${escapeHtml(t('clearFilter'))}</button></div></section>`;
+	return `${statusBanner}<section class="list">${visible.map((entry) => renderModuleCard(entry, state)).join('')}</section>${showMoreButton}<section class="empty-state" data-role="filter-empty" hidden><h2>${escapeHtml(t('filterNoMatchesTitle'))}</h2><p>${escapeHtml(t('filterNoMatchesBody'))}</p><div class="action-toolbar"><button class="toolbar-button callout" data-action="clearFilter">${escapeHtml(t('clearFilter'))}</button></div></section>`;
 }
 
 function renderModuleCard(entry: CsmModuleEntry, state: ModuleSidebarRenderState): string {
@@ -1015,6 +1103,7 @@ function renderModuleCard(entry: CsmModuleEntry, state: ModuleSidebarRenderState
 						<input class="module-select" type="checkbox" data-role="select-toggle" data-action="toggleSelection" data-module-key="${escapeHtml(moduleKey)}" ${selected ? 'checked' : ''} aria-label="${escapeHtml(t('selectNamedModule', { name: entry.name }))}">
 					</label>
 					<div class="action-toolbar">
+							${renderStarButton(entry, moduleKey, state.signedIn)}
 						<button class="icon-button" data-action="openReadme" data-module-key="${escapeHtml(moduleKey)}" title="${escapeHtml(t('openReadme'))}" aria-label="${escapeHtml(t('openReadme'))}">${renderIcon('readme')}</button>
 					</div>
 				</div>

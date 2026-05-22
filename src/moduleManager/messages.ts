@@ -146,6 +146,14 @@ const messages = {
 		en: 'Signed in as {account}.',
 		zh: '已登录为 {account}。',
 	},
+	signedInAsTitle: {
+		en: 'Signed in as {account}',
+		zh: '已登录为 {account}',
+	},
+	availableModulesViewTitle: {
+		en: 'Available Modules',
+		zh: '可用模块',
+	},
 	signedOut: {
 		en: 'Signed out of GitHub.',
 		zh: '已退出 GitHub 登录。',
@@ -325,6 +333,14 @@ const messages = {
 	loadingModules: {
 		en: 'Loading modules...',
 		zh: '正在加载模块...',
+	},
+	noCachedModulesTitle: {
+		en: 'No cached modules yet',
+		zh: '暂无缓存模块',
+	},
+	noCachedModulesBody: {
+		en: 'No cached modules are available yet. Use Refresh to load the latest module list.',
+		zh: '当前还没有可用的缓存模块。请点击刷新以加载最新模块列表。',
 	},
 	noRepositoriesFound: {
 		en: 'No repositories with topic csm-modsets were found.',
@@ -555,12 +571,20 @@ const messages = {
 		zh: '模块目录刷新失败',
 	},
 	offlineModeTitle: {
-		en: 'Offline mode',
-		zh: '离线模式',
+		en: 'Cached list',
+		zh: '缓存列表',
 	},
 	offlineModeBody: {
-		en: 'Showing cached module list. Sign in to refresh.',
-		zh: '当前显示缓存的模块列表。登录后可刷新。',
+		en: 'Showing cached modules. Use Refresh to update the catalog.',
+		zh: '当前显示缓存模块。点击刷新即可更新目录。',
+	},
+	lastRefreshDescription: {
+		en: 'Updated {relative}',
+		zh: '更新于{relative}',
+	},
+	lastRefreshNever: {
+		en: 'Never refreshed',
+		zh: '从未刷新',
 	},
 	hiddenModulesTitle: {
 		en: '{count} more module(s) hidden',
@@ -617,6 +641,30 @@ const messages = {
 	openReadme: {
 		en: 'Open README',
 		zh: '打开 README',
+	},
+	starRepository: {
+		en: 'Star repository',
+		zh: 'Star 仓库',
+	},
+	unstarRepository: {
+		en: 'Unstar repository',
+		zh: '取消 Star',
+	},
+	loadingStarStatus: {
+		en: 'Loading star status',
+		zh: '正在加载 Star 状态',
+	},
+	unstarAction: {
+		en: 'Unstar',
+		zh: '取消 Star',
+	},
+	unstarConfirmation: {
+		en: 'Remove your star from {name}?',
+		zh: '确认取消对 {name} 的 Star 吗？',
+	},
+	starUpdateFailed: {
+		en: 'Failed to update the star for {name}: {message}',
+		zh: '更新 {name} 的 Star 状态失败：{message}',
 	},
 	branchBadge: {
 		en: 'Branch: {branch}',

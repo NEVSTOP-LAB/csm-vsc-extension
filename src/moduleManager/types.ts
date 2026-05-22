@@ -7,6 +7,7 @@ export interface CsmModuleEntry {
 	visibility: 'public' | 'private';
 	defaultBranch: string;
 	repoUrl: string;
+	starred?: boolean;
 	readme?: string;
 	updatedAt?: string;
 }
@@ -35,6 +36,13 @@ export interface ModuleCacheSnapshot {
 	schemaVersion?: number;
 	lastRefreshAt: string;
 	modules: CsmModuleEntry[];
+	refreshAccountId?: string;
+	refreshAccountLabel?: string;
+}
+
+export interface ModuleAuthSnapshot {
+	accountId: string;
+	accountLabel: string;
 }
 
 export interface GitHubRepoSummary {

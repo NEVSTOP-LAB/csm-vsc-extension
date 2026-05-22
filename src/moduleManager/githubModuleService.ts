@@ -65,16 +65,21 @@ function parseNextPage(linkHeader: string | null): string | undefined {
 }
 
 export class GitHubModuleService {
-	constructor(private readonly logger: Logger = getLogger()) {}
+	constructor(private readonly logger: Logger = getLogger()) { }
 
-	private async requestJson<T>(url: string, token?: string, etag?: string): Promise<{ data: T; next?: string; etag?: string; notModified?: boolean }> {
+	private createHeaders(token?: string, accept = 'application/vnd.github+json'): Record<string, string> {
 		const headers: Record<string, string> = {
-			Accept: 'application/vnd.github+json',
+			Accept: accept,
 			'User-Agent': GITHUB.userAgent,
 		};
 		if (token) {
 			headers.Authorization = `Bearer ${token}`;
 		}
+		return headers;
+	}
+
+	private async requestJson<T>(url: string, token?: string, etag?: string): Promise<{ data: T; next?: string; etag?: string; notModified?: boolean }> {
+		const headers = this.createHeaders(token);
 		if (etag) {
 			headers['If-None-Match'] = etag;
 		}
@@ -115,13 +120,7 @@ export class GitHubModuleService {
 
 	public async fetchReadme(owner: string, repo: string, token?: string): Promise<string> {
 		const url = `${GITHUB_API_BASE}/repos/${owner}/${repo}/readme`;
-		const headers: Record<string, string> = {
-			Accept: 'application/vnd.github.raw+json',
-			'User-Agent': GITHUB.userAgent,
-		};
-		if (token) {
-			headers.Authorization = `Bearer ${token}`;
-		}
+		const headers = this.createHeaders(token, 'application/vnd.github.raw+json');
 		const response = await fetch(url, {
 			headers,
 		});
@@ -133,5 +132,36 @@ export class GitHubModuleService {
 			throw new Error(`GitHub README request failed: ${response.status}`);
 		}
 		return response.text();
+	}
+
+	public async isRepositoryStarred(owner: string, repo: string, token: string): Promise<boolean> {
+		const url = `${GITHUB_API_BASE}/user/starred/${owner}/${repo}`;
+		const response = await fetch(url, {
+			headers: this.createHeaders(token),
+		});
+		if (response.status === 204) {
+			return true;
+		}
+		if (response.status === 404) {
+			return false;
+		}
+		if (!response.ok) {
+			this.logger.warn(`GitHub star status request for ${owner}/${repo} failed with HTTP ${response.status}`);
+			throw new Error(`GitHub star status request failed: ${response.status}`);
+		}
+		return false;
+	}
+
+	public async setRepositoryStarred(owner: string, repo: string, token: string, starred: boolean): Promise<void> {
+		const url = `${GITHUB_API_BASE}/user/starred/${owner}/${repo}`;
+		const response = await fetch(url, {
+			method: starred ? 'PUT' : 'DELETE',
+			headers: this.createHeaders(token),
+		});
+		if (response.ok || response.status === 304) {
+			return;
+		}
+		this.logger.warn(`GitHub ${starred ? 'star' : 'unstar'} request for ${owner}/${repo} failed with HTTP ${response.status}`);
+		throw new Error(`GitHub ${starred ? 'star' : 'unstar'} request failed: ${response.status}`);
 	}
 }

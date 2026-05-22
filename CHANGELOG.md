@@ -17,7 +17,7 @@
 
 ### 变更
 
-- 阶段一：模块发现改为基于 GitHub 全局 `topic:csm-modsets` 搜索，未登录时即可浏览 public 模块；检测到 GitHub 会话后会自动补齐当前账号可访问的 private 模块
+- 阶段一：模块发现继续基于 GitHub 全局 `topic:csm-modsets` 搜索；侧边栏启动时改为只显示本地缓存，登录成功后会自动执行一次网络刷新，之后仍通过手动刷新同步当前账号可访问的 public / private 模块
 - 阶段四：public 模块 README 支持未登录时匿名加载，避免公共模块浏览流程被 GitHub 登录前置阻断
 - 构建：`@types/js-yaml` 已移入 `devDependencies`，`tsconfig.json` 明确 `outDir = out`，并清理过时的 `skipLibCheck` 注释
 - CI：VSIX 校验步骤改为在 Linux / Windows 上统一使用 PowerShell `Expand-Archive`，并在发布到 Marketplace 前显式检查 `VSCE_PAT`
@@ -31,10 +31,15 @@
 - UI：模块卡片右键菜单改为 VS Code 原生 `webview/context` 菜单，`Apply` / `Update` / `Remove` / `Open README` / 选择操作会按当前模块状态自动启用、禁用或切换
 - UI：侧边栏顶部搜索框改为更接近扩展市场的搜索栏样式，末尾集成 `Filter` 菜单；菜单内拆分 `Type` 与 `Order` 两组排序选项，并将 `applied / available / selected` 状态信息合并到同一行展示
 - UI：点击模块卡片正文可在侧边栏内展开 README Markdown 预览，右上角 `README` 按钮继续保留完整 README 面板入口
+- UI：修复侧边栏 README Markdown 预览中的图片资源加载，仓库内相对图片以及 GitHub `user-attachments` 这类原生 `<img>` 图片现在都可正常显示
+- UI：已登录时将账号摘要上移到顶部摘要行，并将模块总数改为 `public / private` 拆分，移除冗长的 `Loaded ...` 文案
+- UI：已登录时，原生侧边栏视图标题会从 `Available Modules` 动态切换为 `Signed in as ...`
+- UI：已登录 GitHub 时，模块卡片会在 `README` 按钮旁显示仓库 `Star` 状态，并支持直接 `Star` / `Unstar`；取消 Star 前会要求二次确认
 - UI：已登录 GitHub 时，`CSM Modules` 标题栏会显示 `Sign Out` 入口，便于从扩展内直接切换账号；侧边栏摘要继续显示当前账号
 - 交互：当仓库存在 `csm/` 目录与 `*.lvproj` 但尚未初始化本地模块管理时，打开侧边栏会主动弹出初始化提示，并显示专用标题栏初始化按钮
 - 交互：工作区初始化、首次应用与主动初始化提示会遵循 `csmModules.defaultModuleRoot` 作为默认目录；若仓库内已存在 `csm-modules.yaml`，仍以配置文件中的 `root` 为准
-- 缓存：启动时优先复用模块列表与 README 缓存，并按 `csmModules.cache.ttlMinutes` 在后台自动失效刷新；升级扩展后无需手动刷新缓存
+- 交互：已登录 GitHub 时，通过模块管理器把社区模块引入当前仓库后，会自动为对应 GitHub 仓库补 Star
+- 缓存：启动时仅复用本地模块列表与 README 缓存，不再在后台偷偷刷新；若本地记录仍是同一 GitHub 账号，会直接展示对应 private 缓存；`Cached list` 横幅已移除，仅在标题栏显示上次刷新时间
 - 兼容：旧版 `csm-modules.lvcsm` 配置可继续读取，并在后续写回时迁移到 YAML
 - 交互：应用模块前增加方式选择与二次确认，并补齐非 Git 仓库、重复目标路径、copy 目标已存在等基础错误提示
 - 错误处理：刷新 / 应用 / 更新 / 删除模块时，会把常见 GitHub HTTP 状态、Git 权限失败、Git 缺失、网络错误与 YAML 解析错误转换为更可操作的提示

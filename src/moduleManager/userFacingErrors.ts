@@ -20,7 +20,7 @@ function mapUserFacingErrorSegment(segment: string, context: UserFacingErrorCont
 }
 
 function mapSingleUserFacingError(message: string, context: UserFacingErrorContext): string {
-	const githubStatusMatch = message.match(/GitHub (?:API|README) request failed: (\d{3})/);
+	const githubStatusMatch = message.match(/GitHub (?:API|README|star status|star|unstar) request failed: (\d{3})/);
 	if (githubStatusMatch) {
 		return mapGitHubStatusToUserMessage(Number(githubStatusMatch[1]), context);
 	}

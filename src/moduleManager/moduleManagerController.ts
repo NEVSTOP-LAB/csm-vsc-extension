@@ -4,7 +4,7 @@ import * as fs from 'fs/promises';
 import { AuthService } from './authService';
 import { GitHubModuleService } from './githubModuleService';
 import { ModuleCacheStore } from './cacheStore';
-import { CsmModuleEntry, LocalModuleConfig, LocalModuleConfigEntry, ModuleApplyMethod } from './types';
+import { CsmModuleEntry, LocalModuleConfig, LocalModuleConfigEntry, ModuleApplyMethod, ModuleAuthSnapshot, ModuleCacheSnapshot } from './types';
 import { ModuleTreeItem } from './moduleTreeDataProvider';
 import { ModuleSidebarViewProvider } from './moduleSidebarViewProvider';
 import { IModuleViewProvider, ModuleSortField, ModuleSortState, SidebarWorkspaceContext } from './interfaces';
@@ -43,7 +43,8 @@ type WebviewModuleContext = {
 type ModuleManagerAuthService = Pick<AuthService, 'getSessionSilently' | 'getSessionInteractively'>
 	& Partial<Pick<AuthService, 'signOut' | 'verifyScopes'>>;
 
-type ModuleManagerGithubService = Pick<GitHubModuleService, 'fetchModules' | 'fetchReadme'>;
+type ModuleManagerGithubService = Pick<GitHubModuleService, 'fetchModules' | 'fetchReadme'>
+	& Partial<Pick<GitHubModuleService, 'isRepositoryStarred' | 'setRepositoryStarred'>>;
 
 /**
  * Optional dependencies for {@link ModuleManagerController}.
@@ -75,6 +76,9 @@ export class ModuleManagerController {
 		onInitializeWorkspace: () => {
 			void this.initializeWorkspaceCommand();
 		},
+		onToggleStar: (entry) => {
+			void this.toggleStarCommand(entry);
+		},
 		onOpenReadme: (entry) => {
 			void this.openReadmeCommand(entry);
 		},
@@ -94,6 +98,8 @@ export class ModuleManagerController {
 		onSortChange: (sortState) => {
 			this.updateSortState(sortState);
 		},
+	}, {
+		getLocalResourceRoots: () => [this.readmeAssetCache.rootUri],
 	});
 	// IModuleViewProvider abstraction (review item 2.2). Tests can swap this out.
 	private treeDataProvider: IModuleViewProvider;
@@ -105,6 +111,7 @@ export class ModuleManagerController {
 	private readonly appliedModuleKeys = new Set<string>();
 	private readonly selectedModuleKeys = new Set<string>();
 	private currentToken: string | undefined;
+	private currentAccountId: string | undefined;
 	private currentAccountLabel: string | undefined;
 	private lastTokenVerifiedAt = 0;
 	private static readonly TOKEN_VERIFY_INTERVAL_MS = 10 * 60 * 1000; // 10 minutes
@@ -159,40 +166,24 @@ export class ModuleManagerController {
 		);
 
 		const cached = this.cacheStore.getModuleSnapshot();
-		const cachedModules = cached?.modules ?? [];
-		const hasCachedModules = cachedModules.length > 0;
-		const cachedIncludesPrivate = cachedModules.some((module) => module.visibility === 'private');
-		const initiallyVisibleModules = cachedIncludesPrivate
-			? cachedModules.filter((module) => module.visibility === 'public')
-			: cachedModules;
-		if (initiallyVisibleModules.length > 0) {
-			this.availableModules = initiallyVisibleModules;
-			this.applyModuleSort();
-			this.treeDataProvider.setModules(this.availableModules);
+		this.restoreCachedAuthentication(this.cacheStore.getAuthSnapshot());
+		if (typeof this.treeDataProvider.setOfflineMode === 'function') {
+			this.treeDataProvider.setOfflineMode(true);
+		}
+		this.updateLastRefreshDescription(cached);
+		if (cached) {
+			this.applyCachedModules(cached);
 		} else {
-			this.treeDataProvider.setLoading(t('loadingModules'));
+			this.availableModules = [];
+			this.setSelectedModuleKeys([]);
+			this.treeDataProvider.setError(t('noCachedModulesBody'));
 		}
 		if (typeof this.treeDataProvider.setSortOrder === 'function') {
 			this.treeDataProvider.setSortOrder(this.currentSortState);
 		}
-		void this.setAuthenticationState(false);
 		void this.setApplySelectionContext(false);
 		const sidebarWorkspaceRefresh = this.refreshSidebarWorkspaceState();
 		void sidebarWorkspaceRefresh;
-
-		const shouldRefreshNow = !hasCachedModules
-			|| cachedIncludesPrivate
-			|| this.cacheStore.isModuleSnapshotExpired(cached, this.getCacheTtlMinutes());
-		if (shouldRefreshNow) {
-			void this.loadModules({
-				interactiveAuth: false,
-				showSuccessMessage: false,
-				showErrorMessage: false,
-				preserveVisibleModules: initiallyVisibleModules.length > 0,
-			});
-		} else {
-			void sidebarWorkspaceRefresh.then(() => this.refreshModulesForSignedInUsers());
-		}
 
 		void this.refreshWorkspaceInitializationState({ prompt: true });
 	}
@@ -269,6 +260,7 @@ export class ModuleManagerController {
 		}
 
 		let appliedCount = 0;
+		const appliedEntriesForAutoStar: CsmModuleEntry[] = [];
 		const writeConfigSafely = async (latest: LocalModuleConfig): Promise<void> => {
 			await this.workspaceModuleService.writeConfig(latest);
 		};
@@ -307,6 +299,7 @@ export class ModuleManagerController {
 							const moduleEntry = selectedEntries[i];
 							if (result.status === 'fulfilled') {
 								successes.push(result.value);
+								appliedEntriesForAutoStar.push(moduleEntry);
 							} else {
 								failures.push(`${moduleEntry.owner}/${moduleEntry.name}: ${result.reason instanceof Error ? result.reason.message : String(result.reason)}`);
 							}
@@ -334,6 +327,7 @@ export class ModuleManagerController {
 							config = this.workspaceModuleService.withAppliedModule(config, applied);
 							await writeConfigSafely(config);
 							appliedCount += 1;
+							appliedEntriesForAutoStar.push(moduleEntry);
 							progress.report({
 								increment: 100 / selectedEntries.length,
 								message: `${moduleEntry.owner}/${moduleEntry.name}`,
@@ -343,6 +337,7 @@ export class ModuleManagerController {
 				},
 			);
 		} catch (error) {
+			await this.autoStarImportedModules(appliedEntriesForAutoStar);
 			const message = getUserFacingErrorMessage(error, 'apply');
 			const prefix = appliedCount > 0
 				? t('applyPartialFailure', { appliedCount, selectedCount: selectedEntries.length })
@@ -351,6 +346,8 @@ export class ModuleManagerController {
 			void vscode.window.showErrorMessage(`${prefix}: ${message}`);
 			return;
 		}
+
+		await this.autoStarImportedModules(appliedEntriesForAutoStar);
 
 		void vscode.window.showInformationMessage(
 			t('applySuccess', {
@@ -571,26 +568,27 @@ export class ModuleManagerController {
 			void vscode.window.showWarningMessage(t('signInCancelled'));
 			return;
 		}
-		this.currentToken = session.accessToken;
-		this.currentAccountLabel = session.account.label;
-		this.lastTokenVerifiedAt = Date.now();
-		await this.setAuthenticationState(true, session.account.label);
+		await this.storeAuthenticatedSession(session);
 		void vscode.window.showInformationMessage(t('signedInAs', { account: session.account.label }));
 		// Best-effort scope verification, logged when missing scopes are detected (7.5).
 		if (typeof this.authService.verifyScopes === 'function') {
 			void this.authService.verifyScopes(session.accessToken);
 		}
-		await this.loadModules({ interactiveAuth: false, showSuccessMessage: true, showErrorMessage: true });
+		this.applyCachedModules(this.cacheStore.getModuleSnapshot());
+		await this.loadModules({
+			interactiveAuth: false,
+			showSuccessMessage: false,
+			showErrorMessage: true,
+			preserveVisibleModules: this.availableModules.length > 0,
+		});
 	}
 
 	public async logoutCommand(): Promise<void> {
-		const accountLabel = this.currentAccountLabel ?? (await this.authService.getSessionSilently())?.account.label;
+		const cachedAuth = this.cacheStore.getAuthSnapshot();
+		const accountLabel = this.currentAccountLabel ?? cachedAuth?.accountLabel;
 		if (!accountLabel) {
-			this.currentToken = undefined;
-			this.currentAccountLabel = undefined;
-			this.lastTokenVerifiedAt = 0;
-			await this.setAuthenticationState(false);
-			await this.loadModules({ interactiveAuth: false, showSuccessMessage: false, showErrorMessage: true });
+			await this.clearAuthenticatedSession();
+			await this.applyPublicCachedModules();
 			return;
 		}
 
@@ -611,49 +609,38 @@ export class ModuleManagerController {
 
 		const session = await this.authService.getSessionSilently();
 		if (session?.account.label === accountLabel) {
-			this.currentToken = session.accessToken;
-			this.currentAccountLabel = session.account.label;
-			this.lastTokenVerifiedAt = Date.now();
-			await this.setAuthenticationState(true, session.account.label);
+			await this.storeAuthenticatedSession(session);
 			void vscode.window.showWarningMessage(t('signOutCancelled'));
 			return;
 		}
 
 		if (session) {
-			this.currentToken = session.accessToken;
-			this.currentAccountLabel = session.account.label;
-			this.lastTokenVerifiedAt = Date.now();
-			await this.setAuthenticationState(true, session.account.label);
+			await this.storeAuthenticatedSession(session);
 			void vscode.window.showInformationMessage(t('signedInAs', { account: session.account.label }));
 		} else {
-			this.currentToken = undefined;
-			this.currentAccountLabel = undefined;
-			this.lastTokenVerifiedAt = 0;
-			await this.setAuthenticationState(false);
+			await this.clearAuthenticatedSession();
 			void vscode.window.showInformationMessage(t('signedOut'));
 		}
 
-		await this.loadModules({ interactiveAuth: false, showSuccessMessage: false, showErrorMessage: true });
+		if (this.currentAccountId) {
+			this.applyCachedModules(this.cacheStore.getModuleSnapshot());
+			return;
+		}
+		await this.applyPublicCachedModules();
 	}
 
 	private async ensureToken(interactive: boolean): Promise<string | undefined> {
-		if (this.currentToken && this.isCachedTokenFresh()) {
+		if (this.currentToken && this.currentAccountId && this.isCachedTokenFresh()) {
 			return this.currentToken;
 		}
 		// Re-validate cached token via a fresh silent session (which the editor will
 		// invalidate if the underlying credentials were revoked).
 		const silentSession = await this.authService.getSessionSilently();
 		if (silentSession) {
-			this.currentToken = silentSession.accessToken;
-			this.currentAccountLabel = silentSession.account.label;
-			this.lastTokenVerifiedAt = Date.now();
-			await this.setAuthenticationState(true, silentSession.account.label);
+			await this.storeAuthenticatedSession(silentSession);
 			return this.currentToken;
 		}
-		this.currentToken = undefined;
-		this.currentAccountLabel = undefined;
-		this.lastTokenVerifiedAt = 0;
-		await this.setAuthenticationState(false);
+		await this.clearAuthenticatedSession();
 		if (!interactive) {
 			return undefined;
 		}
@@ -661,10 +648,7 @@ export class ModuleManagerController {
 		if (!session) {
 			return undefined;
 		}
-		this.currentToken = session.accessToken;
-		this.currentAccountLabel = session.account.label;
-		this.lastTokenVerifiedAt = Date.now();
-		await this.setAuthenticationState(true, session.account.label);
+		await this.storeAuthenticatedSession(session);
 		return this.currentToken;
 	}
 
@@ -673,24 +657,130 @@ export class ModuleManagerController {
 			&& Date.now() - this.lastTokenVerifiedAt < ModuleManagerController.TOKEN_VERIFY_INTERVAL_MS;
 	}
 
-	private async refreshModulesForSignedInUsers(): Promise<void> {
-		if (this.availableModules.some((module) => module.visibility === 'private')) {
+	public async refreshCommand(): Promise<void> {
+		await this.loadModules({ interactiveAuth: false, showSuccessMessage: true, showErrorMessage: true });
+	}
+
+	private async toggleStarCommand(entry: CsmModuleEntry): Promise<void> {
+		if (typeof entry.starred !== 'boolean') {
+			return;
+		}
+		const moduleLabel = `${entry.owner}/${entry.name}`;
+		const nextStarred = !entry.starred;
+		if (!nextStarred) {
+			const confirmation = await vscode.window.showWarningMessage(
+				t('unstarConfirmation', { name: moduleLabel }),
+				{ modal: true },
+				t('unstarAction'),
+			);
+			if (confirmation !== t('unstarAction')) {
+				return;
+			}
+		}
+		const token = await this.ensureToken(true);
+		if (!token || typeof this.githubService.setRepositoryStarred !== 'function') {
+			return;
+		}
+		try {
+			await this.githubService.setRepositoryStarred(entry.owner, entry.name, token, nextStarred);
+			this.updateAvailableModuleStarStates(new Map([[this.getModuleKey(entry), nextStarred]]));
+		} catch (error) {
+			const message = getUserFacingErrorMessage(error, 'refresh');
+			this.logger.error(`Failed to update star for ${moduleLabel}: ${message}`);
+			void vscode.window.showErrorMessage(t('starUpdateFailed', { name: moduleLabel, message }));
+		}
+	}
+
+	private async autoStarImportedModules(entries: CsmModuleEntry[]): Promise<void> {
+		if (entries.length === 0 || typeof this.githubService.setRepositoryStarred !== 'function') {
 			return;
 		}
 		const token = await this.ensureToken(false);
 		if (!token) {
 			return;
 		}
-		await this.loadModules({
-			interactiveAuth: false,
-			showSuccessMessage: false,
-			showErrorMessage: false,
-			preserveVisibleModules: this.availableModules.length > 0,
-		});
+		const updates = new Map<string, boolean>();
+		const seen = new Set<string>();
+		for (const entry of entries) {
+			const key = this.getModuleKey(entry);
+			if (seen.has(key) || entry.starred === true) {
+				continue;
+			}
+			seen.add(key);
+			try {
+				await this.githubService.setRepositoryStarred(entry.owner, entry.name, token, true);
+				updates.set(key, true);
+			} catch (error) {
+				this.logger.warn(`Failed to auto-star ${entry.owner}/${entry.name}: ${error instanceof Error ? error.message : String(error)}`);
+			}
+		}
+		this.updateAvailableModuleStarStates(updates);
 	}
 
-	public async refreshCommand(): Promise<void> {
-		await this.loadModules({ interactiveAuth: false, showSuccessMessage: true, showErrorMessage: true });
+	private async hydrateStarStates(modules: CsmModuleEntry[], token: string | undefined): Promise<CsmModuleEntry[]> {
+		if (modules.length === 0 || !token || typeof this.githubService.isRepositoryStarred !== 'function') {
+			return modules;
+		}
+		const starStates = await this.fetchStarStatesParallel(modules, token, 8);
+		return modules.map((moduleEntry) => ({
+			...moduleEntry,
+			starred: starStates.get(this.getModuleKey(moduleEntry)),
+		}));
+	}
+
+	private async fetchStarStatesParallel(
+		modules: CsmModuleEntry[],
+		token: string,
+		concurrency: number,
+	): Promise<Map<string, boolean>> {
+		const starredStates = new Map<string, boolean>();
+		const isRepositoryStarred = this.githubService.isRepositoryStarred?.bind(this.githubService);
+		if (!isRepositoryStarred) {
+			return starredStates;
+		}
+		let cursor = 0;
+		const worker = async (): Promise<void> => {
+			while (cursor < modules.length) {
+				const index = cursor;
+				cursor += 1;
+				const moduleEntry = modules[index];
+				if (!moduleEntry) {
+					continue;
+				}
+				try {
+					const starred = await isRepositoryStarred(moduleEntry.owner, moduleEntry.name, token);
+					starredStates.set(this.getModuleKey(moduleEntry), starred);
+				} catch (error) {
+					this.logger.warn(`Failed to fetch star state for ${moduleEntry.owner}/${moduleEntry.name}: ${error instanceof Error ? error.message : String(error)}`);
+				}
+			}
+		};
+		const workerCount = Math.max(1, Math.min(concurrency, modules.length));
+		await Promise.all(Array.from({ length: workerCount }, () => worker()));
+		return starredStates;
+	}
+
+	private updateAvailableModuleStarStates(updates: ReadonlyMap<string, boolean>): void {
+		if (updates.size === 0) {
+			return;
+		}
+		let changed = false;
+		this.availableModules = this.availableModules.map((moduleEntry) => {
+			const nextStarred = updates.get(this.getModuleKey(moduleEntry));
+			if (typeof nextStarred !== 'boolean' || moduleEntry.starred === nextStarred) {
+				return moduleEntry;
+			}
+			changed = true;
+			return {
+				...moduleEntry,
+				starred: nextStarred,
+			};
+		});
+		if (!changed) {
+			return;
+		}
+		this.applyModuleSort();
+		this.treeDataProvider.setModules(this.availableModules);
 	}
 
 	private async loadModules(options: {
@@ -708,17 +798,19 @@ export class ModuleManagerController {
 			this.treeDataProvider.setLoading(t('refreshingModules'));
 		}
 		try {
+			const cachedSnapshot = this.cacheStore.getModuleSnapshot();
 			const previousEtag = this.cacheStore.getModuleEtag();
 			const fetchResult = await this.githubService.fetchModules(token, { etag: previousEtag });
 			if (fetchResult.notModified) {
 				this.logger.info('Module list unchanged since last fetch (304 Not Modified).');
-				this.applyModuleSort();
-				this.treeDataProvider.setModules(this.availableModules);
+				const cachedModules = cachedSnapshot?.modules ?? this.availableModules;
+				const modulesWithStarState = await this.hydrateStarStates(cachedModules, token);
+				const nextSnapshot = await this.cacheStore.setModuleSnapshot(modulesWithStarState, {
+					refreshAccountId: token ? this.currentAccountId : undefined,
+					refreshAccountLabel: token ? this.currentAccountLabel : undefined,
+				});
+				this.applyCachedModules(nextSnapshot);
 				await this.refreshSidebarWorkspaceState();
-				// Touch lastRefreshAt so TTL window resets even when we got 304.
-				if (this.availableModules.length > 0) {
-					await this.cacheStore.setModuleSnapshot(this.availableModules);
-				}
 				if (fetchResult.etag) {
 					await this.cacheStore.setModuleEtag(fetchResult.etag);
 				}
@@ -728,18 +820,22 @@ export class ModuleManagerController {
 				return;
 			}
 			const modules = fetchResult.modules;
-			this.availableModules = modules;
-			this.applyModuleSort();
-			this.setSelectedModuleKeys([...this.selectedModuleKeys]);
+			const [modulesWithStarState, refreshedReadme] = await Promise.all([
+				this.hydrateStarStates(modules, token),
+				this.fetchReadmesParallel(modules, token, 5),
+			]);
+			this.availableModules = modulesWithStarState;
 			// Parallelized README prefetch with bounded concurrency to avoid blocking on large lists.
-			const refreshedReadme = await this.fetchReadmesParallel(modules, token, 5);
 			Object.assign(this.readmeCache, refreshedReadme);
-			await this.cacheStore.setModuleSnapshot(modules);
+			const nextSnapshot = await this.cacheStore.setModuleSnapshot(modulesWithStarState, {
+				refreshAccountId: token ? this.currentAccountId : undefined,
+				refreshAccountLabel: token ? this.currentAccountLabel : undefined,
+			});
 			// README content is persisted via the filesystem asset cache only (3.5).
 			if (fetchResult.etag) {
 				await this.cacheStore.setModuleEtag(fetchResult.etag);
 			}
-			this.treeDataProvider.setModules(this.availableModules);
+			this.applyCachedModules(nextSnapshot);
 			await this.refreshSidebarWorkspaceState();
 			if (options.showSuccessMessage) {
 				void vscode.window.showInformationMessage(t('modulesRefreshed', { count: modules.length }));
@@ -894,6 +990,121 @@ export class ModuleManagerController {
 			this.treeDataProvider.setSelection([...this.selectedModuleKeys]);
 		}
 		void this.setApplySelectionContext(this.selectedModuleKeys.size > 0);
+	}
+
+	private restoreCachedAuthentication(snapshot: ModuleAuthSnapshot | undefined): void {
+		this.currentToken = undefined;
+		this.currentAccountId = snapshot?.accountId;
+		this.currentAccountLabel = snapshot?.accountLabel;
+		this.lastTokenVerifiedAt = 0;
+		void this.setAuthenticationState(!!snapshot, snapshot?.accountLabel);
+	}
+
+	private async storeAuthenticatedSession(session: Pick<vscode.AuthenticationSession, 'accessToken' | 'account'>): Promise<void> {
+		this.currentToken = session.accessToken;
+		this.currentAccountId = session.account.id;
+		this.currentAccountLabel = session.account.label;
+		this.lastTokenVerifiedAt = Date.now();
+		await this.cacheStore.setAuthSnapshot({
+			accountId: session.account.id,
+			accountLabel: session.account.label,
+		});
+		await this.setAuthenticationState(true, session.account.label);
+	}
+
+	private async clearAuthenticatedSession(): Promise<void> {
+		this.currentToken = undefined;
+		this.currentAccountId = undefined;
+		this.currentAccountLabel = undefined;
+		this.lastTokenVerifiedAt = 0;
+		await this.cacheStore.clearAuthSnapshot();
+		await this.setAuthenticationState(false);
+	}
+
+	private shouldRevealPrivateCache(snapshot: ModuleCacheSnapshot | undefined): boolean {
+		if (!snapshot?.refreshAccountId) {
+			return false;
+		}
+		const knownAccountId = this.currentAccountId ?? this.cacheStore.getAuthSnapshot()?.accountId;
+		return typeof knownAccountId === 'string' && knownAccountId === snapshot.refreshAccountId;
+	}
+
+	private getVisibleModulesFromSnapshot(snapshot: ModuleCacheSnapshot | undefined): CsmModuleEntry[] {
+		const modules = snapshot?.modules ?? [];
+		if (!modules.some((module) => module.visibility === 'private')) {
+			return modules;
+		}
+		return this.shouldRevealPrivateCache(snapshot)
+			? modules
+			: modules.filter((module) => module.visibility === 'public');
+	}
+
+	private applyCachedModules(snapshot: ModuleCacheSnapshot | undefined): void {
+		this.updateLastRefreshDescription(snapshot);
+		this.availableModules = this.getVisibleModulesFromSnapshot(snapshot);
+		this.applyModuleSort();
+		this.setSelectedModuleKeys([...this.selectedModuleKeys]);
+		this.treeDataProvider.setModules(this.availableModules);
+	}
+
+	private async applyPublicCachedModules(): Promise<void> {
+		const snapshot = this.cacheStore.getModuleSnapshot();
+		if (!snapshot) {
+			if (typeof this.treeDataProvider.setOfflineMode === 'function') {
+				this.treeDataProvider.setOfflineMode(true);
+			}
+			this.availableModules = [];
+			this.setSelectedModuleKeys([]);
+			this.updateLastRefreshDescription(undefined);
+			this.treeDataProvider.setError(t('noCachedModulesBody'));
+			return;
+		}
+		const publicModules = snapshot.modules.filter((module) => module.visibility === 'public');
+		const nextSnapshot = await this.cacheStore.setModuleSnapshot(publicModules, {
+			lastRefreshAt: snapshot.lastRefreshAt,
+		});
+		await this.cacheStore.setModuleEtag(undefined);
+		if (typeof this.treeDataProvider.setOfflineMode === 'function') {
+			this.treeDataProvider.setOfflineMode(true);
+		}
+		this.applyCachedModules(nextSnapshot);
+	}
+
+	private updateLastRefreshDescription(snapshot: ModuleCacheSnapshot | undefined): void {
+		if (typeof this.treeDataProvider.setViewDescription !== 'function') {
+			return;
+		}
+		this.treeDataProvider.setViewDescription(this.getLastRefreshDescription(snapshot?.lastRefreshAt));
+	}
+
+	private getLastRefreshDescription(lastRefreshAt: string | undefined): string {
+		if (!lastRefreshAt) {
+			return t('lastRefreshNever');
+		}
+		const timestamp = Date.parse(lastRefreshAt);
+		if (Number.isNaN(timestamp)) {
+			return t('lastRefreshNever');
+		}
+		return t('lastRefreshDescription', {
+			relative: this.formatRelativeTime(timestamp),
+		});
+	}
+
+	private formatRelativeTime(timestamp: number): string {
+		const diffMs = timestamp - Date.now();
+		const absoluteMs = Math.abs(diffMs);
+		const locale = vscode.env?.language && vscode.env.language.trim().length > 0 ? vscode.env.language : 'en';
+		const formatter = new Intl.RelativeTimeFormat(locale, { numeric: 'auto' });
+		if (absoluteMs < 60 * 1000) {
+			return formatter.format(0, 'minute');
+		}
+		if (absoluteMs < 60 * 60 * 1000) {
+			return formatter.format(Math.round(diffMs / (60 * 1000)), 'minute');
+		}
+		if (absoluteMs < 24 * 60 * 60 * 1000) {
+			return formatter.format(Math.round(diffMs / (60 * 60 * 1000)), 'hour');
+		}
+		return formatter.format(Math.round(diffMs / (24 * 60 * 60 * 1000)), 'day');
 	}
 
 	private async setAuthenticationState(signedIn: boolean, accountLabel?: string): Promise<void> {
@@ -1307,14 +1518,6 @@ export class ModuleManagerController {
 			this.treeDataProvider.setCanInitializeWorkspace(canInitializeWorkspace);
 		}
 		await vscode.commands.executeCommand('setContext', WORKSPACE_INIT_CONTEXT_KEY, canInitializeWorkspace);
-	}
-
-	private getCacheTtlMinutes(): number {
-		const configuredTtl = vscode.workspace.getConfiguration(CONFIG_SECTIONS.cache).get<number>(CONFIG_KEYS.cacheTtlMinutes, 60);
-		if (typeof configuredTtl !== 'number' || !Number.isFinite(configuredTtl)) {
-			return 60;
-		}
-		return Math.max(1, Math.floor(configuredTtl));
 	}
 
 	private async promptApplyMethod(moduleCount: number): Promise<ModuleApplyMethod | undefined> {

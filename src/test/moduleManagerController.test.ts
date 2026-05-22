@@ -79,11 +79,16 @@ function createSession(token = 'token', label = 'tester'): vscode.Authentication
 	};
 }
 
-function createCachedSnapshot(modules: CsmModuleEntry[], lastRefreshAt = new Date().toISOString()): ModuleCacheSnapshot {
+function createCachedSnapshot(
+	modules: CsmModuleEntry[],
+	lastRefreshAt = new Date().toISOString(),
+	options: Partial<Pick<ModuleCacheSnapshot, 'refreshAccountId' | 'refreshAccountLabel'>> = {},
+): ModuleCacheSnapshot {
 	return {
 		schemaVersion: 1,
 		lastRefreshAt,
 		modules,
+		...options,
 	};
 }
 
@@ -205,13 +210,43 @@ suite('ModuleManagerController Regression Tests', () => {
 		});
 	});
 
-	test('logout signs out the current account and reloads the public catalog anonymously', async () => {
+	test('logout signs out the current account and hides private cached modules locally', async () => {
 		const authUpdates: Array<{ signedIn: boolean; accountLabel?: string }> = [];
-		const receivedTokens: string[] = [];
 		let currentSession: vscode.AuthenticationSession | undefined = createSession('token', 'tester');
 		let signedOutAccount: string | undefined;
+		let visibleModuleCount = 0;
+		const memento = new FakeMemento();
+		await memento.update('csmModules.cache.modules', createCachedSnapshot([
+			{
+				id: 1,
+				owner: 'org',
+				name: 'module-a',
+				description: 'demo',
+				topics: ['csm-modsets'],
+				visibility: 'public',
+				defaultBranch: 'main',
+				repoUrl: 'https://github.com/org/module-a',
+			},
+			{
+				id: 2,
+				owner: 'org',
+				name: 'module-private',
+				description: 'private',
+				topics: ['csm-modsets'],
+				visibility: 'private',
+				defaultBranch: 'main',
+				repoUrl: 'https://github.com/org/module-private',
+			},
+		], '2026-05-20T08:00:00.000Z', {
+			refreshAccountId: 'tester',
+			refreshAccountLabel: 'tester',
+		}));
+		await memento.update('csmModules.auth.lastKnown', {
+			accountId: 'tester',
+			accountLabel: 'tester',
+		});
 
-		const controller = createController(undefined, {
+		const controller = createController(memento, {
 			authService: {
 				getSessionSilently: async () => currentSession,
 				getSessionInteractively: async () => currentSession,
@@ -221,33 +256,20 @@ suite('ModuleManagerController Regression Tests', () => {
 				},
 			},
 			githubService: {
-				fetchModules: async (token?: string) => {
-					receivedTokens.push(token ?? 'undefined');
-					return {
-						modules: [
-							{
-								id: 1,
-								owner: 'org',
-								name: 'module-a',
-								description: 'demo',
-								topics: ['csm-modsets'],
-								visibility: 'public',
-								defaultBranch: 'main',
-								repoUrl: 'https://github.com/org/module-a',
-							},
-						],
-					};
-				},
+				fetchModules: async () => ({ modules: [] }),
 				fetchReadme: async () => '',
 			},
 			viewProvider: createViewProvider({
 				setAuthenticated: (signedIn: boolean, accountLabel?: string) => {
 					authUpdates.push({ signedIn, accountLabel });
 				},
+				setModules: (modules: CsmModuleEntry[]) => {
+					visibleModuleCount = modules.length;
+				},
 			}),
 		});
 
-		await controller.loginCommand();
+		controller.register([]);
 		mocked.__resetMessageLog();
 
 		await controller.logoutCommand();
@@ -257,28 +279,45 @@ suite('ModuleManagerController Regression Tests', () => {
 			signedIn: false,
 			accountLabel: undefined,
 		});
-		assert.deepStrictEqual(receivedTokens, ['token', 'undefined']);
+		assert.strictEqual(visibleModuleCount, 1);
 		assert.strictEqual(mocked.__getContextValue('csmModules.signedIn'), false);
+		assert.strictEqual(memento.get<ModuleCacheSnapshot>('csmModules.cache.modules')?.modules.length, 1);
 		const infos = mocked.__getMessageLog().filter((message) => message.level === 'info').map((message) => message.text);
 		assert.ok(infos.some((text) => text.includes('Signed out of GitHub.')));
 	});
 
 	test('logout keeps the current account when the built-in sign-out flow is cancelled', async () => {
 		const authUpdates: Array<{ signedIn: boolean; accountLabel?: string }> = [];
-		const receivedTokens: string[] = [];
 		const currentSession = createSession('token', 'tester');
+		const memento = new FakeMemento();
+		await memento.update('csmModules.cache.modules', createCachedSnapshot([
+			{
+				id: 1,
+				owner: 'org',
+				name: 'module-a',
+				description: 'demo',
+				topics: ['csm-modsets'],
+				visibility: 'public',
+				defaultBranch: 'main',
+				repoUrl: 'https://github.com/org/module-a',
+			},
+		], '2026-05-20T08:00:00.000Z', {
+			refreshAccountId: 'tester',
+			refreshAccountLabel: 'tester',
+		}));
+		await memento.update('csmModules.auth.lastKnown', {
+			accountId: 'tester',
+			accountLabel: 'tester',
+		});
 
-		const controller = createController(undefined, {
+		const controller = createController(memento, {
 			authService: {
 				getSessionSilently: async () => currentSession,
 				getSessionInteractively: async () => currentSession,
 				signOut: async () => undefined,
 			},
 			githubService: {
-				fetchModules: async (token?: string) => {
-					receivedTokens.push(token ?? 'undefined');
-					return { modules: [] };
-				},
+				fetchModules: async () => ({ modules: [] }),
 				fetchReadme: async () => '',
 			},
 			viewProvider: createViewProvider({
@@ -288,7 +327,7 @@ suite('ModuleManagerController Regression Tests', () => {
 			}),
 		});
 
-		await controller.loginCommand();
+		controller.register([]);
 		mocked.__resetMessageLog();
 
 		await controller.logoutCommand();
@@ -297,7 +336,6 @@ suite('ModuleManagerController Regression Tests', () => {
 			signedIn: true,
 			accountLabel: 'tester',
 		});
-		assert.deepStrictEqual(receivedTokens, ['token']);
 		assert.strictEqual(mocked.__getContextValue('csmModules.signedIn'), true);
 		const warnings = mocked.__getMessageLog().filter((message) => message.level === 'warn').map((message) => message.text);
 		assert.ok(warnings.some((text) => text.includes('GitHub sign-out was cancelled.')));
@@ -392,51 +430,138 @@ suite('ModuleManagerController Regression Tests', () => {
 		assert.ok(panel?.html.includes('demo'));
 	});
 
-	test('login success triggers immediate module refresh', async () => {
-		let moduleCount = -1;
+	test('login reveals cached private modules immediately and then refreshes from GitHub', async () => {
+		const memento = new FakeMemento();
+		await memento.update('csmModules.cache.modules', createCachedSnapshot([
+			{
+				id: 1,
+				owner: 'org',
+				name: 'module-a',
+				description: 'demo',
+				topics: ['csm-modsets'],
+				visibility: 'public',
+				defaultBranch: 'main',
+				repoUrl: 'https://github.com/org/module-a',
+			},
+			{
+				id: 2,
+				owner: 'org',
+				name: 'module-private',
+				description: 'private',
+				topics: ['csm-modsets'],
+				visibility: 'private',
+				defaultBranch: 'main',
+				repoUrl: 'https://github.com/org/module-private',
+			},
+		], '2026-05-20T08:00:00.000Z', {
+			refreshAccountId: 'tester',
+			refreshAccountLabel: 'tester',
+		}));
+		const moduleCounts: number[] = [];
+		let loadingCalls = 0;
+		let fetched = 0;
 
-		const controller = createController(undefined, {
+		const controller = createController(memento, {
 			authService: {
 				getSessionSilently: async () => undefined,
 				getSessionInteractively: async () => createSession(),
 			},
 			githubService: {
-				fetchModules: async () => ({
-					modules: [
-						{
-							id: 1,
-							owner: 'org',
-							name: 'module-a',
-							description: 'demo',
-							topics: ['csm-modsets'],
-							visibility: 'public',
-							defaultBranch: 'main',
-							repoUrl: 'https://github.com/org/module-a',
-						},
-					]
-				}),
+				fetchModules: async () => {
+					fetched += 1;
+					return {
+						modules: [
+							{
+								id: 1,
+								owner: 'org',
+								name: 'module-a',
+								description: 'demo',
+								topics: ['csm-modsets'],
+								visibility: 'public',
+								defaultBranch: 'main',
+								repoUrl: 'https://github.com/org/module-a',
+							},
+							{
+								id: 2,
+								owner: 'org',
+								name: 'module-private',
+								description: 'private',
+								topics: ['csm-modsets'],
+								visibility: 'private',
+								defaultBranch: 'main',
+								repoUrl: 'https://github.com/org/module-private',
+							},
+							{
+								id: 3,
+								owner: 'org',
+								name: 'module-new',
+								description: 'new',
+								topics: ['csm-modsets'],
+								visibility: 'public',
+								defaultBranch: 'main',
+								repoUrl: 'https://github.com/org/module-new',
+							},
+						],
+					};
+				},
 				fetchReadme: async () => '# demo',
 			},
 			viewProvider: createViewProvider({
+				setLoading: () => {
+					loadingCalls += 1;
+				},
 				setModules: (modules: CsmModuleEntry[]) => {
-					moduleCount = modules.length;
+					moduleCounts.push(modules.length);
 				},
 			}),
 		});
 
+		controller.register([]);
 		await controller.loginCommand();
 
-		assert.strictEqual(moduleCount, 1);
+		assert.strictEqual(fetched, 1);
+		assert.strictEqual(loadingCalls, 0);
+		assert.deepStrictEqual(moduleCounts.slice(-2), [2, 3]);
 		assert.strictEqual(mocked.__getContextValue('csmModules.signedIn'), true);
 	});
 
-	test('login clears loading banner when GitHub reports modules unchanged', async () => {
+	test('refresh keeps cached private modules when GitHub reports modules unchanged', async () => {
+		const memento = new FakeMemento();
+		await memento.update('csmModules.cache.modules', createCachedSnapshot([
+			{
+				id: 1,
+				owner: 'org',
+				name: 'cached-module',
+				description: 'cached',
+				topics: ['csm-modsets'],
+				visibility: 'public',
+				defaultBranch: 'main',
+				repoUrl: 'https://github.com/org/cached-module',
+			},
+			{
+				id: 2,
+				owner: 'org',
+				name: 'private-module',
+				description: 'private',
+				topics: ['csm-modsets'],
+				visibility: 'private',
+				defaultBranch: 'main',
+				repoUrl: 'https://github.com/org/private-module',
+			},
+		], '2026-05-20T08:00:00.000Z', {
+			refreshAccountId: 'tester',
+			refreshAccountLabel: 'tester',
+		}));
+		await memento.update('csmModules.auth.lastKnown', {
+			accountId: 'tester',
+			accountLabel: 'tester',
+		});
 		let loadingCalls = 0;
 		let renderedModuleCount = -1;
-		const controller = createController(undefined, {
+		const controller = createController(memento, {
 			authService: {
-				getSessionSilently: async () => undefined,
-				getSessionInteractively: async () => createSession(),
+				getSessionSilently: async () => createSession(),
+				getSessionInteractively: async () => undefined,
 			},
 			githubService: {
 				fetchModules: async () => ({ modules: [], notModified: true }),
@@ -451,24 +576,55 @@ suite('ModuleManagerController Regression Tests', () => {
 				},
 			}),
 		});
-		const controllerInternals = controller as unknown as { availableModules: CsmModuleEntry[] };
-		controllerInternals.availableModules = [
-			{
-				id: 1,
-				owner: 'org',
-				name: 'cached-module',
-				description: 'cached',
-				topics: ['csm-modsets'],
-				visibility: 'public',
-				defaultBranch: 'main',
-				repoUrl: 'https://github.com/org/cached-module',
-			},
-		];
+		controller.register([]);
 
-		await controller.loginCommand();
+		await controller.refreshCommand();
 
 		assert.strictEqual(loadingCalls, 1);
-		assert.strictEqual(renderedModuleCount, 1);
+		assert.strictEqual(renderedModuleCount, 2);
+		assert.strictEqual(memento.get<ModuleCacheSnapshot>('csmModules.cache.modules')?.modules.length, 2);
+	});
+
+	test('refresh hydrates GitHub star state for signed-in modules', async () => {
+		let renderedModules: CsmModuleEntry[] = [];
+		let starChecks = 0;
+		const controller = createController(undefined, {
+			authService: {
+				getSessionSilently: async () => createSession(),
+				getSessionInteractively: async () => undefined,
+			},
+			githubService: {
+				fetchModules: async () => ({
+					modules: [
+						{
+							id: 1,
+							owner: 'org',
+							name: 'module-a',
+							description: 'demo',
+							topics: ['csm-modsets'],
+							visibility: 'public',
+							defaultBranch: 'main',
+							repoUrl: 'https://github.com/org/module-a',
+						},
+					],
+				}),
+				fetchReadme: async () => '',
+				isRepositoryStarred: async () => {
+					starChecks += 1;
+					return true;
+				},
+			},
+			viewProvider: createViewProvider({
+				setModules: (modules: CsmModuleEntry[]) => {
+					renderedModules = modules;
+				},
+			}),
+		});
+
+		await controller.refreshCommand();
+
+		assert.strictEqual(starChecks, 1);
+		assert.strictEqual(renderedModules[0]?.starred, true);
 	});
 
 	test('selection state toggles apply toolbar context', () => {
@@ -505,10 +661,7 @@ suite('ModuleManagerController Regression Tests', () => {
 
 		controller.authService = {
 			getSessionSilently: async () => undefined,
-			getSessionInteractively: async () => ({
-				accessToken: 'token',
-				account: { label: 'tester' },
-			}),
+			getSessionInteractively: async () => createSession(),
 		};
 		controller.githubService = {
 			fetchModules: async () => ({ modules: [] }),
@@ -595,8 +748,6 @@ suite('ModuleManagerController Regression Tests', () => {
 				},
 			}),
 		});
-		mocked.__setConfigurationValue('csmModules.cache.ttlMinutes', 60);
-
 		controller.register([]);
 		await Promise.resolve();
 		await Promise.resolve();
@@ -605,7 +756,7 @@ suite('ModuleManagerController Regression Tests', () => {
 		assert.strictEqual(fetched, false);
 	});
 
-	test('register refreshes fresh public cache when a signed-in session can expand results', async () => {
+	test('register shows cached private modules immediately when cached auth matches the refresh account', async () => {
 		const memento = new FakeMemento();
 		await memento.update('csmModules.cache.modules', createCachedSnapshot([
 			{
@@ -618,42 +769,37 @@ suite('ModuleManagerController Regression Tests', () => {
 				defaultBranch: 'main',
 				repoUrl: 'https://github.com/org/cached-module',
 			},
-		]));
+			{
+				id: 2,
+				owner: 'org',
+				name: 'private-module',
+				description: 'private',
+				topics: ['csm-modsets'],
+				visibility: 'private',
+				defaultBranch: 'main',
+				repoUrl: 'https://github.com/org/private-module',
+			},
+		], '2026-05-20T08:00:00.000Z', {
+			refreshAccountId: 'tester',
+			refreshAccountLabel: 'tester',
+		}));
+		await memento.update('csmModules.auth.lastKnown', {
+			accountId: 'tester',
+			accountLabel: 'tester',
+		});
 		let fetched = false;
 		let visibleModuleCount = 0;
+		let viewDescription = '';
 
 		const controller = createController(memento, {
 			authService: {
-				getSessionSilently: async () => createSession(),
+				getSessionSilently: async () => undefined,
 				getSessionInteractively: async () => undefined,
 			},
 			githubService: {
 				fetchModules: async () => {
 					fetched = true;
-					return {
-						modules: [
-							{
-								id: 1,
-								owner: 'org',
-								name: 'cached-module',
-								description: 'cached',
-								topics: ['csm-modsets'],
-								visibility: 'public',
-								defaultBranch: 'main',
-								repoUrl: 'https://github.com/org/cached-module',
-							},
-							{
-								id: 2,
-								owner: 'org',
-								name: 'private-module',
-								description: 'private',
-								topics: ['csm-modsets'],
-								visibility: 'private',
-								defaultBranch: 'main',
-								repoUrl: 'https://github.com/org/private-module',
-							},
-						],
-					};
+					return { modules: [] };
 				},
 				fetchReadme: async () => '',
 			},
@@ -661,15 +807,18 @@ suite('ModuleManagerController Regression Tests', () => {
 				setModules: (modules: CsmModuleEntry[]) => {
 					visibleModuleCount = modules.length;
 				},
+				setViewDescription: (description?: string) => {
+					viewDescription = description ?? '';
+				},
 			}),
 		});
-		mocked.__setConfigurationValue('csmModules.cache.ttlMinutes', 60);
 
 		controller.register([]);
 		await new Promise<void>((resolve) => setImmediate(resolve));
 
-		assert.strictEqual(fetched, true);
+		assert.strictEqual(fetched, false);
 		assert.strictEqual(visibleModuleCount, 2);
+		assert.ok(viewDescription.includes('Updated'));
 	});
 
 	test('register restores persisted applied sort state for cached modules', async () => {
@@ -740,8 +889,6 @@ suite('ModuleManagerController Regression Tests', () => {
 		mocked.__setWorkspaceFolders([{ name: 'repo', uri: vscode.Uri.file('d:/repo') }]);
 		mocked.__setFindFilesResultForPattern(configSearchPattern, [vscode.Uri.file('d:/repo/csm/csm-modules.yaml')]);
 		mocked.__setFindFilesResultForPattern(lvprojSearchPattern, []);
-		mocked.__setConfigurationValue('csmModules.cache.ttlMinutes', 60);
-
 		controller.register([]);
 		await controller.refreshSidebarWorkspaceState();
 
@@ -749,7 +896,7 @@ suite('ModuleManagerController Regression Tests', () => {
 		assert.deepStrictEqual(visibleModuleKeys, ['org/module-b', 'org/module-a']);
 	});
 
-	test('expired cache refreshes in background without replacing visible modules with loading state', async () => {
+	test('expired cache stays visible without background refresh', async () => {
 		const memento = new FakeMemento();
 		await memento.update('csmModules.cache.modules', createCachedSnapshot([
 			{
@@ -768,7 +915,7 @@ suite('ModuleManagerController Regression Tests', () => {
 		let loadingCalls = 0;
 
 		controller.authService = {
-			getSessionSilently: async () => ({ accessToken: 'token', account: { label: 'tester' } }),
+			getSessionSilently: async () => ({ accessToken: 'token', account: { id: 'tester', label: 'tester' } }),
 			getSessionInteractively: async () => undefined,
 		};
 		controller.githubService = {
@@ -786,12 +933,10 @@ suite('ModuleManagerController Regression Tests', () => {
 			},
 			setModules: () => undefined,
 		};
-		mocked.__setConfigurationValue('csmModules.cache.ttlMinutes', 1);
-
 		controller.register([]);
 		await new Promise<void>((resolve) => setImmediate(resolve));
 
-		assert.strictEqual(fetched, true);
+		assert.strictEqual(fetched, false);
 		assert.strictEqual(loadingCalls, 0);
 	});
 
@@ -897,8 +1042,6 @@ suite('ModuleManagerController Regression Tests', () => {
 		mocked.__setWorkspaceFolders([{ name: 'repo', uri: vscode.Uri.file('d:/repo') }]);
 		mocked.__setFindFilesResultForPattern(configSearchPattern, [vscode.Uri.file('d:/repo/csm/csm-modules.yaml')]);
 		mocked.__setFindFilesResultForPattern(lvprojSearchPattern, []);
-		mocked.__setConfigurationValue('csmModules.cache.ttlMinutes', 60);
-
 		controller.register([]);
 		mocked.__resolveWebviewView('csmModules.view');
 		await controller.refreshSidebarWorkspaceState();
@@ -1114,6 +1257,136 @@ suite('ModuleManagerController Regression Tests', () => {
 		await controller.applyToWorkspaceCommand(entry);
 
 		assert.strictEqual(appliedRoot, 'existing-root');
+	});
+
+	test('apply auto-stars imported community modules for signed-in users', async () => {
+		const renderedModules: CsmModuleEntry[][] = [];
+		const starRequests: Array<{ owner: string; repo: string; token: string; starred: boolean }> = [];
+		const controller = createController(undefined, {
+			authService: {
+				getSessionSilently: async () => createSession('token', 'tester'),
+				getSessionInteractively: async () => createSession('token', 'tester'),
+			},
+			githubService: {
+				fetchModules: async () => ({ modules: [] }),
+				fetchReadme: async () => '',
+				setRepositoryStarred: async (owner: string, repo: string, token: string, starred: boolean) => {
+					starRequests.push({ owner, repo, token, starred });
+				},
+			},
+			viewProvider: createViewProvider({
+				setModules: (modules: CsmModuleEntry[]) => {
+					renderedModules.push(modules);
+				},
+			}),
+		}) as any;
+		const entry: CsmModuleEntry = {
+			id: 7,
+			owner: 'org',
+			name: 'module-star',
+			description: 'demo',
+			topics: ['csm-modsets'],
+			visibility: 'public',
+			defaultBranch: 'main',
+			repoUrl: 'https://github.com/org/module-star',
+			starred: false,
+		};
+		controller.availableModules = [entry];
+		controller.workspaceModuleService = {
+			resolveGitRepositoryRoot: async () => 'd:/repo',
+			normalizeRootPath: (value: string) => value,
+			recoverConfigFromExistingSubmodules: async () => undefined,
+			initializeConfig: async () => ({
+				version: '2',
+				root: 'csm',
+				configPath: 'd:/repo/csm/csm-modules.yaml',
+				modules: {},
+			}),
+			loadConfig: async () => ({
+				version: '2',
+				root: 'csm',
+				configPath: 'd:/repo/csm/csm-modules.yaml',
+				modules: {},
+			}),
+			getTargetRelativePath: (_config: LocalModuleConfig, moduleEntry: CsmModuleEntry) => `csm/${moduleEntry.name}`,
+			targetExists: async () => false,
+			applyModule: async (_repoRoot: string, _config: LocalModuleConfig, moduleEntry: CsmModuleEntry) => ({
+				key: 'org__module_star',
+				name: moduleEntry.name,
+				owner: moduleEntry.owner,
+				source: moduleEntry.repoUrl,
+				method: 'copy',
+				path: `csm/${moduleEntry.name}`,
+				ref: 'abc123',
+				branch: moduleEntry.defaultBranch,
+			}),
+			withAppliedModule: (config: LocalModuleConfig, moduleEntry: LocalModuleConfig['modules'][string]) => ({
+				...config,
+				modules: {
+					...config.modules,
+					[moduleEntry.key]: moduleEntry,
+				},
+			}),
+			writeConfig: async () => undefined,
+		};
+		mocked.__setWorkspaceFolders([{ name: 'repo', uri: vscode.Uri.file('d:/repo') }]);
+		mocked.__setFindFilesResult([]);
+		mocked.__setConfigurationValue('csmModules.defaultModuleRoot', 'csm');
+		mocked.__setInformationMessageResponse('Use csm/');
+		mocked.__setQuickPickResponse({ method: 'copy' });
+		mocked.__setWarningMessageResponse('Apply');
+
+		await controller.applyToWorkspaceCommand(entry);
+
+		assert.deepStrictEqual(starRequests, [{
+			owner: 'org',
+			repo: 'module-star',
+			token: 'token',
+			starred: true,
+		}]);
+		assert.strictEqual(renderedModules[renderedModules.length - 1]?.[0]?.starred, true);
+	});
+
+	test('toggleStar unstars a repository only after confirmation', async () => {
+		let renderedModules: CsmModuleEntry[] = [];
+		const starRequests: boolean[] = [];
+		const controller = createController(undefined, {
+			authService: {
+				getSessionSilently: async () => createSession('token', 'tester'),
+				getSessionInteractively: async () => createSession('token', 'tester'),
+			},
+			githubService: {
+				fetchModules: async () => ({ modules: [] }),
+				fetchReadme: async () => '',
+				setRepositoryStarred: async (_owner: string, _repo: string, _token: string, starred: boolean) => {
+					starRequests.push(starred);
+				},
+			},
+			viewProvider: createViewProvider({
+				setModules: (modules: CsmModuleEntry[]) => {
+					renderedModules = modules;
+				},
+			}),
+		}) as any;
+		const entry: CsmModuleEntry = {
+			id: 8,
+			owner: 'org',
+			name: 'module-a',
+			description: 'demo',
+			topics: ['csm-modsets'],
+			visibility: 'public',
+			defaultBranch: 'main',
+			repoUrl: 'https://github.com/org/module-a',
+			starred: true,
+		};
+		controller.availableModules = [entry];
+		mocked.__setWarningMessageResponse('Unstar');
+
+		await controller.toggleStarCommand(entry);
+
+		assert.deepStrictEqual(starRequests, [false]);
+		assert.strictEqual(renderedModules[0]?.starred, false);
+		assert.ok(mocked.__getLastWarningPrompt()?.message.includes('org/module-a'));
 	});
 
 	test('apply warns when copy target already exists', async () => {

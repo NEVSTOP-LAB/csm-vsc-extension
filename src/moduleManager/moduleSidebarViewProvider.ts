@@ -10,6 +10,7 @@ interface ModuleSidebarActions {
 	onLogin: () => void;
 	onRefresh: () => void;
 	onInitializeWorkspace: () => void;
+	onToggleStar: (entry: CsmModuleEntry) => void;
 	onOpenReadme: (entry: CsmModuleEntry) => void;
 	onPreviewReadme: (entry: CsmModuleEntry, webview: vscode.Webview) => Promise<string>;
 	onApplySelection: (entry?: CsmModuleEntry) => void;
@@ -19,8 +20,12 @@ interface ModuleSidebarActions {
 	onSortChange: (sortState: Partial<ModuleSortState>) => void;
 }
 
+interface ModuleSidebarViewProviderOptions {
+	getLocalResourceRoots?: () => readonly vscode.Uri[];
+}
+
 type WebviewMessage = {
-	type: 'login' | 'refresh' | 'initializeWorkspace' | 'applySelected' | 'openReadme' | 'togglePreview' | 'applyOne' | 'toggleSelection' | 'setFilterQuery' | 'clearFilter' | 'dismissIntroTip' | 'removeModule' | 'updateModule' | 'setSortField' | 'setSortDirection' | 'showMore';
+	type: 'login' | 'refresh' | 'initializeWorkspace' | 'applySelected' | 'toggleStar' | 'openReadme' | 'togglePreview' | 'applyOne' | 'toggleSelection' | 'setFilterQuery' | 'clearFilter' | 'dismissIntroTip' | 'removeModule' | 'updateModule' | 'setSortField' | 'setSortDirection' | 'showMore';
 	moduleKey?: string;
 	selected?: boolean;
 	query?: string;
@@ -30,6 +35,8 @@ type WebviewMessage = {
 
 export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IModuleViewProvider {
 	private view: vscode.WebviewView | undefined;
+	private viewTitle = t('availableModulesViewTitle');
+	private viewDescription: string | undefined;
 	private modules: CsmModuleEntry[] = [];
 	private state: ViewState = 'loading';
 	private message = t('loadingModules');
@@ -49,7 +56,10 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IM
 	private static readonly INITIAL_RENDER_LIMIT = 100;
 	private renderLimit = ModuleSidebarViewProvider.INITIAL_RENDER_LIMIT;
 
-	constructor(private readonly actions: ModuleSidebarActions) { }
+	constructor(
+		private readonly actions: ModuleSidebarActions,
+		private readonly options: ModuleSidebarViewProviderOptions = {},
+	) { }
 
 	public static getModuleKey(entry: CsmModuleEntry): string {
 		return `${entry.owner}/${entry.name}`;
@@ -61,8 +71,11 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IM
 		_token: vscode.CancellationToken,
 	): void {
 		this.view = webviewView;
+		webviewView.title = this.viewTitle;
+		webviewView.description = this.viewDescription;
 		webviewView.webview.options = {
 			enableScripts: true,
+			localResourceRoots: this.options.getLocalResourceRoots?.(),
 		};
 		webviewView.webview.onDidReceiveMessage((message: unknown) => {
 			void this.handleMessage(message);
@@ -73,6 +86,7 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IM
 	public setAuthenticated(signedIn: boolean, accountLabel?: string): void {
 		this.signedIn = signedIn;
 		this.signedInAccountLabel = signedIn ? accountLabel : undefined;
+		this.updateViewTitle();
 		this.render();
 	}
 
@@ -117,6 +131,22 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IM
 		this.render();
 	}
 
+	public setViewDescription(description?: string): void {
+		this.viewDescription = description;
+		if (this.view) {
+			this.view.description = description;
+		}
+	}
+
+	private updateViewTitle(): void {
+		this.viewTitle = this.signedIn && this.signedInAccountLabel
+			? t('signedInAsTitle', { account: this.signedInAccountLabel })
+			: t('availableModulesViewTitle');
+		if (this.view) {
+			this.view.title = this.viewTitle;
+		}
+	}
+
 	public setWorkspaceContext(context: SidebarWorkspaceContext): void {
 		this.workspaceLabel = context.workspaceLabel;
 		this.moduleRoot = context.moduleRoot;
@@ -158,6 +188,13 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IM
 			case 'initializeWorkspace':
 				this.actions.onInitializeWorkspace();
 				return;
+			case 'toggleStar': {
+				const entry = message.moduleKey ? this.findEntry(message.moduleKey) : undefined;
+				if (entry) {
+					this.actions.onToggleStar(entry);
+				}
+				return;
+			}
 			case 'applySelected':
 				this.actions.onApplySelection();
 				return;

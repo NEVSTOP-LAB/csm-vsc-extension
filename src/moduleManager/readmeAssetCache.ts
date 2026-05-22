@@ -40,8 +40,27 @@ async function replaceAsync(source: string, pattern: RegExp, replacer: (match: R
 	return result;
 }
 
+function parseHtmlAttributes(source: string): Record<string, string> {
+	const attributes: Record<string, string> = {};
+	const pattern = /([a-zA-Z_:][-a-zA-Z0-9_:.]*)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))/g;
+	let match: RegExpExecArray | null;
+	while ((match = pattern.exec(source)) !== null) {
+		const [, name, doubleQuoted, singleQuoted, bare] = match;
+		attributes[name.toLowerCase()] = doubleQuoted ?? singleQuoted ?? bare ?? '';
+	}
+	return attributes;
+}
+
+function normalizeImageDimension(value: string | undefined): string | undefined {
+	if (!value) {
+		return undefined;
+	}
+	const trimmed = value.trim();
+	return /^\d+$/.test(trimmed) ? trimmed : undefined;
+}
+
 export class ReadmeAssetCache {
-	constructor(private readonly storageRoot: vscode.Uri) {}
+	constructor(private readonly storageRoot: vscode.Uri) { }
 
 	public get rootUri(): vscode.Uri {
 		return vscode.Uri.joinPath(this.storageRoot, 'module-manager-readme');
@@ -113,6 +132,24 @@ export class ReadmeAssetCache {
 		}
 	}
 
+	private async renderImageTag(
+		entry: CsmModuleEntry,
+		webview: vscode.Webview,
+		options: { source: string; alt?: string; width?: string; height?: string },
+	): Promise<string> {
+		const alt = escapeHtml(options.alt ?? '');
+		const width = normalizeImageDimension(options.width);
+		const height = normalizeImageDimension(options.height);
+		let src: string;
+		try {
+			const assetUri = await this.downloadAsset(entry, options.source);
+			src = String(webview.asWebviewUri(assetUri));
+		} catch {
+			src = this.getCacheKeyUrl(entry, options.source);
+		}
+		return `<img alt="${alt}" src="${escapeHtml(src)}"${width ? ` width="${width}"` : ''}${height ? ` height="${height}"` : ''} />`;
+	}
+
 	private async renderInline(entry: CsmModuleEntry, text: string, webview: vscode.Webview): Promise<string> {
 		const replacements: string[] = [];
 		const createPlaceholder = (html: string): string => {
@@ -121,16 +158,26 @@ export class ReadmeAssetCache {
 			return token;
 		};
 
-		let rendered = await replaceAsync(text, /!\[([^\]]*)\]\(([^)]+)\)/g, async (match) => {
-			const alt = escapeHtml(match[1] ?? '');
-			const source = (match[2] ?? '').trim();
-			try {
-				const assetUri = await this.downloadAsset(entry, source);
-				return createPlaceholder(`<img alt="${alt}" src="${webview.asWebviewUri(assetUri)}" />`);
-			} catch {
-				const fallbackUrl = this.getCacheKeyUrl(entry, source);
-				return createPlaceholder(`<img alt="${alt}" src="${escapeHtml(fallbackUrl)}" />`);
+		let rendered = await replaceAsync(text, /<img\b[^>]*>/gi, async (match) => {
+			const attributes = parseHtmlAttributes(match[0]);
+			const source = attributes.src?.trim();
+			if (!source) {
+				return match[0];
 			}
+			return createPlaceholder(await this.renderImageTag(entry, webview, {
+				source,
+				alt: attributes.alt,
+				width: attributes.width,
+				height: attributes.height,
+			}));
+		});
+
+		rendered = await replaceAsync(rendered, /!\[([^\]]*)\]\(([^)]+)\)/g, async (match) => {
+			const source = (match[2] ?? '').trim();
+			return createPlaceholder(await this.renderImageTag(entry, webview, {
+				source,
+				alt: match[1] ?? '',
+			}));
 		});
 
 		rendered = rendered.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_match, label: string, source: string) => {
@@ -150,12 +197,23 @@ export class ReadmeAssetCache {
 	}
 
 	private async prefetchImages(entry: CsmModuleEntry, markdown: string): Promise<void> {
-		const imageMatches = [...markdown.matchAll(/!\[([^\]]*)\]\(([^)]+)\)/g)];
-		for (const match of imageMatches) {
+		const sources = new Set<string>();
+		const markdownImageMatches = [...markdown.matchAll(/!\[([^\]]*)\]\(([^)]+)\)/g)];
+		for (const match of markdownImageMatches) {
 			const source = (match[2] ?? '').trim();
+			if (source) {
+				sources.add(source);
+			}
+		}
+		const htmlImageMatches = [...markdown.matchAll(/<img\b[^>]*>/gi)];
+		for (const match of htmlImageMatches) {
+			const source = parseHtmlAttributes(match[0]).src?.trim();
 			if (!source) {
 				continue;
 			}
+			sources.add(source);
+		}
+		for (const source of sources) {
 			try {
 				await this.downloadAsset(entry, source);
 			} catch {

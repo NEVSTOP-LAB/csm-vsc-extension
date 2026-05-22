@@ -4,15 +4,17 @@ import * as fs from 'fs/promises';
 import * as os from 'os';
 import * as path from 'path';
 import { ModuleCacheStore, mapRepoToModuleEntry } from '../moduleManager';
+import { ReadmeAssetCache } from '../moduleManager/readmeAssetCache';
 import { ModuleSidebarViewProvider } from '../moduleManager/moduleSidebarViewProvider';
 import { ModuleTreeDataProvider, ModuleTreeItem } from '../moduleManager/moduleTreeDataProvider';
 import { GitHubRepoSummary } from '../moduleManager';
+import { CsmModuleEntry } from '../moduleManager/types';
 import { LEGACY_LOCAL_MODULE_CONFIG_FILE, LOCAL_MODULE_CONFIG_FILE, WorkspaceModuleService } from '../moduleManager/workspaceModuleService';
 import * as vscode from 'vscode';
 
 type VscodeMock = typeof vscode & {
 	__resolveWebviewView: (viewId: string) => { html: string; fireMessage: (message: unknown) => void } | undefined;
-	__getLastWebviewView: () => { viewId: string; html: string } | undefined;
+	__getLastWebviewView: () => { viewId: string; html: string; title?: string; description?: string; options?: { enableScripts?: boolean; localResourceRoots?: vscode.Uri[] } } | undefined;
 	__resetUiState: () => void;
 };
 
@@ -74,7 +76,7 @@ suite('Module Manager Tests', () => {
 		const memento = new FakeMemento();
 		const store = new ModuleCacheStore(memento as never);
 
-		await store.setModuleSnapshot([
+		const storedSnapshot = await store.setModuleSnapshot([
 			{
 				id: 1,
 				owner: 'org',
@@ -85,16 +87,31 @@ suite('Module Manager Tests', () => {
 				defaultBranch: 'main',
 				repoUrl: 'https://github.com/org/module-a',
 			},
-		]);
+		], {
+			refreshAccountId: 'tester',
+			refreshAccountLabel: 'tester',
+		});
+		await store.setAuthSnapshot({
+			accountId: 'tester',
+			accountLabel: 'tester',
+		});
 
 		const snapshot = store.getModuleSnapshot();
 		assert.ok(snapshot);
 		assert.strictEqual(snapshot?.schemaVersion, 1);
 		assert.strictEqual(snapshot?.modules.length, 1);
 		assert.ok(snapshot?.lastRefreshAt);
+		assert.strictEqual(snapshot?.refreshAccountId, 'tester');
+		assert.strictEqual(snapshot?.refreshAccountLabel, 'tester');
+		assert.strictEqual(storedSnapshot.refreshAccountId, 'tester');
+		assert.deepStrictEqual(store.getAuthSnapshot(), {
+			accountId: 'tester',
+			accountLabel: 'tester',
+		});
 
 		await store.clear();
 		assert.strictEqual(store.getModuleSnapshot(), undefined);
+		assert.strictEqual(store.getAuthSnapshot(), undefined);
 		assert.deepStrictEqual(store.getReadmeCache(), {});
 	});
 
@@ -119,6 +136,45 @@ suite('Module Manager Tests', () => {
 		assert.ok(snapshot);
 		assert.strictEqual(snapshot?.schemaVersion, 1);
 		assert.strictEqual(store.isModuleSnapshotExpired(snapshot, 1), true);
+	});
+
+	test('ReadmeAssetCache renders raw HTML img tags in README previews', async () => {
+		const storageRoot = vscode.Uri.file(path.join(os.tmpdir(), `csm-readme-assets-${Date.now()}`));
+		const cache = new ReadmeAssetCache(storageRoot);
+		const entry: CsmModuleEntry = {
+			id: 1,
+			owner: 'org',
+			name: 'module-a',
+			description: 'A demo module',
+			topics: ['csm-modsets'],
+			visibility: 'public',
+			defaultBranch: 'main',
+			repoUrl: 'https://github.com/org/module-a',
+		};
+		const originalFetch = globalThis.fetch;
+		globalThis.fetch = (async () => ({
+			ok: true,
+			status: 200,
+			arrayBuffer: async () => new Uint8Array([1, 2, 3, 4]).buffer,
+		}) as Response) as typeof fetch;
+
+		try {
+			const panel = vscode.window.createWebviewPanel('csmModulesReadmeTest', 'README', vscode.ViewColumn.One, {});
+			const html = await cache.renderMarkdownFragment(
+				entry,
+				'<img width="385" height="322" alt="image" src="https://github.com/user-attachments/assets/ff122167-f2f9-4ab4-8905-d0d5b468217e" />',
+				panel.webview,
+			);
+
+			assert.ok(html.includes('<img alt="image"'));
+			assert.ok(html.includes('width="385"'));
+			assert.ok(html.includes('height="322"'));
+			assert.ok(html.includes('<p><img'));
+			assert.ok(!html.includes('&lt;img'));
+		} finally {
+			globalThis.fetch = originalFetch;
+			await fs.rm(storageRoot.fsPath, { recursive: true, force: true });
+		}
 	});
 
 	test('ModuleTreeItem includes topic and visibility metadata', () => {
@@ -172,10 +228,12 @@ suite('Module Manager Tests', () => {
 	});
 
 	test('ModuleSidebarViewProvider renders extension-style module cards', () => {
+		const assetRoot = vscode.Uri.file(path.join(os.tmpdir(), 'csm-sidebar-readme-assets'));
 		const provider = new ModuleSidebarViewProvider({
 			onLogin: () => undefined,
 			onRefresh: () => undefined,
 			onInitializeWorkspace: () => undefined,
+			onToggleStar: () => undefined,
 			onOpenReadme: () => undefined,
 			onPreviewReadme: async () => '<p>Preview</p>',
 			onApplySelection: () => undefined,
@@ -183,6 +241,8 @@ suite('Module Manager Tests', () => {
 			onUpdateModule: () => undefined,
 			onSelectionChange: () => undefined,
 			onSortChange: () => undefined,
+		}, {
+			getLocalResourceRoots: () => [assetRoot],
 		});
 
 		provider.setAuthenticated(true, 'tester');
@@ -196,6 +256,7 @@ suite('Module Manager Tests', () => {
 				visibility: 'private',
 				defaultBranch: 'main',
 				repoUrl: 'https://github.com/org/module-a',
+				starred: true,
 			},
 			{
 				id: 2,
@@ -206,6 +267,7 @@ suite('Module Manager Tests', () => {
 				visibility: 'public',
 				defaultBranch: 'develop',
 				repoUrl: 'https://github.com/org/module-b',
+				starred: false,
 			},
 		]);
 		provider.setWorkspaceContext({
@@ -213,6 +275,8 @@ suite('Module Manager Tests', () => {
 			moduleRoot: 'csm',
 			appliedModuleKeys: ['org/module-a'],
 		});
+		provider.setOfflineMode(true);
+		provider.setViewDescription('Updated 5 minutes ago');
 
 		const disposable = vscode.window.registerWebviewViewProvider('csmModules.view', provider);
 		const resolved = mocked.__resolveWebviewView('csmModules.view');
@@ -220,7 +284,10 @@ suite('Module Manager Tests', () => {
 
 		assert.ok(resolved);
 		assert.strictEqual(rendered?.viewId, 'csmModules.view');
+		assert.strictEqual(rendered?.title, 'Signed in as tester');
+		assert.strictEqual(rendered?.description, 'Updated 5 minutes ago');
 		assert.ok(rendered?.html.includes('module-card'));
+		assert.deepStrictEqual(rendered?.options?.localResourceRoots?.map((uri) => uri.fsPath), [assetRoot.fsPath]);
 		assert.ok(rendered?.html.includes('module-a'));
 		assert.ok(rendered?.html.includes('@org'));
 		assert.ok(rendered?.html.includes('automation'));
@@ -246,22 +313,24 @@ suite('Module Manager Tests', () => {
 		assert.ok(rendered?.html.includes('.module-card.selected .select-toolbar-item {'));
 		assert.ok(rendered?.html.includes('opacity: 0;'));
 		assert.ok(rendered?.html.includes('pointer-events: none;'));
+		assert.ok(rendered?.html.includes('data-action="toggleStar" data-module-key="org&#47;module-a" title="Unstar repository" aria-label="Unstar repository" aria-pressed="true"'));
 		assert.ok(rendered?.html.includes('data-action="openReadme" data-module-key="org&#47;module-a" title="Open README" aria-label="Open README"'));
 		assert.ok(!rendered?.html.includes('Workspace: repo'));
 		assert.ok(rendered?.html.includes('Root: csm/'));
-		assert.ok(rendered?.html.includes('Signed in as tester.'));
-		assert.ok(rendered?.html.includes('Loaded 2 module(s), including private.'));
-		assert.ok(rendered?.html.includes('1 applied | 2 available | 0 selected'));
+		assert.ok(!rendered?.html.includes('Signed in as tester.'));
+		assert.ok(!rendered?.html.includes('Loaded 2 module(s), including private.'));
+		assert.ok(rendered?.html.includes('1 applied | 1 public | 1 private | 0 selected'));
 		assert.ok(rendered?.html.includes('Applied'));
 		assert.ok(!rendered?.html.includes('data-role="apply-selected"'));
 		assert.ok(rendered?.html.includes('title="Open README"'));
 		assert.ok(!rendered?.html.includes('class="avatar"'));
 		assert.ok(!rendered?.html.includes('title="Refresh modules"'));
+		assert.ok(!rendered?.html.includes('Cached list'));
 		assert.ok(rendered ? rendered.html.indexOf('Already recorded for repo') < rendered.html.indexOf('>automation</span>') : false);
 
 		provider.setSelection(['org/module-a']);
 		const selectedRender = mocked.__getLastWebviewView();
-		assert.ok(selectedRender?.html.includes('1 applied | 2 available | 1 selected'));
+		assert.ok(selectedRender?.html.includes('1 applied | 1 public | 1 private | 1 selected'));
 		assert.ok(selectedRender?.html.includes('moduleSelected&quot;:true'));
 
 		resolved?.fireMessage({ type: 'dismissIntroTip' });
@@ -273,6 +342,7 @@ suite('Module Manager Tests', () => {
 	test('ModuleSidebarViewProvider forwards checkbox selection and card actions', () => {
 		const selectionUpdates: string[][] = [];
 		let appliedModuleName = '';
+		let toggledStarName = '';
 		let openedReadmeName = '';
 		let removedModuleName = '';
 		let updatedModuleName = '';
@@ -280,6 +350,9 @@ suite('Module Manager Tests', () => {
 			onLogin: () => undefined,
 			onRefresh: () => undefined,
 			onInitializeWorkspace: () => undefined,
+			onToggleStar: (entry) => {
+				toggledStarName = entry.name;
+			},
 			onOpenReadme: (entry) => {
 				openedReadmeName = entry.name;
 			},
@@ -310,6 +383,7 @@ suite('Module Manager Tests', () => {
 				visibility: 'public',
 				defaultBranch: 'main',
 				repoUrl: 'https://github.com/org/module-a',
+				starred: false,
 			},
 			{
 				id: 2,
@@ -320,6 +394,7 @@ suite('Module Manager Tests', () => {
 				visibility: 'public',
 				defaultBranch: 'main',
 				repoUrl: 'https://github.com/org/module-b',
+				starred: true,
 			},
 		]);
 
@@ -350,6 +425,7 @@ suite('Module Manager Tests', () => {
 			},
 		]);
 		resolved?.fireMessage({ type: 'toggleSelection', moduleKey: 'org/module-a', selected: true });
+		resolved?.fireMessage({ type: 'toggleStar', moduleKey: 'org/module-a' });
 		resolved?.fireMessage({ type: 'openReadme', moduleKey: 'org/module-a' });
 		resolved?.fireMessage({ type: 'applyOne', moduleKey: 'org/module-a' });
 		resolved?.fireMessage({ type: 'removeModule', moduleKey: 'org/module-a' });
@@ -360,6 +436,7 @@ suite('Module Manager Tests', () => {
 		assert.ok(rerendered?.html.includes('0 applied | 1 of 2 shown | 1 selected'));
 		assert.ok(!rerendered?.html.includes('data-role="apply-selected"'));
 		assert.deepStrictEqual(selectionUpdates[selectionUpdates.length - 1], ['org/module-a']);
+		assert.strictEqual(toggledStarName, 'module-a');
 		assert.strictEqual(openedReadmeName, 'module-a');
 		assert.strictEqual(appliedModuleName, 'module-a');
 		assert.strictEqual(removedModuleName, 'module-a');
@@ -372,6 +449,7 @@ suite('Module Manager Tests', () => {
 			onLogin: () => undefined,
 			onRefresh: () => undefined,
 			onInitializeWorkspace: () => undefined,
+			onToggleStar: () => undefined,
 			onOpenReadme: () => undefined,
 			onPreviewReadme: async () => '<p>Preview</p>',
 			onApplySelection: () => undefined,
@@ -399,6 +477,7 @@ suite('Module Manager Tests', () => {
 		mocked.__resolveWebviewView('csmModules.view');
 		const rendered = mocked.__getLastWebviewView();
 
+		assert.strictEqual(rendered?.title, 'Available Modules');
 		assert.ok(rendered?.html.includes('1 available | 0 selected'));
 		assert.ok(rendered?.html.includes('Loaded 1 public module(s). Sign in to see private modules.'));
 		assert.ok(!rendered?.html.includes('data-action="login"'));
@@ -412,6 +491,7 @@ suite('Module Manager Tests', () => {
 			onLogin: () => undefined,
 			onRefresh: () => undefined,
 			onInitializeWorkspace: () => undefined,
+			onToggleStar: () => undefined,
 			onOpenReadme: () => undefined,
 			onPreviewReadme: async (entry) => {
 				previewRequests += 1;
@@ -465,6 +545,7 @@ suite('Module Manager Tests', () => {
 			onLogin: () => undefined,
 			onRefresh: () => undefined,
 			onInitializeWorkspace: () => undefined,
+			onToggleStar: () => undefined,
 			onOpenReadme: () => undefined,
 			onPreviewReadme: async () => '<p>Preview</p>',
 			onApplySelection: () => undefined,
