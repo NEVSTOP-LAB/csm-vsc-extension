@@ -1,8 +1,11 @@
 import * as vscode from 'vscode';
 import { HoverEntry, buildHover, provideContentHover } from './hoverData';
+import { localizeHoverEntries } from './hoverData/localize';
+import { isChineseLanguage } from './i18n';
+import { csmlogHoverTranslations } from './csmlogHoverTranslations';
 
 /** Lookup key → hover entry (upper-case keys for case-insensitive matching). */
-const CSMLOG_HOVER_DB: Record<string, HoverEntry> = {
+const zhCsmlogHoverDb: Record<string, HoverEntry> = {
 
     // -----------------------------------------------------------------------
     // Event types (priority order, high → low)
@@ -278,6 +281,22 @@ const CSMLOG_HOVER_DB: Record<string, HoverEntry> = {
 };
 
 // ---------------------------------------------------------------------------
+// Lazy DB accessor with per-language caching
+// ---------------------------------------------------------------------------
+
+let _csmlogHoverDbCache: { isChinese: boolean; db: Record<string, HoverEntry> } | undefined;
+
+function getCsmlogHoverDb(): Record<string, HoverEntry> {
+    const isChinese = isChineseLanguage();
+    if (_csmlogHoverDbCache !== undefined && _csmlogHoverDbCache.isChinese === isChinese) {
+        return _csmlogHoverDbCache.db;
+    }
+    const db = localizeHoverEntries(zhCsmlogHoverDb, csmlogHoverTranslations);
+    _csmlogHoverDbCache = { isChinese, db };
+    return db;
+}
+
+// ---------------------------------------------------------------------------
 // Regex patterns for log line structure
 // ---------------------------------------------------------------------------
 
@@ -366,6 +385,7 @@ export class CSMLogHoverProvider implements vscode.HoverProvider {
     ): vscode.ProviderResult<vscode.Hover> {
         const line = document.lineAt(position.line).text;
         const col = position.character;
+        const db = getCsmlogHoverDb();
 
         // 1. Config line: "- Key | Value"
         const configMatch = line.match(RE_CONFIG_LINE);
@@ -374,7 +394,7 @@ export class CSMLogHoverProvider implements vscode.HoverProvider {
             const keyEnd = keyStart + configMatch[1].length;
             if (col >= keyStart && col < keyEnd) {
                 const key = configMatch[1].trim().toUpperCase();
-                const entry = CSMLOG_HOVER_DB[key];
+                const entry = db[key];
                 if (entry) { return buildHover(entry); }
             }
             // Cursor is on value or outside key — no hover
@@ -386,7 +406,7 @@ export class CSMLogHoverProvider implements vscode.HoverProvider {
             // Only hover over the timestamp portion
             const dateTsMatch = line.match(RE_DATE_TS);
             if (dateTsMatch && col < dateTsMatch[0].length) {
-                return buildHover(CSMLOG_HOVER_DB['__TIMESTAMP_DATE__']!);
+                return buildHover(db['__TIMESTAMP_DATE__']!);
             }
             return undefined;
         }
@@ -399,18 +419,18 @@ export class CSMLogHoverProvider implements vscode.HoverProvider {
 
         // Zone: full date timestamp
         if (dateTs && col >= dateTs[0] && col < dateTs[1]) {
-            return buildHover(CSMLOG_HOVER_DB['__TIMESTAMP_DATE__']!);
+            return buildHover(db['__TIMESTAMP_DATE__']!);
         }
 
         // Zone: relative timestamp
         if (relTs && col >= relTs[0] && col < relTs[1]) {
-            return buildHover(CSMLOG_HOVER_DB['__TIMESTAMP_TIME__']!);
+            return buildHover(db['__TIMESTAMP_TIME__']!);
         }
 
         // Zone: event type bracket
         if (eventType && col >= eventType[0] && col < eventType[1]) {
             const rawType = line.substring(eventType[0], eventType[1]).toUpperCase();
-            const entry = CSMLOG_HOVER_DB[rawType];
+            const entry = db[rawType];
             if (entry) { return buildHover(entry); }
             // Unknown event type — no hover
             return undefined;
@@ -425,7 +445,7 @@ export class CSMLogHoverProvider implements vscode.HoverProvider {
                 const originStart = contentStart + contentSection.indexOf('<-');
                 const originEnd = originStart + 2;
                 if (col >= originStart && col < originEnd) {
-                    return buildHover(CSMLOG_HOVER_DB['<-']!);
+                    return buildHover(db['<-']!);
                 }
             }
             // Delegate to content hover for operators, commands, variables, etc.

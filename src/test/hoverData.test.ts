@@ -7,6 +7,7 @@
 
 import * as assert from 'assert';
 import * as path from 'path';
+import { __setLanguageOverrideForTests } from '../i18n';
 
 // ---------------------------------------------------------------------------
 // Type stubs (matching vscode-mock.ts shapes)
@@ -39,8 +40,18 @@ const hoverData = require(
 };
 
 // ---------------------------------------------------------------------------
-// Tests
+// Tests (all wrapped in a parent suite so setup/teardown stays scoped)
 // ---------------------------------------------------------------------------
+
+suite('hoverData', () => {
+
+setup(() => {
+    __setLanguageOverrideForTests('zh-cn');
+});
+
+teardown(() => {
+    __setLanguageOverrideForTests(undefined);
+});
 
 suite('hoverData – anchor cache cleanup', () => {
     test('clearAnchorCache does not throw for unknown URI', () => {
@@ -136,6 +147,23 @@ suite('hoverData – @ operator lookup', () => {
             );
         }
     });
+
+    test('@ operator hover switches to English when language override is en', () => {
+        __setLanguageOverrideForTests('en');
+
+        const doc = makeDoc([
+            'API: State @ Module',
+        ]);
+
+        const hover = hoverData.provideContentHover(doc, { line: 0, character: 11 });
+        assert.ok(hover !== undefined, 'Should provide hover for @ operator in English');
+
+        if (hover && hover.contents) {
+            const md = Array.isArray(hover.contents) ? hover.contents[0] : hover.contents;
+            const text = md?.value || '';
+            assert.ok(text.includes('Module Address Separator'), 'Hover should switch to English text');
+        }
+    });
 });
 
 suite('hoverData – section header hover range', () => {
@@ -151,3 +179,5 @@ suite('hoverData – section header hover range', () => {
         assert.strictEqual(hoverOutsideHeader, undefined, 'Should not provide section hover outside [SECTION]');
     });
 });
+
+}); // suite('hoverData')

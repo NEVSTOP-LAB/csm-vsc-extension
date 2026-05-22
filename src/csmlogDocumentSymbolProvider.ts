@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { localizeBundle } from './i18n';
 
 /** Matches a configuration line: `- Key | Value` */
 const CONFIG_REGEX = /^-\s+([^|]+?)\s+\|\s+.+$/;
@@ -7,6 +8,21 @@ const CSMLOG_DATETIME_PATTERN = String.raw`\d{4}\/\d{2}\/\d{2}\s+\d{2}:\d{2}:\d{
 const CSMLOG_OPTIONAL_RELATIVE_TIMESTAMP_PATTERN = String.raw`(?:\s+\[[\d:.]+\])?`;
 const CSMLOG_LIFECYCLE_EVENT_PATTERN = String.raw`\[(Module Created|Module Destroyed)\]`;
 const CSMLOG_OPTIONAL_MODULE_NAME_PATTERN = String.raw`(?:\s+([^|]+?)(?:\s+\||$))?`;
+
+const symbolMessages = {
+    moduleCreated: {
+        en: 'Module Created',
+        zh: '模块创建',
+    },
+    moduleDestroyed: {
+        en: 'Module Destroyed',
+        zh: '模块销毁',
+    },
+    unknownModule: {
+        en: '<unknown-module>',
+        zh: '<未知模块>',
+    },
+} as const;
 
 /** Matches a Module Created/Destroyed log line and captures the event type and module name. */
 const MODULE_LIFECYCLE_REGEX = new RegExp(
@@ -60,8 +76,11 @@ export class CSMLogDocumentSymbolProvider implements vscode.DocumentSymbolProvid
                 const kind = moduleMatch[1] === 'Module Created'
                     ? vscode.SymbolKind.Constructor
                     : vscode.SymbolKind.Event;
-                const moduleName = moduleMatch[2]?.trim() || '<unknown-module>';
-                entries.push({ lineIndex: i, name: `${moduleMatch[1]}: ${moduleName}`, kind });
+                const eventName = moduleMatch[1] === 'Module Created'
+                    ? localizeBundle(symbolMessages, 'moduleCreated')
+                    : localizeBundle(symbolMessages, 'moduleDestroyed');
+                const moduleName = moduleMatch[2]?.trim() || localizeBundle(symbolMessages, 'unknownModule');
+                entries.push({ lineIndex: i, name: `${eventName}: ${moduleName}`, kind });
                 continue;
             }
 

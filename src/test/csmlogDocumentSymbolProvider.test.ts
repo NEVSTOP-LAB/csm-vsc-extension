@@ -10,6 +10,7 @@
 
 import * as assert from 'assert';
 import * as path from 'path';
+import { __setLanguageOverrideForTests } from '../i18n';
 
 // Load the compiled provider (vscode is already intercepted by setup.js)
 const { CSMLogDocumentSymbolProvider } = require(
@@ -73,6 +74,10 @@ const KIND_PROPERTY    = vscode.SymbolKind.Property;
 const KIND_CONSTRUCTOR = vscode.SymbolKind.Constructor;
 const KIND_EVENT       = vscode.SymbolKind.Event;
 const KIND_KEY         = vscode.SymbolKind.Key;
+
+teardown(() => {
+    __setLanguageOverrideForTests(undefined);
+});
 
 // ---------------------------------------------------------------------------
 // Tests
@@ -174,6 +179,18 @@ suite('CSMLogDocumentSymbolProvider — module lifecycle', () => {
             'Module Destroyed: AI',
             'Module Destroyed: Measure',
         ]);
+    });
+
+    test('module lifecycle labels switch to Chinese when language override is zh-cn', () => {
+        __setLanguageOverrideForTests('zh-cn');
+
+        const syms = getSymbols([
+            '2026/03/20 17:33:05.250 [Module Destroyed]',
+        ]);
+
+        assert.strictEqual(syms.length, 1);
+        assert.strictEqual(syms[0].name, '模块销毁: <未知模块>');
+        assert.strictEqual(syms[0].kind, KIND_EVENT);
     });
 });
 

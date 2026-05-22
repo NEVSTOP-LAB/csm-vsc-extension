@@ -95,3 +95,19 @@ Artifact 名称与 VSIX 文件名保持一致（扩展名不同），便于在 C
 - `package.json` 中的 `version` 字段**不受 CI 构建影响**，始终保持正式发版号（如 `0.0.4`），由人工在正式发版时手动更新。
 - `github.run_number` 的最大值不受限制，无上溢风险。
 - 版本号仅在 `build-vsix` job 内计算，后续 job（`validate-vsix`、`upload-to-release`、`publish-to-marketplace`）通过 job output 传递，无需重新计算。
+
+---
+
+## 6. 本地结束 Hook（开发流程）
+
+为了保证每次本地验证都能安装到最新扩展包，开发流程新增 `npm run hook:finish`：
+
+1. 自动 patch 递增 `package.json` 的 `version`
+2. 同步更新 `README.md` 与 `CHANGELOG.md`
+3. 执行类型检查、lint、编译与测试
+4. 本地打包 VSIX 并尝试通过 `code --install-extension` 安装
+
+此流程是**本地开发约束**，与 CI 的日历化版本注入（`YEAR.MONTH.RUN_NUMBER`）并行存在，目标不同：
+
+- CI 版本用于流水线产物唯一化与发布链路
+- 本地版本用于开发安装覆盖与变更追踪

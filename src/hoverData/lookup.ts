@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
+import { isChineseLanguage } from '../i18n';
 import type { HoverEntry } from './types';
-import { HOVER_DB } from './db';
+import { getHoverDb } from './db';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -8,6 +9,7 @@ import { HOVER_DB } from './db';
 
 /** Returns the hover entry for an operator token found at position in the line. */
 function lookupOperator(line: string, pos: number): HoverEntry | undefined {
+    const db = getHoverDb();
     // Ordered by length (longest first) to prefer specific matches.
     const candidates: [string, string][] = [
         ['-><register as interrupt>', '-><REGISTER AS INTERRUPT>'],
@@ -34,7 +36,7 @@ function lookupOperator(line: string, pos: number): HoverEntry | undefined {
         if (slice.includes(op)) {
             const idx = line.indexOf(op, Math.max(0, pos - op.length));
             if (idx !== -1 && idx <= pos && pos < idx + op.length) {
-                return HOVER_DB[key];
+                return db[key];
             }
         }
     }
@@ -76,10 +78,11 @@ const MULTI_WORD_STATES = [
     'Error Handler',
 ];
 function lookupMultiWord(line: string, pos: number): HoverEntry | undefined {
+    const db = getHoverDb();
     for (const state of MULTI_WORD_STATES) {
         const idx = line.indexOf(state);
         if (idx !== -1 && pos >= idx && pos < idx + state.length) {
-            return HOVER_DB[state.toUpperCase()];
+            return db[state.toUpperCase()];
         }
     }
     return undefined;
@@ -170,9 +173,17 @@ function buildAnchorHover(name: string, def: AnchorDefinition): vscode.Hover {
     // Do not trust user-controlled document content in anchor hovers.
     md.isTrusted = false;
     md.supportHtml = false;
-    md.appendMarkdown(`**\`<${name}>\` — 用户定义锚点 (User Anchor)**`);
+    if (isChineseLanguage()) {
+        md.appendMarkdown(`**\`<${name}>\` — 用户定义锚点**`);
+    } else {
+        md.appendMarkdown(`**\`<${name}>\` — User-defined anchor**`);
+    }
     md.appendMarkdown('\n\n---\n\n');
-    md.appendMarkdown(`定义于第 ${def.line + 1} 行。`);
+    if (isChineseLanguage()) {
+        md.appendMarkdown(`定义于第 ${def.line + 1} 行。`);
+    } else {
+        md.appendMarkdown(`Defined on line ${def.line + 1}.`);
+    }
     if (def.comment) {
         md.appendMarkdown('\n\n');
         md.appendText(def.comment);
@@ -190,6 +201,7 @@ export function provideContentHover(
 ): vscode.ProviderResult<vscode.Hover> {
     const line = document.lineAt(position.line).text;
     const col = position.character;
+    const db = getHoverDb();
 
     // 1. Try operator look-up first (operators can contain non-word chars)
     const opEntry = lookupOperator(line, col);
@@ -206,7 +218,7 @@ export function provideContentHover(
     // 3. Variable reference: cursor on $ or inside ${...}
     const dollarIdx = line.lastIndexOf('$', col);
     if (dollarIdx !== -1 && col <= line.indexOf('}', dollarIdx)) {
-        const entry = HOVER_DB['${'];
+        const entry = db['${'];
         if (entry) { return buildHover(entry); }
     }
 
@@ -217,7 +229,7 @@ export function provideContentHover(
     const upper = rawWord.toUpperCase();
 
     // Direct look-up
-    let entry = HOVER_DB[upper];
+    let entry = db[upper];
     if (entry) { return buildHover(entry); }
 
     // Pre-definition section headers: [COMMAND_ALIAS] etc.
@@ -233,7 +245,7 @@ export function provideContentHover(
         const sectionKey = sectionMatch[1].toUpperCase()
             .replace(/COMMAND.ALIAS|CMD.ALIAS|COMMANDALIAS|CMDALIAS/i, 'COMMAND_ALIAS')
             .replace(/\s+/g, '_');
-        entry = HOVER_DB[sectionKey];
+        entry = db[sectionKey];
         if (entry) { return buildHover(entry); }
     }
 
@@ -242,14 +254,14 @@ export function provideContentHover(
     const ltPos = beforeCursor.lastIndexOf('<');
     if (ltPos !== -1 && ltPos >= col - rawWord.length - 1) {
         const tag = ('<' + upper).replace(/\s+.*/, '');
-        entry = HOVER_DB[tag];
+        entry = db[tag];
         if (entry) { return buildHover(entry); }
     }
 
     // Broadcast targets: <status>, <interrupt>, <broadcast>, <all>
     // User hovered on the word inside < >
     const broadcastKey = '<' + upper + '>';
-    entry = HOVER_DB[broadcastKey];
+    entry = db[broadcastKey];
     if (entry) { return buildHover(entry); }
 
     // User-defined anchor: cursor is inside <anchorName> (supports hyphens in names)
@@ -272,11 +284,11 @@ export function provideContentHover(
 
     // Conditional jump ?...?
     if (line.trimStart().startsWith('??')) {
-        entry = HOVER_DB['??'];
+        entry = db['??'];
         if (entry) { return buildHover(entry); }
     }
     if (/\?[^?]+\?/.test(line)) {
-        entry = HOVER_DB['?EXPR?'];
+        entry = db['?EXPR?'];
         if (entry) { return buildHover(entry); }
     }
 
