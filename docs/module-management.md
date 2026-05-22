@@ -1,0 +1,59 @@
+# CSM 模块管理功能详解
+
+## 功能概述
+
+侧边栏 `CSM Modules` 视图用于浏览、搜索和管理 CSM 模块仓库，支持将模块以 `submodule` 或 `copy` 方式引入本地仓库，并通过本地 YAML 配置文件记录已应用模块。
+
+## 功能特性
+
+### 模块发现与认证
+
+- 视图默认展示 GitHub 全站满足 `topic:csm-modsets` 的 public 模块仓库；若已登录 GitHub，则会额外纳入当前账号可访问的 private 模块仓库
+- 优先复用 VS Code 已登录 GitHub 会话（静默读取），在不影响匿名 public 浏览的前提下自动扩展 private 模块可见范围
+- 视图加载时自动尝试静默拉取模块（已登录用户无需先手动点击 refresh）
+- 视图标题栏会根据认证状态显示 GitHub 登录或退出登录入口，并保留刷新 / 初始化入口
+
+### 卡片列表与搜索
+
+- 模块视图为类扩展市场的 Webview 卡片列表，显示仓库名、发布者、摘要、默认分支、可见性与用户可见 topic 标签；内部发现用 topic（如 `csm-modsets`、`labview-csm`）会自动隐藏
+- 侧边栏顶部搜索框采用类扩展市场的搜索栏样式，末尾集成 `Filter` 菜单，可按仓库名、owner、显示中的 topic、分支与摘要快速过滤模块
+- `Filter` 菜单内可按类型切换名称 / owner / 更新时间 / 已应用状态排序，并切换升序 / 降序，排序偏好会跨会话保留
+- 卡片顶行将名称 / provider 与右上角紧凑操作组对齐；`README` 按钮保留在右上角，checkbox 仅在卡片 hover 或已选中时显示
+- 点击模块卡片正文可在侧边栏内直接展开 README 预览；public 模块的 README 在未登录时也可匿名加载，右上角 `README` 按钮仍可打开完整 README 面板
+
+### 模块操作
+
+- 支持勾选多选模块；存在勾选模块时，可从视图标题栏执行 `Apply Selected` 批量应用
+- 模块卡片支持 VS Code 原生右键菜单，可直接执行 `Apply` / `Update` / `Remove` / `Open README` / 选择操作，并按模块当前状态自动启用、禁用或切换对应项
+- 首次应用时可初始化本地模块目录，默认生成 `csm/csm-modules.yaml`，也可指定仓库内自定义相对路径
+- 支持 `submodule` / `copy` 两种引入方式
+- 刷新 / 应用 / 更新 / 删除模块时会把 GitHub HTTP 状态、Git 权限失败、Git 缺失、网络错误与 YAML 解析错误转换为更可操作的提示
+
+### 工作区状态
+
+- 侧边栏会显示当前工作区、模块根目录与已应用计数；已写入当前仓库配置的模块会显示 `Applied` 状态徽标
+- 若仓库检测到 `csm/` 目录与 `*.lvproj`，但尚未存在本地模块配置，打开侧边栏时会主动提醒初始化，并在标题栏显示 `Initialize Workspace Management` 工具按钮
+- 若仓库内已存在 `csm/` 目录且包含已初始化的 submodule，但尚未存在配置文件，扩展会自动反向生成 `csm/csm-modules.yaml`
+
+## 本地模块配置
+
+- **默认初始化目录**：`csm/`（可通过 `csmModules.defaultModuleRoot` 修改新仓库首次初始化时的默认值）
+- **默认配置文件**：`csm/csm-modules.yaml`
+- **主动初始化提醒**：当仓库存在默认模块根目录（默认 `csm/`）和 `*.lvproj`、但尚未创建配置文件时，打开 `CSM Modules` 侧边栏会弹出初始化提示；若稍后处理，标题栏会保留初始化按钮入口
+- **兼容旧配置**：若仓库中仍保留 `csm-modules.lvcsm`，扩展会读取旧文件并在后续写回时迁移到 YAML
+- **配置格式**：当前以 YAML 为规范格式，配置文件始终写回 `csm-modules.yaml`
+- **自定义目录**：通过 `Apply to Current Repository` 流程输入仓库根目录下的相对路径，或通过 `csmModules.defaultModuleRoot` 为首次初始化预设默认目录
+- **配置内容**：记录每个模块的引入方式（`submodule` / `copy`）、锁定提交、默认分支、源仓库地址和本地相对路径
+
+## 扩展设置
+
+| 设置项 | 默认值 | 说明 |
+|---|---|---|
+| `csmModules.defaultModuleRoot` | `csm` | 用于新仓库首次初始化 / 首次应用模块时预填模块根目录 |
+| `csmModules.cache.ttlMinutes` | `60` | 控制模块列表与 README 缓存在后台自动失效刷新的时间窗口（分钟） |
+
+## 缓存策略
+
+- 缓存未过期时，侧边栏直接复用本地模块列表与 README 缓存
+- 缓存过期后会在后台自动刷新 public 模块目录；若检测到 GitHub 会话，还会同步补齐当前账号可访问的 private 模块，不会先清空当前列表
+- **升级兼容**：现有缓存会在升级后继续复用，只有在缓存结构不兼容或超过 TTL 时才会进入自动失效流程
