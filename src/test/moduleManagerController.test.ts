@@ -109,7 +109,6 @@ suite('ModuleManagerController Regression Tests', () => {
 	test('refresh without session still fetches public modules', async () => {
 		let moduleCount = -1;
 		let receivedToken = 'unset';
-		mocked.__setWarningMessageResponse('Refresh');
 
 		const controller = createController(undefined, {
 			authService: {
@@ -153,7 +152,6 @@ suite('ModuleManagerController Regression Tests', () => {
 
 	test('refresh github error sets tree error and error toast', async () => {
 		let setErrorText = '';
-		mocked.__setWarningMessageResponse('Refresh');
 
 		const controller = createController(undefined, {
 			authService: {
@@ -407,14 +405,13 @@ suite('ModuleManagerController Regression Tests', () => {
 			getSessionSilently: async () => undefined,
 			getSessionInteractively: async () => undefined,
 		};
-		mocked.__setWarningMessageResponse('Refresh');
 
 		await controller.refreshCommand();
 
 		assert.strictEqual(mocked.__getContextValue('csmModules.signedIn'), false);
 	});
 
-	test('refresh cancellation does not fetch modules', async () => {
+	test('refresh runs immediately without a confirmation prompt', async () => {
 		let fetched = false;
 
 		const controller = createController(undefined, {
@@ -432,11 +429,11 @@ suite('ModuleManagerController Regression Tests', () => {
 			viewProvider: createViewProvider(),
 		});
 		mocked.__resetMessageLog();
-		mocked.__setWarningMessageResponse(undefined);
 
 		await controller.refreshCommand();
 
-		assert.strictEqual(fetched, false);
+		assert.strictEqual(fetched, true);
+		assert.strictEqual(mocked.__getLastWarningPrompt(), undefined);
 	});
 
 	test('register keeps fresh cache without immediate background refresh', async () => {

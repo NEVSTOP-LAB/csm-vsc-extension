@@ -631,14 +631,6 @@ export class ModuleManagerController {
 	}
 
 	public async refreshCommand(): Promise<void> {
-		const choice = await vscode.window.showWarningMessage(
-			t('refreshConfirmation'),
-			{ modal: true },
-			t('refreshAction'),
-		);
-		if (choice !== t('refreshAction')) {
-			return;
-		}
 		await this.loadModules({ interactiveAuth: false, showSuccessMessage: true, showErrorMessage: true });
 	}
 
