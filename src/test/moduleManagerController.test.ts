@@ -205,6 +205,104 @@ suite('ModuleManagerController Regression Tests', () => {
 		});
 	});
 
+	test('logout signs out the current account and reloads the public catalog anonymously', async () => {
+		const authUpdates: Array<{ signedIn: boolean; accountLabel?: string }> = [];
+		const receivedTokens: string[] = [];
+		let currentSession: vscode.AuthenticationSession | undefined = createSession('token', 'tester');
+		let signedOutAccount: string | undefined;
+
+		const controller = createController(undefined, {
+			authService: {
+				getSessionSilently: async () => currentSession,
+				getSessionInteractively: async () => currentSession,
+				signOut: async (accountLabel: string) => {
+					signedOutAccount = accountLabel;
+					currentSession = undefined;
+				},
+			},
+			githubService: {
+				fetchModules: async (token?: string) => {
+					receivedTokens.push(token ?? 'undefined');
+					return {
+						modules: [
+							{
+								id: 1,
+								owner: 'org',
+								name: 'module-a',
+								description: 'demo',
+								topics: ['csm-modsets'],
+								visibility: 'public',
+								defaultBranch: 'main',
+								repoUrl: 'https://github.com/org/module-a',
+							},
+						],
+					};
+				},
+				fetchReadme: async () => '',
+			},
+			viewProvider: createViewProvider({
+				setAuthenticated: (signedIn: boolean, accountLabel?: string) => {
+					authUpdates.push({ signedIn, accountLabel });
+				},
+			}),
+		});
+
+		await controller.loginCommand();
+		mocked.__resetMessageLog();
+
+		await controller.logoutCommand();
+
+		assert.strictEqual(signedOutAccount, 'tester');
+		assert.deepStrictEqual(authUpdates[authUpdates.length - 1], {
+			signedIn: false,
+			accountLabel: undefined,
+		});
+		assert.deepStrictEqual(receivedTokens, ['token', 'undefined']);
+		assert.strictEqual(mocked.__getContextValue('csmModules.signedIn'), false);
+		const infos = mocked.__getMessageLog().filter((message) => message.level === 'info').map((message) => message.text);
+		assert.ok(infos.some((text) => text.includes('Signed out of GitHub.')));
+	});
+
+	test('logout keeps the current account when the built-in sign-out flow is cancelled', async () => {
+		const authUpdates: Array<{ signedIn: boolean; accountLabel?: string }> = [];
+		const receivedTokens: string[] = [];
+		const currentSession = createSession('token', 'tester');
+
+		const controller = createController(undefined, {
+			authService: {
+				getSessionSilently: async () => currentSession,
+				getSessionInteractively: async () => currentSession,
+				signOut: async () => undefined,
+			},
+			githubService: {
+				fetchModules: async (token?: string) => {
+					receivedTokens.push(token ?? 'undefined');
+					return { modules: [] };
+				},
+				fetchReadme: async () => '',
+			},
+			viewProvider: createViewProvider({
+				setAuthenticated: (signedIn: boolean, accountLabel?: string) => {
+					authUpdates.push({ signedIn, accountLabel });
+				},
+			}),
+		});
+
+		await controller.loginCommand();
+		mocked.__resetMessageLog();
+
+		await controller.logoutCommand();
+
+		assert.deepStrictEqual(authUpdates[authUpdates.length - 1], {
+			signedIn: true,
+			accountLabel: 'tester',
+		});
+		assert.deepStrictEqual(receivedTokens, ['token']);
+		assert.strictEqual(mocked.__getContextValue('csmModules.signedIn'), true);
+		const warnings = mocked.__getMessageLog().filter((message) => message.level === 'warn').map((message) => message.text);
+		assert.ok(warnings.some((text) => text.includes('GitHub sign-out was cancelled.')));
+	});
+
 	test('openReadme without cache and token fetches public README anonymously', async () => {
 		const entry: CsmModuleEntry = {
 			id: 1,

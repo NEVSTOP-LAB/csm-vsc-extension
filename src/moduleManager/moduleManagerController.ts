@@ -41,7 +41,7 @@ type WebviewModuleContext = {
 };
 
 type ModuleManagerAuthService = Pick<AuthService, 'getSessionSilently' | 'getSessionInteractively'>
-	& Partial<Pick<AuthService, 'verifyScopes'>>;
+	& Partial<Pick<AuthService, 'signOut' | 'verifyScopes'>>;
 
 type ModuleManagerGithubService = Pick<GitHubModuleService, 'fetchModules' | 'fetchReadme'>;
 
@@ -142,6 +142,7 @@ export class ModuleManagerController {
 
 		subscriptions.push(
 			vscode.commands.registerCommand(COMMAND_IDS.login, wrapCommand(COMMAND_IDS.login, () => this.loginCommand(), this.logger)),
+			vscode.commands.registerCommand(COMMAND_IDS.logout, wrapCommand(COMMAND_IDS.logout, () => this.logoutCommand(), this.logger)),
 			vscode.commands.registerCommand(COMMAND_IDS.refresh, wrapCommand(COMMAND_IDS.refresh, () => this.refreshCommand(), this.logger)),
 			vscode.commands.registerCommand(COMMAND_IDS.initializeWorkspace, wrapCommand(COMMAND_IDS.initializeWorkspace, () => this.initializeWorkspaceCommand(), this.logger)),
 			vscode.commands.registerCommand(COMMAND_IDS.openReadme, wrapCommand(COMMAND_IDS.openReadme, (entry?: CsmModuleEntry | ModuleTreeItem) => this.openReadmeCommand(entry), this.logger)),
@@ -580,6 +581,59 @@ export class ModuleManagerController {
 			void this.authService.verifyScopes(session.accessToken);
 		}
 		await this.loadModules({ interactiveAuth: false, showSuccessMessage: true, showErrorMessage: true });
+	}
+
+	public async logoutCommand(): Promise<void> {
+		const accountLabel = this.currentAccountLabel ?? (await this.authService.getSessionSilently())?.account.label;
+		if (!accountLabel) {
+			this.currentToken = undefined;
+			this.currentAccountLabel = undefined;
+			this.lastTokenVerifiedAt = 0;
+			await this.setAuthenticationState(false);
+			await this.loadModules({ interactiveAuth: false, showSuccessMessage: false, showErrorMessage: true });
+			return;
+		}
+
+		if (typeof this.authService.signOut !== 'function') {
+			this.logger.error('Failed to sign out of GitHub: sign-out handler is unavailable.');
+			void vscode.window.showErrorMessage(t('signOutFailed', { message: 'Sign-out is unavailable.' }));
+			return;
+		}
+
+		try {
+			await this.authService.signOut(accountLabel);
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			this.logger.error(`Failed to sign out of GitHub: ${message}`);
+			void vscode.window.showErrorMessage(t('signOutFailed', { message }));
+			return;
+		}
+
+		const session = await this.authService.getSessionSilently();
+		if (session?.account.label === accountLabel) {
+			this.currentToken = session.accessToken;
+			this.currentAccountLabel = session.account.label;
+			this.lastTokenVerifiedAt = Date.now();
+			await this.setAuthenticationState(true, session.account.label);
+			void vscode.window.showWarningMessage(t('signOutCancelled'));
+			return;
+		}
+
+		if (session) {
+			this.currentToken = session.accessToken;
+			this.currentAccountLabel = session.account.label;
+			this.lastTokenVerifiedAt = Date.now();
+			await this.setAuthenticationState(true, session.account.label);
+			void vscode.window.showInformationMessage(t('signedInAs', { account: session.account.label }));
+		} else {
+			this.currentToken = undefined;
+			this.currentAccountLabel = undefined;
+			this.lastTokenVerifiedAt = 0;
+			await this.setAuthenticationState(false);
+			void vscode.window.showInformationMessage(t('signedOut'));
+		}
+
+		await this.loadModules({ interactiveAuth: false, showSuccessMessage: false, showErrorMessage: true });
 	}
 
 	private async ensureToken(interactive: boolean): Promise<string | undefined> {

@@ -337,11 +337,13 @@ const webviewContextMenus: Array<{ command: string; when?: string }> = pkg.contr
 const initMenu = viewTitleMenus.find((menu) => menu.command === 'csmModules.initializeWorkspace');
 const applyMenu = viewTitleMenus.find((menu) => menu.command === 'csmModules.applyToWorkspace');
 const loginMenu = viewTitleMenus.find((menu) => menu.command === 'csmModules.login');
+const logoutMenu = viewTitleMenus.find((menu) => menu.command === 'csmModules.logout');
 const contextApplyCommand = commands.find((c) => c.command === 'csmModules.contextApplyModule');
 const contextRemoveCommand = commands.find((c) => c.command === 'csmModules.contextRemoveModule');
 const contextUpdateCommand = commands.find((c) => c.command === 'csmModules.contextUpdateModule');
 const contextOpenReadmeMenu = webviewContextMenus.find((menu) => menu.command === 'csmModules.contextOpenReadme');
 assert.ok(commands.some((c) => c.command === 'csmModules.login'), 'csmModules.login command should be declared');
+assert.ok(commands.some((c) => c.command === 'csmModules.logout'), 'csmModules.logout command should be declared');
 assert.ok(commands.some((c) => c.command === 'csmModules.refresh'), 'csmModules.refresh command should be declared');
 assert.ok(commands.some((c) => c.command === 'csmModules.initializeWorkspace'), 'csmModules.initializeWorkspace command should be declared');
 assert.ok(commands.some((c) => c.command === 'csmModules.openReadme'), 'csmModules.openReadme command should be declared');
@@ -355,9 +357,11 @@ assert.ok(views.some((v: { id: string }) => v.id === 'csmModules.view'), 'csmMod
 assert.ok(initMenu, 'csmModules.initializeWorkspace should be available from the view title toolbar');
 assert.ok(applyMenu, 'csmModules.applyToWorkspace should be available from the view title toolbar');
 assert.ok(loginMenu, 'csmModules.login should be available from the view title toolbar');
+assert.ok(logoutMenu, 'csmModules.logout should be available from the view title toolbar');
 assert.ok(initMenu?.when?.includes('csmModules.canInitializeWorkspace'), 'initialize toolbar entry should only show when a workspace needs initialization');
 assert.ok(applyMenu?.when?.includes('csmModules.hasSelection'), 'apply toolbar entry should only show when at least one module is selected');
 assert.ok(loginMenu?.when?.includes('!csmModules.signedIn'), 'login toolbar entry should hide after GitHub sign-in succeeds');
+assert.ok(logoutMenu?.when?.includes('csmModules.signedIn'), 'logout toolbar entry should only show after GitHub sign-in succeeds');
 assert.strictEqual(contextApplyCommand?.enablement, '!moduleApplied', 'context apply command should disable for applied modules');
 assert.strictEqual(contextRemoveCommand?.enablement, 'moduleApplied', 'context remove command should only enable for applied modules');
 assert.strictEqual(contextUpdateCommand?.enablement, 'moduleApplied', 'context update command should only enable for applied modules');

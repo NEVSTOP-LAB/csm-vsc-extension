@@ -146,6 +146,18 @@ const messages = {
 		en: 'Signed in as {account}.',
 		zh: '已登录为 {account}。',
 	},
+	signedOut: {
+		en: 'Signed out of GitHub.',
+		zh: '已退出 GitHub 登录。',
+	},
+	signOutCancelled: {
+		en: 'GitHub sign-out was cancelled.',
+		zh: 'GitHub 退出登录已取消。',
+	},
+	signOutFailed: {
+		en: 'Failed to sign out of GitHub: {message}',
+		zh: '退出 GitHub 登录失败：{message}',
+	},
 	refreshConfirmation: {
 		en: 'Refresh CSM modules from GitHub?',
 		zh: '要从 GitHub 刷新 CSM 模块吗？',

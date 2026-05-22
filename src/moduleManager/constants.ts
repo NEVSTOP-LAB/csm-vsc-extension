@@ -13,6 +13,7 @@ export const VIEW_IDS = {
 
 export const COMMAND_IDS = {
 	login: 'csmModules.login',
+	logout: 'csmModules.logout',
 	refresh: 'csmModules.refresh',
 	initializeWorkspace: 'csmModules.initializeWorkspace',
 	openReadme: 'csmModules.openReadme',

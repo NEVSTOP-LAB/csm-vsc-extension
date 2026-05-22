@@ -48,6 +48,7 @@ suite('Module Manager Integration Tests', () => {
 		const allCommands = await vscode.commands.getCommands(true);
 		const expected = [
 			'csmModules.login',
+			'csmModules.logout',
 			'csmModules.refresh',
 			'csmModules.initializeWorkspace',
 			'csmModules.openReadme',

@@ -15,6 +15,7 @@ import { ModuleSortField } from '../interfaces';
 
 export interface CommandTarget {
 	loginCommand(): Promise<void>;
+	logoutCommand(): Promise<void>;
 	refreshCommand(): Promise<void>;
 	initializeWorkspaceCommand(): Promise<void>;
 	openReadmeCommand(entry?: CsmModuleEntry): Promise<void>;
@@ -27,6 +28,11 @@ export interface CommandTarget {
 export class LoginCommand {
 	constructor(private readonly target: CommandTarget) {}
 	execute(): Promise<void> { return this.target.loginCommand(); }
+}
+
+export class LogoutCommand {
+	constructor(private readonly target: CommandTarget) {}
+	execute(): Promise<void> { return this.target.logoutCommand(); }
 }
 
 export class RefreshCommand {
