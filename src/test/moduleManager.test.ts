@@ -185,7 +185,7 @@ suite('Module Manager Tests', () => {
 			onSortChange: () => undefined,
 		});
 
-			provider.setAuthenticated(true, 'tester');
+		provider.setAuthenticated(true, 'tester');
 		provider.setModules([
 			{
 				id: 1,

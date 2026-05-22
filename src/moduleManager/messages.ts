@@ -640,7 +640,7 @@ export function getHtmlLang(): string {
 
 export function getApplyMethodLabel(method: ModuleApplyMethod): string {
 	return method === 'copy' ? t('applyMethodCopyLabel') : t('applyMethodSubmoduleLabel');
-	}
+}
 
 export function getVisibilityLabel(visibility: 'private' | 'public'): string {
 	return visibility === 'private' ? t('privateVisibility') : t('publicVisibility');

@@ -7,72 +7,72 @@ import { getVisibleModuleTopics } from './topics';
 import { CsmModuleEntry } from './types';
 
 export type ReadmePreviewState = {
-    moduleKey: string;
-    title: string;
-    status: 'loading' | 'ready' | 'error';
-    html?: string;
-    message?: string;
+	moduleKey: string;
+	title: string;
+	status: 'loading' | 'ready' | 'error';
+	html?: string;
+	message?: string;
 };
 
 export interface ModuleSidebarRenderState {
-    filterQuery: string;
-    modules: CsmModuleEntry[];
-    state: ViewState;
-    message: string;
-    signedIn: boolean;
+	filterQuery: string;
+	modules: CsmModuleEntry[];
+	state: ViewState;
+	message: string;
+	signedIn: boolean;
 	signedInAccountLabel?: string;
-    canInitializeWorkspace: boolean;
-    selectedModuleKeys: ReadonlySet<string>;
-    appliedModuleKeys: ReadonlySet<string>;
-    workspaceLabel?: string;
-    moduleRoot?: string;
-    introTipVisible: boolean;
-    offlineMode: boolean;
-    sortState: ModuleSortState;
-    staleModuleKeys: ReadonlySet<string>;
-    previewState?: ReadmePreviewState;
-    renderLimit: number;
-    initialRenderLimit: number;
-    webviewCspSource?: string;
+	canInitializeWorkspace: boolean;
+	selectedModuleKeys: ReadonlySet<string>;
+	appliedModuleKeys: ReadonlySet<string>;
+	workspaceLabel?: string;
+	moduleRoot?: string;
+	introTipVisible: boolean;
+	offlineMode: boolean;
+	sortState: ModuleSortState;
+	staleModuleKeys: ReadonlySet<string>;
+	previewState?: ReadmePreviewState;
+	renderLimit: number;
+	initialRenderLimit: number;
+	webviewCspSource?: string;
 }
 
 function truncate(text: string, maxLength: number): string {
-    if (text.length <= maxLength) {
-        return text;
-    }
-    return `${text.slice(0, maxLength - 3)}...`;
+	if (text.length <= maxLength) {
+		return text;
+	}
+	return `${text.slice(0, maxLength - 3)}...`;
 }
 
 function escapeHtml(value: string): string {
-    return value
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#39;')
-        .replace(/`/g, '&#96;')
-        .replace(/\//g, '&#47;')
-        .replace(/\\/g, '&#92;')
-        .replace(/[\u0000-\u001F\u007F]/g, (char) => `&#${char.charCodeAt(0)};`);
+	return value
+		.replace(/&/g, '&amp;')
+		.replace(/</g, '&lt;')
+		.replace(/>/g, '&gt;')
+		.replace(/"/g, '&quot;')
+		.replace(/'/g, '&#39;')
+		.replace(/`/g, '&#96;')
+		.replace(/\//g, '&#47;')
+		.replace(/\\/g, '&#92;')
+		.replace(/[\u0000-\u001F\u007F]/g, (char) => `&#${char.charCodeAt(0)};`);
 }
 
 function createNonce(): string {
-    return crypto.randomBytes(16).toString('base64');
+	return crypto.randomBytes(16).toString('base64');
 }
 
 function getToolbarMetaText(appliedCount: number, totalCount: number, filteredCount: number, selectedCount: number): string {
-    const visibilityText = filteredCount === totalCount
-        ? t('toolbarMetaAvailable', { total: totalCount })
-        : t('toolbarMetaShown', { filtered: filteredCount, total: totalCount });
-    return t('toolbarMeta', {
-        applied: appliedCount,
-        visibility: visibilityText,
-        selected: selectedCount,
-    });
+	const visibilityText = filteredCount === totalCount
+		? t('toolbarMetaAvailable', { total: totalCount })
+		: t('toolbarMetaShown', { filtered: filteredCount, total: totalCount });
+	return t('toolbarMeta', {
+		applied: appliedCount,
+		visibility: visibilityText,
+		selected: selectedCount,
+	});
 }
 
 function getModuleKey(entry: CsmModuleEntry): string {
-    return `${entry.owner}/${entry.name}`;
+	return `${entry.owner}/${entry.name}`;
 }
 
 function getCatalogScopeSummaryText(state: ModuleSidebarRenderState): string | undefined {
@@ -91,81 +91,81 @@ function getCatalogScopeSummaryText(state: ModuleSidebarRenderState): string | u
 type IconName = 'close' | 'filter' | 'readme' | 'search';
 
 function renderIcon(name: IconName): string {
-    switch (name) {
-        case 'close':
-            return '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" aria-hidden="true"><path d="M4 4l8 8"></path><path d="M12 4l-8 8"></path></svg>';
-        case 'filter':
-            return '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 4h11"></path><path d="M4.75 8h6.5"></path><path d="M6.75 12h2.5"></path></svg>';
-        case 'readme':
-            return '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 2.5h4.5a2 2 0 0 1 2 2V13a2 2 0 0 0-2-2H3z"></path><path d="M13 2.5H8.5a2 2 0 0 0-2 2V13a2 2 0 0 1 2-2H13z"></path></svg>';
-        case 'search':
-            return '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="7" cy="7" r="4.5"></circle><path d="M10.5 10.5L14 14"></path></svg>';
-    }
+	switch (name) {
+		case 'close':
+			return '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" aria-hidden="true"><path d="M4 4l8 8"></path><path d="M12 4l-8 8"></path></svg>';
+		case 'filter':
+			return '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 4h11"></path><path d="M4.75 8h6.5"></path><path d="M6.75 12h2.5"></path></svg>';
+		case 'readme':
+			return '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 2.5h4.5a2 2 0 0 1 2 2V13a2 2 0 0 0-2-2H3z"></path><path d="M13 2.5H8.5a2 2 0 0 0-2 2V13a2 2 0 0 1 2-2H13z"></path></svg>';
+		case 'search':
+			return '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="7" cy="7" r="4.5"></circle><path d="M10.5 10.5L14 14"></path></svg>';
+	}
 }
 
 function getFilteredModules(state: ModuleSidebarRenderState): CsmModuleEntry[] {
-    const normalizedQuery = state.filterQuery.trim().toLowerCase();
-    if (!normalizedQuery) {
-        return getSortedModules(state.modules, state);
-    }
-    return getSortedModules(
-        state.modules.filter((entry) => getSearchText(entry).includes(normalizedQuery)),
-        state,
-    );
+	const normalizedQuery = state.filterQuery.trim().toLowerCase();
+	if (!normalizedQuery) {
+		return getSortedModules(state.modules, state);
+	}
+	return getSortedModules(
+		state.modules.filter((entry) => getSearchText(entry).includes(normalizedQuery)),
+		state,
+	);
 }
 
 function getSortedModules(modules: CsmModuleEntry[], state: ModuleSidebarRenderState): CsmModuleEntry[] {
-    return sortModules(modules, state.sortState, {
-        appliedModuleKeys: state.appliedModuleKeys,
-    });
+	return sortModules(modules, state.sortState, {
+		appliedModuleKeys: state.appliedModuleKeys,
+	});
 }
 
 function getSearchText(entry: CsmModuleEntry): string {
-    return [
-        entry.name,
-        entry.owner,
-        entry.description,
-        entry.defaultBranch,
-        entry.visibility,
-        ...getVisibleModuleTopics(entry.topics),
-    ].join(' ').toLowerCase();
+	return [
+		entry.name,
+		entry.owner,
+		entry.description,
+		entry.defaultBranch,
+		entry.visibility,
+		...getVisibleModuleTopics(entry.topics),
+	].join(' ').toLowerCase();
 }
 
 function isModuleApplied(moduleKey: string, state: ModuleSidebarRenderState): boolean {
-    return state.appliedModuleKeys.has(moduleKey);
+	return state.appliedModuleKeys.has(moduleKey);
 }
 
 export function renderModuleSidebarHtml(state: ModuleSidebarRenderState): string {
-    const nonce = createNonce();
-    const imgCspSource = state.webviewCspSource ?? 'https:';
-    const selectedCount = state.selectedModuleKeys.size;
-    const moduleCount = state.modules.length;
-    const filteredCount = getFilteredModules(state).length;
-    const appliedCount = state.appliedModuleKeys.size;
-    const toolbarMetaText = getToolbarMetaText(appliedCount, moduleCount, filteredCount, selectedCount);
+	const nonce = createNonce();
+	const imgCspSource = state.webviewCspSource ?? 'https:';
+	const selectedCount = state.selectedModuleKeys.size;
+	const moduleCount = state.modules.length;
+	const filteredCount = getFilteredModules(state).length;
+	const appliedCount = state.appliedModuleKeys.size;
+	const toolbarMetaText = getToolbarMetaText(appliedCount, moduleCount, filteredCount, selectedCount);
 	const accountSummaryText = state.signedIn && state.signedInAccountLabel
 		? t('signedInAs', { account: state.signedInAccountLabel })
 		: undefined;
 	const catalogScopeSummaryText = getCatalogScopeSummaryText(state);
-    const filterButtonTitle = getFilterButtonTitle(state.sortState);
-    const sortFieldOptions: Array<{ value: ModuleSortField; label: string }> = [
-        { value: 'name', label: t('sortFieldName') },
-        { value: 'owner', label: t('sortFieldOwner') },
-        { value: 'updatedAt', label: t('sortFieldUpdated') },
-        { value: 'applied', label: t('sortFieldApplied') },
-    ];
-    const sortDirectionOptions: Array<{ value: ModuleSortDirection; label: string }> = [
-        { value: 'asc', label: t('sortDirectionAsc') },
-        { value: 'desc', label: t('sortDirectionDesc') },
-    ];
-    const content = renderContent(state);
-    const clientStrings = JSON.stringify({
-        toolbarMetaAvailable: t('toolbarMetaAvailable'),
-        toolbarMetaShown: t('toolbarMetaShown'),
-        toolbarMeta: t('toolbarMeta'),
-    }).replace(/</g, '\\u003c');
+	const filterButtonTitle = getFilterButtonTitle(state.sortState);
+	const sortFieldOptions: Array<{ value: ModuleSortField; label: string }> = [
+		{ value: 'name', label: t('sortFieldName') },
+		{ value: 'owner', label: t('sortFieldOwner') },
+		{ value: 'updatedAt', label: t('sortFieldUpdated') },
+		{ value: 'applied', label: t('sortFieldApplied') },
+	];
+	const sortDirectionOptions: Array<{ value: ModuleSortDirection; label: string }> = [
+		{ value: 'asc', label: t('sortDirectionAsc') },
+		{ value: 'desc', label: t('sortDirectionDesc') },
+	];
+	const content = renderContent(state);
+	const clientStrings = JSON.stringify({
+		toolbarMetaAvailable: t('toolbarMetaAvailable'),
+		toolbarMetaShown: t('toolbarMetaShown'),
+		toolbarMeta: t('toolbarMeta'),
+	}).replace(/</g, '\\u003c');
 
-    return `<!DOCTYPE html>
+	return `<!DOCTYPE html>
 <html lang="${getHtmlLang()}">
 <head>
 	<meta charset="UTF-8">
@@ -892,116 +892,116 @@ export function renderModuleSidebarHtml(state: ModuleSidebarRenderState): string
 }
 
 function renderFilterMenuOption(
-    kind: 'field' | 'direction',
-    value: ModuleSortField | ModuleSortDirection,
-    label: string,
-    selected: boolean,
+	kind: 'field' | 'direction',
+	value: ModuleSortField | ModuleSortDirection,
+	label: string,
+	selected: boolean,
 ): string {
-    const action = kind === 'field' ? 'setSortField' : 'setSortDirection';
-    const dataAttribute = kind === 'field'
-        ? `data-sort-field="${escapeHtml(String(value))}"`
-        : `data-sort-direction="${escapeHtml(String(value))}"`;
-    return `<button class="filter-menu-option${selected ? ' selected' : ''}" data-action="${action}" ${dataAttribute} role="menuitemradio" aria-checked="${selected ? 'true' : 'false'}"><span class="filter-menu-check">&#10003;</span><span class="filter-menu-option-label">${escapeHtml(label)}</span></button>`;
+	const action = kind === 'field' ? 'setSortField' : 'setSortDirection';
+	const dataAttribute = kind === 'field'
+		? `data-sort-field="${escapeHtml(String(value))}"`
+		: `data-sort-direction="${escapeHtml(String(value))}"`;
+	return `<button class="filter-menu-option${selected ? ' selected' : ''}" data-action="${action}" ${dataAttribute} role="menuitemradio" aria-checked="${selected ? 'true' : 'false'}"><span class="filter-menu-check">&#10003;</span><span class="filter-menu-option-label">${escapeHtml(label)}</span></button>`;
 }
 
 function getSortFieldLabel(field: ModuleSortField): string {
-    switch (field) {
-        case 'owner':
-            return t('sortFieldOwner');
-        case 'updatedAt':
-            return t('sortFieldUpdated');
-        case 'applied':
-            return t('sortFieldApplied');
-        case 'name':
-        default:
-            return t('sortFieldName');
-    }
+	switch (field) {
+		case 'owner':
+			return t('sortFieldOwner');
+		case 'updatedAt':
+			return t('sortFieldUpdated');
+		case 'applied':
+			return t('sortFieldApplied');
+		case 'name':
+		default:
+			return t('sortFieldName');
+	}
 }
 
 function getSortDirectionLabel(direction: ModuleSortDirection): string {
-    return direction === 'asc' ? t('sortDirectionAsc') : t('sortDirectionDesc');
+	return direction === 'asc' ? t('sortDirectionAsc') : t('sortDirectionDesc');
 }
 
 function getFilterButtonTitle(sortState: ModuleSortState): string {
-    return t('filterAndSortTitle', {
-        field: getSortFieldLabel(sortState.field),
-        direction: getSortDirectionLabel(sortState.direction),
-    });
+	return t('filterAndSortTitle', {
+		field: getSortFieldLabel(sortState.field),
+		direction: getSortDirectionLabel(sortState.direction),
+	});
 }
 
 function renderContent(state: ModuleSidebarRenderState): string {
-    if (!state.signedIn && state.modules.length === 0 && state.state !== 'ready') {
-        return renderEmptyState(
-            t('emptySignInTitle'),
-            state.message,
-            `<button class="primary" data-action="login">${escapeHtml(t('connectGitHub'))}</button>`,
-        );
-    }
+	if (!state.signedIn && state.modules.length === 0 && state.state !== 'ready') {
+		return renderEmptyState(
+			t('emptySignInTitle'),
+			state.message,
+			`<button class="primary" data-action="login">${escapeHtml(t('connectGitHub'))}</button>`,
+		);
+	}
 
-    if (state.state === 'loading' && state.modules.length === 0) {
-        return `<section class="list">${[1, 2, 3].map(() => renderSkeletonCard()).join('')}</section>`;
-    }
+	if (state.state === 'loading' && state.modules.length === 0) {
+		return `<section class="list">${[1, 2, 3].map(() => renderSkeletonCard()).join('')}</section>`;
+	}
 
-    if (state.state === 'error' && state.modules.length === 0) {
-        return renderEmptyState(
-            t('unableToLoadModulesTitle'),
-            state.message,
-        );
-    }
+	if (state.state === 'error' && state.modules.length === 0) {
+		return renderEmptyState(
+			t('unableToLoadModulesTitle'),
+			state.message,
+		);
+	}
 
-    if (state.modules.length === 0) {
-        return renderEmptyState(
-            t('noModulesFoundTitle'),
-            state.message,
-        );
-    }
+	if (state.modules.length === 0) {
+		return renderEmptyState(
+			t('noModulesFoundTitle'),
+			state.message,
+		);
+	}
 
-    const statusBanner = state.state === 'loading'
-        ? `<section class="notice"><div><strong>${escapeHtml(t('refreshingCatalogTitle'))}</strong><span>${escapeHtml(state.message)}</span></div></section>`
-        : state.state === 'error'
-            ? `<section class="notice"><div><strong>${escapeHtml(t('catalogRefreshFailedTitle'))}</strong><span>${escapeHtml(state.message)}</span></div></section>`
-            : '';
+	const statusBanner = state.state === 'loading'
+		? `<section class="notice"><div><strong>${escapeHtml(t('refreshingCatalogTitle'))}</strong><span>${escapeHtml(state.message)}</span></div></section>`
+		: state.state === 'error'
+			? `<section class="notice"><div><strong>${escapeHtml(t('catalogRefreshFailedTitle'))}</strong><span>${escapeHtml(state.message)}</span></div></section>`
+			: '';
 
-    const offlineBanner = state.offlineMode
-        ? `<section class="notice offline"><div><strong>${escapeHtml(t('offlineModeTitle'))}</strong><span>${escapeHtml(t('offlineModeBody'))}</span></div></section>`
-        : '';
+	const offlineBanner = state.offlineMode
+		? `<section class="notice offline"><div><strong>${escapeHtml(t('offlineModeTitle'))}</strong><span>${escapeHtml(t('offlineModeBody'))}</span></div></section>`
+		: '';
 
-    const sortedAll = getSortedModules(state.modules, state);
-    const total = sortedAll.length;
-    const visible = sortedAll.slice(0, state.renderLimit);
-    const hiddenCount = Math.max(0, total - visible.length);
-    const showMoreButton = hiddenCount > 0
-        ? `<section class="notice"><div><strong>${escapeHtml(t('hiddenModulesTitle', { count: hiddenCount }))}</strong><span>${escapeHtml(t('hiddenModulesBody'))}</span></div><button class="toolbar-button" data-action="showMore">${escapeHtml(t('showMore', { count: Math.min(hiddenCount, state.initialRenderLimit) }))}</button></section>`
-        : '';
+	const sortedAll = getSortedModules(state.modules, state);
+	const total = sortedAll.length;
+	const visible = sortedAll.slice(0, state.renderLimit);
+	const hiddenCount = Math.max(0, total - visible.length);
+	const showMoreButton = hiddenCount > 0
+		? `<section class="notice"><div><strong>${escapeHtml(t('hiddenModulesTitle', { count: hiddenCount }))}</strong><span>${escapeHtml(t('hiddenModulesBody'))}</span></div><button class="toolbar-button" data-action="showMore">${escapeHtml(t('showMore', { count: Math.min(hiddenCount, state.initialRenderLimit) }))}</button></section>`
+		: '';
 
-    return `${offlineBanner}${statusBanner}<section class="list">${visible.map((entry) => renderModuleCard(entry, state)).join('')}</section>${showMoreButton}<section class="empty-state" data-role="filter-empty" hidden><h2>${escapeHtml(t('filterNoMatchesTitle'))}</h2><p>${escapeHtml(t('filterNoMatchesBody'))}</p><div class="action-toolbar"><button class="toolbar-button callout" data-action="clearFilter">${escapeHtml(t('clearFilter'))}</button></div></section>`;
+	return `${offlineBanner}${statusBanner}<section class="list">${visible.map((entry) => renderModuleCard(entry, state)).join('')}</section>${showMoreButton}<section class="empty-state" data-role="filter-empty" hidden><h2>${escapeHtml(t('filterNoMatchesTitle'))}</h2><p>${escapeHtml(t('filterNoMatchesBody'))}</p><div class="action-toolbar"><button class="toolbar-button callout" data-action="clearFilter">${escapeHtml(t('clearFilter'))}</button></div></section>`;
 }
 
 function renderModuleCard(entry: CsmModuleEntry, state: ModuleSidebarRenderState): string {
-    const moduleKey = getModuleKey(entry);
-    const selected = state.selectedModuleKeys.has(moduleKey);
-    const applied = isModuleApplied(moduleKey, state);
-    const previewOpen = state.previewState?.moduleKey === moduleKey;
-    const stale = state.staleModuleKeys.has(moduleKey);
-    const topics = getVisibleModuleTopics(entry.topics).slice(0, 3);
-    const topicBadges = topics.map((topic) => `<span class="badge">${escapeHtml(topic)}</span>`).join('');
-    const summary = entry.description.trim().length > 0 ? entry.description.trim() : t('noRepositoryDescription');
-    const footerNote = applied && state.workspaceLabel
-        ? `<div class="card-footer-note">${escapeHtml(state.moduleRoot
-            ? t('recordedUnderRoot', { workspace: state.workspaceLabel, root: state.moduleRoot })
-            : t('recordedForWorkspace', { workspace: state.workspaceLabel }))}${stale ? ` <span class="badge stale">${escapeHtml(t('staleDirectoryMissing'))}</span>` : ''}</div>`
-        : '<span class="card-footer-spacer"></span>';
-    const searchText = escapeHtml(getSearchText(entry));
-    const vscodeContext = escapeHtml(JSON.stringify({
-        webviewSection: 'moduleCard',
-        moduleKey,
-        moduleApplied: applied,
-        moduleSelected: selected,
-        preventDefaultContextMenuItems: true,
-    }));
-    const preview = previewOpen ? renderReadmePreview(moduleKey, state.previewState) : '';
+	const moduleKey = getModuleKey(entry);
+	const selected = state.selectedModuleKeys.has(moduleKey);
+	const applied = isModuleApplied(moduleKey, state);
+	const previewOpen = state.previewState?.moduleKey === moduleKey;
+	const stale = state.staleModuleKeys.has(moduleKey);
+	const topics = getVisibleModuleTopics(entry.topics).slice(0, 3);
+	const topicBadges = topics.map((topic) => `<span class="badge">${escapeHtml(topic)}</span>`).join('');
+	const summary = entry.description.trim().length > 0 ? entry.description.trim() : t('noRepositoryDescription');
+	const footerNote = applied && state.workspaceLabel
+		? `<div class="card-footer-note">${escapeHtml(state.moduleRoot
+			? t('recordedUnderRoot', { workspace: state.workspaceLabel, root: state.moduleRoot })
+			: t('recordedForWorkspace', { workspace: state.workspaceLabel }))}${stale ? ` <span class="badge stale">${escapeHtml(t('staleDirectoryMissing'))}</span>` : ''}</div>`
+		: '<span class="card-footer-spacer"></span>';
+	const searchText = escapeHtml(getSearchText(entry));
+	const vscodeContext = escapeHtml(JSON.stringify({
+		webviewSection: 'moduleCard',
+		moduleKey,
+		moduleApplied: applied,
+		moduleSelected: selected,
+		preventDefaultContextMenuItems: true,
+	}));
+	const preview = previewOpen ? renderReadmePreview(moduleKey, state.previewState) : '';
 
-    return `<article class="module-card${selected ? ' selected' : ''}${applied ? ' applied' : ''}" data-role="module-card" data-module-key="${escapeHtml(moduleKey)}" data-module-applied="${applied ? 'true' : 'false'}" data-module-selected="${selected ? 'true' : 'false'}" data-search-text="${searchText}" data-vscode-context="${vscodeContext}">
+	return `<article class="module-card${selected ? ' selected' : ''}${applied ? ' applied' : ''}" data-role="module-card" data-module-key="${escapeHtml(moduleKey)}" data-module-applied="${applied ? 'true' : 'false'}" data-module-selected="${selected ? 'true' : 'false'}" data-search-text="${searchText}" data-vscode-context="${vscodeContext}">
 			<div class="module-header">
 				<div class="module-main module-preview-trigger" data-action="togglePreview" data-module-key="${escapeHtml(moduleKey)}" tabindex="0" role="button" aria-expanded="${previewOpen ? 'true' : 'false'}" aria-label="${escapeHtml(t('toggleReadmePreviewAria', { name: entry.name }))}">
 					<div class="title-row">
@@ -1033,24 +1033,24 @@ function renderModuleCard(entry: CsmModuleEntry, state: ModuleSidebarRenderState
 }
 
 function renderReadmePreview(moduleKey: string, previewState: ReadmePreviewState | undefined): string {
-    if (!previewState || previewState.moduleKey !== moduleKey) {
-        return '';
-    }
-    const title = escapeHtml(previewState.title);
-    if (previewState.status === 'loading') {
-        return `<section class="readme-preview" data-role="readme-preview"><div class="readme-preview-header"><span>${escapeHtml(t('readmePreviewTitle'))}</span><span>${title}</span></div><div class="readme-preview-loading"><div class="skeleton-line medium"></div><div class="skeleton-line"></div><div class="skeleton-line short"></div></div></section>`;
-    }
-    if (previewState.status === 'error') {
-        return `<section class="readme-preview" data-role="readme-preview"><div class="readme-preview-header"><span>${escapeHtml(t('readmePreviewTitle'))}</span><span>${title}</span></div><div class="readme-preview-status readme-preview-error">${escapeHtml(previewState.message ?? t('unableToLoadReadmePreview'))}</div></section>`;
-    }
-    return `<section class="readme-preview" data-role="readme-preview"><div class="readme-preview-header"><span>${escapeHtml(t('readmePreviewTitle'))}</span><span>${title}</span></div><div class="readme-preview-body">${previewState.html ?? ''}</div></section>`;
+	if (!previewState || previewState.moduleKey !== moduleKey) {
+		return '';
+	}
+	const title = escapeHtml(previewState.title);
+	if (previewState.status === 'loading') {
+		return `<section class="readme-preview" data-role="readme-preview"><div class="readme-preview-header"><span>${escapeHtml(t('readmePreviewTitle'))}</span><span>${title}</span></div><div class="readme-preview-loading"><div class="skeleton-line medium"></div><div class="skeleton-line"></div><div class="skeleton-line short"></div></div></section>`;
+	}
+	if (previewState.status === 'error') {
+		return `<section class="readme-preview" data-role="readme-preview"><div class="readme-preview-header"><span>${escapeHtml(t('readmePreviewTitle'))}</span><span>${title}</span></div><div class="readme-preview-status readme-preview-error">${escapeHtml(previewState.message ?? t('unableToLoadReadmePreview'))}</div></section>`;
+	}
+	return `<section class="readme-preview" data-role="readme-preview"><div class="readme-preview-header"><span>${escapeHtml(t('readmePreviewTitle'))}</span><span>${title}</span></div><div class="readme-preview-body">${previewState.html ?? ''}</div></section>`;
 }
 
 function renderEmptyState(title: string, message: string, actionHtml = ''): string {
-    const actions = actionHtml ? `<div class="action-toolbar">${actionHtml}</div>` : '';
-    return `<section class="empty-state"><h2>${escapeHtml(title)}</h2><p>${escapeHtml(message)}</p>${actions}</section>`;
+	const actions = actionHtml ? `<div class="action-toolbar">${actionHtml}</div>` : '';
+	return `<section class="empty-state"><h2>${escapeHtml(title)}</h2><p>${escapeHtml(message)}</p>${actions}</section>`;
 }
 
 function renderSkeletonCard(): string {
-    return `<article class="module-card skeleton"><div class="skeleton-line medium"></div><div class="skeleton-line short"></div><div class="skeleton-line"></div></article>`;
+	return `<article class="module-card skeleton"><div class="skeleton-line medium"></div><div class="skeleton-line short"></div><div class="skeleton-line"></div></article>`;
 }

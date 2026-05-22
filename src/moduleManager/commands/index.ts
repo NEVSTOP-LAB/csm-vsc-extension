@@ -26,46 +26,46 @@ export interface CommandTarget {
 }
 
 export class LoginCommand {
-	constructor(private readonly target: CommandTarget) {}
+	constructor(private readonly target: CommandTarget) { }
 	execute(): Promise<void> { return this.target.loginCommand(); }
 }
 
 export class LogoutCommand {
-	constructor(private readonly target: CommandTarget) {}
+	constructor(private readonly target: CommandTarget) { }
 	execute(): Promise<void> { return this.target.logoutCommand(); }
 }
 
 export class RefreshCommand {
-	constructor(private readonly target: CommandTarget) {}
+	constructor(private readonly target: CommandTarget) { }
 	execute(): Promise<void> { return this.target.refreshCommand(); }
 }
 
 export class InitializeWorkspaceCommand {
-	constructor(private readonly target: CommandTarget) {}
+	constructor(private readonly target: CommandTarget) { }
 	execute(): Promise<void> { return this.target.initializeWorkspaceCommand(); }
 }
 
 export class OpenReadmeCommand {
-	constructor(private readonly target: CommandTarget) {}
+	constructor(private readonly target: CommandTarget) { }
 	execute(entry?: CsmModuleEntry): Promise<void> { return this.target.openReadmeCommand(entry); }
 }
 
 export class ApplyToWorkspaceCommand {
-	constructor(private readonly target: CommandTarget) {}
+	constructor(private readonly target: CommandTarget) { }
 	execute(entry?: CsmModuleEntry): Promise<void> { return this.target.applyToWorkspaceCommand(entry); }
 }
 
 export class RemoveModuleCommand {
-	constructor(private readonly target: CommandTarget) {}
+	constructor(private readonly target: CommandTarget) { }
 	execute(entry?: CsmModuleEntry): Promise<void> { return this.target.removeModuleCommand(entry); }
 }
 
 export class UpdateModuleCommand {
-	constructor(private readonly target: CommandTarget) {}
+	constructor(private readonly target: CommandTarget) { }
 	execute(entry?: CsmModuleEntry): Promise<void> { return this.target.updateModuleCommand(entry); }
 }
 
 export class SetSortOrderCommand {
-	constructor(private readonly target: CommandTarget) {}
+	constructor(private readonly target: CommandTarget) { }
 	execute(field?: ModuleSortField): void { this.target.setSortOrderCommand(field); }
 }

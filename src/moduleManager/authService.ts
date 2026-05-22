@@ -7,7 +7,7 @@ const REQUIRED_SCOPES = [...GITHUB.requiredScopes];
 const VS_CODE_SIGN_OUT_COMMAND = '_signOutOfAccount';
 
 export class AuthService {
-	constructor(private readonly logger: Logger = getLogger()) {}
+	constructor(private readonly logger: Logger = getLogger()) { }
 
 	public async getSessionSilently(): Promise<vscode.AuthenticationSession | undefined> {
 		try {
