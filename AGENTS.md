@@ -60,6 +60,15 @@ For multi-step tasks, state a brief plan:
 
 Strong success criteria let you loop independently. Weak criteria ("make it work") require constant clarification.
 
+## 5. README Boundaries
+
+**README is user-facing. Keep it short, product-level, and actionable.**
+
+- README should contain brief feature overviews, installation requirements, settings, entry points, and user-facing usage information only.
+- Do not put implementation details in README: no internal architecture, cache strategy, rendering mechanics, test/mocks, internal file formats, or engineering rationale unless the user must act on it.
+- If a detail mainly serves developers or maintainers, move it to `docs/`, design notes, changelog, or other engineering documentation instead of README.
+- When editing README, prefer the shortest wording that still helps an end user understand what the extension does and how to use it.
+
 ---
 
 **These guidelines are working if:** fewer unnecessary changes in diffs, fewer rewrites due to overcomplication, and clarifying questions come before implementation rather than after mistakes.
