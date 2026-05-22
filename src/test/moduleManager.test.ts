@@ -12,7 +12,7 @@ import * as vscode from 'vscode';
 
 type VscodeMock = typeof vscode & {
 	__resolveWebviewView: (viewId: string) => { html: string; fireMessage: (message: unknown) => void } | undefined;
-	__getLastWebviewView: () => { viewId: string; html: string } | undefined;
+	__getLastWebviewView: () => { viewId: string; html: string; description?: string } | undefined;
 	__resetUiState: () => void;
 };
 
@@ -74,7 +74,7 @@ suite('Module Manager Tests', () => {
 		const memento = new FakeMemento();
 		const store = new ModuleCacheStore(memento as never);
 
-		await store.setModuleSnapshot([
+		const storedSnapshot = await store.setModuleSnapshot([
 			{
 				id: 1,
 				owner: 'org',
@@ -85,16 +85,31 @@ suite('Module Manager Tests', () => {
 				defaultBranch: 'main',
 				repoUrl: 'https://github.com/org/module-a',
 			},
-		]);
+		], {
+			refreshAccountId: 'tester',
+			refreshAccountLabel: 'tester',
+		});
+		await store.setAuthSnapshot({
+			accountId: 'tester',
+			accountLabel: 'tester',
+		});
 
 		const snapshot = store.getModuleSnapshot();
 		assert.ok(snapshot);
 		assert.strictEqual(snapshot?.schemaVersion, 1);
 		assert.strictEqual(snapshot?.modules.length, 1);
 		assert.ok(snapshot?.lastRefreshAt);
+		assert.strictEqual(snapshot?.refreshAccountId, 'tester');
+		assert.strictEqual(snapshot?.refreshAccountLabel, 'tester');
+		assert.strictEqual(storedSnapshot.refreshAccountId, 'tester');
+		assert.deepStrictEqual(store.getAuthSnapshot(), {
+			accountId: 'tester',
+			accountLabel: 'tester',
+		});
 
 		await store.clear();
 		assert.strictEqual(store.getModuleSnapshot(), undefined);
+		assert.strictEqual(store.getAuthSnapshot(), undefined);
 		assert.deepStrictEqual(store.getReadmeCache(), {});
 	});
 
@@ -216,6 +231,7 @@ suite('Module Manager Tests', () => {
 			moduleRoot: 'csm',
 			appliedModuleKeys: ['org/module-a'],
 		});
+		provider.setViewDescription('Updated 5 minutes ago');
 
 		const disposable = vscode.window.registerWebviewViewProvider('csmModules.view', provider);
 		const resolved = mocked.__resolveWebviewView('csmModules.view');
@@ -223,6 +239,7 @@ suite('Module Manager Tests', () => {
 
 		assert.ok(resolved);
 		assert.strictEqual(rendered?.viewId, 'csmModules.view');
+		assert.strictEqual(rendered?.description, 'Updated 5 minutes ago');
 		assert.ok(rendered?.html.includes('module-card'));
 		assert.ok(rendered?.html.includes('module-a'));
 		assert.ok(rendered?.html.includes('@org'));

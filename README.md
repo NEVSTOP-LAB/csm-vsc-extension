@@ -46,14 +46,13 @@
 - ✅ 已登录 GitHub 时，通过模块工具引入社区仓库后会自动为该仓库补 Star
 - ✅ 支持批量选择与批量应用
 - ✅ 本地 YAML 配置文件（`csm/csm-modules.yaml`）记录已应用模块，支持自定义目录
-- ✅ 模块列表与 README 自动缓存，后台按时效刷新
+- ✅ 模块列表与 README 会缓存到本地；侧边栏启动时优先显示缓存，仅在用户手动点击刷新时重新同步 GitHub，并在标题栏显示上次刷新时间
 
 > 详细功能说明参见 [docs/module-management.md](docs/module-management.md)
 
 ### 扩展设置
 
 - `csmModules.defaultModuleRoot`：默认值 `csm`，用于新仓库首次初始化时的默认模块根目录
-- `csmModules.cache.ttlMinutes`：默认值 `60`，控制模块列表缓存自动刷新的时间窗口（分钟）
 
 ## 文件图标主题
 

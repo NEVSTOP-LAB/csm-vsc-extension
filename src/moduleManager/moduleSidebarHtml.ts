@@ -953,6 +953,13 @@ function getFilterButtonTitle(sortState: ModuleSortState): string {
 }
 
 function renderContent(state: ModuleSidebarRenderState): string {
+	if (state.offlineMode && state.state === 'error' && state.modules.length === 0) {
+		return renderEmptyState(
+			t('noCachedModulesTitle'),
+			state.message,
+		);
+	}
+
 	if (!state.signedIn && state.modules.length === 0 && state.state !== 'ready') {
 		return renderEmptyState(
 			t('emptySignInTitle'),

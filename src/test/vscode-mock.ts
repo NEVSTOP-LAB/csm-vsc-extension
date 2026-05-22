@@ -19,7 +19,7 @@ export class MarkdownString {
 }
 
 export class Hover {
-    constructor(public contents: any) {}
+    constructor(public contents: any) { }
 }
 
 export enum CompletionItemKind {
@@ -51,7 +51,7 @@ export enum CompletionItemKind {
 }
 
 export class SnippetString {
-    constructor(public value: string) {}
+    constructor(public value: string) { }
 }
 
 export class CompletionItem {
@@ -63,14 +63,14 @@ export class CompletionItem {
     constructor(
         public label: string,
         public kind?: CompletionItemKind,
-    ) {}
+    ) { }
 }
 
 export class CompletionList {
     constructor(
         public items: CompletionItem[] = [],
         public isIncomplete = false,
-    ) {}
+    ) { }
 }
 
 // ---------------------------------------------------------------------------
@@ -78,7 +78,7 @@ export class CompletionList {
 // ---------------------------------------------------------------------------
 
 export class Position {
-    constructor(public line: number, public character: number) {}
+    constructor(public line: number, public character: number) { }
 }
 
 export class Range {
@@ -104,7 +104,7 @@ export class Diagnostic {
         public range: Range,
         public message: string,
         public severity: DiagnosticSeverity,
-    ) {}
+    ) { }
 }
 
 // ---------------------------------------------------------------------------
@@ -115,7 +115,7 @@ export class TextEdit {
     constructor(
         public range: Range,
         public newText: string,
-    ) {}
+    ) { }
 
     static replace(range: Range, newText: string): TextEdit {
         return new TextEdit(range, newText);
@@ -163,11 +163,11 @@ export class DocumentSymbol {
         public kind: SymbolKind,
         public range: Range,
         public selectionRange: Range,
-    ) {}
+    ) { }
 }
 
 export class Disposable {
-    constructor(private readonly callback: () => void = () => {}) {}
+    constructor(private readonly callback: () => void = () => { }) { }
     dispose(): void {
         this.callback();
     }
@@ -182,7 +182,7 @@ class MockWebview {
     private webviewHtml = '';
     public readonly cspSource = 'vscode-resource:';
     public options: { enableScripts?: boolean } = {};
-    constructor(private readonly onHtmlChange: (html: string) => void) {}
+    constructor(private readonly onHtmlChange: (html: string) => void) { }
     asWebviewUri(uri: Uri): Uri {
         return uri;
     }
@@ -211,8 +211,22 @@ class MockWebview {
 
 class MockWebviewView {
     public readonly webview: MockWebview;
-    constructor(onHtmlChange: (html: string) => void) {
+    private viewDescription: string | undefined;
+
+    constructor(
+        onHtmlChange: (html: string) => void,
+        private readonly onDescriptionChange: (description: string | undefined) => void,
+    ) {
         this.webview = new MockWebview(onHtmlChange);
+    }
+
+    get description(): string | undefined {
+        return this.viewDescription;
+    }
+
+    set description(value: string | undefined) {
+        this.viewDescription = value;
+        this.onDescriptionChange(value);
     }
 }
 
@@ -238,7 +252,7 @@ export enum TreeItemCollapsibleState {
 }
 
 export class ThemeIcon {
-    constructor(public id: string) {}
+    constructor(public id: string) { }
 }
 
 export class TreeItem {
@@ -250,7 +264,7 @@ export class TreeItem {
     constructor(
         public label: string,
         public collapsibleState: TreeItemCollapsibleState = TreeItemCollapsibleState.None,
-    ) {}
+    ) { }
 }
 
 export enum ViewColumn {
@@ -266,7 +280,7 @@ export enum ProgressLocation {
 }
 
 export class Uri {
-    constructor(public readonly fsPath: string) {}
+    constructor(public readonly fsPath: string) { }
     static joinPath(base: Uri, ...segments: string[]): Uri {
         return new Uri(path.join(base.fsPath, ...segments));
     }
@@ -282,7 +296,7 @@ export class RelativePattern {
     constructor(
         public readonly baseUri: Uri | { uri: Uri },
         public readonly pattern: string,
-    ) {}
+    ) { }
 }
 
 type MessageLevel = 'info' | 'warn' | 'error';
@@ -298,7 +312,7 @@ let workspaceFoldersState: Array<{ name: string; uri: Uri }> | undefined;
 let configurationValues = new Map<string, unknown>();
 let contextValues = new Map<string, unknown>();
 let lastWebviewPanel: { title: string; html: string } | undefined;
-let lastWebviewView: { viewId: string; html: string } | undefined;
+let lastWebviewView: { viewId: string; html: string; description?: string } | undefined;
 let lastWarningPrompt: { message: string; items: unknown[] } | undefined;
 
 const webviewViewProviders = new Map<string, { resolveWebviewView: (webviewView: unknown, context: unknown, token: unknown) => void }>();
@@ -394,23 +408,23 @@ export const window = {
     } {
         return {
             name: _name,
-            appendLine: () => {},
-            append: () => {},
-            clear: () => {},
-            dispose: () => {},
-            replace: () => {},
-            show: () => {},
-            hide: () => {},
-            info: () => {},
-            warn: () => {},
-            error: () => {},
-            debug: () => {},
-            trace: () => {},
+            appendLine: () => { },
+            append: () => { },
+            clear: () => { },
+            dispose: () => { },
+            replace: () => { },
+            show: () => { },
+            hide: () => { },
+            info: () => { },
+            warn: () => { },
+            error: () => { },
+            debug: () => { },
+            trace: () => { },
         };
     },
     activeTextEditor: undefined as { document: { uri: Uri } } | undefined,
     async withProgress<T>(_options: unknown, task: (progress: { report: (value: unknown) => void }, token: { isCancellationRequested: boolean }) => Thenable<T> | T): Promise<T> {
-        return await task({ report: () => {} }, { isCancellationRequested: false });
+        return await task({ report: () => { } }, { isCancellationRequested: false });
     },
 };
 
@@ -517,9 +531,14 @@ export function __resolveWebviewView(viewId: string): { html: string; fireMessag
         return undefined;
     }
 
-    const view = new MockWebviewView((html: string) => {
-        lastWebviewView = { viewId, html };
-    });
+    const view = new MockWebviewView(
+        (html: string) => {
+            lastWebviewView = { viewId, html, description: view.description };
+        },
+        (description: string | undefined) => {
+            lastWebviewView = { viewId, html: view.webview.html, description };
+        },
+    );
     webviewViews.set(viewId, view);
     provider.resolveWebviewView(view as unknown, {} as unknown, {} as unknown);
 
@@ -531,7 +550,7 @@ export function __resolveWebviewView(viewId: string): { html: string; fireMessag
     };
 }
 
-export function __getLastWebviewView(): { viewId: string; html: string } | undefined {
+export function __getLastWebviewView(): { viewId: string; html: string; description?: string } | undefined {
     return lastWebviewView ? { ...lastWebviewView } : undefined;
 }
 

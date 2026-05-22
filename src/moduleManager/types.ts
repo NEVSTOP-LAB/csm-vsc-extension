@@ -36,6 +36,13 @@ export interface ModuleCacheSnapshot {
 	schemaVersion?: number;
 	lastRefreshAt: string;
 	modules: CsmModuleEntry[];
+	refreshAccountId?: string;
+	refreshAccountLabel?: string;
+}
+
+export interface ModuleAuthSnapshot {
+	accountId: string;
+	accountLabel: string;
 }
 
 export interface GitHubRepoSummary {

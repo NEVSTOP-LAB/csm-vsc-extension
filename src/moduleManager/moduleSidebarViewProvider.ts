@@ -31,6 +31,7 @@ type WebviewMessage = {
 
 export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IModuleViewProvider {
 	private view: vscode.WebviewView | undefined;
+	private viewDescription: string | undefined;
 	private modules: CsmModuleEntry[] = [];
 	private state: ViewState = 'loading';
 	private message = t('loadingModules');
@@ -62,6 +63,7 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IM
 		_token: vscode.CancellationToken,
 	): void {
 		this.view = webviewView;
+		webviewView.description = this.viewDescription;
 		webviewView.webview.options = {
 			enableScripts: true,
 		};
@@ -116,6 +118,13 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IM
 	public setCanInitializeWorkspace(canInitializeWorkspace: boolean): void {
 		this.canInitializeWorkspace = canInitializeWorkspace;
 		this.render();
+	}
+
+	public setViewDescription(description?: string): void {
+		this.viewDescription = description;
+		if (this.view) {
+			this.view.description = description;
+		}
 	}
 
 	public setWorkspaceContext(context: SidebarWorkspaceContext): void {

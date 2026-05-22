@@ -19,6 +19,5 @@
   "csmModules.title": "CSM Modules",
   "views.csmModules.view.name": "Available Modules",
   "configuration.csmModules.defaultModuleRoot.description": "Default relative directory used when initializing local CSM module management for a repository that does not already have a csm-modules.yaml file.",
-  "configuration.csmModules.cache.ttlMinutes.description": "Preferred cache reuse time in minutes before the module list and README cache are refreshed in the background.",
   "iconThemes.csmFileIcons.label": "CSM File Icons"
 }

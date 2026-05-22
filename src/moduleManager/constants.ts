@@ -31,18 +31,17 @@ export const COMMAND_IDS = {
 
 export const CONFIG_SECTIONS = {
 	moduleManager: 'csmModules',
-	cache: 'csmModules.cache',
 } as const;
 
 export const CONFIG_KEYS = {
 	defaultModuleRoot: 'defaultModuleRoot',
-	cacheTtlMinutes: 'ttlMinutes',
 } as const;
 
 export const STORAGE_KEYS = {
 	moduleCache: 'csmModules.cache.modules',
 	readmeCache: 'csmModules.cache.readme',
 	moduleEtag: 'csmModules.cache.modulesEtag',
+	moduleAuth: 'csmModules.auth.lastKnown',
 	moduleSortState: 'csmModules.sort.state',
 } as const;
 

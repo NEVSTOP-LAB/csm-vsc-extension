@@ -30,4 +30,5 @@ export interface IModuleViewProvider {
 	setCanInitializeWorkspace(canInitializeWorkspace: boolean): void;
 	setOfflineMode?(offline: boolean): void;
 	setSortOrder?(sortState: ModuleSortState): void;
+	setViewDescription?(description?: string): void;
 }

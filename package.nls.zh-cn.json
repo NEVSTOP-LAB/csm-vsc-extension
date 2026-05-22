@@ -19,6 +19,5 @@
   "csmModules.title": "CSM 模块",
   "views.csmModules.view.name": "可用模块",
   "configuration.csmModules.defaultModuleRoot.description": "当仓库中尚不存在 csm-modules.yaml 文件时，用于初始化本地 CSM 模块管理的默认相对目录。",
-  "configuration.csmModules.cache.ttlMinutes.description": "在后台刷新模块列表和 README 缓存之前，优先复用缓存的时长（分钟）。",
   "iconThemes.csmFileIcons.label": "CSM 文件图标"
 }

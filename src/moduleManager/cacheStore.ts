@@ -1,12 +1,13 @@
 import * as vscode from 'vscode';
 import { ModuleSortState } from './interfaces';
 import { normalizeModuleSortState } from './sort';
-import { CsmModuleEntry, ModuleCacheSnapshot } from './types';
+import { CsmModuleEntry, ModuleAuthSnapshot, ModuleCacheSnapshot } from './types';
 import { STORAGE_KEYS } from './constants';
 
 const MODULE_CACHE_KEY = STORAGE_KEYS.moduleCache;
 const README_CACHE_KEY = STORAGE_KEYS.readmeCache;
 const MODULE_ETAG_KEY = STORAGE_KEYS.moduleEtag;
+const MODULE_AUTH_KEY = STORAGE_KEYS.moduleAuth;
 const MODULE_SORT_STATE_KEY = STORAGE_KEYS.moduleSortState;
 const MODULE_CACHE_SCHEMA_VERSION = 1;
 
@@ -23,11 +24,21 @@ function normalizeSnapshot(snapshot: ModuleCacheSnapshot): ModuleCacheSnapshot {
 		schemaVersion: snapshot.schemaVersion ?? MODULE_CACHE_SCHEMA_VERSION,
 		lastRefreshAt: snapshot.lastRefreshAt,
 		modules: snapshot.modules,
+		refreshAccountId: typeof snapshot.refreshAccountId === 'string' ? snapshot.refreshAccountId : undefined,
+		refreshAccountLabel: typeof snapshot.refreshAccountLabel === 'string' ? snapshot.refreshAccountLabel : undefined,
 	};
 }
 
+function isModuleAuthSnapshotShape(value: unknown): value is ModuleAuthSnapshot {
+	if (!value || typeof value !== 'object') {
+		return false;
+	}
+	const snapshot = value as Partial<ModuleAuthSnapshot>;
+	return typeof snapshot.accountId === 'string' && typeof snapshot.accountLabel === 'string';
+}
+
 export class ModuleCacheStore {
-	constructor(private readonly globalState: vscode.Memento) {}
+	constructor(private readonly globalState: vscode.Memento) { }
 
 	public getModuleSortState(): ModuleSortState {
 		const value = this.globalState.get<unknown>(MODULE_SORT_STATE_KEY);
@@ -49,13 +60,35 @@ export class ModuleCacheStore {
 		return normalizeSnapshot(rawSnapshot);
 	}
 
-	public async setModuleSnapshot(modules: CsmModuleEntry[]): Promise<void> {
+	public async setModuleSnapshot(
+		modules: CsmModuleEntry[],
+		options: { lastRefreshAt?: string; refreshAccountId?: string; refreshAccountLabel?: string } = {},
+	): Promise<ModuleCacheSnapshot> {
 		const snapshot: ModuleCacheSnapshot = {
 			schemaVersion: MODULE_CACHE_SCHEMA_VERSION,
-			lastRefreshAt: new Date().toISOString(),
+			lastRefreshAt: options.lastRefreshAt ?? new Date().toISOString(),
 			modules,
+			refreshAccountId: options.refreshAccountId,
+			refreshAccountLabel: options.refreshAccountLabel,
 		};
 		await this.globalState.update(MODULE_CACHE_KEY, snapshot);
+		return snapshot;
+	}
+
+	public getAuthSnapshot(): ModuleAuthSnapshot | undefined {
+		const rawSnapshot = this.globalState.get<unknown>(MODULE_AUTH_KEY);
+		if (!isModuleAuthSnapshotShape(rawSnapshot)) {
+			return undefined;
+		}
+		return rawSnapshot;
+	}
+
+	public async setAuthSnapshot(snapshot: ModuleAuthSnapshot | undefined): Promise<void> {
+		await this.globalState.update(MODULE_AUTH_KEY, snapshot);
+	}
+
+	public async clearAuthSnapshot(): Promise<void> {
+		await this.globalState.update(MODULE_AUTH_KEY, undefined);
 	}
 
 	public isModuleSnapshotExpired(snapshot: ModuleCacheSnapshot | undefined, ttlMinutes: number): boolean {
@@ -104,6 +137,7 @@ export class ModuleCacheStore {
 		await this.globalState.update(MODULE_CACHE_KEY, undefined);
 		await this.globalState.update(README_CACHE_KEY, undefined);
 		await this.globalState.update(MODULE_ETAG_KEY, undefined);
+		await this.globalState.update(MODULE_AUTH_KEY, undefined);
 		await this.globalState.update(MODULE_SORT_STATE_KEY, undefined);
 	}
 }

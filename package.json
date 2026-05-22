@@ -249,12 +249,6 @@
           "default": "csm",
           "scope": "resource",
           "description": "%configuration.csmModules.defaultModuleRoot.description%"
-        },
-        "csmModules.cache.ttlMinutes": {
-          "type": "number",
-          "default": 60,
-          "minimum": 1,
-          "description": "%configuration.csmModules.cache.ttlMinutes.description%"
         }
       }
     },
