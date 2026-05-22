@@ -106,6 +106,14 @@ npm run hook:finish
 code --install-extension csm-vsc-support-*.vsix
 ```
 
+### 本地结束 Hook 说明
+
+- **命令**：`npm run hook:finish`
+- **执行动作**：自动 patch 递增版本、同步 `README.md` / `CHANGELOG.md`、执行编译，并默认始终打包 + 安装 + 校验 VSIX，最后继续测试流程
+- **可选跳过**：`npm run hook:finish -- --skip-vsix`（仅在确实不需要本地加载时显式跳过 VSIX 打包与安装）
+- **安装校验**：`npm run vsix:verify-local`（检查本地扩展目录是否存在目标版本）
+- **说明**：脚本会优先解析本机 VS Code CLI 与 Node/NPM 可执行路径，规避 Windows 下空格路径与 shell 引号导致的安装失败；如仍无法定位 CLI，可通过环境变量 `VSCODE_CLI` 显式指定
+
 ## 代码风格约定
 
 - 源码位于 `src/`，TypeScript 严格模式开启。
