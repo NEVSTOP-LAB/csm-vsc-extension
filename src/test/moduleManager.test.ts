@@ -14,7 +14,7 @@ import * as vscode from 'vscode';
 
 type VscodeMock = typeof vscode & {
 	__resolveWebviewView: (viewId: string) => { html: string; fireMessage: (message: unknown) => void } | undefined;
-	__getLastWebviewView: () => { viewId: string; html: string; description?: string; options?: { enableScripts?: boolean; localResourceRoots?: vscode.Uri[] } } | undefined;
+	__getLastWebviewView: () => { viewId: string; html: string; title?: string; description?: string; options?: { enableScripts?: boolean; localResourceRoots?: vscode.Uri[] } } | undefined;
 	__resetUiState: () => void;
 };
 
@@ -284,6 +284,7 @@ suite('Module Manager Tests', () => {
 
 		assert.ok(resolved);
 		assert.strictEqual(rendered?.viewId, 'csmModules.view');
+		assert.strictEqual(rendered?.title, 'Signed in as tester');
 		assert.strictEqual(rendered?.description, 'Updated 5 minutes ago');
 		assert.ok(rendered?.html.includes('module-card'));
 		assert.deepStrictEqual(rendered?.options?.localResourceRoots?.map((uri) => uri.fsPath), [assetRoot.fsPath]);
@@ -316,9 +317,9 @@ suite('Module Manager Tests', () => {
 		assert.ok(rendered?.html.includes('data-action="openReadme" data-module-key="org&#47;module-a" title="Open README" aria-label="Open README"'));
 		assert.ok(!rendered?.html.includes('Workspace: repo'));
 		assert.ok(rendered?.html.includes('Root: csm/'));
-		assert.ok(rendered?.html.includes('Signed in as tester.'));
-		assert.ok(rendered?.html.includes('Loaded 2 module(s), including private.'));
-		assert.ok(rendered?.html.includes('1 applied | 2 available | 0 selected'));
+		assert.ok(!rendered?.html.includes('Signed in as tester.'));
+		assert.ok(!rendered?.html.includes('Loaded 2 module(s), including private.'));
+		assert.ok(rendered?.html.includes('1 applied | 1 public | 1 private | 0 selected'));
 		assert.ok(rendered?.html.includes('Applied'));
 		assert.ok(!rendered?.html.includes('data-role="apply-selected"'));
 		assert.ok(rendered?.html.includes('title="Open README"'));
@@ -329,7 +330,7 @@ suite('Module Manager Tests', () => {
 
 		provider.setSelection(['org/module-a']);
 		const selectedRender = mocked.__getLastWebviewView();
-		assert.ok(selectedRender?.html.includes('1 applied | 2 available | 1 selected'));
+		assert.ok(selectedRender?.html.includes('1 applied | 1 public | 1 private | 1 selected'));
 		assert.ok(selectedRender?.html.includes('moduleSelected&quot;:true'));
 
 		resolved?.fireMessage({ type: 'dismissIntroTip' });
@@ -476,6 +477,7 @@ suite('Module Manager Tests', () => {
 		mocked.__resolveWebviewView('csmModules.view');
 		const rendered = mocked.__getLastWebviewView();
 
+		assert.strictEqual(rendered?.title, 'Available Modules');
 		assert.ok(rendered?.html.includes('1 available | 0 selected'));
 		assert.ok(rendered?.html.includes('Loaded 1 public module(s). Sign in to see private modules.'));
 		assert.ok(!rendered?.html.includes('data-action="login"'));

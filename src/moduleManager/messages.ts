@@ -146,6 +146,14 @@ const messages = {
 		en: 'Signed in as {account}.',
 		zh: '已登录为 {account}。',
 	},
+	signedInAsTitle: {
+		en: 'Signed in as {account}',
+		zh: '已登录为 {account}',
+	},
+	availableModulesViewTitle: {
+		en: 'Available Modules',
+		zh: '可用模块',
+	},
 	signedOut: {
 		en: 'Signed out of GitHub.',
 		zh: '已退出 GitHub 登录。',

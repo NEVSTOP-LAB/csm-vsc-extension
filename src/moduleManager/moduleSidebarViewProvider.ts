@@ -35,6 +35,7 @@ type WebviewMessage = {
 
 export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IModuleViewProvider {
 	private view: vscode.WebviewView | undefined;
+	private viewTitle = t('availableModulesViewTitle');
 	private viewDescription: string | undefined;
 	private modules: CsmModuleEntry[] = [];
 	private state: ViewState = 'loading';
@@ -70,6 +71,7 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IM
 		_token: vscode.CancellationToken,
 	): void {
 		this.view = webviewView;
+		webviewView.title = this.viewTitle;
 		webviewView.description = this.viewDescription;
 		webviewView.webview.options = {
 			enableScripts: true,
@@ -84,6 +86,7 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IM
 	public setAuthenticated(signedIn: boolean, accountLabel?: string): void {
 		this.signedIn = signedIn;
 		this.signedInAccountLabel = signedIn ? accountLabel : undefined;
+		this.updateViewTitle();
 		this.render();
 	}
 
@@ -132,6 +135,15 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IM
 		this.viewDescription = description;
 		if (this.view) {
 			this.view.description = description;
+		}
+	}
+
+	private updateViewTitle(): void {
+		this.viewTitle = this.signedIn && this.signedInAccountLabel
+			? t('signedInAsTitle', { account: this.signedInAccountLabel })
+			: t('availableModulesViewTitle');
+		if (this.view) {
+			this.view.title = this.viewTitle;
 		}
 	}
 

@@ -46,6 +46,8 @@
 - ✅ 已登录 GitHub 时，通过模块工具引入社区仓库后会自动为该仓库补 Star
 - ✅ 支持批量选择与批量应用
 - ✅ 本地 YAML 配置文件（`csm/csm-modules.yaml`）记录已应用模块，支持自定义目录
+- ✅ 已登录 GitHub 时，侧边栏顶部会优先显示当前账号，并将模块计数按 `public` / `private` 拆分，减少冗长摘要
+- ✅ 已登录 GitHub 时，原生侧边栏标题会从 `Available Modules` 动态切换为 `Signed in as ...`
 - ✅ 模块列表与 README 会缓存到本地；侧边栏启动时优先显示缓存，登录成功后会自动触发一次网络刷新，之后仍可随时手动刷新，标题栏会显示上次刷新时间
 
 > 详细功能说明参见 [docs/module-management.md](docs/module-management.md)

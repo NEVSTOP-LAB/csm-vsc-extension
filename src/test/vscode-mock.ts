@@ -211,13 +211,24 @@ class MockWebview {
 
 class MockWebviewView {
     public readonly webview: MockWebview;
+    private viewTitle: string | undefined;
     private viewDescription: string | undefined;
 
     constructor(
         onHtmlChange: (html: string) => void,
+        private readonly onTitleChange: (title: string | undefined) => void,
         private readonly onDescriptionChange: (description: string | undefined) => void,
     ) {
         this.webview = new MockWebview(onHtmlChange);
+    }
+
+    get title(): string | undefined {
+        return this.viewTitle;
+    }
+
+    set title(value: string | undefined) {
+        this.viewTitle = value;
+        this.onTitleChange(value);
     }
 
     get description(): string | undefined {
@@ -315,6 +326,7 @@ let lastWebviewPanel: { title: string; html: string } | undefined;
 let lastWebviewView: {
     viewId: string;
     html: string;
+    title?: string;
     description?: string;
     options?: { enableScripts?: boolean; localResourceRoots?: Uri[] };
 } | undefined;
@@ -545,10 +557,13 @@ export function __resolveWebviewView(viewId: string): { html: string; fireMessag
 
     const view = new MockWebviewView(
         (html: string) => {
-            lastWebviewView = { viewId, html, description: view.description, options: cloneWebviewOptions(view.webview.options) };
+            lastWebviewView = { viewId, html, title: view.title, description: view.description, options: cloneWebviewOptions(view.webview.options) };
+        },
+        (title: string | undefined) => {
+            lastWebviewView = { viewId, html: view.webview.html, title, description: view.description, options: cloneWebviewOptions(view.webview.options) };
         },
         (description: string | undefined) => {
-            lastWebviewView = { viewId, html: view.webview.html, description, options: cloneWebviewOptions(view.webview.options) };
+            lastWebviewView = { viewId, html: view.webview.html, title: view.title, description, options: cloneWebviewOptions(view.webview.options) };
         },
     );
     webviewViews.set(viewId, view);
@@ -562,7 +577,7 @@ export function __resolveWebviewView(viewId: string): { html: string; fireMessag
     };
 }
 
-export function __getLastWebviewView(): { viewId: string; html: string; description?: string; options?: { enableScripts?: boolean; localResourceRoots?: Uri[] } } | undefined {
+export function __getLastWebviewView(): { viewId: string; html: string; title?: string; description?: string; options?: { enableScripts?: boolean; localResourceRoots?: Uri[] } } | undefined {
     return lastWebviewView
         ? {
             ...lastWebviewView,
