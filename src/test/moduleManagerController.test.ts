@@ -178,6 +178,33 @@ suite('ModuleManagerController Regression Tests', () => {
 		assert.ok(errors.some((text) => text.includes('Failed to refresh CSM modules: GitHub is temporarily unavailable (HTTP 503). Try again in a moment.')));
 	});
 
+	test('login passes the signed-in account label to the sidebar view', async () => {
+		const authUpdates: Array<{ signedIn: boolean; accountLabel?: string }> = [];
+
+		const controller = createController(undefined, {
+			authService: {
+				getSessionSilently: async () => undefined,
+				getSessionInteractively: async () => createSession('token', 'tester'),
+			},
+			githubService: {
+				fetchModules: async () => ({ modules: [] }),
+				fetchReadme: async () => '',
+			},
+			viewProvider: createViewProvider({
+				setAuthenticated: (signedIn: boolean, accountLabel?: string) => {
+					authUpdates.push({ signedIn, accountLabel });
+				},
+			}),
+		});
+
+		await controller.loginCommand();
+
+		assert.deepStrictEqual(authUpdates[authUpdates.length - 1], {
+			signedIn: true,
+			accountLabel: 'tester',
+		});
+	});
+
 	test('openReadme without cache and token fetches public README anonymously', async () => {
 		const entry: CsmModuleEntry = {
 			id: 1,

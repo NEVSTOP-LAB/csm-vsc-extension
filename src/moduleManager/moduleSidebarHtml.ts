@@ -20,6 +20,7 @@ export interface ModuleSidebarRenderState {
     state: ViewState;
     message: string;
     signedIn: boolean;
+	signedInAccountLabel?: string;
     canInitializeWorkspace: boolean;
     selectedModuleKeys: ReadonlySet<string>;
     appliedModuleKeys: ReadonlySet<string>;
@@ -72,6 +73,19 @@ function getToolbarMetaText(appliedCount: number, totalCount: number, filteredCo
 
 function getModuleKey(entry: CsmModuleEntry): string {
     return `${entry.owner}/${entry.name}`;
+}
+
+function getCatalogScopeSummaryText(state: ModuleSidebarRenderState): string | undefined {
+	if (state.modules.length === 0) {
+		return undefined;
+	}
+	const privateCount = state.modules.filter((entry) => entry.visibility === 'private').length;
+	if (!state.signedIn) {
+		return t('catalogScopePublicLoggedOut', { count: state.modules.length });
+	}
+	return privateCount > 0
+		? t('catalogScopeSignedInWithPrivate', { count: state.modules.length })
+		: t('catalogScopeSignedInPublicOnly', { count: state.modules.length });
 }
 
 type IconName = 'close' | 'filter' | 'readme' | 'search';
@@ -129,6 +143,10 @@ export function renderModuleSidebarHtml(state: ModuleSidebarRenderState): string
     const filteredCount = getFilteredModules(state).length;
     const appliedCount = state.appliedModuleKeys.size;
     const toolbarMetaText = getToolbarMetaText(appliedCount, moduleCount, filteredCount, selectedCount);
+	const accountSummaryText = state.signedIn && state.signedInAccountLabel
+		? t('signedInAs', { account: state.signedInAccountLabel })
+		: undefined;
+	const catalogScopeSummaryText = getCatalogScopeSummaryText(state);
     const filterButtonTitle = getFilterButtonTitle(state.sortState);
     const sortFieldOptions: Array<{ value: ModuleSortField; label: string }> = [
         { value: 'name', label: t('sortFieldName') },
@@ -659,7 +677,9 @@ export function renderModuleSidebarHtml(state: ModuleSidebarRenderState): string
 		<div class="toolbar-row">
 			<span class="toolbar-meta" data-role="toolbar-meta" data-applied-count="${appliedCount}" data-total-count="${moduleCount}" data-filtered-count="${filteredCount}">${toolbarMetaText}</span>
 		</div>
-		${state.workspaceLabel && state.moduleRoot ? `<div class="workspace-summary"><span>${escapeHtml(t('rootLabel'))}: ${escapeHtml(state.moduleRoot)}/</span></div>` : ''}
+		${accountSummaryText || catalogScopeSummaryText || (state.workspaceLabel && state.moduleRoot)
+			? `<div class="workspace-summary">${accountSummaryText ? `<span>${escapeHtml(accountSummaryText)}</span>` : ''}${catalogScopeSummaryText ? `<span>${escapeHtml(catalogScopeSummaryText)}</span>` : ''}${state.workspaceLabel && state.moduleRoot ? `<span>${escapeHtml(t('rootLabel'))}: ${escapeHtml(state.moduleRoot)}/</span>` : ''}</div>`
+			: ''}
 		${state.introTipVisible ? `<section class="notice" data-role="intro-tip"><div><strong>${escapeHtml(t('tipTitle'))}</strong><span>${escapeHtml(t('tipBody'))}</span></div><div class="notice-actions"><button class="icon-button" data-action="dismissIntroTip" title="${escapeHtml(t('dismissTip'))}" aria-label="${escapeHtml(t('dismissTip'))}">${renderIcon('close')}</button></div></section>` : ''}
 		${state.canInitializeWorkspace ? `<section class="notice"><div><strong>${escapeHtml(t('workspaceHintTitle'))}</strong><span>${escapeHtml(t('workspaceHintBody'))}</span></div><div class="notice-actions"><button class="toolbar-button callout" data-action="initializeWorkspace">${escapeHtml(t('initializeAction'))}</button></div></section>` : ''}
 	</section>

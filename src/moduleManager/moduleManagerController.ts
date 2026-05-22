@@ -105,6 +105,7 @@ export class ModuleManagerController {
 	private readonly appliedModuleKeys = new Set<string>();
 	private readonly selectedModuleKeys = new Set<string>();
 	private currentToken: string | undefined;
+	private currentAccountLabel: string | undefined;
 	private lastTokenVerifiedAt = 0;
 	private static readonly TOKEN_VERIFY_INTERVAL_MS = 10 * 60 * 1000; // 10 minutes
 
@@ -570,8 +571,9 @@ export class ModuleManagerController {
 			return;
 		}
 		this.currentToken = session.accessToken;
+		this.currentAccountLabel = session.account.label;
 		this.lastTokenVerifiedAt = Date.now();
-		await this.setAuthenticationState(true);
+		await this.setAuthenticationState(true, session.account.label);
 		void vscode.window.showInformationMessage(t('signedInAs', { account: session.account.label }));
 		// Best-effort scope verification, logged when missing scopes are detected (7.5).
 		if (typeof this.authService.verifyScopes === 'function') {
@@ -589,11 +591,13 @@ export class ModuleManagerController {
 		const silentSession = await this.authService.getSessionSilently();
 		if (silentSession) {
 			this.currentToken = silentSession.accessToken;
+			this.currentAccountLabel = silentSession.account.label;
 			this.lastTokenVerifiedAt = Date.now();
-			await this.setAuthenticationState(true);
+			await this.setAuthenticationState(true, silentSession.account.label);
 			return this.currentToken;
 		}
 		this.currentToken = undefined;
+		this.currentAccountLabel = undefined;
 		this.lastTokenVerifiedAt = 0;
 		await this.setAuthenticationState(false);
 		if (!interactive) {
@@ -604,8 +608,9 @@ export class ModuleManagerController {
 			return undefined;
 		}
 		this.currentToken = session.accessToken;
+		this.currentAccountLabel = session.account.label;
 		this.lastTokenVerifiedAt = Date.now();
-		await this.setAuthenticationState(true);
+		await this.setAuthenticationState(true, session.account.label);
 		return this.currentToken;
 	}
 
@@ -837,8 +842,13 @@ export class ModuleManagerController {
 		void this.setApplySelectionContext(this.selectedModuleKeys.size > 0);
 	}
 
-	private async setAuthenticationState(signedIn: boolean): Promise<void> {
-		this.treeDataProvider.setAuthenticated(signedIn);
+	private async setAuthenticationState(signedIn: boolean, accountLabel?: string): Promise<void> {
+		if (!signedIn) {
+			this.currentAccountLabel = undefined;
+		} else if (accountLabel) {
+			this.currentAccountLabel = accountLabel;
+		}
+		this.treeDataProvider.setAuthenticated(signedIn, this.currentAccountLabel);
 		await vscode.commands.executeCommand('setContext', SIGNED_IN_CONTEXT_KEY, signedIn);
 	}
 

@@ -34,6 +34,7 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IM
 	private state: ViewState = 'loading';
 	private message = t('loadingModules');
 	private signedIn = false;
+	private signedInAccountLabel: string | undefined;
 	private canInitializeWorkspace = false;
 	private readonly selectedModuleKeys = new Set<string>();
 	private readonly appliedModuleKeys = new Set<string>();
@@ -69,8 +70,9 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IM
 		this.render();
 	}
 
-	public setAuthenticated(signedIn: boolean): void {
+	public setAuthenticated(signedIn: boolean, accountLabel?: string): void {
 		this.signedIn = signedIn;
+		this.signedInAccountLabel = signedIn ? accountLabel : undefined;
 		this.render();
 	}
 
@@ -309,6 +311,7 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IM
 			state: this.state,
 			message: this.message,
 			signedIn: this.signedIn,
+			signedInAccountLabel: this.signedInAccountLabel,
 			canInitializeWorkspace: this.canInitializeWorkspace,
 			selectedModuleKeys: this.selectedModuleKeys,
 			appliedModuleKeys: this.appliedModuleKeys,

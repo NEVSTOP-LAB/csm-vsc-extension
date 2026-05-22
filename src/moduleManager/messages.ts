@@ -414,6 +414,18 @@ const messages = {
 		en: 'Root',
 		zh: '根目录',
 	},
+	catalogScopePublicLoggedOut: {
+		en: 'Loaded {count} public module(s). Sign in to see private modules.',
+		zh: '已加载 {count} 个公开模块。登录后可查看私有模块。',
+	},
+	catalogScopeSignedInPublicOnly: {
+		en: 'Loaded {count} public module(s).',
+		zh: '已加载 {count} 个公开模块。',
+	},
+	catalogScopeSignedInWithPrivate: {
+		en: 'Loaded {count} module(s), including private.',
+		zh: '已加载 {count} 个模块（含私有）。',
+	},
 	tipTitle: {
 		en: 'Tip',
 		zh: '提示',

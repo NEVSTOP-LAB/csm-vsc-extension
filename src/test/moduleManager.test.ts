@@ -185,7 +185,7 @@ suite('Module Manager Tests', () => {
 			onSortChange: () => undefined,
 		});
 
-		provider.setAuthenticated(true);
+			provider.setAuthenticated(true, 'tester');
 		provider.setModules([
 			{
 				id: 1,
@@ -249,6 +249,8 @@ suite('Module Manager Tests', () => {
 		assert.ok(rendered?.html.includes('data-action="openReadme" data-module-key="org&#47;module-a" title="Open README" aria-label="Open README"'));
 		assert.ok(!rendered?.html.includes('Workspace: repo'));
 		assert.ok(rendered?.html.includes('Root: csm/'));
+		assert.ok(rendered?.html.includes('Signed in as tester.'));
+		assert.ok(rendered?.html.includes('Loaded 2 module(s), including private.'));
 		assert.ok(rendered?.html.includes('1 applied | 2 available | 0 selected'));
 		assert.ok(rendered?.html.includes('Applied'));
 		assert.ok(!rendered?.html.includes('data-role="apply-selected"'));
@@ -398,6 +400,7 @@ suite('Module Manager Tests', () => {
 		const rendered = mocked.__getLastWebviewView();
 
 		assert.ok(rendered?.html.includes('1 available | 0 selected'));
+		assert.ok(rendered?.html.includes('Loaded 1 public module(s). Sign in to see private modules.'));
 		assert.ok(!rendered?.html.includes('data-action="login"'));
 		assert.ok(!rendered?.html.includes('data-role="apply-selected"'));
 		disposable.dispose();
