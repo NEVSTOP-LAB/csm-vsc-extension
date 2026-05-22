@@ -43,4 +43,23 @@ suite('AuthService Tests', () => {
 		assert.strictEqual(session?.accessToken, 'token');
 		assert.strictEqual(observedCreateIfNone, true);
 	});
+
+	test('signOut invokes the VS Code account sign-out command with the active GitHub account', async () => {
+		let observedArgs: unknown;
+		const disposable = vscode.commands.registerCommand('_signOutOfAccount', async (args: unknown) => {
+			observedArgs = args;
+		});
+
+		try {
+			const service = new AuthService();
+			await service.signOut('tester');
+		} finally {
+			disposable.dispose();
+		}
+
+		assert.deepStrictEqual(observedArgs, {
+			providerId: 'github',
+			accountLabel: 'tester',
+		});
+	});
 });

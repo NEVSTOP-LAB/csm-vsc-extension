@@ -109,7 +109,6 @@ suite('ModuleManagerController Regression Tests', () => {
 	test('refresh without session still fetches public modules', async () => {
 		let moduleCount = -1;
 		let receivedToken = 'unset';
-		mocked.__setWarningMessageResponse('Refresh');
 
 		const controller = createController(undefined, {
 			authService: {
@@ -153,7 +152,6 @@ suite('ModuleManagerController Regression Tests', () => {
 
 	test('refresh github error sets tree error and error toast', async () => {
 		let setErrorText = '';
-		mocked.__setWarningMessageResponse('Refresh');
 
 		const controller = createController(undefined, {
 			authService: {
@@ -178,6 +176,131 @@ suite('ModuleManagerController Regression Tests', () => {
 		assert.strictEqual(setErrorText, 'GitHub is temporarily unavailable (HTTP 503). Try again in a moment.');
 		const errors = mocked.__getMessageLog().filter((m) => m.level === 'error').map((m) => m.text);
 		assert.ok(errors.some((text) => text.includes('Failed to refresh CSM modules: GitHub is temporarily unavailable (HTTP 503). Try again in a moment.')));
+	});
+
+	test('login passes the signed-in account label to the sidebar view', async () => {
+		const authUpdates: Array<{ signedIn: boolean; accountLabel?: string }> = [];
+
+		const controller = createController(undefined, {
+			authService: {
+				getSessionSilently: async () => undefined,
+				getSessionInteractively: async () => createSession('token', 'tester'),
+			},
+			githubService: {
+				fetchModules: async () => ({ modules: [] }),
+				fetchReadme: async () => '',
+			},
+			viewProvider: createViewProvider({
+				setAuthenticated: (signedIn: boolean, accountLabel?: string) => {
+					authUpdates.push({ signedIn, accountLabel });
+				},
+			}),
+		});
+
+		await controller.loginCommand();
+
+		assert.deepStrictEqual(authUpdates[authUpdates.length - 1], {
+			signedIn: true,
+			accountLabel: 'tester',
+		});
+	});
+
+	test('logout signs out the current account and reloads the public catalog anonymously', async () => {
+		const authUpdates: Array<{ signedIn: boolean; accountLabel?: string }> = [];
+		const receivedTokens: string[] = [];
+		let currentSession: vscode.AuthenticationSession | undefined = createSession('token', 'tester');
+		let signedOutAccount: string | undefined;
+
+		const controller = createController(undefined, {
+			authService: {
+				getSessionSilently: async () => currentSession,
+				getSessionInteractively: async () => currentSession,
+				signOut: async (accountLabel: string) => {
+					signedOutAccount = accountLabel;
+					currentSession = undefined;
+				},
+			},
+			githubService: {
+				fetchModules: async (token?: string) => {
+					receivedTokens.push(token ?? 'undefined');
+					return {
+						modules: [
+							{
+								id: 1,
+								owner: 'org',
+								name: 'module-a',
+								description: 'demo',
+								topics: ['csm-modsets'],
+								visibility: 'public',
+								defaultBranch: 'main',
+								repoUrl: 'https://github.com/org/module-a',
+							},
+						],
+					};
+				},
+				fetchReadme: async () => '',
+			},
+			viewProvider: createViewProvider({
+				setAuthenticated: (signedIn: boolean, accountLabel?: string) => {
+					authUpdates.push({ signedIn, accountLabel });
+				},
+			}),
+		});
+
+		await controller.loginCommand();
+		mocked.__resetMessageLog();
+
+		await controller.logoutCommand();
+
+		assert.strictEqual(signedOutAccount, 'tester');
+		assert.deepStrictEqual(authUpdates[authUpdates.length - 1], {
+			signedIn: false,
+			accountLabel: undefined,
+		});
+		assert.deepStrictEqual(receivedTokens, ['token', 'undefined']);
+		assert.strictEqual(mocked.__getContextValue('csmModules.signedIn'), false);
+		const infos = mocked.__getMessageLog().filter((message) => message.level === 'info').map((message) => message.text);
+		assert.ok(infos.some((text) => text.includes('Signed out of GitHub.')));
+	});
+
+	test('logout keeps the current account when the built-in sign-out flow is cancelled', async () => {
+		const authUpdates: Array<{ signedIn: boolean; accountLabel?: string }> = [];
+		const receivedTokens: string[] = [];
+		const currentSession = createSession('token', 'tester');
+
+		const controller = createController(undefined, {
+			authService: {
+				getSessionSilently: async () => currentSession,
+				getSessionInteractively: async () => currentSession,
+				signOut: async () => undefined,
+			},
+			githubService: {
+				fetchModules: async (token?: string) => {
+					receivedTokens.push(token ?? 'undefined');
+					return { modules: [] };
+				},
+				fetchReadme: async () => '',
+			},
+			viewProvider: createViewProvider({
+				setAuthenticated: (signedIn: boolean, accountLabel?: string) => {
+					authUpdates.push({ signedIn, accountLabel });
+				},
+			}),
+		});
+
+		await controller.loginCommand();
+		mocked.__resetMessageLog();
+
+		await controller.logoutCommand();
+
+		assert.deepStrictEqual(authUpdates[authUpdates.length - 1], {
+			signedIn: true,
+			accountLabel: 'tester',
+		});
+		assert.deepStrictEqual(receivedTokens, ['token']);
+		assert.strictEqual(mocked.__getContextValue('csmModules.signedIn'), true);
+		const warnings = mocked.__getMessageLog().filter((message) => message.level === 'warn').map((message) => message.text);
+		assert.ok(warnings.some((text) => text.includes('GitHub sign-out was cancelled.')));
 	});
 
 	test('openReadme without cache and token fetches public README anonymously', async () => {
@@ -407,14 +530,13 @@ suite('ModuleManagerController Regression Tests', () => {
 			getSessionSilently: async () => undefined,
 			getSessionInteractively: async () => undefined,
 		};
-		mocked.__setWarningMessageResponse('Refresh');
 
 		await controller.refreshCommand();
 
 		assert.strictEqual(mocked.__getContextValue('csmModules.signedIn'), false);
 	});
 
-	test('refresh cancellation does not fetch modules', async () => {
+	test('refresh runs immediately without a confirmation prompt', async () => {
 		let fetched = false;
 
 		const controller = createController(undefined, {
@@ -432,11 +554,11 @@ suite('ModuleManagerController Regression Tests', () => {
 			viewProvider: createViewProvider(),
 		});
 		mocked.__resetMessageLog();
-		mocked.__setWarningMessageResponse(undefined);
 
 		await controller.refreshCommand();
 
-		assert.strictEqual(fetched, false);
+		assert.strictEqual(fetched, true);
+		assert.strictEqual(mocked.__getLastWarningPrompt(), undefined);
 	});
 
 	test('register keeps fresh cache without immediate background refresh', async () => {

@@ -2,6 +2,7 @@
   "extension.displayName": "可通信状态机（CSM）",
   "extension.description": "为 Visual Studio Code 中的 Communicable State Machine (CSM) 文件提供语言支持",
   "commands.login.title": "CSM 模块：登录 GitHub",
+  "commands.logout.title": "CSM 模块：退出 GitHub 登录",
   "commands.refresh.title": "CSM 模块：刷新",
   "commands.initializeWorkspace.title": "CSM 模块：初始化工作区管理",
   "commands.openReadme.title": "CSM 模块：打开 README",

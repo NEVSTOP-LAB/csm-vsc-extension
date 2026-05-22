@@ -2,6 +2,7 @@
   "extension.displayName": "Communicable State Machine(CSM)",
   "extension.description": "Language support for Communicable State Machine (CSM) files in Visual Studio Code",
   "commands.login.title": "CSM Modules: Sign In to GitHub",
+  "commands.logout.title": "CSM Modules: Sign Out of GitHub",
   "commands.refresh.title": "CSM Modules: Refresh",
   "commands.initializeWorkspace.title": "CSM Modules: Initialize Workspace Management",
   "commands.openReadme.title": "CSM Modules: Open README",

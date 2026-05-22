@@ -146,6 +146,18 @@ const messages = {
 		en: 'Signed in as {account}.',
 		zh: '已登录为 {account}。',
 	},
+	signedOut: {
+		en: 'Signed out of GitHub.',
+		zh: '已退出 GitHub 登录。',
+	},
+	signOutCancelled: {
+		en: 'GitHub sign-out was cancelled.',
+		zh: 'GitHub 退出登录已取消。',
+	},
+	signOutFailed: {
+		en: 'Failed to sign out of GitHub: {message}',
+		zh: '退出 GitHub 登录失败：{message}',
+	},
 	refreshConfirmation: {
 		en: 'Refresh CSM modules from GitHub?',
 		zh: '要从 GitHub 刷新 CSM 模块吗？',
@@ -414,6 +426,18 @@ const messages = {
 		en: 'Root',
 		zh: '根目录',
 	},
+	catalogScopePublicLoggedOut: {
+		en: 'Loaded {count} public module(s). Sign in to see private modules.',
+		zh: '已加载 {count} 个公开模块。登录后可查看私有模块。',
+	},
+	catalogScopeSignedInPublicOnly: {
+		en: 'Loaded {count} public module(s).',
+		zh: '已加载 {count} 个公开模块。',
+	},
+	catalogScopeSignedInWithPrivate: {
+		en: 'Loaded {count} module(s), including private.',
+		zh: '已加载 {count} 个模块（含私有）。',
+	},
 	tipTitle: {
 		en: 'Tip',
 		zh: '提示',
@@ -616,7 +640,7 @@ export function getHtmlLang(): string {
 
 export function getApplyMethodLabel(method: ModuleApplyMethod): string {
 	return method === 'copy' ? t('applyMethodCopyLabel') : t('applyMethodSubmoduleLabel');
-	}
+}
 
 export function getVisibilityLabel(visibility: 'private' | 'public'): string {
 	return visibility === 'private' ? t('privateVisibility') : t('publicVisibility');

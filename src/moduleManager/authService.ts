@@ -4,9 +4,10 @@ import { Logger, getLogger } from './logger';
 
 const GITHUB_PROVIDER_ID = GITHUB.providerId;
 const REQUIRED_SCOPES = [...GITHUB.requiredScopes];
+const VS_CODE_SIGN_OUT_COMMAND = '_signOutOfAccount';
 
 export class AuthService {
-	constructor(private readonly logger: Logger = getLogger()) {}
+	constructor(private readonly logger: Logger = getLogger()) { }
 
 	public async getSessionSilently(): Promise<vscode.AuthenticationSession | undefined> {
 		try {
@@ -23,6 +24,18 @@ export class AuthService {
 		} catch (error) {
 			this.logger.warn(`Interactive GitHub session lookup failed: ${error instanceof Error ? error.message : String(error)}`);
 			return undefined;
+		}
+	}
+
+	public async signOut(accountLabel: string): Promise<void> {
+		try {
+			await vscode.commands.executeCommand(VS_CODE_SIGN_OUT_COMMAND, {
+				providerId: GITHUB_PROVIDER_ID,
+				accountLabel,
+			});
+		} catch (error) {
+			this.logger.warn(`GitHub sign-out failed: ${error instanceof Error ? error.message : String(error)}`);
+			throw error;
 		}
 	}
 

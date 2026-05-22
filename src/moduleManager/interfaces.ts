@@ -21,7 +21,7 @@ export interface SidebarWorkspaceContext {
  * (review item 2.2 — improves testability and removes `instanceof` checks).
  */
 export interface IModuleViewProvider {
-	setAuthenticated(signedIn: boolean): void;
+	setAuthenticated(signedIn: boolean, accountLabel?: string): void;
 	setLoading(message?: string): void;
 	setError(message: string): void;
 	setModules(modules: CsmModuleEntry[]): void;

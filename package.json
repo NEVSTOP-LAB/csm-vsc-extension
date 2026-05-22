@@ -34,6 +34,7 @@
     "onView:csmModules.view",
     "onCommand:csmModules.initializeWorkspace",
     "onCommand:csmModules.login",
+    "onCommand:csmModules.logout",
     "onCommand:csmModules.refresh",
     "onCommand:csmModules.openReadme",
     "onCommand:csmModules.applyToWorkspace"
@@ -45,6 +46,11 @@
         "command": "csmModules.login",
         "title": "%commands.login.title%",
         "icon": "$(account)"
+      },
+      {
+        "command": "csmModules.logout",
+        "title": "%commands.logout.title%",
+        "icon": "$(sign-out)"
       },
       {
         "command": "csmModules.refresh",
@@ -153,6 +159,11 @@
         {
           "command": "csmModules.login",
           "when": "view == csmModules.view && !csmModules.signedIn",
+          "group": "navigation@3"
+        },
+        {
+          "command": "csmModules.logout",
+          "when": "view == csmModules.view && csmModules.signedIn",
           "group": "navigation@3"
         }
       ],
