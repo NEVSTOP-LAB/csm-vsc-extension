@@ -39,8 +39,11 @@
 
 - ✅ 浏览 GitHub 上满足 `topic:csm-modsets` 的公开模块及当前账号可访问的私有模块
 - ✅ 卡片式列表，支持内联 README 预览
+- ✅ 已登录 GitHub 时，卡片右上角会在 `README` 旁显示 `Star` 按钮，并展示当前仓库是否已 Star
+- ✅ 支持直接在侧边栏内 `Star` / `Unstar` 仓库；取消 Star 前会要求二次确认
 - ✅ 支持按名称、owner、topic、分支等关键字搜索过滤，以及多维度排序
 - ✅ 支持 `submodule` / `copy` 两种方式将模块引入本地仓库
+- ✅ 已登录 GitHub 时，通过模块工具引入社区仓库后会自动为该仓库补 Star
 - ✅ 支持批量选择与批量应用
 - ✅ 本地 YAML 配置文件（`csm/csm-modules.yaml`）记录已应用模块，支持自定义目录
 - ✅ 模块列表与 README 自动缓存，后台按时效刷新

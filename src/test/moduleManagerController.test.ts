@@ -471,6 +471,48 @@ suite('ModuleManagerController Regression Tests', () => {
 		assert.strictEqual(renderedModuleCount, 1);
 	});
 
+	test('login hydrates GitHub star state for signed-in modules', async () => {
+		let renderedModules: CsmModuleEntry[] = [];
+		let starChecks = 0;
+		const controller = createController(undefined, {
+			authService: {
+				getSessionSilently: async () => undefined,
+				getSessionInteractively: async () => createSession(),
+			},
+			githubService: {
+				fetchModules: async () => ({
+					modules: [
+						{
+							id: 1,
+							owner: 'org',
+							name: 'module-a',
+							description: 'demo',
+							topics: ['csm-modsets'],
+							visibility: 'public',
+							defaultBranch: 'main',
+							repoUrl: 'https://github.com/org/module-a',
+						},
+					],
+				}),
+				fetchReadme: async () => '',
+				isRepositoryStarred: async () => {
+					starChecks += 1;
+					return true;
+				},
+			},
+			viewProvider: createViewProvider({
+				setModules: (modules: CsmModuleEntry[]) => {
+					renderedModules = modules;
+				},
+			}),
+		});
+
+		await controller.loginCommand();
+
+		assert.strictEqual(starChecks, 1);
+		assert.strictEqual(renderedModules[0]?.starred, true);
+	});
+
 	test('selection state toggles apply toolbar context', () => {
 		const controller = createController() as any;
 		controller.availableModules = [
@@ -1114,6 +1156,136 @@ suite('ModuleManagerController Regression Tests', () => {
 		await controller.applyToWorkspaceCommand(entry);
 
 		assert.strictEqual(appliedRoot, 'existing-root');
+	});
+
+	test('apply auto-stars imported community modules for signed-in users', async () => {
+		const renderedModules: CsmModuleEntry[][] = [];
+		const starRequests: Array<{ owner: string; repo: string; token: string; starred: boolean }> = [];
+		const controller = createController(undefined, {
+			authService: {
+				getSessionSilently: async () => createSession('token', 'tester'),
+				getSessionInteractively: async () => createSession('token', 'tester'),
+			},
+			githubService: {
+				fetchModules: async () => ({ modules: [] }),
+				fetchReadme: async () => '',
+				setRepositoryStarred: async (owner: string, repo: string, token: string, starred: boolean) => {
+					starRequests.push({ owner, repo, token, starred });
+				},
+			},
+			viewProvider: createViewProvider({
+				setModules: (modules: CsmModuleEntry[]) => {
+					renderedModules.push(modules);
+				},
+			}),
+		}) as any;
+		const entry: CsmModuleEntry = {
+			id: 7,
+			owner: 'org',
+			name: 'module-star',
+			description: 'demo',
+			topics: ['csm-modsets'],
+			visibility: 'public',
+			defaultBranch: 'main',
+			repoUrl: 'https://github.com/org/module-star',
+			starred: false,
+		};
+		controller.availableModules = [entry];
+		controller.workspaceModuleService = {
+			resolveGitRepositoryRoot: async () => 'd:/repo',
+			normalizeRootPath: (value: string) => value,
+			recoverConfigFromExistingSubmodules: async () => undefined,
+			initializeConfig: async () => ({
+				version: '2',
+				root: 'csm',
+				configPath: 'd:/repo/csm/csm-modules.yaml',
+				modules: {},
+			}),
+			loadConfig: async () => ({
+				version: '2',
+				root: 'csm',
+				configPath: 'd:/repo/csm/csm-modules.yaml',
+				modules: {},
+			}),
+			getTargetRelativePath: (_config: LocalModuleConfig, moduleEntry: CsmModuleEntry) => `csm/${moduleEntry.name}`,
+			targetExists: async () => false,
+			applyModule: async (_repoRoot: string, _config: LocalModuleConfig, moduleEntry: CsmModuleEntry) => ({
+				key: 'org__module_star',
+				name: moduleEntry.name,
+				owner: moduleEntry.owner,
+				source: moduleEntry.repoUrl,
+				method: 'copy',
+				path: `csm/${moduleEntry.name}`,
+				ref: 'abc123',
+				branch: moduleEntry.defaultBranch,
+			}),
+			withAppliedModule: (config: LocalModuleConfig, moduleEntry: LocalModuleConfig['modules'][string]) => ({
+				...config,
+				modules: {
+					...config.modules,
+					[moduleEntry.key]: moduleEntry,
+				},
+			}),
+			writeConfig: async () => undefined,
+		};
+		mocked.__setWorkspaceFolders([{ name: 'repo', uri: vscode.Uri.file('d:/repo') }]);
+		mocked.__setFindFilesResult([]);
+		mocked.__setConfigurationValue('csmModules.defaultModuleRoot', 'csm');
+		mocked.__setInformationMessageResponse('Use csm/');
+		mocked.__setQuickPickResponse({ method: 'copy' });
+		mocked.__setWarningMessageResponse('Apply');
+
+		await controller.applyToWorkspaceCommand(entry);
+
+		assert.deepStrictEqual(starRequests, [{
+			owner: 'org',
+			repo: 'module-star',
+			token: 'token',
+			starred: true,
+		}]);
+		assert.strictEqual(renderedModules[renderedModules.length - 1]?.[0]?.starred, true);
+	});
+
+	test('toggleStar unstars a repository only after confirmation', async () => {
+		let renderedModules: CsmModuleEntry[] = [];
+		const starRequests: boolean[] = [];
+		const controller = createController(undefined, {
+			authService: {
+				getSessionSilently: async () => createSession('token', 'tester'),
+				getSessionInteractively: async () => createSession('token', 'tester'),
+			},
+			githubService: {
+				fetchModules: async () => ({ modules: [] }),
+				fetchReadme: async () => '',
+				setRepositoryStarred: async (_owner: string, _repo: string, _token: string, starred: boolean) => {
+					starRequests.push(starred);
+				},
+			},
+			viewProvider: createViewProvider({
+				setModules: (modules: CsmModuleEntry[]) => {
+					renderedModules = modules;
+				},
+			}),
+		}) as any;
+		const entry: CsmModuleEntry = {
+			id: 8,
+			owner: 'org',
+			name: 'module-a',
+			description: 'demo',
+			topics: ['csm-modsets'],
+			visibility: 'public',
+			defaultBranch: 'main',
+			repoUrl: 'https://github.com/org/module-a',
+			starred: true,
+		};
+		controller.availableModules = [entry];
+		mocked.__setWarningMessageResponse('Unstar');
+
+		await controller.toggleStarCommand(entry);
+
+		assert.deepStrictEqual(starRequests, [false]);
+		assert.strictEqual(renderedModules[0]?.starred, false);
+		assert.ok(mocked.__getLastWarningPrompt()?.message.includes('org/module-a'));
 	});
 
 	test('apply warns when copy target already exists', async () => {

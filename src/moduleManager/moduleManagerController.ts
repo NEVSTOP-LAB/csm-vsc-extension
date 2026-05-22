@@ -43,7 +43,8 @@ type WebviewModuleContext = {
 type ModuleManagerAuthService = Pick<AuthService, 'getSessionSilently' | 'getSessionInteractively'>
 	& Partial<Pick<AuthService, 'signOut' | 'verifyScopes'>>;
 
-type ModuleManagerGithubService = Pick<GitHubModuleService, 'fetchModules' | 'fetchReadme'>;
+type ModuleManagerGithubService = Pick<GitHubModuleService, 'fetchModules' | 'fetchReadme'>
+	& Partial<Pick<GitHubModuleService, 'isRepositoryStarred' | 'setRepositoryStarred'>>;
 
 /**
  * Optional dependencies for {@link ModuleManagerController}.
@@ -74,6 +75,9 @@ export class ModuleManagerController {
 		},
 		onInitializeWorkspace: () => {
 			void this.initializeWorkspaceCommand();
+		},
+		onToggleStar: (entry) => {
+			void this.toggleStarCommand(entry);
 		},
 		onOpenReadme: (entry) => {
 			void this.openReadmeCommand(entry);
@@ -269,6 +273,7 @@ export class ModuleManagerController {
 		}
 
 		let appliedCount = 0;
+		const appliedEntriesForAutoStar: CsmModuleEntry[] = [];
 		const writeConfigSafely = async (latest: LocalModuleConfig): Promise<void> => {
 			await this.workspaceModuleService.writeConfig(latest);
 		};
@@ -307,6 +312,7 @@ export class ModuleManagerController {
 							const moduleEntry = selectedEntries[i];
 							if (result.status === 'fulfilled') {
 								successes.push(result.value);
+								appliedEntriesForAutoStar.push(moduleEntry);
 							} else {
 								failures.push(`${moduleEntry.owner}/${moduleEntry.name}: ${result.reason instanceof Error ? result.reason.message : String(result.reason)}`);
 							}
@@ -334,6 +340,7 @@ export class ModuleManagerController {
 							config = this.workspaceModuleService.withAppliedModule(config, applied);
 							await writeConfigSafely(config);
 							appliedCount += 1;
+							appliedEntriesForAutoStar.push(moduleEntry);
 							progress.report({
 								increment: 100 / selectedEntries.length,
 								message: `${moduleEntry.owner}/${moduleEntry.name}`,
@@ -343,6 +350,7 @@ export class ModuleManagerController {
 				},
 			);
 		} catch (error) {
+			await this.autoStarImportedModules(appliedEntriesForAutoStar);
 			const message = getUserFacingErrorMessage(error, 'apply');
 			const prefix = appliedCount > 0
 				? t('applyPartialFailure', { appliedCount, selectedCount: selectedEntries.length })
@@ -351,6 +359,8 @@ export class ModuleManagerController {
 			void vscode.window.showErrorMessage(`${prefix}: ${message}`);
 			return;
 		}
+
+		await this.autoStarImportedModules(appliedEntriesForAutoStar);
 
 		void vscode.window.showInformationMessage(
 			t('applySuccess', {
@@ -693,6 +703,128 @@ export class ModuleManagerController {
 		await this.loadModules({ interactiveAuth: false, showSuccessMessage: true, showErrorMessage: true });
 	}
 
+	private async toggleStarCommand(entry: CsmModuleEntry): Promise<void> {
+		if (typeof entry.starred !== 'boolean') {
+			return;
+		}
+		const moduleLabel = `${entry.owner}/${entry.name}`;
+		const nextStarred = !entry.starred;
+		if (!nextStarred) {
+			const confirmation = await vscode.window.showWarningMessage(
+				t('unstarConfirmation', { name: moduleLabel }),
+				{ modal: true },
+				t('unstarAction'),
+			);
+			if (confirmation !== t('unstarAction')) {
+				return;
+			}
+		}
+		const token = await this.ensureToken(true);
+		if (!token || typeof this.githubService.setRepositoryStarred !== 'function') {
+			return;
+		}
+		try {
+			await this.githubService.setRepositoryStarred(entry.owner, entry.name, token, nextStarred);
+			this.updateAvailableModuleStarStates(new Map([[this.getModuleKey(entry), nextStarred]]));
+		} catch (error) {
+			const message = getUserFacingErrorMessage(error, 'refresh');
+			this.logger.error(`Failed to update star for ${moduleLabel}: ${message}`);
+			void vscode.window.showErrorMessage(t('starUpdateFailed', { name: moduleLabel, message }));
+		}
+	}
+
+	private async autoStarImportedModules(entries: CsmModuleEntry[]): Promise<void> {
+		if (entries.length === 0 || typeof this.githubService.setRepositoryStarred !== 'function') {
+			return;
+		}
+		const token = await this.ensureToken(false);
+		if (!token) {
+			return;
+		}
+		const updates = new Map<string, boolean>();
+		const seen = new Set<string>();
+		for (const entry of entries) {
+			const key = this.getModuleKey(entry);
+			if (seen.has(key) || entry.starred === true) {
+				continue;
+			}
+			seen.add(key);
+			try {
+				await this.githubService.setRepositoryStarred(entry.owner, entry.name, token, true);
+				updates.set(key, true);
+			} catch (error) {
+				this.logger.warn(`Failed to auto-star ${entry.owner}/${entry.name}: ${error instanceof Error ? error.message : String(error)}`);
+			}
+		}
+		this.updateAvailableModuleStarStates(updates);
+	}
+
+	private async hydrateStarStates(modules: CsmModuleEntry[], token: string | undefined): Promise<CsmModuleEntry[]> {
+		if (modules.length === 0 || !token || typeof this.githubService.isRepositoryStarred !== 'function') {
+			return modules;
+		}
+		const starStates = await this.fetchStarStatesParallel(modules, token, 8);
+		return modules.map((moduleEntry) => ({
+			...moduleEntry,
+			starred: starStates.get(this.getModuleKey(moduleEntry)),
+		}));
+	}
+
+	private async fetchStarStatesParallel(
+		modules: CsmModuleEntry[],
+		token: string,
+		concurrency: number,
+	): Promise<Map<string, boolean>> {
+		const starredStates = new Map<string, boolean>();
+		const isRepositoryStarred = this.githubService.isRepositoryStarred?.bind(this.githubService);
+		if (!isRepositoryStarred) {
+			return starredStates;
+		}
+		let cursor = 0;
+		const worker = async (): Promise<void> => {
+			while (cursor < modules.length) {
+				const index = cursor;
+				cursor += 1;
+				const moduleEntry = modules[index];
+				if (!moduleEntry) {
+					continue;
+				}
+				try {
+					const starred = await isRepositoryStarred(moduleEntry.owner, moduleEntry.name, token);
+					starredStates.set(this.getModuleKey(moduleEntry), starred);
+				} catch (error) {
+					this.logger.warn(`Failed to fetch star state for ${moduleEntry.owner}/${moduleEntry.name}: ${error instanceof Error ? error.message : String(error)}`);
+				}
+			}
+		};
+		const workerCount = Math.max(1, Math.min(concurrency, modules.length));
+		await Promise.all(Array.from({ length: workerCount }, () => worker()));
+		return starredStates;
+	}
+
+	private updateAvailableModuleStarStates(updates: ReadonlyMap<string, boolean>): void {
+		if (updates.size === 0) {
+			return;
+		}
+		let changed = false;
+		this.availableModules = this.availableModules.map((moduleEntry) => {
+			const nextStarred = updates.get(this.getModuleKey(moduleEntry));
+			if (typeof nextStarred !== 'boolean' || moduleEntry.starred === nextStarred) {
+				return moduleEntry;
+			}
+			changed = true;
+			return {
+				...moduleEntry,
+				starred: nextStarred,
+			};
+		});
+		if (!changed) {
+			return;
+		}
+		this.applyModuleSort();
+		this.treeDataProvider.setModules(this.availableModules);
+	}
+
 	private async loadModules(options: {
 		interactiveAuth: boolean;
 		showSuccessMessage: boolean;
@@ -712,6 +844,7 @@ export class ModuleManagerController {
 			const fetchResult = await this.githubService.fetchModules(token, { etag: previousEtag });
 			if (fetchResult.notModified) {
 				this.logger.info('Module list unchanged since last fetch (304 Not Modified).');
+				this.availableModules = await this.hydrateStarStates(this.availableModules, token);
 				this.applyModuleSort();
 				this.treeDataProvider.setModules(this.availableModules);
 				await this.refreshSidebarWorkspaceState();
@@ -728,13 +861,16 @@ export class ModuleManagerController {
 				return;
 			}
 			const modules = fetchResult.modules;
-			this.availableModules = modules;
+			const [modulesWithStarState, refreshedReadme] = await Promise.all([
+				this.hydrateStarStates(modules, token),
+				this.fetchReadmesParallel(modules, token, 5),
+			]);
+			this.availableModules = modulesWithStarState;
 			this.applyModuleSort();
 			this.setSelectedModuleKeys([...this.selectedModuleKeys]);
 			// Parallelized README prefetch with bounded concurrency to avoid blocking on large lists.
-			const refreshedReadme = await this.fetchReadmesParallel(modules, token, 5);
 			Object.assign(this.readmeCache, refreshedReadme);
-			await this.cacheStore.setModuleSnapshot(modules);
+			await this.cacheStore.setModuleSnapshot(this.availableModules);
 			// README content is persisted via the filesystem asset cache only (3.5).
 			if (fetchResult.etag) {
 				await this.cacheStore.setModuleEtag(fetchResult.etag);

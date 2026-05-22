@@ -7,6 +7,7 @@ export interface CsmModuleEntry {
 	visibility: 'public' | 'private';
 	defaultBranch: string;
 	repoUrl: string;
+	starred?: boolean;
 	readme?: string;
 	updatedAt?: string;
 }

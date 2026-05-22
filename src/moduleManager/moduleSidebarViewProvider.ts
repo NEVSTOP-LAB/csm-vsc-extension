@@ -10,6 +10,7 @@ interface ModuleSidebarActions {
 	onLogin: () => void;
 	onRefresh: () => void;
 	onInitializeWorkspace: () => void;
+	onToggleStar: (entry: CsmModuleEntry) => void;
 	onOpenReadme: (entry: CsmModuleEntry) => void;
 	onPreviewReadme: (entry: CsmModuleEntry, webview: vscode.Webview) => Promise<string>;
 	onApplySelection: (entry?: CsmModuleEntry) => void;
@@ -20,7 +21,7 @@ interface ModuleSidebarActions {
 }
 
 type WebviewMessage = {
-	type: 'login' | 'refresh' | 'initializeWorkspace' | 'applySelected' | 'openReadme' | 'togglePreview' | 'applyOne' | 'toggleSelection' | 'setFilterQuery' | 'clearFilter' | 'dismissIntroTip' | 'removeModule' | 'updateModule' | 'setSortField' | 'setSortDirection' | 'showMore';
+	type: 'login' | 'refresh' | 'initializeWorkspace' | 'applySelected' | 'toggleStar' | 'openReadme' | 'togglePreview' | 'applyOne' | 'toggleSelection' | 'setFilterQuery' | 'clearFilter' | 'dismissIntroTip' | 'removeModule' | 'updateModule' | 'setSortField' | 'setSortDirection' | 'showMore';
 	moduleKey?: string;
 	selected?: boolean;
 	query?: string;
@@ -158,6 +159,13 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IM
 			case 'initializeWorkspace':
 				this.actions.onInitializeWorkspace();
 				return;
+			case 'toggleStar': {
+				const entry = message.moduleKey ? this.findEntry(message.moduleKey) : undefined;
+				if (entry) {
+					this.actions.onToggleStar(entry);
+				}
+				return;
+			}
 			case 'applySelected':
 				this.actions.onApplySelection();
 				return;

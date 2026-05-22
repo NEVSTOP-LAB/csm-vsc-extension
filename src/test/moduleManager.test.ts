@@ -176,6 +176,7 @@ suite('Module Manager Tests', () => {
 			onLogin: () => undefined,
 			onRefresh: () => undefined,
 			onInitializeWorkspace: () => undefined,
+			onToggleStar: () => undefined,
 			onOpenReadme: () => undefined,
 			onPreviewReadme: async () => '<p>Preview</p>',
 			onApplySelection: () => undefined,
@@ -196,6 +197,7 @@ suite('Module Manager Tests', () => {
 				visibility: 'private',
 				defaultBranch: 'main',
 				repoUrl: 'https://github.com/org/module-a',
+				starred: true,
 			},
 			{
 				id: 2,
@@ -206,6 +208,7 @@ suite('Module Manager Tests', () => {
 				visibility: 'public',
 				defaultBranch: 'develop',
 				repoUrl: 'https://github.com/org/module-b',
+				starred: false,
 			},
 		]);
 		provider.setWorkspaceContext({
@@ -246,6 +249,7 @@ suite('Module Manager Tests', () => {
 		assert.ok(rendered?.html.includes('.module-card.selected .select-toolbar-item {'));
 		assert.ok(rendered?.html.includes('opacity: 0;'));
 		assert.ok(rendered?.html.includes('pointer-events: none;'));
+		assert.ok(rendered?.html.includes('data-action="toggleStar" data-module-key="org&#47;module-a" title="Unstar repository" aria-label="Unstar repository" aria-pressed="true"'));
 		assert.ok(rendered?.html.includes('data-action="openReadme" data-module-key="org&#47;module-a" title="Open README" aria-label="Open README"'));
 		assert.ok(!rendered?.html.includes('Workspace: repo'));
 		assert.ok(rendered?.html.includes('Root: csm/'));
@@ -273,6 +277,7 @@ suite('Module Manager Tests', () => {
 	test('ModuleSidebarViewProvider forwards checkbox selection and card actions', () => {
 		const selectionUpdates: string[][] = [];
 		let appliedModuleName = '';
+		let toggledStarName = '';
 		let openedReadmeName = '';
 		let removedModuleName = '';
 		let updatedModuleName = '';
@@ -280,6 +285,9 @@ suite('Module Manager Tests', () => {
 			onLogin: () => undefined,
 			onRefresh: () => undefined,
 			onInitializeWorkspace: () => undefined,
+			onToggleStar: (entry) => {
+				toggledStarName = entry.name;
+			},
 			onOpenReadme: (entry) => {
 				openedReadmeName = entry.name;
 			},
@@ -310,6 +318,7 @@ suite('Module Manager Tests', () => {
 				visibility: 'public',
 				defaultBranch: 'main',
 				repoUrl: 'https://github.com/org/module-a',
+				starred: false,
 			},
 			{
 				id: 2,
@@ -320,6 +329,7 @@ suite('Module Manager Tests', () => {
 				visibility: 'public',
 				defaultBranch: 'main',
 				repoUrl: 'https://github.com/org/module-b',
+				starred: true,
 			},
 		]);
 
@@ -350,6 +360,7 @@ suite('Module Manager Tests', () => {
 			},
 		]);
 		resolved?.fireMessage({ type: 'toggleSelection', moduleKey: 'org/module-a', selected: true });
+		resolved?.fireMessage({ type: 'toggleStar', moduleKey: 'org/module-a' });
 		resolved?.fireMessage({ type: 'openReadme', moduleKey: 'org/module-a' });
 		resolved?.fireMessage({ type: 'applyOne', moduleKey: 'org/module-a' });
 		resolved?.fireMessage({ type: 'removeModule', moduleKey: 'org/module-a' });
@@ -360,6 +371,7 @@ suite('Module Manager Tests', () => {
 		assert.ok(rerendered?.html.includes('0 applied | 1 of 2 shown | 1 selected'));
 		assert.ok(!rerendered?.html.includes('data-role="apply-selected"'));
 		assert.deepStrictEqual(selectionUpdates[selectionUpdates.length - 1], ['org/module-a']);
+		assert.strictEqual(toggledStarName, 'module-a');
 		assert.strictEqual(openedReadmeName, 'module-a');
 		assert.strictEqual(appliedModuleName, 'module-a');
 		assert.strictEqual(removedModuleName, 'module-a');
@@ -372,6 +384,7 @@ suite('Module Manager Tests', () => {
 			onLogin: () => undefined,
 			onRefresh: () => undefined,
 			onInitializeWorkspace: () => undefined,
+			onToggleStar: () => undefined,
 			onOpenReadme: () => undefined,
 			onPreviewReadme: async () => '<p>Preview</p>',
 			onApplySelection: () => undefined,
@@ -412,6 +425,7 @@ suite('Module Manager Tests', () => {
 			onLogin: () => undefined,
 			onRefresh: () => undefined,
 			onInitializeWorkspace: () => undefined,
+			onToggleStar: () => undefined,
 			onOpenReadme: () => undefined,
 			onPreviewReadme: async (entry) => {
 				previewRequests += 1;
@@ -465,6 +479,7 @@ suite('Module Manager Tests', () => {
 			onLogin: () => undefined,
 			onRefresh: () => undefined,
 			onInitializeWorkspace: () => undefined,
+			onToggleStar: () => undefined,
 			onOpenReadme: () => undefined,
 			onPreviewReadme: async () => '<p>Preview</p>',
 			onApplySelection: () => undefined,

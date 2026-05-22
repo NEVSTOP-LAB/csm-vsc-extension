@@ -130,4 +130,71 @@ suite('GitHubModuleService Tests', () => {
 		const readme = await service.fetchReadme('owner', 'repo', 'token');
 		assert.strictEqual(readme, '');
 	});
+
+	test('isRepositoryStarred returns true when GitHub reports the repo is starred', async () => {
+		let requestUrl = '';
+		let authorizationHeader: string | undefined;
+		globalThis.fetch = (async (input, init) => {
+			requestUrl = String(input);
+			authorizationHeader = ((init?.headers ?? {}) as Record<string, string>).Authorization;
+			return {
+				ok: true,
+				status: 204,
+				headers: createHeaders(),
+			} as Response;
+		}) as FetchFn;
+
+		const service = new GitHubModuleService();
+		const starred = await service.isRepositoryStarred('owner', 'repo', 'token');
+
+		assert.strictEqual(requestUrl, 'https://api.github.com/user/starred/owner/repo');
+		assert.strictEqual(authorizationHeader, 'Bearer token');
+		assert.strictEqual(starred, true);
+	});
+
+	test('isRepositoryStarred returns false when GitHub reports the repo is not starred', async () => {
+		globalThis.fetch = (async () => ({
+			ok: false,
+			status: 404,
+			headers: createHeaders(),
+		}) as Response) as FetchFn;
+
+		const service = new GitHubModuleService();
+		const starred = await service.isRepositoryStarred('owner', 'repo', 'token');
+
+		assert.strictEqual(starred, false);
+	});
+
+	test('setRepositoryStarred toggles the GitHub star state with the expected HTTP verbs', async () => {
+		const requests: Array<{ url: string; method: string | undefined; authorization?: string }> = [];
+		globalThis.fetch = (async (input, init) => {
+			requests.push({
+				url: String(input),
+				method: init?.method,
+				authorization: ((init?.headers ?? {}) as Record<string, string>).Authorization,
+			});
+			return {
+				ok: true,
+				status: 204,
+				headers: createHeaders(),
+			} as Response;
+		}) as FetchFn;
+
+		const service = new GitHubModuleService();
+		await service.setRepositoryStarred('owner', 'repo', 'token', true);
+		await service.setRepositoryStarred('owner', 'repo', 'token', false);
+
+		assert.deepStrictEqual(requests, [
+			{
+				url: 'https://api.github.com/user/starred/owner/repo',
+				method: 'PUT',
+				authorization: 'Bearer token',
+			},
+			{
+				url: 'https://api.github.com/user/starred/owner/repo',
+				method: 'DELETE',
+				authorization: 'Bearer token',
+			},
+		]);
+	});
 });

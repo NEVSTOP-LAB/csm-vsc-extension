@@ -103,6 +103,10 @@ function renderIcon(name: IconName): string {
 	}
 }
 
+function renderStarIcon(filled: boolean): string {
+	return `<svg viewBox="0 0 16 16" fill="${filled ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round" aria-hidden="true"><path d="M8 2.1l1.67 3.38 3.73.54-2.7 2.63.64 3.72L8 10.62 4.66 12.37l.64-3.72-2.7-2.63 3.73-.54L8 2.1z"></path></svg>`;
+}
+
 function getFilteredModules(state: ModuleSidebarRenderState): CsmModuleEntry[] {
 	const normalizedQuery = state.filterQuery.trim().toLowerCase();
 	if (!normalizedQuery) {
@@ -133,6 +137,18 @@ function getSearchText(entry: CsmModuleEntry): string {
 
 function isModuleApplied(moduleKey: string, state: ModuleSidebarRenderState): boolean {
 	return state.appliedModuleKeys.has(moduleKey);
+}
+
+function renderStarButton(entry: CsmModuleEntry, moduleKey: string, signedIn: boolean): string {
+	if (!signedIn) {
+		return '';
+	}
+	const starred = entry.starred;
+	const title = typeof starred === 'boolean'
+		? (starred ? t('unstarRepository') : t('starRepository'))
+		: t('loadingStarStatus');
+	const active = starred === true;
+	return `<button class="icon-button${active ? ' active' : ''}" data-action="toggleStar" data-module-key="${escapeHtml(moduleKey)}" title="${escapeHtml(title)}" aria-label="${escapeHtml(title)}" aria-pressed="${active ? 'true' : 'false'}" ${typeof starred === 'boolean' ? '' : 'disabled aria-disabled="true"'}>${renderStarIcon(active)}</button>`;
 }
 
 export function renderModuleSidebarHtml(state: ModuleSidebarRenderState): string {
@@ -618,6 +634,13 @@ export function renderModuleSidebarHtml(state: ModuleSidebarRenderState): string
 			padding: 0;
 			color: var(--vscode-descriptionForeground);
 		}
+		.icon-button.active {
+			color: var(--vscode-charts-yellow, var(--vscode-textLink-foreground));
+		}
+		.icon-button[disabled] {
+			opacity: 0.5;
+			cursor: default;
+		}
 		.empty-state {
 			padding: 20px 16px;
 			border-radius: 6px;
@@ -1015,6 +1038,7 @@ function renderModuleCard(entry: CsmModuleEntry, state: ModuleSidebarRenderState
 						<input class="module-select" type="checkbox" data-role="select-toggle" data-action="toggleSelection" data-module-key="${escapeHtml(moduleKey)}" ${selected ? 'checked' : ''} aria-label="${escapeHtml(t('selectNamedModule', { name: entry.name }))}">
 					</label>
 					<div class="action-toolbar">
+							${renderStarButton(entry, moduleKey, state.signedIn)}
 						<button class="icon-button" data-action="openReadme" data-module-key="${escapeHtml(moduleKey)}" title="${escapeHtml(t('openReadme'))}" aria-label="${escapeHtml(t('openReadme'))}">${renderIcon('readme')}</button>
 					</div>
 				</div>

@@ -618,6 +618,30 @@ const messages = {
 		en: 'Open README',
 		zh: '打开 README',
 	},
+	starRepository: {
+		en: 'Star repository',
+		zh: 'Star 仓库',
+	},
+	unstarRepository: {
+		en: 'Unstar repository',
+		zh: '取消 Star',
+	},
+	loadingStarStatus: {
+		en: 'Loading star status',
+		zh: '正在加载 Star 状态',
+	},
+	unstarAction: {
+		en: 'Unstar',
+		zh: '取消 Star',
+	},
+	unstarConfirmation: {
+		en: 'Remove your star from {name}?',
+		zh: '确认取消对 {name} 的 Star 吗？',
+	},
+	starUpdateFailed: {
+		en: 'Failed to update the star for {name}: {message}',
+		zh: '更新 {name} 的 Star 状态失败：{message}',
+	},
 	branchBadge: {
 		en: 'Branch: {branch}',
 		zh: '分支：{branch}',
