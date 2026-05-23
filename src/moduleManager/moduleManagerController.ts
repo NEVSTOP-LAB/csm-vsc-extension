@@ -4,7 +4,7 @@ import * as fs from 'fs/promises';
 import { AuthService } from './authService';
 import { GitHubModuleService } from './githubModuleService';
 import { ModuleCacheStore } from './cacheStore';
-import { CsmModuleEntry, LocalModuleConfig, LocalModuleConfigEntry, ModuleApplyMethod, ModuleAuthSnapshot, ModuleCacheSnapshot } from './types';
+import { CopyModuleUpdatePreview, CsmModuleEntry, LocalModuleConfig, LocalModuleConfigEntry, ModuleApplyMethod, ModuleAuthSnapshot, ModuleCacheSnapshot, ModuleUpdateResult } from './types';
 import { ModuleTreeItem } from './moduleTreeDataProvider';
 import { ModuleSidebarViewProvider } from './moduleSidebarViewProvider';
 import { IModuleViewProvider, ModuleSortField, ModuleSortState, SidebarWorkspaceContext } from './interfaces';
@@ -21,6 +21,8 @@ const LOCAL_MODULE_CONFIG_GLOB = `**/{${LOCAL_MODULE_CONFIG_FILE},${LEGACY_LOCAL
 const WORKSPACE_INIT_CONTEXT_KEY = CONTEXT_KEYS.canInitializeWorkspace;
 const SIGNED_IN_CONTEXT_KEY = CONTEXT_KEYS.signedIn;
 const HAS_SELECTION_CONTEXT_KEY = CONTEXT_KEYS.hasSelection;
+const HAS_APPLIED_SELECTION_CONTEXT_KEY = CONTEXT_KEYS.selectionHasApplied;
+const HAS_UNAPPLIED_SELECTION_CONTEXT_KEY = CONTEXT_KEYS.selectionHasUnapplied;
 const LVPROJ_GLOB = '**/*.lvproj';
 
 function getWorkspaceInitPrompt(rootPath: string): string {
@@ -185,7 +187,7 @@ export class ModuleManagerController {
 		if (typeof this.treeDataProvider.setSortOrder === 'function') {
 			this.treeDataProvider.setSortOrder(this.currentSortState);
 		}
-		void this.setApplySelectionContext(false);
+		void this.setSelectionContexts();
 		const sidebarWorkspaceRefresh = this.refreshSidebarWorkspaceState();
 		void sidebarWorkspaceRefresh;
 
@@ -368,27 +370,37 @@ export class ModuleManagerController {
 			return;
 		}
 		const repoRoot = await this.workspaceModuleService.resolveGitRepositoryRoot(workspaceFolder.uri.fsPath);
-		if (!repoRoot) {
-			void vscode.window.showErrorMessage(t('workspaceNotGitRepo'));
-			return;
-		}
-		let config = await this.tryLoadSidebarLocalModuleConfig(workspaceFolder, repoRoot);
+		const workspaceRoot = repoRoot ?? workspaceFolder.uri.fsPath;
+		let config = await this.tryLoadSidebarLocalModuleConfig(workspaceFolder, workspaceRoot);
 		if (!config) {
 			void vscode.window.showWarningMessage(t('noWorkspaceConfig'));
 			return;
 		}
-		const target = this.findAppliedEntryFor(config, resolvedEntry);
-		if (!target) {
-			void vscode.window.showWarningMessage(t('selectedModuleNotApplied'));
+		let currentConfig = config;
+		const targets = this.getRemovalTargets(currentConfig, resolvedEntry);
+		if (targets.length === 0) {
+			void vscode.window.showWarningMessage(resolvedEntry ? t('selectedModuleNotApplied') : t('selectModuleToRemove'));
 			return;
 		}
+		if (targets.some((removable) => removable.method === 'submodule') && !repoRoot) {
+			void vscode.window.showErrorMessage(t('workspaceNotGitRepo'));
+			return;
+		}
+		const target = targets[0];
 		const targetLabel = `${target.owner}/${target.name}`;
-		const confirmation = await vscode.window.showWarningMessage(
-			t('removeConfirmation', {
+		const repository = path.basename(workspaceRoot) || workspaceFolder.name;
+		const confirmationMessage = targets.length === 1
+			? t('removeConfirmation', {
 				module: targetLabel,
-				repository: path.basename(repoRoot),
+				repository,
 				targetPath: target.path,
-			}),
+			})
+			: t('removeSelectionConfirmation', {
+				count: targets.length,
+				repository,
+			});
+		const confirmation = await vscode.window.showWarningMessage(
+			confirmationMessage,
 			{ modal: true },
 			t('removeAction'),
 		);
@@ -399,22 +411,38 @@ export class ModuleManagerController {
 			await vscode.window.withProgress(
 				{
 					location: vscode.ProgressLocation.Notification,
-					title: t('progressRemoving', { module: targetLabel }),
+					title: targets.length === 1
+						? t('progressRemoving', { module: targetLabel })
+						: t('progressRemovingSelection', { count: targets.length }),
 					cancellable: false,
 				},
-				async () => {
-					await this.workspaceModuleService.removeModule(repoRoot, target);
-					config = this.workspaceModuleService.withoutModule(config!, target.key);
-					await this.workspaceModuleService.writeConfig(config);
+				async (progress) => {
+					for (const removable of targets) {
+						await this.workspaceModuleService.removeModule(workspaceRoot, removable, repoRoot);
+						currentConfig = this.workspaceModuleService.withoutModule(currentConfig, removable.key);
+						await this.workspaceModuleService.writeConfig(currentConfig);
+						progress.report({
+							increment: 100 / targets.length,
+							message: `${removable.owner}/${removable.name}`,
+						});
+					}
 				},
 			);
 		} catch (error) {
 			const message = getUserFacingErrorMessage(error, 'remove');
-			this.logger.error(`Failed to remove module ${target.owner}/${target.name}: ${message}`);
+			if (targets.length === 1) {
+				this.logger.error(`Failed to remove module ${target.owner}/${target.name}: ${message}`);
+			} else {
+				this.logger.error(`Failed to remove ${targets.length} selected modules: ${message}`);
+			}
 			void vscode.window.showErrorMessage(t('removeFailed', { message }));
 			return;
 		}
-		void vscode.window.showInformationMessage(t('removeSuccess', { module: targetLabel }));
+		void vscode.window.showInformationMessage(
+			targets.length === 1
+				? t('removeSuccess', { module: targetLabel })
+				: t('removeSelectionSuccess', { count: targets.length }),
+		);
 		await this.refreshSidebarWorkspaceState();
 	}
 
@@ -426,11 +454,8 @@ export class ModuleManagerController {
 			return;
 		}
 		const repoRoot = await this.workspaceModuleService.resolveGitRepositoryRoot(workspaceFolder.uri.fsPath);
-		if (!repoRoot) {
-			void vscode.window.showErrorMessage(t('workspaceNotGitRepo'));
-			return;
-		}
-		let config = await this.tryLoadSidebarLocalModuleConfig(workspaceFolder, repoRoot);
+		const workspaceRoot = repoRoot ?? workspaceFolder.uri.fsPath;
+		let config = await this.tryLoadSidebarLocalModuleConfig(workspaceFolder, workspaceRoot);
 		if (!config) {
 			void vscode.window.showWarningMessage(t('noWorkspaceConfig'));
 			return;
@@ -440,11 +465,50 @@ export class ModuleManagerController {
 			void vscode.window.showWarningMessage(t('selectedModuleNotApplied'));
 			return;
 		}
+		if (target.method === 'submodule' && !repoRoot) {
+			void vscode.window.showErrorMessage(t('workspaceNotGitRepo'));
+			return;
+		}
 		const moduleEntry = this.findAvailableModule(target.owner, target.name) ?? this.synthesizeModuleEntry(target);
 		const authToken = await this.ensureToken(moduleEntry.visibility === 'private');
 		const targetLabel = `${target.owner}/${target.name}`;
 		try {
-			let updated: LocalModuleConfigEntry | undefined;
+			let copyUpdatePreview: CopyModuleUpdatePreview | undefined;
+			if (target.method === 'copy') {
+				copyUpdatePreview = await this.workspaceModuleService.previewCopyModuleUpdate(workspaceRoot, target, moduleEntry, authToken);
+				if (!copyUpdatePreview.needsUpdate) {
+					void vscode.window.showInformationMessage(t('moduleAlreadyUpToDate', {
+						module: targetLabel,
+						branch: copyUpdatePreview.branch,
+						ref: this.formatShortRef(copyUpdatePreview.latestRef),
+					}));
+					return;
+				}
+
+				const confirmation = await vscode.window.showWarningMessage(
+					copyUpdatePreview.backupDirectory
+						? t('copyUpdateConfirmation', {
+							module: targetLabel,
+							branch: copyUpdatePreview.branch,
+							currentRef: this.formatShortRef(copyUpdatePreview.currentRef),
+							latestRef: this.formatShortRef(copyUpdatePreview.latestRef),
+							backupDirectory: copyUpdatePreview.backupDirectory,
+						})
+						: t('copyUpdateConfirmationWithoutBackup', {
+							module: targetLabel,
+							branch: copyUpdatePreview.branch,
+							currentRef: this.formatShortRef(copyUpdatePreview.currentRef),
+							latestRef: this.formatShortRef(copyUpdatePreview.latestRef),
+						}),
+					{ modal: true },
+					t('updateAction'),
+				);
+				if (confirmation !== t('updateAction')) {
+					return;
+				}
+			}
+
+			let updateResult: ModuleUpdateResult | undefined;
 			await vscode.window.withProgress(
 				{
 					location: vscode.ProgressLocation.Notification,
@@ -452,15 +516,30 @@ export class ModuleManagerController {
 					cancellable: false,
 				},
 				async () => {
-					updated = await this.workspaceModuleService.updateModule(repoRoot, target, moduleEntry, authToken);
-					config = this.workspaceModuleService.withAppliedModule(config!, updated);
+					updateResult = await this.workspaceModuleService.updateModule(
+						workspaceRoot,
+						target,
+						moduleEntry,
+						authToken,
+						repoRoot,
+						copyUpdatePreview?.latestRef,
+					);
+					config = this.workspaceModuleService.withAppliedModule(config!, updateResult.entry);
 					await this.workspaceModuleService.writeConfig(config);
 				},
 			);
-			void vscode.window.showInformationMessage(t('updateSuccess', {
-				module: targetLabel,
-				ref: updated?.ref ?? t('latestRef'),
-			}));
+			void vscode.window.showInformationMessage(
+				updateResult?.backupPath
+					? t('updateSuccessWithBackup', {
+						module: targetLabel,
+						ref: updateResult.entry.ref ?? t('latestRef'),
+						backupPath: updateResult.backupPath,
+					})
+					: t('updateSuccess', {
+						module: targetLabel,
+						ref: updateResult?.entry.ref ?? t('latestRef'),
+					}),
+			);
 		} catch (error) {
 			const message = getUserFacingErrorMessage(error, 'update');
 			this.logger.error(`Failed to update module ${target.owner}/${target.name}: ${message}`);
@@ -502,6 +581,30 @@ export class ModuleManagerController {
 			return candidates.length === 1 ? candidates[0] : undefined;
 		}
 		return candidates.find((m) => m.owner === entry.owner && m.name === entry.name);
+	}
+
+	private getRemovalTargets(config: LocalModuleConfig, entry?: CsmModuleEntry): LocalModuleConfigEntry[] {
+		if (entry) {
+			const target = this.findAppliedEntryFor(config, entry);
+			return target ? [target] : [];
+		}
+
+		const selectedEntries = this.getSelectedModules();
+		if (selectedEntries.length > 0) {
+			const removableEntries: LocalModuleConfigEntry[] = [];
+			const seenKeys = new Set<string>();
+			for (const selectedEntry of selectedEntries) {
+				const target = this.findAppliedEntryFor(config, selectedEntry);
+				if (target && !seenKeys.has(target.key)) {
+					seenKeys.add(target.key);
+					removableEntries.push(target);
+				}
+			}
+			return removableEntries;
+		}
+
+		const fallback = this.findAppliedEntryFor(config, undefined);
+		return fallback ? [fallback] : [];
 	}
 
 	private findAvailableModule(owner: string, name: string): CsmModuleEntry | undefined {
@@ -990,7 +1093,7 @@ export class ModuleManagerController {
 		if (typeof this.treeDataProvider.setSelection === 'function') {
 			this.treeDataProvider.setSelection([...this.selectedModuleKeys]);
 		}
-		void this.setApplySelectionContext(this.selectedModuleKeys.size > 0);
+		void this.setSelectionContexts();
 	}
 
 	private restoreCachedAuthentication(snapshot: ModuleAuthSnapshot | undefined): void {
@@ -1118,8 +1221,27 @@ export class ModuleManagerController {
 		await vscode.commands.executeCommand('setContext', SIGNED_IN_CONTEXT_KEY, signedIn);
 	}
 
-	private async setApplySelectionContext(hasSelection: boolean): Promise<void> {
-		await vscode.commands.executeCommand('setContext', HAS_SELECTION_CONTEXT_KEY, hasSelection);
+	private async setSelectionContexts(): Promise<void> {
+		const hasSelection = this.selectedModuleKeys.size > 0;
+		let hasAppliedSelection = false;
+		let hasUnappliedSelection = false;
+
+		for (const moduleKey of this.selectedModuleKeys) {
+			if (this.appliedModuleKeys.has(moduleKey)) {
+				hasAppliedSelection = true;
+			} else {
+				hasUnappliedSelection = true;
+			}
+			if (hasAppliedSelection && hasUnappliedSelection) {
+				break;
+			}
+		}
+
+		await Promise.all([
+			vscode.commands.executeCommand('setContext', HAS_SELECTION_CONTEXT_KEY, hasSelection),
+			vscode.commands.executeCommand('setContext', HAS_APPLIED_SELECTION_CONTEXT_KEY, hasAppliedSelection),
+			vscode.commands.executeCommand('setContext', HAS_UNAPPLIED_SELECTION_CONTEXT_KEY, hasUnappliedSelection),
+		]);
 	}
 
 	private resolveModuleEntry(entry?: CsmModuleEntry | ModuleTreeItem): CsmModuleEntry | undefined {
@@ -1151,6 +1273,13 @@ export class ModuleManagerController {
 		return ModuleSidebarViewProvider.getModuleKey(entry);
 	}
 
+	private formatShortRef(ref: string | undefined): string {
+		if (!ref) {
+			return t('latestRef');
+		}
+		return ref.length > 10 ? ref.slice(0, 7) : ref;
+	}
+
 	private async refreshSidebarWorkspaceState(): Promise<void> {
 		const setContext = (context: SidebarWorkspaceContext): void => {
 			this.appliedModuleKeys.clear();
@@ -1164,6 +1293,7 @@ export class ModuleManagerController {
 			if (typeof this.treeDataProvider.setWorkspaceContext === 'function') {
 				this.treeDataProvider.setWorkspaceContext(context);
 			}
+			void this.setSelectionContexts();
 		};
 		const workspaceFolder = this.getPreferredWorkspaceFolder();
 		if (!workspaceFolder) {

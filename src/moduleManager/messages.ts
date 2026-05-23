@@ -78,6 +78,10 @@ const messages = {
 		en: 'Open the target repository as a workspace folder before removing modules.',
 		zh: '移除模块前，请先将目标仓库作为工作区文件夹打开。',
 	},
+	selectModuleToRemove: {
+		en: 'Select at least one applied module to remove from the current repository.',
+		zh: '请至少选择一个已应用到当前仓库的模块再移除。',
+	},
 	noWorkspaceConfig: {
 		en: 'No CSM module configuration found in this workspace.',
 		zh: '当前工作区中未找到 CSM 模块配置。',
@@ -90,6 +94,10 @@ const messages = {
 		en: 'Remove module {module} from {repository}? This deletes {targetPath}.',
 		zh: '要从 {repository} 移除模块 {module} 吗？这将删除 {targetPath}。',
 	},
+	removeSelectionConfirmation: {
+		en: 'Remove {count} module(s) from {repository}? This deletes their local directories.',
+		zh: '要从 {repository} 移除 {count} 个模块吗？这将删除它们的本地目录。',
+	},
 	removeAction: {
 		en: 'Remove',
 		zh: '移除',
@@ -97,6 +105,10 @@ const messages = {
 	progressRemoving: {
 		en: 'Removing {module}...',
 		zh: '正在移除 {module}...',
+	},
+	progressRemovingSelection: {
+		en: 'Removing {count} module(s)...',
+		zh: '正在移除 {count} 个模块...',
 	},
 	removeFailed: {
 		en: 'Failed to remove module: {message}',
@@ -106,6 +118,10 @@ const messages = {
 		en: 'Removed module {module}.',
 		zh: '已移除模块 {module}。',
 	},
+	removeSelectionSuccess: {
+		en: 'Removed {count} module(s).',
+		zh: '已移除 {count} 个模块。',
+	},
 	openWorkspaceBeforeUpdate: {
 		en: 'Open the target repository as a workspace folder before updating modules.',
 		zh: '更新模块前，请先将目标仓库作为工作区文件夹打开。',
@@ -114,13 +130,33 @@ const messages = {
 		en: 'Updating {module}...',
 		zh: '正在更新 {module}...',
 	},
+	updateAction: {
+		en: 'Update',
+		zh: '更新',
+	},
+	copyUpdateConfirmation: {
+		en: 'Update copied module {module} on branch {branch} from {currentRef} to {latestRef}? The current folder will be replaced, and a zip backup will be saved to {backupDirectory}.',
+		zh: '要将拷贝方式引入的模块 {module} 从分支 {branch} 的 {currentRef} 更新到 {latestRef} 吗？当前模块目录将被整体替换，并在 {backupDirectory} 中保存一个 zip 备份。',
+	},
+	copyUpdateConfirmationWithoutBackup: {
+		en: 'Update copied module {module} on branch {branch} from {currentRef} to {latestRef}? The current folder will be replaced. No local folder was found to back up.',
+		zh: '要将拷贝方式引入的模块 {module} 从分支 {branch} 的 {currentRef} 更新到 {latestRef} 吗？当前模块目录将被整体替换，但未找到可备份的本地目录。',
+	},
 	latestRef: {
 		en: 'latest',
 		zh: '最新版本',
 	},
+	moduleAlreadyUpToDate: {
+		en: 'Module {module} is already up to date on {branch} ({ref}).',
+		zh: '模块 {module} 在分支 {branch} 上已经是最新版本（{ref}）。',
+	},
 	updateSuccess: {
 		en: 'Updated {module} to {ref}.',
 		zh: '已将 {module} 更新到 {ref}。',
+	},
+	updateSuccessWithBackup: {
+		en: 'Updated {module} to {ref}. Backup saved to {backupPath}.',
+		zh: '已将 {module} 更新到 {ref}。备份已保存到 {backupPath}。',
 	},
 	updateFailed: {
 		en: 'Failed to update module: {message}',

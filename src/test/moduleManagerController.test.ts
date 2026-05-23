@@ -628,7 +628,7 @@ suite('ModuleManagerController Regression Tests', () => {
 		assert.strictEqual(renderedModules[0]?.starred, true);
 	});
 
-	test('selection state toggles apply toolbar context', () => {
+	test('selection state toggles apply and remove toolbar contexts by applied status', async () => {
 		const controller = createController() as any;
 		controller.availableModules = [
 			{
@@ -641,6 +641,16 @@ suite('ModuleManagerController Regression Tests', () => {
 				defaultBranch: 'main',
 				repoUrl: 'https://github.com/org/module-a',
 			},
+			{
+				id: 2,
+				owner: 'org',
+				name: 'module-b',
+				description: 'demo',
+				topics: ['csm-modsets'],
+				visibility: 'public',
+				defaultBranch: 'main',
+				repoUrl: 'https://github.com/org/module-b',
+			},
 		];
 		controller.treeDataProvider = {
 			setAuthenticated: () => undefined,
@@ -650,11 +660,315 @@ suite('ModuleManagerController Regression Tests', () => {
 			setSelection: () => undefined,
 		};
 
-		controller.setSelectedModuleKeys(['org/module-a']);
+		controller.setSelectedModuleKeys(['org/module-a', 'org/module-b']);
 		assert.strictEqual(mocked.__getContextValue('csmModules.hasSelection'), true);
+		assert.strictEqual(mocked.__getContextValue('csmModules.selectionHasApplied'), false);
+		assert.strictEqual(mocked.__getContextValue('csmModules.selectionHasUnapplied'), true);
+
+		controller.appliedModuleKeys.add('org/module-a');
+		await controller.setSelectionContexts();
+		assert.strictEqual(mocked.__getContextValue('csmModules.selectionHasApplied'), true);
+		assert.strictEqual(mocked.__getContextValue('csmModules.selectionHasUnapplied'), true);
+
+		controller.appliedModuleKeys.add('org/module-b');
+		await controller.setSelectionContexts();
+		assert.strictEqual(mocked.__getContextValue('csmModules.selectionHasApplied'), true);
+		assert.strictEqual(mocked.__getContextValue('csmModules.selectionHasUnapplied'), false);
 
 		controller.setSelectedModuleKeys([]);
 		assert.strictEqual(mocked.__getContextValue('csmModules.hasSelection'), false);
+		assert.strictEqual(mocked.__getContextValue('csmModules.selectionHasApplied'), false);
+		assert.strictEqual(mocked.__getContextValue('csmModules.selectionHasUnapplied'), false);
+	});
+
+	test('remove command removes only applied modules from a mixed selection', async () => {
+		const controller = createController() as any;
+		let config: LocalModuleConfig = {
+			version: '2',
+			root: 'csm',
+			configPath: 'd:/repo/csm/csm-modules.yaml',
+			modules: {
+				org__module_a: {
+					key: 'org__module_a',
+					name: 'module-a',
+					owner: 'org',
+					source: 'https://github.com/org/module-a',
+					method: 'copy',
+					path: 'csm/module-a',
+					ref: 'abc123',
+					branch: 'main',
+				},
+				org__module_b: {
+					key: 'org__module_b',
+					name: 'module-b',
+					owner: 'org',
+					source: 'https://github.com/org/module-b',
+					method: 'copy',
+					path: 'csm/module-b',
+					ref: 'def456',
+					branch: 'main',
+				},
+			},
+		};
+		const removedModules: string[] = [];
+		const writtenModuleKeys: string[][] = [];
+
+		controller.availableModules = [
+			{
+				id: 1,
+				owner: 'org',
+				name: 'module-a',
+				description: 'demo',
+				topics: ['csm-modsets'],
+				visibility: 'public',
+				defaultBranch: 'main',
+				repoUrl: 'https://github.com/org/module-a',
+			},
+			{
+				id: 2,
+				owner: 'org',
+				name: 'module-b',
+				description: 'demo',
+				topics: ['csm-modsets'],
+				visibility: 'public',
+				defaultBranch: 'main',
+				repoUrl: 'https://github.com/org/module-b',
+			},
+			{
+				id: 3,
+				owner: 'org',
+				name: 'module-c',
+				description: 'demo',
+				topics: ['csm-modsets'],
+				visibility: 'public',
+				defaultBranch: 'main',
+				repoUrl: 'https://github.com/org/module-c',
+			},
+		];
+		controller.treeDataProvider = {
+			setAuthenticated: () => undefined,
+			setError: () => undefined,
+			setLoading: () => undefined,
+			setModules: () => undefined,
+			setSelection: () => undefined,
+		};
+		controller.appliedModuleKeys.clear();
+		controller.appliedModuleKeys.add('org/module-a');
+		controller.appliedModuleKeys.add('org/module-b');
+		controller.workspaceModuleService = {
+			resolveGitRepositoryRoot: async () => 'd:/repo',
+			removeModule: async (_repoRoot: string, entry: LocalModuleConfig['modules'][string]) => {
+				removedModules.push(`${entry.owner}/${entry.name}`);
+			},
+			withoutModule: (currentConfig: LocalModuleConfig, moduleKey: string) => {
+				const { [moduleKey]: _omitted, ...remainingModules } = currentConfig.modules;
+				config = {
+					...currentConfig,
+					modules: remainingModules,
+				};
+				return config;
+			},
+			writeConfig: async (nextConfig: LocalModuleConfig) => {
+				writtenModuleKeys.push(Object.keys(nextConfig.modules));
+			},
+		};
+		controller.resolveWorkspaceFolder = async () => ({ name: 'repo', uri: vscode.Uri.file('d:/repo') });
+		controller.tryLoadSidebarLocalModuleConfig = async () => config;
+		controller.refreshSidebarWorkspaceState = async () => {
+			controller.appliedModuleKeys.clear();
+			await controller.setSelectionContexts();
+		};
+		controller.setSelectedModuleKeys(['org/module-a', 'org/module-b', 'org/module-c']);
+		mocked.__setWarningMessageResponse('Remove');
+
+		await controller.removeModuleCommand();
+
+		assert.deepStrictEqual(removedModules, ['org/module-a', 'org/module-b']);
+		assert.deepStrictEqual(writtenModuleKeys, [['org__module_b'], []]);
+		assert.ok(mocked.__getLastWarningPrompt()?.message.includes('Remove 2 module(s)'));
+		assert.strictEqual(mocked.__getContextValue('csmModules.hasSelection'), true);
+		assert.strictEqual(mocked.__getContextValue('csmModules.selectionHasApplied'), false);
+		assert.strictEqual(mocked.__getContextValue('csmModules.selectionHasUnapplied'), true);
+		const infos = mocked.__getMessageLog().filter((message) => message.level === 'info').map((message) => message.text);
+		assert.ok(infos.some((text) => text.includes('Removed 2 module(s).')));
+	});
+
+	test('update command allows copy modules in a non-git workspace after confirmation', async () => {
+		const controller = createController() as any;
+		let config: LocalModuleConfig = {
+			version: '2',
+			root: 'csm',
+			configPath: 'd:/plain-workspace/csm/csm-modules.yaml',
+			modules: {
+				org__module_copy: {
+					key: 'org__module_copy',
+					name: 'module-copy',
+					owner: 'org',
+					source: 'https://github.com/org/module-copy',
+					method: 'copy',
+					path: 'csm/module-copy',
+					ref: 'abc1234567890',
+					branch: 'main',
+				},
+			},
+		};
+		let previewWorkspaceRoot = '';
+		let updateCall:
+			| { workspaceRoot: string; repoRoot?: string; latestRef?: string }
+			| undefined;
+
+		controller.availableModules = [
+			{
+				id: 1,
+				owner: 'org',
+				name: 'module-copy',
+				description: 'demo',
+				topics: ['csm-modsets'],
+				visibility: 'public',
+				defaultBranch: 'main',
+				repoUrl: 'https://github.com/org/module-copy',
+			},
+		];
+		controller.workspaceModuleService = {
+			resolveGitRepositoryRoot: async () => undefined,
+			previewCopyModuleUpdate: async (workspaceRoot: string) => {
+				previewWorkspaceRoot = workspaceRoot;
+				return {
+					currentRef: 'abc1234567890',
+					latestRef: 'def4567890123',
+					branch: 'main',
+					needsUpdate: true,
+					backupDirectory: 'd:/plain-workspace/.csm-module-backups',
+				};
+			},
+			updateModule: async (
+				workspaceRoot: string,
+				entry: LocalModuleConfig['modules'][string],
+				_moduleEntry: CsmModuleEntry,
+				_authToken?: string,
+				repoRoot?: string,
+				latestRef?: string,
+			) => {
+				updateCall = { workspaceRoot, repoRoot, latestRef };
+				return {
+					entry: { ...entry, ref: latestRef ?? 'def4567890123' },
+					backupPath: 'd:/plain-workspace/.csm-module-backups/org__module-copy.zip',
+				};
+			},
+			withAppliedModule: (currentConfig: LocalModuleConfig, entry: LocalModuleConfig['modules'][string]) => {
+				config = {
+					...currentConfig,
+					modules: {
+						...currentConfig.modules,
+						[entry.key]: entry,
+					},
+				};
+				return config;
+			},
+			writeConfig: async () => undefined,
+		};
+		controller.resolveWorkspaceFolder = async () => ({ name: 'plain-workspace', uri: vscode.Uri.file('d:/plain-workspace') });
+		controller.tryLoadSidebarLocalModuleConfig = async () => config;
+		controller.refreshSidebarWorkspaceState = async () => undefined;
+		mocked.__setWarningMessageResponse('Update');
+
+		await controller.updateModuleCommand();
+
+		assert.strictEqual(previewWorkspaceRoot, 'd:/plain-workspace');
+		assert.deepStrictEqual(updateCall, {
+			workspaceRoot: 'd:/plain-workspace',
+			repoRoot: undefined,
+			latestRef: 'def4567890123',
+		});
+		assert.ok(mocked.__getLastWarningPrompt()?.message.includes('.csm-module-backups'));
+		const errors = mocked.__getMessageLog().filter((message) => message.level === 'error').map((message) => message.text);
+		assert.ok(!errors.some((text) => text.includes('not a Git repository')));
+		const infos = mocked.__getMessageLog().filter((message) => message.level === 'info').map((message) => message.text);
+		assert.ok(infos.some((text) => text.includes('Backup saved to d:/plain-workspace/.csm-module-backups/org__module-copy.zip.')));
+	});
+
+	test('remove command allows copy modules in a non-git workspace', async () => {
+		const controller = createController() as any;
+		let config: LocalModuleConfig = {
+			version: '2',
+			root: 'csm',
+			configPath: 'd:/plain-workspace/csm/csm-modules.yaml',
+			modules: {
+				org__module_copy: {
+					key: 'org__module_copy',
+					name: 'module-copy',
+					owner: 'org',
+					source: 'https://github.com/org/module-copy',
+					method: 'copy',
+					path: 'csm/module-copy',
+					ref: 'abc123',
+					branch: 'main',
+				},
+			},
+		};
+		const removeCalls: Array<{ workspaceRoot: string; repoRoot?: string; module: string }> = [];
+
+		controller.availableModules = [
+			{
+				id: 1,
+				owner: 'org',
+				name: 'module-copy',
+				description: 'demo',
+				topics: ['csm-modsets'],
+				visibility: 'public',
+				defaultBranch: 'main',
+				repoUrl: 'https://github.com/org/module-copy',
+			},
+		];
+		controller.treeDataProvider = {
+			setAuthenticated: () => undefined,
+			setError: () => undefined,
+			setLoading: () => undefined,
+			setModules: () => undefined,
+			setSelection: () => undefined,
+		};
+		controller.appliedModuleKeys.clear();
+		controller.appliedModuleKeys.add('org/module-copy');
+		controller.workspaceModuleService = {
+			resolveGitRepositoryRoot: async () => undefined,
+			removeModule: async (workspaceRoot: string, entry: LocalModuleConfig['modules'][string], repoRoot?: string) => {
+				removeCalls.push({
+					workspaceRoot,
+					repoRoot,
+					module: `${entry.owner}/${entry.name}`,
+				});
+			},
+			withoutModule: (currentConfig: LocalModuleConfig, moduleKey: string) => {
+				const { [moduleKey]: _omitted, ...remainingModules } = currentConfig.modules;
+				config = {
+					...currentConfig,
+					modules: remainingModules,
+				};
+				return config;
+			},
+			writeConfig: async () => undefined,
+		};
+		controller.resolveWorkspaceFolder = async () => ({ name: 'plain-workspace', uri: vscode.Uri.file('d:/plain-workspace') });
+		controller.tryLoadSidebarLocalModuleConfig = async () => config;
+		controller.refreshSidebarWorkspaceState = async () => {
+			controller.appliedModuleKeys.clear();
+			await controller.setSelectionContexts();
+		};
+		controller.setSelectedModuleKeys(['org/module-copy']);
+		mocked.__setWarningMessageResponse('Remove');
+
+		await controller.removeModuleCommand();
+
+		assert.deepStrictEqual(removeCalls, [{
+			workspaceRoot: 'd:/plain-workspace',
+			repoRoot: undefined,
+			module: 'org/module-copy',
+		}]);
+		assert.ok(mocked.__getLastWarningPrompt()?.message.includes('module-copy'));
+		const errors = mocked.__getMessageLog().filter((message) => message.level === 'error').map((message) => message.text);
+		assert.ok(!errors.some((text) => text.includes('not a Git repository')));
+		const infos = mocked.__getMessageLog().filter((message) => message.level === 'info').map((message) => message.text);
+		assert.ok(infos.some((text) => text.includes('Removed module org/module-copy.')));
 	});
 
 	test('missing session clears signed-in toolbar context', async () => {

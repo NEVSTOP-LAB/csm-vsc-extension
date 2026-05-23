@@ -3,6 +3,7 @@ import { execFileSync } from 'child_process';
 import * as fs from 'fs/promises';
 import * as os from 'os';
 import * as path from 'path';
+import JSZip from 'jszip';
 import { ModuleCacheStore, mapRepoToModuleEntry } from '../moduleManager';
 import { ReadmeAssetCache } from '../moduleManager/readmeAssetCache';
 import { ModuleSidebarViewProvider } from '../moduleManager/moduleSidebarViewProvider';
@@ -682,6 +683,62 @@ suite('Module Manager Tests', () => {
 			const yamlText = await fs.readFile(config?.configPath ?? '', 'utf8');
 			assert.ok(yamlText.includes('modules:'));
 			assert.ok(yamlText.includes('local__module-a:'));
+		} finally {
+			await fs.rm(tempRoot, { recursive: true, force: true });
+		}
+	});
+
+	test('WorkspaceModuleService previews and updates copy modules with a zip backup', async function () {
+		this.timeout(20000);
+		const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'csm-modules-copy-update-'));
+		const moduleRepo = path.join(tempRoot, 'module-copy-repo');
+		const workspaceRoot = path.join(tempRoot, 'plain-workspace');
+		const service = new WorkspaceModuleService();
+		try {
+			await fs.mkdir(moduleRepo, { recursive: true });
+			runGit(moduleRepo, ['init', '--initial-branch=main']);
+			runGit(moduleRepo, ['config', 'user.name', 'Test User']);
+			runGit(moduleRepo, ['config', 'user.email', 'test@example.com']);
+			await fs.writeFile(path.join(moduleRepo, 'README.md'), '# v1\n', 'utf8');
+			runGit(moduleRepo, ['add', 'README.md']);
+			runGit(moduleRepo, ['commit', '-m', 'init module']);
+
+			await fs.mkdir(workspaceRoot, { recursive: true });
+			const config = await service.initializeConfig(workspaceRoot, 'csm');
+			const moduleEntry: CsmModuleEntry = {
+				id: 1,
+				owner: 'org',
+				name: 'module-copy',
+				description: 'demo',
+				topics: ['csm-modsets'],
+				visibility: 'public',
+				defaultBranch: 'main',
+				repoUrl: moduleRepo,
+			};
+			const applied = await service.applyModule(workspaceRoot, config, moduleEntry, 'copy');
+			assert.ok((await fs.readFile(path.join(workspaceRoot, 'csm', 'module-copy', 'README.md'), 'utf8')).includes('# v1'));
+
+			await fs.writeFile(path.join(moduleRepo, 'README.md'), '# v2\n', 'utf8');
+			runGit(moduleRepo, ['add', 'README.md']);
+			runGit(moduleRepo, ['commit', '-m', 'update module']);
+			const latestRef = runGit(moduleRepo, ['rev-parse', 'HEAD']);
+
+			const preview = await service.previewCopyModuleUpdate(workspaceRoot, applied, moduleEntry);
+			assert.strictEqual(preview.needsUpdate, true);
+			assert.strictEqual(preview.latestRef, latestRef);
+			assert.ok(preview.backupDirectory?.endsWith('.csm-module-backups'));
+
+			const result = await service.updateModule(workspaceRoot, applied, moduleEntry, undefined, undefined, preview.latestRef);
+			assert.strictEqual(result.entry.ref, latestRef);
+			assert.ok(result.backupPath);
+			assert.ok((await fs.readFile(path.join(workspaceRoot, 'csm', 'module-copy', 'README.md'), 'utf8')).includes('# v2'));
+
+			const backupZip = await JSZip.loadAsync(await fs.readFile(result.backupPath!));
+			const backupReadme = await backupZip.file('module-copy/README.md')?.async('string');
+			assert.ok(backupReadme?.includes('# v1'));
+
+			const secondPreview = await service.previewCopyModuleUpdate(workspaceRoot, result.entry, moduleEntry);
+			assert.strictEqual(secondPreview.needsUpdate, false);
 		} finally {
 			await fs.rm(tempRoot, { recursive: true, force: true });
 		}

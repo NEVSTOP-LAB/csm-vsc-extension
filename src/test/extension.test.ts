@@ -336,6 +336,7 @@ suite('Language Definition Tests', () => {
         const webviewContextMenus: Array<{ command: string; when?: string }> = pkg.contributes?.menus?.['webview/context'] ?? [];
         const initMenu = viewTitleMenus.find((menu) => menu.command === 'csmModules.initializeWorkspace');
         const applyMenu = viewTitleMenus.find((menu) => menu.command === 'csmModules.applyToWorkspace');
+        const removeMenu = viewTitleMenus.find((menu) => menu.command === 'csmModules.removeModule');
         const loginMenu = viewTitleMenus.find((menu) => menu.command === 'csmModules.login');
         const logoutMenu = viewTitleMenus.find((menu) => menu.command === 'csmModules.logout');
         const contextApplyCommand = commands.find((c) => c.command === 'csmModules.contextApplyModule');
@@ -356,10 +357,12 @@ suite('Language Definition Tests', () => {
         assert.ok(views.some((v: { id: string }) => v.id === 'csmModules.view'), 'csmModules.view should be declared');
         assert.ok(initMenu, 'csmModules.initializeWorkspace should be available from the view title toolbar');
         assert.ok(applyMenu, 'csmModules.applyToWorkspace should be available from the view title toolbar');
+        assert.ok(removeMenu, 'csmModules.removeModule should be available from the view title toolbar');
         assert.ok(loginMenu, 'csmModules.login should be available from the view title toolbar');
         assert.ok(logoutMenu, 'csmModules.logout should be available from the view title toolbar');
         assert.ok(initMenu?.when?.includes('csmModules.canInitializeWorkspace'), 'initialize toolbar entry should only show when a workspace needs initialization');
-        assert.ok(applyMenu?.when?.includes('csmModules.hasSelection'), 'apply toolbar entry should only show when at least one module is selected');
+        assert.ok(applyMenu?.when?.includes('csmModules.selectionHasUnapplied'), 'apply toolbar entry should only show when the selection includes unapplied modules');
+        assert.ok(removeMenu?.when?.includes('csmModules.selectionHasApplied'), 'remove toolbar entry should only show when the selection includes applied modules');
         assert.ok(loginMenu?.when?.includes('!csmModules.signedIn'), 'login toolbar entry should hide after GitHub sign-in succeeds');
         assert.ok(logoutMenu?.when?.includes('csmModules.signedIn'), 'logout toolbar entry should only show after GitHub sign-in succeeds');
         assert.strictEqual(contextApplyCommand?.enablement, '!moduleApplied', 'context apply command should disable for applied modules');

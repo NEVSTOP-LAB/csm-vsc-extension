@@ -1,8 +1,9 @@
 import * as fs from 'fs/promises';
 import * as os from 'os';
 import * as path from 'path';
+import JSZip from 'jszip';
 import * as yaml from 'js-yaml';
-import { CsmModuleEntry, LocalModuleConfig, LocalModuleConfigEntry, ModuleApplyMethod } from './types';
+import { CopyModuleUpdatePreview, CsmModuleEntry, LocalModuleConfig, LocalModuleConfigEntry, ModuleApplyMethod, ModuleUpdateResult } from './types';
 import { GitService, IGitRunner } from './gitService';
 
 const CONFIG_VERSION = '2';
@@ -38,7 +39,7 @@ function stripGitSuffix(value: string): string {
 }
 
 export class WorkspaceModuleService {
-	constructor(private readonly gitRunner: IGitRunner = new GitService()) {}
+	constructor(private readonly gitRunner: IGitRunner = new GitService()) { }
 
 	public normalizeRootPath(value: string): string {
 		const trimmed = value.trim();
@@ -152,26 +153,28 @@ export class WorkspaceModuleService {
 	}
 
 	/**
-	 * Remove a module from the workspace: deinit the submodule (if any), delete the
-	 * working tree, and erase any stale `.git/modules/<path>` cache.
+	 * Remove a module from the workspace: for submodules, deinit the git state and
+	 * erase any stale `.git/modules/<path>` cache; for copies, just delete the local
+	 * directory. Both paths rely on the caller to confirm the destructive action.
 	 *
 	 * Review item 7.1 — implements `csmModules.removeModule` end-to-end.
 	 */
-	public async removeModule(repoRoot: string, entry: LocalModuleConfigEntry): Promise<void> {
+	public async removeModule(workspaceRoot: string, entry: LocalModuleConfigEntry, repoRoot?: string): Promise<void> {
 		const targetRelativePath = this.normalizeRootPath(entry.path);
-		const targetAbsolute = this.toAbsoluteTargetPath(repoRoot, targetRelativePath);
+		const targetAbsolute = this.toAbsoluteTargetPath(workspaceRoot, targetRelativePath);
 		if (entry.method === 'submodule') {
+			const gitRoot = repoRoot ?? workspaceRoot;
 			try {
-				await this.runGit(repoRoot, ['submodule', 'deinit', '-f', '--', targetRelativePath]);
+				await this.runGit(gitRoot, ['submodule', 'deinit', '-f', '--', targetRelativePath]);
 			} catch {
 				// already deinitialized; continue
 			}
 			try {
-				await this.runGit(repoRoot, ['rm', '-rf', '--', targetRelativePath]);
+				await this.runGit(gitRoot, ['rm', '-rf', '--', targetRelativePath]);
 			} catch {
 				// fall through to manual removal
 			}
-			const submoduleGitDir = path.join(repoRoot, '.git', 'modules', ...targetRelativePath.split('/'));
+			const submoduleGitDir = path.join(gitRoot, '.git', 'modules', ...targetRelativePath.split('/'));
 			try {
 				await fs.rm(submoduleGitDir, { recursive: true, force: true });
 			} catch {
@@ -191,33 +194,64 @@ export class WorkspaceModuleService {
 	 * For submodules, runs `git submodule update --remote`. For copies, recreates the
 	 * working tree from a fresh shallow clone (review item 7.2).
 	 */
-	public async updateModule(
-		repoRoot: string,
+	public async previewCopyModuleUpdate(
+		workspaceRoot: string,
 		entry: LocalModuleConfigEntry,
 		moduleEntry: CsmModuleEntry,
 		authToken?: string,
-	): Promise<LocalModuleConfigEntry> {
+	): Promise<CopyModuleUpdatePreview> {
 		const targetRelativePath = this.normalizeRootPath(entry.path);
-		const targetAbsolute = this.toAbsoluteTargetPath(repoRoot, targetRelativePath);
+		const branch = entry.branch || moduleEntry.defaultBranch || 'main';
+		const latestRef = await this.resolveRemoteBranchRef(workspaceRoot, entry.source, branch, authToken);
+		const targetAbsolute = this.toAbsoluteTargetPath(workspaceRoot, targetRelativePath);
+		const backupDirectory = await this.pathExists(targetAbsolute)
+			? this.getBackupDirectory(workspaceRoot)
+			: undefined;
+		return {
+			currentRef: this.normalizeRef(entry.ref),
+			latestRef,
+			branch,
+			needsUpdate: this.normalizeRef(entry.ref) !== latestRef,
+			backupDirectory,
+		};
+	}
+
+	public async updateModule(
+		workspaceRoot: string,
+		entry: LocalModuleConfigEntry,
+		moduleEntry: CsmModuleEntry,
+		authToken?: string,
+		repoRoot?: string,
+		latestRefHint?: string,
+	): Promise<ModuleUpdateResult> {
+		const targetRelativePath = this.normalizeRootPath(entry.path);
+		const targetAbsolute = this.toAbsoluteTargetPath(workspaceRoot, targetRelativePath);
 
 		if (entry.method === 'submodule') {
-			await this.runGit(repoRoot, ['submodule', 'update', '--remote', '--', targetRelativePath], authToken, entry.source);
+			const gitRoot = repoRoot ?? workspaceRoot;
+			await this.runGit(gitRoot, ['submodule', 'update', '--remote', '--', targetRelativePath], authToken, entry.source);
 			const head = await this.runGit(targetAbsolute, ['rev-parse', 'HEAD']);
-			return { ...entry, ref: head };
+			return {
+				entry: { ...entry, ref: head },
+			};
 		}
 
-		// copy mode: rewrite the directory from a fresh shallow clone.
-		await fs.rm(targetAbsolute, { recursive: true, force: true });
+		// copy mode: clone the latest branch tip, back up the existing folder, then rewrite it.
 		const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'csm-update-'));
 		try {
-			const branch = entry.branch || moduleEntry.defaultBranch;
+			const branch = entry.branch || moduleEntry.defaultBranch || 'main';
 			await this.runGit(tmpDir, ['clone', '--depth', '1', '--branch', branch, entry.source, 'src'], authToken, entry.source);
 			const cloneRoot = path.join(tmpDir, 'src');
-			const head = await this.runGit(cloneRoot, ['rev-parse', 'HEAD']);
+			const head = (await this.runGit(cloneRoot, ['rev-parse', 'HEAD'])) || latestRefHint || this.normalizeRef(entry.ref);
+			const backupPath = await this.backupModuleDirectoryAsZip(workspaceRoot, entry);
+			await fs.rm(targetAbsolute, { recursive: true, force: true });
 			await fs.mkdir(path.dirname(targetAbsolute), { recursive: true });
 			await fs.cp(cloneRoot, targetAbsolute, { recursive: true });
 			await fs.rm(path.join(targetAbsolute, '.git'), { recursive: true, force: true });
-			return { ...entry, ref: head, branch };
+			return {
+				entry: { ...entry, ref: head, branch },
+				backupPath,
+			};
 		} finally {
 			await fs.rm(tmpDir, { recursive: true, force: true });
 		}
@@ -530,6 +564,75 @@ export class WorkspaceModuleService {
 			}
 			await fs.copyFile(sourcePath, targetPath);
 		}
+	}
+
+	private normalizeRef(value: string | undefined): string {
+		return value?.trim() ?? '';
+	}
+
+	private getBackupDirectory(workspaceRoot: string): string {
+		return path.join(workspaceRoot, '.csm-module-backups');
+	}
+
+	private async pathExists(targetPath: string): Promise<boolean> {
+		try {
+			await fs.lstat(targetPath);
+			return true;
+		} catch {
+			return false;
+		}
+	}
+
+	private async resolveRemoteBranchRef(cwd: string, repoUrl: string, branch: string, authToken?: string): Promise<string> {
+		const stdout = await this.runGit(cwd, ['ls-remote', repoUrl, `refs/heads/${branch}`], authToken, repoUrl);
+		const match = stdout.match(/^([0-9a-f]{40})\s+/im);
+		if (!match?.[1]) {
+			throw new Error(`Unable to determine the latest revision for branch ${branch}.`);
+		}
+		return match[1];
+	}
+
+	private async backupModuleDirectoryAsZip(workspaceRoot: string, entry: LocalModuleConfigEntry): Promise<string | undefined> {
+		const targetRelativePath = this.normalizeRootPath(entry.path);
+		const targetAbsolute = this.toAbsoluteTargetPath(workspaceRoot, targetRelativePath);
+		if (!await this.pathExists(targetAbsolute)) {
+			return undefined;
+		}
+
+		const backupDirectory = this.getBackupDirectory(workspaceRoot);
+		await fs.mkdir(backupDirectory, { recursive: true });
+		const backupFileName = `${sanitizeModuleKeyPart(entry.owner || 'local')}__${sanitizeModuleKeyPart(entry.name)}-${this.createBackupTimestamp()}.zip`;
+		const backupPath = path.join(backupDirectory, backupFileName);
+		const zip = new JSZip();
+		await this.addDirectoryToZip(zip, targetAbsolute, path.posix.basename(targetRelativePath));
+		const buffer = await zip.generateAsync({
+			type: 'nodebuffer',
+			compression: 'DEFLATE',
+			compressionOptions: { level: 9 },
+		});
+		await fs.writeFile(backupPath, buffer);
+		return backupPath;
+	}
+
+	private async addDirectoryToZip(zip: JSZip, sourceDir: string, zipDir: string): Promise<void> {
+		const entries = await fs.readdir(sourceDir, { withFileTypes: true });
+		for (const entry of entries) {
+			const sourcePath = path.join(sourceDir, entry.name);
+			const zipPath = path.posix.join(zipDir, entry.name);
+			if (entry.isDirectory()) {
+				await this.addDirectoryToZip(zip, sourcePath, zipPath);
+				continue;
+			}
+			if (entry.isSymbolicLink()) {
+				zip.file(`${zipPath}.symlink`, await fs.readlink(sourcePath));
+				continue;
+			}
+			zip.file(zipPath, await fs.readFile(sourcePath));
+		}
+	}
+
+	private createBackupTimestamp(): string {
+		return new Date().toISOString().replace(/[:.]/g, '-');
 	}
 
 	private parseLegacyConfig(raw: string): ParsedConfigShape {

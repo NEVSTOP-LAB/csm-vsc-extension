@@ -32,6 +32,19 @@ export interface LocalModuleConfig {
 	modules: Record<string, LocalModuleConfigEntry>;
 }
 
+export interface CopyModuleUpdatePreview {
+	currentRef: string;
+	latestRef: string;
+	branch: string;
+	needsUpdate: boolean;
+	backupDirectory?: string;
+}
+
+export interface ModuleUpdateResult {
+	entry: LocalModuleConfigEntry;
+	backupPath?: string;
+}
+
 export interface ModuleCacheSnapshot {
 	schemaVersion?: number;
 	lastRefreshAt: string;

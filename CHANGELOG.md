@@ -28,6 +28,7 @@
 - UI：模块卡片重新整理为“顶行标题/provider + 工具条、全宽摘要、底部全宽 tags”布局，减少左右分栏造成的压缩感
 - UI：侧边栏整体字号与图标尺寸上调一档；模块卡片与 fallback tree 中会自动隐藏内部发现用 topic（如 `csm-modsets`、`labview-csm`），并且这些内部 topic 不再参与侧边栏前端搜索
 - UI：侧边栏继续显示当前工作区摘要，已应用到当前仓库配置的模块会显示 `Applied` 状态徽标
+- UI：多选模块时，标题栏批量操作会按所选模块的当前状态拆分显示；混合选择同时显示 `Apply to Current Repository` 与 `Remove from Current Repository`，全未安装仅显示 `Apply`，全已安装仅显示 `Remove`
 - UI：模块卡片右键菜单改为 VS Code 原生 `webview/context` 菜单，`Apply` / `Update` / `Remove` / `Open README` / 选择操作会按当前模块状态自动启用、禁用或切换
 - UI：侧边栏顶部搜索框改为更接近扩展市场的搜索栏样式，末尾集成 `Filter` 菜单；菜单内拆分 `Type` 与 `Order` 两组排序选项，并将 `applied / available / selected` 状态信息合并到同一行展示
 - UI：点击模块卡片正文可在侧边栏内展开 README Markdown 预览，右上角 `README` 按钮继续保留完整 README 面板入口
@@ -43,6 +44,8 @@
 - 兼容：旧版 `csm-modules.lvcsm` 配置可继续读取，并在后续写回时迁移到 YAML
 - 交互：应用模块前增加方式选择与二次确认，并补齐非 Git 仓库、重复目标路径、copy 目标已存在等基础错误提示
 - 交互：非 Git 工作区应用模块时不再直接报错，而是保留 `submodule` 模式为不可用提示，并仅允许继续使用 `copy` 模式
+- 交互：非 Git 工作区现在也可移除以 `copy` 模式引入的模块；仅在目标模块为 `submodule` 时才强制要求 Git 仓库，并继续保留移除前二次确认
+- 交互：非 Git 工作区现在也可更新以 `copy` 模式引入的模块；更新前会先比较远端分支最新提交，确认后把当前模块目录打包到备份文件夹中的 zip，再重新下载替换整个目录
 - UI：非 Git 工作区的模块列表现在会优先根据本地 `csm-modules.yaml` 配置文件标记已应用模块，不再错误依赖 Git submodule 状态
 - 错误处理：刷新 / 应用 / 更新 / 删除模块时，会把常见 GitHub HTTP 状态、Git 权限失败、Git 缺失、网络错误与 YAML 解析错误转换为更可操作的提示
 
