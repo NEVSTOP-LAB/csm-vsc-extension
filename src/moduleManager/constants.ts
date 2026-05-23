@@ -49,6 +49,8 @@ export const CONTEXT_KEYS = {
 	canInitializeWorkspace: 'csmModules.canInitializeWorkspace',
 	signedIn: 'csmModules.signedIn',
 	hasSelection: 'csmModules.hasSelection',
+	selectionHasApplied: 'csmModules.selectionHasApplied',
+	selectionHasUnapplied: 'csmModules.selectionHasUnapplied',
 } as const;
 
 export const OUTPUT_CHANNEL_NAME = t('outputChannelName');

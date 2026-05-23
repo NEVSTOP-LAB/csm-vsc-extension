@@ -78,6 +78,10 @@ const messages = {
 		en: 'Open the target repository as a workspace folder before removing modules.',
 		zh: '移除模块前，请先将目标仓库作为工作区文件夹打开。',
 	},
+	selectModuleToRemove: {
+		en: 'Select at least one applied module to remove from the current repository.',
+		zh: '请至少选择一个已应用到当前仓库的模块再移除。',
+	},
 	noWorkspaceConfig: {
 		en: 'No CSM module configuration found in this workspace.',
 		zh: '当前工作区中未找到 CSM 模块配置。',
@@ -90,6 +94,10 @@ const messages = {
 		en: 'Remove module {module} from {repository}? This deletes {targetPath}.',
 		zh: '要从 {repository} 移除模块 {module} 吗？这将删除 {targetPath}。',
 	},
+	removeSelectionConfirmation: {
+		en: 'Remove {count} module(s) from {repository}? This deletes their local directories.',
+		zh: '要从 {repository} 移除 {count} 个模块吗？这将删除它们的本地目录。',
+	},
 	removeAction: {
 		en: 'Remove',
 		zh: '移除',
@@ -98,6 +106,10 @@ const messages = {
 		en: 'Removing {module}...',
 		zh: '正在移除 {module}...',
 	},
+	progressRemovingSelection: {
+		en: 'Removing {count} module(s)...',
+		zh: '正在移除 {count} 个模块...',
+	},
 	removeFailed: {
 		en: 'Failed to remove module: {message}',
 		zh: '移除模块失败：{message}',
@@ -105,6 +117,10 @@ const messages = {
 	removeSuccess: {
 		en: 'Removed module {module}.',
 		zh: '已移除模块 {module}。',
+	},
+	removeSelectionSuccess: {
+		en: 'Removed {count} module(s).',
+		zh: '已移除 {count} 个模块。',
 	},
 	openWorkspaceBeforeUpdate: {
 		en: 'Open the target repository as a workspace folder before updating modules.',

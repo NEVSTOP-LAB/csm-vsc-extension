@@ -628,7 +628,7 @@ suite('ModuleManagerController Regression Tests', () => {
 		assert.strictEqual(renderedModules[0]?.starred, true);
 	});
 
-	test('selection state toggles apply toolbar context', () => {
+	test('selection state toggles apply and remove toolbar contexts by applied status', async () => {
 		const controller = createController() as any;
 		controller.availableModules = [
 			{
@@ -641,6 +641,16 @@ suite('ModuleManagerController Regression Tests', () => {
 				defaultBranch: 'main',
 				repoUrl: 'https://github.com/org/module-a',
 			},
+			{
+				id: 2,
+				owner: 'org',
+				name: 'module-b',
+				description: 'demo',
+				topics: ['csm-modsets'],
+				visibility: 'public',
+				defaultBranch: 'main',
+				repoUrl: 'https://github.com/org/module-b',
+			},
 		];
 		controller.treeDataProvider = {
 			setAuthenticated: () => undefined,
@@ -650,11 +660,137 @@ suite('ModuleManagerController Regression Tests', () => {
 			setSelection: () => undefined,
 		};
 
-		controller.setSelectedModuleKeys(['org/module-a']);
+		controller.setSelectedModuleKeys(['org/module-a', 'org/module-b']);
 		assert.strictEqual(mocked.__getContextValue('csmModules.hasSelection'), true);
+		assert.strictEqual(mocked.__getContextValue('csmModules.selectionHasApplied'), false);
+		assert.strictEqual(mocked.__getContextValue('csmModules.selectionHasUnapplied'), true);
+
+		controller.appliedModuleKeys.add('org/module-a');
+		await controller.setSelectionContexts();
+		assert.strictEqual(mocked.__getContextValue('csmModules.selectionHasApplied'), true);
+		assert.strictEqual(mocked.__getContextValue('csmModules.selectionHasUnapplied'), true);
+
+		controller.appliedModuleKeys.add('org/module-b');
+		await controller.setSelectionContexts();
+		assert.strictEqual(mocked.__getContextValue('csmModules.selectionHasApplied'), true);
+		assert.strictEqual(mocked.__getContextValue('csmModules.selectionHasUnapplied'), false);
 
 		controller.setSelectedModuleKeys([]);
 		assert.strictEqual(mocked.__getContextValue('csmModules.hasSelection'), false);
+		assert.strictEqual(mocked.__getContextValue('csmModules.selectionHasApplied'), false);
+		assert.strictEqual(mocked.__getContextValue('csmModules.selectionHasUnapplied'), false);
+	});
+
+	test('remove command removes only applied modules from a mixed selection', async () => {
+		const controller = createController() as any;
+		let config: LocalModuleConfig = {
+			version: '2',
+			root: 'csm',
+			configPath: 'd:/repo/csm/csm-modules.yaml',
+			modules: {
+				org__module_a: {
+					key: 'org__module_a',
+					name: 'module-a',
+					owner: 'org',
+					source: 'https://github.com/org/module-a',
+					method: 'copy',
+					path: 'csm/module-a',
+					ref: 'abc123',
+					branch: 'main',
+				},
+				org__module_b: {
+					key: 'org__module_b',
+					name: 'module-b',
+					owner: 'org',
+					source: 'https://github.com/org/module-b',
+					method: 'copy',
+					path: 'csm/module-b',
+					ref: 'def456',
+					branch: 'main',
+				},
+			},
+		};
+		const removedModules: string[] = [];
+		const writtenModuleKeys: string[][] = [];
+
+		controller.availableModules = [
+			{
+				id: 1,
+				owner: 'org',
+				name: 'module-a',
+				description: 'demo',
+				topics: ['csm-modsets'],
+				visibility: 'public',
+				defaultBranch: 'main',
+				repoUrl: 'https://github.com/org/module-a',
+			},
+			{
+				id: 2,
+				owner: 'org',
+				name: 'module-b',
+				description: 'demo',
+				topics: ['csm-modsets'],
+				visibility: 'public',
+				defaultBranch: 'main',
+				repoUrl: 'https://github.com/org/module-b',
+			},
+			{
+				id: 3,
+				owner: 'org',
+				name: 'module-c',
+				description: 'demo',
+				topics: ['csm-modsets'],
+				visibility: 'public',
+				defaultBranch: 'main',
+				repoUrl: 'https://github.com/org/module-c',
+			},
+		];
+		controller.treeDataProvider = {
+			setAuthenticated: () => undefined,
+			setError: () => undefined,
+			setLoading: () => undefined,
+			setModules: () => undefined,
+			setSelection: () => undefined,
+		};
+		controller.appliedModuleKeys.clear();
+		controller.appliedModuleKeys.add('org/module-a');
+		controller.appliedModuleKeys.add('org/module-b');
+		controller.workspaceModuleService = {
+			resolveGitRepositoryRoot: async () => 'd:/repo',
+			removeModule: async (_repoRoot: string, entry: LocalModuleConfig['modules'][string]) => {
+				removedModules.push(`${entry.owner}/${entry.name}`);
+			},
+			withoutModule: (currentConfig: LocalModuleConfig, moduleKey: string) => {
+				const { [moduleKey]: _omitted, ...remainingModules } = currentConfig.modules;
+				config = {
+					...currentConfig,
+					modules: remainingModules,
+				};
+				return config;
+			},
+			writeConfig: async (nextConfig: LocalModuleConfig) => {
+				writtenModuleKeys.push(Object.keys(nextConfig.modules));
+			},
+		};
+		controller.resolveWorkspaceFolder = async () => ({ name: 'repo', uri: vscode.Uri.file('d:/repo') });
+		controller.tryLoadSidebarLocalModuleConfig = async () => config;
+		controller.refreshSidebarWorkspaceState = async () => {
+			controller.appliedModuleKeys.clear();
+			await controller.setSelectionContexts();
+		};
+		controller.setSelectedModuleKeys(['org/module-a', 'org/module-b', 'org/module-c']);
+		mocked.__setWarningMessageResponse('Remove');
+
+		await controller.removeModuleCommand();
+
+		assert.deepStrictEqual(removedModules, ['org/module-a', 'org/module-b']);
+		assert.deepStrictEqual(writtenModuleKeys, [['org__module_b'], []]);
+		assert.ok(mocked.__getLastWarningPrompt()?.message.includes('Remove 2 module(s)'));
+		assert.strictEqual(mocked.__getContextValue('csmModules.hasSelection'), true);
+		assert.strictEqual(mocked.__getContextValue('csmModules.selectionHasApplied'), false);
+		assert.strictEqual(mocked.__getContextValue('csmModules.selectionHasUnapplied'), true);
+		const infos = mocked.__getMessageLog().filter((message) => message.level === 'info').map((message) => message.text);
+		assert.ok(infos.some((text) => text.includes('Removed 2 module(s).')));
 	});
 
 	test('missing session clears signed-in toolbar context', async () => {

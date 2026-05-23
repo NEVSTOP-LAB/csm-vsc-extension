@@ -28,6 +28,7 @@
 - UI：模块卡片重新整理为“顶行标题/provider + 工具条、全宽摘要、底部全宽 tags”布局，减少左右分栏造成的压缩感
 - UI：侧边栏整体字号与图标尺寸上调一档；模块卡片与 fallback tree 中会自动隐藏内部发现用 topic（如 `csm-modsets`、`labview-csm`），并且这些内部 topic 不再参与侧边栏前端搜索
 - UI：侧边栏继续显示当前工作区摘要，已应用到当前仓库配置的模块会显示 `Applied` 状态徽标
+- UI：多选模块时，标题栏批量操作会按所选模块的当前状态拆分显示；混合选择同时显示 `Apply to Current Repository` 与 `Remove from Current Repository`，全未安装仅显示 `Apply`，全已安装仅显示 `Remove`
 - UI：模块卡片右键菜单改为 VS Code 原生 `webview/context` 菜单，`Apply` / `Update` / `Remove` / `Open README` / 选择操作会按当前模块状态自动启用、禁用或切换
 - UI：侧边栏顶部搜索框改为更接近扩展市场的搜索栏样式，末尾集成 `Filter` 菜单；菜单内拆分 `Type` 与 `Order` 两组排序选项，并将 `applied / available / selected` 状态信息合并到同一行展示
 - UI：点击模块卡片正文可在侧边栏内展开 README Markdown 预览，右上角 `README` 按钮继续保留完整 README 面板入口

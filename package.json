@@ -151,23 +151,28 @@
         },
         {
           "command": "csmModules.applyToWorkspace",
-          "when": "view == csmModules.view && csmModules.hasSelection",
+          "when": "view == csmModules.view && csmModules.selectionHasUnapplied",
           "group": "navigation@1"
+        },
+        {
+          "command": "csmModules.removeModule",
+          "when": "view == csmModules.view && csmModules.selectionHasApplied",
+          "group": "navigation@2"
         },
         {
           "command": "csmModules.refresh",
           "when": "view == csmModules.view",
-          "group": "navigation@2"
+          "group": "navigation@3"
         },
         {
           "command": "csmModules.login",
           "when": "view == csmModules.view && !csmModules.signedIn",
-          "group": "navigation@3"
+          "group": "navigation@4"
         },
         {
           "command": "csmModules.logout",
           "when": "view == csmModules.view && csmModules.signedIn",
-          "group": "navigation@3"
+          "group": "navigation@4"
         }
       ],
       "view/item/context": [
