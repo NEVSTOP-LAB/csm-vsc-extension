@@ -590,6 +590,7 @@
     "typescript-eslint": "^8.56.1"
   },
   "dependencies": {
-    "js-yaml": "^4.1.0"
+    "js-yaml": "^4.1.0",
+    "jszip": "^3.10.1"
   }
 }

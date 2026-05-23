@@ -4,7 +4,7 @@ import * as fs from 'fs/promises';
 import { AuthService } from './authService';
 import { GitHubModuleService } from './githubModuleService';
 import { ModuleCacheStore } from './cacheStore';
-import { CsmModuleEntry, LocalModuleConfig, LocalModuleConfigEntry, ModuleApplyMethod, ModuleAuthSnapshot, ModuleCacheSnapshot } from './types';
+import { CopyModuleUpdatePreview, CsmModuleEntry, LocalModuleConfig, LocalModuleConfigEntry, ModuleApplyMethod, ModuleAuthSnapshot, ModuleCacheSnapshot, ModuleUpdateResult } from './types';
 import { ModuleTreeItem } from './moduleTreeDataProvider';
 import { ModuleSidebarViewProvider } from './moduleSidebarViewProvider';
 import { IModuleViewProvider, ModuleSortField, ModuleSortState, SidebarWorkspaceContext } from './interfaces';
@@ -454,11 +454,8 @@ export class ModuleManagerController {
 			return;
 		}
 		const repoRoot = await this.workspaceModuleService.resolveGitRepositoryRoot(workspaceFolder.uri.fsPath);
-		if (!repoRoot) {
-			void vscode.window.showErrorMessage(t('workspaceNotGitRepo'));
-			return;
-		}
-		let config = await this.tryLoadSidebarLocalModuleConfig(workspaceFolder, repoRoot);
+		const workspaceRoot = repoRoot ?? workspaceFolder.uri.fsPath;
+		let config = await this.tryLoadSidebarLocalModuleConfig(workspaceFolder, workspaceRoot);
 		if (!config) {
 			void vscode.window.showWarningMessage(t('noWorkspaceConfig'));
 			return;
@@ -468,11 +465,50 @@ export class ModuleManagerController {
 			void vscode.window.showWarningMessage(t('selectedModuleNotApplied'));
 			return;
 		}
+		if (target.method === 'submodule' && !repoRoot) {
+			void vscode.window.showErrorMessage(t('workspaceNotGitRepo'));
+			return;
+		}
 		const moduleEntry = this.findAvailableModule(target.owner, target.name) ?? this.synthesizeModuleEntry(target);
 		const authToken = await this.ensureToken(moduleEntry.visibility === 'private');
 		const targetLabel = `${target.owner}/${target.name}`;
 		try {
-			let updated: LocalModuleConfigEntry | undefined;
+			let copyUpdatePreview: CopyModuleUpdatePreview | undefined;
+			if (target.method === 'copy') {
+				copyUpdatePreview = await this.workspaceModuleService.previewCopyModuleUpdate(workspaceRoot, target, moduleEntry, authToken);
+				if (!copyUpdatePreview.needsUpdate) {
+					void vscode.window.showInformationMessage(t('moduleAlreadyUpToDate', {
+						module: targetLabel,
+						branch: copyUpdatePreview.branch,
+						ref: this.formatShortRef(copyUpdatePreview.latestRef),
+					}));
+					return;
+				}
+
+				const confirmation = await vscode.window.showWarningMessage(
+					copyUpdatePreview.backupDirectory
+						? t('copyUpdateConfirmation', {
+							module: targetLabel,
+							branch: copyUpdatePreview.branch,
+							currentRef: this.formatShortRef(copyUpdatePreview.currentRef),
+							latestRef: this.formatShortRef(copyUpdatePreview.latestRef),
+							backupDirectory: copyUpdatePreview.backupDirectory,
+						})
+						: t('copyUpdateConfirmationWithoutBackup', {
+							module: targetLabel,
+							branch: copyUpdatePreview.branch,
+							currentRef: this.formatShortRef(copyUpdatePreview.currentRef),
+							latestRef: this.formatShortRef(copyUpdatePreview.latestRef),
+						}),
+					{ modal: true },
+					t('updateAction'),
+				);
+				if (confirmation !== t('updateAction')) {
+					return;
+				}
+			}
+
+			let updateResult: ModuleUpdateResult | undefined;
 			await vscode.window.withProgress(
 				{
 					location: vscode.ProgressLocation.Notification,
@@ -480,15 +516,30 @@ export class ModuleManagerController {
 					cancellable: false,
 				},
 				async () => {
-					updated = await this.workspaceModuleService.updateModule(repoRoot, target, moduleEntry, authToken);
-					config = this.workspaceModuleService.withAppliedModule(config!, updated);
+					updateResult = await this.workspaceModuleService.updateModule(
+						workspaceRoot,
+						target,
+						moduleEntry,
+						authToken,
+						repoRoot,
+						copyUpdatePreview?.latestRef,
+					);
+					config = this.workspaceModuleService.withAppliedModule(config!, updateResult.entry);
 					await this.workspaceModuleService.writeConfig(config);
 				},
 			);
-			void vscode.window.showInformationMessage(t('updateSuccess', {
-				module: targetLabel,
-				ref: updated?.ref ?? t('latestRef'),
-			}));
+			void vscode.window.showInformationMessage(
+				updateResult?.backupPath
+					? t('updateSuccessWithBackup', {
+						module: targetLabel,
+						ref: updateResult.entry.ref ?? t('latestRef'),
+						backupPath: updateResult.backupPath,
+					})
+					: t('updateSuccess', {
+						module: targetLabel,
+						ref: updateResult?.entry.ref ?? t('latestRef'),
+					}),
+			);
 		} catch (error) {
 			const message = getUserFacingErrorMessage(error, 'update');
 			this.logger.error(`Failed to update module ${target.owner}/${target.name}: ${message}`);
@@ -1220,6 +1271,13 @@ export class ModuleManagerController {
 
 	private getModuleKey(entry: CsmModuleEntry): string {
 		return ModuleSidebarViewProvider.getModuleKey(entry);
+	}
+
+	private formatShortRef(ref: string | undefined): string {
+		if (!ref) {
+			return t('latestRef');
+		}
+		return ref.length > 10 ? ref.slice(0, 7) : ref;
 	}
 
 	private async refreshSidebarWorkspaceState(): Promise<void> {
