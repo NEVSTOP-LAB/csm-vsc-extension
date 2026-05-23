@@ -38,7 +38,7 @@ function stripGitSuffix(value: string): string {
 }
 
 export class WorkspaceModuleService {
-	constructor(private readonly gitRunner: IGitRunner = new GitService()) {}
+	constructor(private readonly gitRunner: IGitRunner = new GitService()) { }
 
 	public normalizeRootPath(value: string): string {
 		const trimmed = value.trim();
@@ -152,26 +152,28 @@ export class WorkspaceModuleService {
 	}
 
 	/**
-	 * Remove a module from the workspace: deinit the submodule (if any), delete the
-	 * working tree, and erase any stale `.git/modules/<path>` cache.
+	 * Remove a module from the workspace: for submodules, deinit the git state and
+	 * erase any stale `.git/modules/<path>` cache; for copies, just delete the local
+	 * directory. Both paths rely on the caller to confirm the destructive action.
 	 *
 	 * Review item 7.1 — implements `csmModules.removeModule` end-to-end.
 	 */
-	public async removeModule(repoRoot: string, entry: LocalModuleConfigEntry): Promise<void> {
+	public async removeModule(workspaceRoot: string, entry: LocalModuleConfigEntry, repoRoot?: string): Promise<void> {
 		const targetRelativePath = this.normalizeRootPath(entry.path);
-		const targetAbsolute = this.toAbsoluteTargetPath(repoRoot, targetRelativePath);
+		const targetAbsolute = this.toAbsoluteTargetPath(workspaceRoot, targetRelativePath);
 		if (entry.method === 'submodule') {
+			const gitRoot = repoRoot ?? workspaceRoot;
 			try {
-				await this.runGit(repoRoot, ['submodule', 'deinit', '-f', '--', targetRelativePath]);
+				await this.runGit(gitRoot, ['submodule', 'deinit', '-f', '--', targetRelativePath]);
 			} catch {
 				// already deinitialized; continue
 			}
 			try {
-				await this.runGit(repoRoot, ['rm', '-rf', '--', targetRelativePath]);
+				await this.runGit(gitRoot, ['rm', '-rf', '--', targetRelativePath]);
 			} catch {
 				// fall through to manual removal
 			}
-			const submoduleGitDir = path.join(repoRoot, '.git', 'modules', ...targetRelativePath.split('/'));
+			const submoduleGitDir = path.join(gitRoot, '.git', 'modules', ...targetRelativePath.split('/'));
 			try {
 				await fs.rm(submoduleGitDir, { recursive: true, force: true });
 			} catch {

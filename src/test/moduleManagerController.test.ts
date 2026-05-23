@@ -793,6 +793,90 @@ suite('ModuleManagerController Regression Tests', () => {
 		assert.ok(infos.some((text) => text.includes('Removed 2 module(s).')));
 	});
 
+	test('remove command allows copy modules in a non-git workspace', async () => {
+		const controller = createController() as any;
+		let config: LocalModuleConfig = {
+			version: '2',
+			root: 'csm',
+			configPath: 'd:/plain-workspace/csm/csm-modules.yaml',
+			modules: {
+				org__module_copy: {
+					key: 'org__module_copy',
+					name: 'module-copy',
+					owner: 'org',
+					source: 'https://github.com/org/module-copy',
+					method: 'copy',
+					path: 'csm/module-copy',
+					ref: 'abc123',
+					branch: 'main',
+				},
+			},
+		};
+		const removeCalls: Array<{ workspaceRoot: string; repoRoot?: string; module: string }> = [];
+
+		controller.availableModules = [
+			{
+				id: 1,
+				owner: 'org',
+				name: 'module-copy',
+				description: 'demo',
+				topics: ['csm-modsets'],
+				visibility: 'public',
+				defaultBranch: 'main',
+				repoUrl: 'https://github.com/org/module-copy',
+			},
+		];
+		controller.treeDataProvider = {
+			setAuthenticated: () => undefined,
+			setError: () => undefined,
+			setLoading: () => undefined,
+			setModules: () => undefined,
+			setSelection: () => undefined,
+		};
+		controller.appliedModuleKeys.clear();
+		controller.appliedModuleKeys.add('org/module-copy');
+		controller.workspaceModuleService = {
+			resolveGitRepositoryRoot: async () => undefined,
+			removeModule: async (workspaceRoot: string, entry: LocalModuleConfig['modules'][string], repoRoot?: string) => {
+				removeCalls.push({
+					workspaceRoot,
+					repoRoot,
+					module: `${entry.owner}/${entry.name}`,
+				});
+			},
+			withoutModule: (currentConfig: LocalModuleConfig, moduleKey: string) => {
+				const { [moduleKey]: _omitted, ...remainingModules } = currentConfig.modules;
+				config = {
+					...currentConfig,
+					modules: remainingModules,
+				};
+				return config;
+			},
+			writeConfig: async () => undefined,
+		};
+		controller.resolveWorkspaceFolder = async () => ({ name: 'plain-workspace', uri: vscode.Uri.file('d:/plain-workspace') });
+		controller.tryLoadSidebarLocalModuleConfig = async () => config;
+		controller.refreshSidebarWorkspaceState = async () => {
+			controller.appliedModuleKeys.clear();
+			await controller.setSelectionContexts();
+		};
+		controller.setSelectedModuleKeys(['org/module-copy']);
+		mocked.__setWarningMessageResponse('Remove');
+
+		await controller.removeModuleCommand();
+
+		assert.deepStrictEqual(removeCalls, [{
+			workspaceRoot: 'd:/plain-workspace',
+			repoRoot: undefined,
+			module: 'org/module-copy',
+		}]);
+		assert.ok(mocked.__getLastWarningPrompt()?.message.includes('module-copy'));
+		const errors = mocked.__getMessageLog().filter((message) => message.level === 'error').map((message) => message.text);
+		assert.ok(!errors.some((text) => text.includes('not a Git repository')));
+		const infos = mocked.__getMessageLog().filter((message) => message.level === 'info').map((message) => message.text);
+		assert.ok(infos.some((text) => text.includes('Removed module org/module-copy.')));
+	});
+
 	test('missing session clears signed-in toolbar context', async () => {
 		const controller = createController() as any;
 

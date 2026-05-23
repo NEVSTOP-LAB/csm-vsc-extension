@@ -370,11 +370,8 @@ export class ModuleManagerController {
 			return;
 		}
 		const repoRoot = await this.workspaceModuleService.resolveGitRepositoryRoot(workspaceFolder.uri.fsPath);
-		if (!repoRoot) {
-			void vscode.window.showErrorMessage(t('workspaceNotGitRepo'));
-			return;
-		}
-		let config = await this.tryLoadSidebarLocalModuleConfig(workspaceFolder, repoRoot);
+		const workspaceRoot = repoRoot ?? workspaceFolder.uri.fsPath;
+		let config = await this.tryLoadSidebarLocalModuleConfig(workspaceFolder, workspaceRoot);
 		if (!config) {
 			void vscode.window.showWarningMessage(t('noWorkspaceConfig'));
 			return;
@@ -385,9 +382,13 @@ export class ModuleManagerController {
 			void vscode.window.showWarningMessage(resolvedEntry ? t('selectedModuleNotApplied') : t('selectModuleToRemove'));
 			return;
 		}
+		if (targets.some((removable) => removable.method === 'submodule') && !repoRoot) {
+			void vscode.window.showErrorMessage(t('workspaceNotGitRepo'));
+			return;
+		}
 		const target = targets[0];
 		const targetLabel = `${target.owner}/${target.name}`;
-		const repository = path.basename(repoRoot);
+		const repository = path.basename(workspaceRoot) || workspaceFolder.name;
 		const confirmationMessage = targets.length === 1
 			? t('removeConfirmation', {
 				module: targetLabel,
@@ -417,7 +418,7 @@ export class ModuleManagerController {
 				},
 				async (progress) => {
 					for (const removable of targets) {
-						await this.workspaceModuleService.removeModule(repoRoot, removable);
+						await this.workspaceModuleService.removeModule(workspaceRoot, removable, repoRoot);
 						currentConfig = this.workspaceModuleService.withoutModule(currentConfig, removable.key);
 						await this.workspaceModuleService.writeConfig(currentConfig);
 						progress.report({
