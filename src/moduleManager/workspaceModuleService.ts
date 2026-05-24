@@ -1,3 +1,4 @@
+import type { Dirent } from 'fs';
 import * as fs from 'fs/promises';
 import * as os from 'os';
 import * as path from 'path';
@@ -24,6 +25,28 @@ interface GitSubmoduleDefinition {
 	path: string;
 	url: string;
 	branch?: string;
+}
+
+export interface GitIdentity {
+	name?: string;
+	email?: string;
+}
+
+export interface PublishLocalFolderOptions {
+	folderPath: string;
+	remoteUrl: string;
+	authToken?: string;
+	defaultBranch?: string;
+	commitMessage?: string;
+	authorName?: string;
+	authorEmail?: string;
+}
+
+export interface PublishLocalFolderResult {
+	branch: string;
+	remoteName: string;
+	remoteUrl: string;
+	createdCommit: boolean;
 }
 
 function toPosixPath(value: string): string {
@@ -78,6 +101,78 @@ export class WorkspaceModuleService {
 		} catch {
 			return undefined;
 		}
+	}
+
+	public async getGitIdentity(targetPath: string): Promise<GitIdentity> {
+		if (!await this.gitRunner.isAvailable()) {
+			throw new Error('git unavailable');
+		}
+		return {
+			name: await this.getGitConfigValue(targetPath, 'user.name'),
+			email: await this.getGitConfigValue(targetPath, 'user.email'),
+		};
+	}
+
+	public async publishLocalFolder(options: PublishLocalFolderOptions): Promise<PublishLocalFolderResult> {
+		if (!await this.gitRunner.isAvailable()) {
+			throw new Error('git unavailable');
+		}
+
+		const folderPath = path.resolve(options.folderPath);
+		const stat = await fs.stat(folderPath);
+		if (!stat.isDirectory()) {
+			throw new Error(`Local folder is not a directory: ${folderPath}`);
+		}
+
+		const branch = options.defaultBranch?.trim() || 'main';
+		const commitMessage = options.commitMessage?.trim() || `Initial publish of ${path.basename(folderPath)}`;
+		const remoteUrl = options.remoteUrl.trim();
+		const hasLocalRepository = await this.pathExists(path.join(folderPath, '.git'));
+
+		if (!hasLocalRepository) {
+			await this.runGit(folderPath, ['init']);
+		}
+
+		if (options.authorName?.trim()) {
+			await this.runGit(folderPath, ['config', 'user.name', options.authorName.trim()]);
+		}
+		if (options.authorEmail?.trim()) {
+			await this.runGit(folderPath, ['config', 'user.email', options.authorEmail.trim()]);
+		}
+
+		const existingOrigin = await this.getRemoteUrl(folderPath, 'origin');
+		if (existingOrigin && this.normalizeRemoteUrl(existingOrigin) !== this.normalizeRemoteUrl(remoteUrl)) {
+			throw new Error(`Local folder already has a different origin remote: ${existingOrigin}`);
+		}
+		if (!existingOrigin) {
+			await this.runGit(folderPath, ['remote', 'add', 'origin', remoteUrl]);
+		}
+
+		await this.runGit(folderPath, ['add', '--all']);
+		const hasCommit = await this.hasCommit(folderPath);
+		const hasChanges = await this.hasWorkingTreeChanges(folderPath);
+		if (!hasCommit && !hasChanges) {
+			throw new Error('Local folder is empty. Add files before publishing.');
+		}
+
+		let createdCommit = false;
+		if (!hasCommit || hasChanges) {
+			await this.runGit(folderPath, ['commit', '-m', commitMessage]);
+			createdCommit = true;
+		}
+
+		const currentBranch = await this.getCurrentBranch(folderPath);
+		if (currentBranch !== branch) {
+			await this.runGit(folderPath, ['branch', '-M', branch]);
+		}
+
+		await this.runGit(folderPath, ['push', '-u', 'origin', branch], options.authToken, remoteUrl);
+		return {
+			branch,
+			remoteName: 'origin',
+			remoteUrl,
+			createdCommit,
+		};
 	}
 
 	public async initializeConfig(repoRoot: string, rootRelativePath: string): Promise<LocalModuleConfig> {
@@ -266,6 +361,24 @@ export class WorkspaceModuleService {
 		}
 	}
 
+	public async listModuleDirectories(repoRoot: string, rootRelativePath: string): Promise<string[]> {
+		const root = this.normalizeRootPath(rootRelativePath);
+		const rootAbsolute = this.toAbsoluteTargetPath(repoRoot, root);
+		let entries: Dirent[];
+		try {
+			entries = await fs.readdir(rootAbsolute, { withFileTypes: true });
+		} catch (error) {
+			if (this.isMissingPathError(error)) {
+				return [];
+			}
+			throw error;
+		}
+		return entries
+			.filter((entry) => entry.isDirectory() && !entry.name.startsWith('.'))
+			.map((entry) => entry.name)
+			.sort((left, right) => left.localeCompare(right));
+	}
+
 	public async applyModule(
 		repoRoot: string,
 		config: LocalModuleConfig,
@@ -298,6 +411,13 @@ export class WorkspaceModuleService {
 
 	private isLegacyConfigPath(configPath: string): boolean {
 		return path.basename(configPath).toLowerCase() === LEGACY_LOCAL_MODULE_CONFIG_FILE.toLowerCase();
+	}
+
+	private isMissingPathError(error: unknown): boolean {
+		return typeof error === 'object'
+			&& error !== null
+			&& 'code' in error
+			&& String((error as { code?: unknown }).code) === 'ENOENT';
 	}
 
 	private toAbsoluteTargetPath(repoRoot: string, targetRelativePath: string): string {
@@ -581,6 +701,50 @@ export class WorkspaceModuleService {
 		} catch {
 			return false;
 		}
+	}
+
+	private async getGitConfigValue(cwd: string, key: string): Promise<string | undefined> {
+		try {
+			const value = await this.runGit(cwd, ['config', key]);
+			return value.trim() || undefined;
+		} catch {
+			return undefined;
+		}
+	}
+
+	private async getRemoteUrl(cwd: string, remoteName: string): Promise<string | undefined> {
+		try {
+			const value = await this.runGit(cwd, ['remote', 'get-url', remoteName]);
+			return value.trim() || undefined;
+		} catch {
+			return undefined;
+		}
+	}
+
+	private async hasCommit(cwd: string): Promise<boolean> {
+		try {
+			await this.runGit(cwd, ['rev-parse', '--verify', 'HEAD']);
+			return true;
+		} catch {
+			return false;
+		}
+	}
+
+	private async hasWorkingTreeChanges(cwd: string): Promise<boolean> {
+		const status = await this.runGit(cwd, ['status', '--porcelain']);
+		return status.trim().length > 0;
+	}
+
+	private async getCurrentBranch(cwd: string): Promise<string> {
+		try {
+			return await this.runGit(cwd, ['branch', '--show-current']);
+		} catch {
+			return '';
+		}
+	}
+
+	private normalizeRemoteUrl(remoteUrl: string): string {
+		return stripGitSuffix(remoteUrl).replace(/\/+$|\/+$/g, '').toLowerCase();
 	}
 
 	private async resolveRemoteBranchRef(cwd: string, repoUrl: string, branch: string, authToken?: string): Promise<string> {

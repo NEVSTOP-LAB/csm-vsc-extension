@@ -9,6 +9,7 @@ import { t } from './messages';
 
 export const VIEW_IDS = {
 	moduleSidebar: 'csmModules.view',
+	localWorkspace: 'csmModules.workspaceView',
 } as const;
 
 export const COMMAND_IDS = {

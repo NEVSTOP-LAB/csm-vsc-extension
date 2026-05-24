@@ -322,6 +322,7 @@ let warningResponse: string | undefined;
 let informationResponse: unknown;
 let quickPickResponse: unknown;
 let inputBoxResponse: string | undefined;
+let inputBoxResponses: Array<string | undefined> = [];
 let findFilesResult: Uri[] = [];
 let findFilesResultByPattern = new Map<string, Uri[]>();
 let workspaceFoldersState: Array<{ name: string; uri: Uri }> | undefined;
@@ -411,6 +412,9 @@ export const window = {
         return quickPickResponse as T | undefined;
     },
     async showInputBox(_options?: unknown): Promise<string | undefined> {
+        if (inputBoxResponses.length > 0) {
+            return inputBoxResponses.shift();
+        }
         return inputBoxResponse;
     },
     async showTextDocument(): Promise<void> {
@@ -532,6 +536,10 @@ export function __setInputBoxResponse(response: string | undefined): void {
     inputBoxResponse = response;
 }
 
+export function __setInputBoxResponses(responses: Array<string | undefined>): void {
+    inputBoxResponses = [...responses];
+}
+
 export function __setFindFilesResult(result: Uri[]): void {
     findFilesResult = [...result];
 }
@@ -614,6 +622,7 @@ export function __resetUiState(): void {
     informationResponse = undefined;
     quickPickResponse = undefined;
     inputBoxResponse = undefined;
+    inputBoxResponses = [];
     findFilesResult = [];
     findFilesResultByPattern = new Map<string, Uri[]>();
     workspaceFoldersState = undefined;

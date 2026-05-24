@@ -32,6 +32,32 @@ export interface LocalModuleConfig {
 	modules: Record<string, LocalModuleConfigEntry>;
 }
 
+export interface LocalManagedModuleEntry {
+	id: string;
+	kind: 'managed';
+	owner: string;
+	name: string;
+	path: string;
+	source: string;
+	method: ModuleApplyMethod;
+	branch: string;
+	ref: string;
+	repoUrl: string;
+	description: string;
+	visibility: 'public' | 'private';
+	topics: string[];
+	moduleEntry: CsmModuleEntry;
+	moduleKey?: string;
+	stale: boolean;
+}
+
+export interface LocalUnmanagedFolderEntry {
+	id: string;
+	kind: 'unmanaged';
+	name: string;
+	path: string;
+}
+
 export interface CopyModuleUpdatePreview {
 	currentRef: string;
 	latestRef: string;

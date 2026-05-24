@@ -2,7 +2,7 @@
 
 ## 功能概述
 
-侧边栏 `CSM Modules` 视图用于浏览、搜索和管理 CSM 模块仓库，支持将模块以 `submodule` 或 `copy` 方式引入本地仓库，并通过本地 YAML 配置文件记录已应用模块。
+侧边栏 `CSM Modules` 容器包含两个原生视图：`Available Modules` 用于浏览、搜索和管理 GitHub 模块目录，`Workspace Modules` 用于查看当前模块根目录下的已管理模块与未管理文件夹。模块可通过 `submodule` 或 `copy` 方式引入本地仓库，并通过本地 YAML 配置文件记录已应用模块。
 
 ## 功能特性
 
@@ -34,7 +34,9 @@
 
 ### 工作区状态
 
-- 侧边栏会显示当前工作区、模块根目录与已应用计数；已登录时，顶部摘要会优先显示当前 GitHub 账号，并将模块数量拆分为 `public / private`；已写入当前仓库配置的模块会显示 `Applied` 状态徽标
+- `Available Modules` 会继续显示当前工作区、模块根目录与已应用计数；已登录时，顶部摘要会优先显示当前 GitHub 账号，并将模块数量拆分为 `public / private`；已写入当前仓库配置的模块会显示 `Applied` 状态徽标
+- `Workspace Modules` 视图会单独列出当前模块根目录中的已管理模块与未管理文件夹，便于直接查看本地状态而不打断上方 GitHub 模块目录的浏览与筛选
+- 对未管理文件夹，已登录 GitHub 时可通过向导一键创建远端 GitHub 仓库，并立即执行本地 `git init`、首次提交与 `origin` 推送；若当前机器尚未配置 `user.name` / `user.email`，向导会在发布前补充询问
 - 若仓库检测到 `csm/` 目录与 `*.lvproj`，但尚未存在本地模块配置，打开侧边栏时会主动提醒初始化，并在标题栏显示 `Initialize Workspace Management` 工具按钮
 - 若仓库内已存在 `csm/` 目录且包含已初始化的 submodule，但尚未存在配置文件，扩展会自动反向生成 `csm/csm-modules.yaml`
 

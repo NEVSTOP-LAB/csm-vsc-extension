@@ -166,6 +166,10 @@ const messages = {
 		en: 'Open the target repository as a workspace folder before initializing CSM module management.',
 		zh: '初始化 CSM 模块管理前，请先将目标仓库作为工作区文件夹打开。',
 	},
+	openWorkspaceBeforeCreateRepository: {
+		en: 'Open the target repository as a workspace folder before creating a GitHub repository for a local module folder.',
+		zh: '为本地模块文件夹创建 GitHub 仓库前，请先将目标仓库作为工作区文件夹打开。',
+	},
 	configAlreadyExists: {
 		en: 'Local CSM module config already exists at {configPath}.',
 		zh: '本地 CSM 模块配置已存在：{configPath}。',
@@ -281,6 +285,114 @@ const messages = {
 	githubRequestFailed: {
 		en: 'GitHub request failed (HTTP {status}).',
 		zh: 'GitHub 请求失败（HTTP {status}）。',
+	},
+	signInRequiredForCreateRepository: {
+		en: 'GitHub sign-in is required to create a repository for this local folder.',
+		zh: '为该本地文件夹创建 GitHub 仓库前需要先登录 GitHub。',
+	},
+	localFolderMissing: {
+		en: 'The local folder {folder} no longer exists.',
+		zh: '本地文件夹 {folder} 已不存在。',
+	},
+	createRepositoryNamePrompt: {
+		en: 'Enter the GitHub repository name for {folder}.',
+		zh: '请输入 {folder} 对应的 GitHub 仓库名称。',
+	},
+	createRepositoryDescriptionPrompt: {
+		en: 'Optionally enter a description for the new GitHub repository.',
+		zh: '可选：请输入新 GitHub 仓库的描述。',
+	},
+	createRepositoryVisibilityPlaceholder: {
+		en: 'Choose the visibility for the new GitHub repository.',
+		zh: '请选择新 GitHub 仓库的可见性。',
+	},
+	createRepositoryPrivateLabel: {
+		en: 'Private',
+		zh: '私有',
+	},
+	createRepositoryPrivateDescription: {
+		en: 'Only invited collaborators can access this repository.',
+		zh: '仅受邀协作者可访问此仓库。',
+	},
+	createRepositoryPublicLabel: {
+		en: 'Public',
+		zh: '公开',
+	},
+	createRepositoryPublicDescription: {
+		en: 'Anyone can view this repository.',
+		zh: '任何人都可查看此仓库。',
+	},
+	createRepositoryTopicsPrompt: {
+		en: 'Enter repository topics separated by commas or spaces.',
+		zh: '请输入仓库 topics，可使用逗号或空格分隔。',
+	},
+	createRepositoryConfirmation: {
+		en: 'Create a {visibility} GitHub repository named {name} for local folder {folder}, then publish the current folder contents? Topics: {topics}',
+		zh: '要为本地文件夹 {folder} 创建名为 {name} 的 {visibility} GitHub 仓库，并发布当前文件夹内容吗？Topics：{topics}',
+	},
+	createRepositoryAction: {
+		en: 'Create Repository',
+		zh: '创建仓库',
+	},
+	createRepositoryProgress: {
+		en: 'Creating GitHub repository {name} and publishing the local folder...',
+		zh: '正在创建 GitHub 仓库 {name} 并发布本地文件夹...',
+	},
+	createRepositorySuccess: {
+		en: 'Created GitHub repository {repository}.',
+		zh: '已创建 GitHub 仓库 {repository}。',
+	},
+	createRepositoryFailed: {
+		en: 'Failed to create GitHub repository: {message}',
+		zh: '创建 GitHub 仓库失败：{message}',
+	},
+	createRepositoryPublishSuccess: {
+		en: 'Created GitHub repository {repository} and published the local folder contents.',
+		zh: '已创建 GitHub 仓库 {repository}，并发布本地文件夹内容。',
+	},
+	createRepositoryPublishFailed: {
+		en: 'GitHub repository creation succeeded, but publishing {folder} failed: {message}',
+		zh: 'GitHub 仓库已创建成功，但发布 {folder} 失败：{message}',
+	},
+	createRepositoryNameRequired: {
+		en: 'Repository name is required.',
+		zh: '仓库名称不能为空。',
+	},
+	createRepositoryNameInvalid: {
+		en: 'Use letters, numbers, period, underscore, or hyphen only.',
+		zh: '仓库名称只能包含字母、数字、点、下划线或连字符。',
+	},
+	createRepositoryNameTooLong: {
+		en: 'Repository name must be 100 characters or fewer.',
+		zh: '仓库名称长度不能超过 100 个字符。',
+	},
+	publishCommitAuthorNamePrompt: {
+		en: 'Git user.name is not configured. Enter the author name for the initial publish commit.',
+		zh: '尚未配置 Git user.name。请输入首次发布提交的作者姓名。',
+	},
+	publishCommitAuthorNameRequired: {
+		en: 'Author name is required to create the initial publish commit.',
+		zh: '创建首次发布提交前必须提供作者姓名。',
+	},
+	publishCommitAuthorEmailPrompt: {
+		en: 'Git user.email is not configured. Enter the author email for the initial publish commit.',
+		zh: '尚未配置 Git user.email。请输入首次发布提交的作者邮箱。',
+	},
+	publishCommitAuthorEmailRequired: {
+		en: 'Author email is required to create the initial publish commit.',
+		zh: '创建首次发布提交前必须提供作者邮箱。',
+	},
+	publishCommitAuthorEmailInvalid: {
+		en: 'Enter a valid email address.',
+		zh: '请输入有效的邮箱地址。',
+	},
+	publishOriginConflict: {
+		en: 'The local folder already points to a different origin remote.',
+		zh: '该本地文件夹已经指向另一个 origin 远端仓库。',
+	},
+	publishFolderEmpty: {
+		en: 'The local folder is empty. Add files before publishing.',
+		zh: '本地文件夹为空。请先添加文件后再发布。',
 	},
 	noCachedReadmeAndNoSession: {
 		en: 'No cached README and no GitHub session available.',
@@ -470,9 +582,17 @@ const messages = {
 		en: 'Type',
 		zh: '类型',
 	},
+	filterMenuShow: {
+		en: 'Show',
+		zh: '显示',
+	},
 	filterMenuOrder: {
 		en: 'Order',
 		zh: '顺序',
+	},
+	includeAppliedModules: {
+		en: 'Include applied modules',
+		zh: '包含已应用模块',
 	},
 	applySelected: {
 		en: 'Apply Selected',
@@ -485,6 +605,58 @@ const messages = {
 	rootLabel: {
 		en: 'Root',
 		zh: '根目录',
+	},
+	workspaceModulesTitle: {
+		en: 'Workspace Modules',
+		zh: '工作区模块',
+	},
+	workspaceModulesSummary: {
+		en: '{managed} managed | {unmanaged} unmanaged',
+		zh: '已管理 {managed} 个 | 未管理 {unmanaged} 个',
+	},
+	workspaceManagedSectionTitle: {
+		en: 'Managed folders',
+		zh: '已管理文件夹',
+	},
+	workspaceUnmanagedSectionTitle: {
+		en: 'Unmanaged folders',
+		zh: '未管理文件夹',
+	},
+	workspaceModulesEmptyTitle: {
+		en: 'No module folders found under {root}/',
+		zh: '在 {root}/ 下未发现模块文件夹',
+	},
+	workspaceModulesEmptyBody: {
+		en: 'This workspace does not currently contain module folders in the configured local module root.',
+		zh: '当前工作区在已配置的本地模块根目录下还没有模块文件夹。',
+	},
+	managedBadge: {
+		en: 'Managed',
+		zh: '已管理',
+	},
+	unmanagedBadge: {
+		en: 'Unmanaged',
+		zh: '未管理',
+	},
+	localFolderPathLabel: {
+		en: 'Path: {path}',
+		zh: '路径：{path}',
+	},
+	localManagedFallbackSummary: {
+		en: 'Tracked from {source}.',
+		zh: '已从 {source} 建立跟踪。',
+	},
+	localUnmanagedSummary: {
+		en: 'This folder exists under the current local module root but is not recorded in the CSM module config.',
+		zh: '该文件夹位于当前本地模块根目录下，但尚未记录到 CSM 模块配置中。',
+	},
+	signInToCreateRepositoryHint: {
+		en: 'Sign in to GitHub to create a shared repository for this folder.',
+		zh: '登录 GitHub 后即可为该文件夹创建共享仓库。',
+	},
+	createGithubRepository: {
+		en: 'Create GitHub Repo',
+		zh: '创建 GitHub 仓库',
 	},
 	catalogScopePublicLoggedOut: {
 		en: 'Loaded {count} public module(s). Sign in to see private modules.',
@@ -647,8 +819,8 @@ const messages = {
 		zh: '没有模块匹配当前筛选条件',
 	},
 	filterNoMatchesBody: {
-		en: 'Try another keyword or clear the current filter to see the full catalog again.',
-		zh: '请尝试其他关键词，或清除当前筛选条件以重新查看完整目录。',
+		en: 'Try another keyword or adjust the current filters to see the full catalog again.',
+		zh: '请尝试其他关键词，或调整当前筛选条件以重新查看完整目录。',
 	},
 	clearFilter: {
 		en: 'Clear Filter',

@@ -1,6 +1,6 @@
 import { t } from './messages';
 
-export type UserFacingErrorContext = 'refresh' | 'apply' | 'update' | 'remove' | 'config';
+export type UserFacingErrorContext = 'refresh' | 'apply' | 'update' | 'remove' | 'config' | 'createRepo';
 
 export function getUserFacingErrorMessage(error: unknown, context: UserFacingErrorContext): string {
 	const rawMessage = error instanceof Error ? error.message : String(error);
@@ -20,7 +20,7 @@ function mapUserFacingErrorSegment(segment: string, context: UserFacingErrorCont
 }
 
 function mapSingleUserFacingError(message: string, context: UserFacingErrorContext): string {
-	const githubStatusMatch = message.match(/GitHub (?:API|README|star status|star|unstar) request failed: (\d{3})/);
+	const githubStatusMatch = message.match(/GitHub (?:API|README|star status|star|unstar|create repository|repository topics) request failed: (\d{3})/);
 	if (githubStatusMatch) {
 		return mapGitHubStatusToUserMessage(Number(githubStatusMatch[1]), context);
 	}
@@ -32,6 +32,12 @@ function mapSingleUserFacingError(message: string, context: UserFacingErrorConte
 	}
 	if (/Authentication failed|Permission denied|could not read Username|Repository not found|access denied/i.test(message)) {
 		return t('gitCannotAccessRepo');
+	}
+	if (/Local folder already has a different origin remote/i.test(message)) {
+		return t('publishOriginConflict');
+	}
+	if (/Local folder is empty\. Add files before publishing\./i.test(message)) {
+		return t('publishFolderEmpty');
 	}
 	if (/ENOTFOUND|ECONNRESET|ECONNREFUSED|ETIMEDOUT|fetch failed|network/i.test(message)) {
 		return t('networkRequestFailed');
@@ -46,9 +52,13 @@ function mapGitHubStatusToUserMessage(status: number, context: UserFacingErrorCo
 		case 403:
 			return t('github403');
 		case 404:
-			return context === 'refresh'
-				? t('github404Module')
-				: t('github404Readme');
+			if (context === 'refresh') {
+				return t('github404Module');
+			}
+			if (context === 'createRepo') {
+				return t('githubRequestFailed', { status });
+			}
+			return t('github404Readme');
 		default:
 			if (status === 429 || status >= 500) {
 				return t('githubTemporaryUnavailable', { status });
