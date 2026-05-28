@@ -933,6 +933,10 @@ export class ModuleManagerController {
 			&& Date.now() - this.lastTokenVerifiedAt < ModuleManagerController.TOKEN_VERIFY_INTERVAL_MS;
 	}
 
+	/**
+	 * Refreshes the GitHub module catalog and then recomputes the unified sidebar's
+	 * local workspace state and initialization prompt, even if the remote refresh fails.
+	 */
 	public async refreshCommand(): Promise<void> {
 		try {
 			await this.loadModules({ interactiveAuth: false, showSuccessMessage: true, showErrorMessage: true });

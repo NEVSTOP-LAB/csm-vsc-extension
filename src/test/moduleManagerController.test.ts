@@ -196,6 +196,35 @@ suite('ModuleManagerController Regression Tests', () => {
 		assert.ok(errors.some((text) => text.includes('Failed to refresh CSM modules: GitHub is temporarily unavailable (HTTP 503). Try again in a moment.')));
 	});
 
+	test('refreshCommand recomputes workspace state after a successful refresh', async () => {
+		let loadCalls = 0;
+		let sidebarRefreshCount = 0;
+		let initRefreshCount = 0;
+		const controller = createController() as any;
+
+		controller.loadModules = async (options: { interactiveAuth: boolean; showSuccessMessage: boolean; showErrorMessage: boolean }) => {
+			assert.deepStrictEqual(options, {
+				interactiveAuth: false,
+				showSuccessMessage: true,
+				showErrorMessage: true,
+			});
+			loadCalls += 1;
+		};
+		controller.refreshSidebarWorkspaceState = async () => {
+			sidebarRefreshCount += 1;
+		};
+		controller.refreshWorkspaceInitializationState = async (options: { prompt: boolean }) => {
+			assert.deepStrictEqual(options, { prompt: false });
+			initRefreshCount += 1;
+		};
+
+		await controller.refreshCommand();
+
+		assert.strictEqual(loadCalls, 1);
+		assert.strictEqual(sidebarRefreshCount, 1);
+		assert.strictEqual(initRefreshCount, 1);
+	});
+
 	test('login passes the signed-in account label to the sidebar view', async () => {
 		const authUpdates: Array<{ signedIn: boolean; accountLabel?: string }> = [];
 
