@@ -15,6 +15,7 @@ type VscodeMock = typeof vscode & {
 	__setWarningMessageResponse: (response: string | undefined) => void;
 	__setInformationMessageResponse: (response: unknown) => void;
 	__setQuickPickResponse: (response: unknown) => void;
+	__setInputBoxResponses: (responses: Array<string | undefined>) => void;
 	__setFindFilesResult: (result: vscode.Uri[]) => void;
 	__setFindFilesResultForPattern: (pattern: string, result: vscode.Uri[]) => void;
 	__setWorkspaceFolders: (folders: Array<{ name: string; uri: vscode.Uri }> | undefined) => void;
@@ -1370,6 +1371,60 @@ suite('ModuleManagerController Regression Tests', () => {
 		assert.ok(rendered?.html.includes('module-b'));
 	});
 
+	test('refreshSidebarWorkspaceState exposes managed and unmanaged folders', async () => {
+		const controller = createController(undefined, {
+			viewProvider: createViewProvider(),
+		}) as any;
+		let capturedContext: Record<string, unknown> | undefined;
+
+		controller.availableModules = [{
+			id: 1,
+			owner: 'org',
+			name: 'module-a',
+			description: 'cached',
+			topics: ['csm-modsets'],
+			visibility: 'public',
+			defaultBranch: 'main',
+			repoUrl: 'https://github.com/org/module-a',
+		}];
+		controller.treeDataProvider = createViewProvider({
+			setWorkspaceContext: (context) => {
+				capturedContext = context as unknown as Record<string, unknown>;
+			},
+		});
+		controller.workspaceModuleService = {
+			resolveGitRepositoryRoot: async () => 'd:/repo',
+			loadConfig: async () => ({
+				version: '2',
+				root: 'csm',
+				configPath: 'd:/repo/csm/csm-modules.yaml',
+				modules: {
+					org__module_a: {
+						key: 'org__module_a',
+						name: 'module-a',
+						owner: 'org',
+						source: 'https://github.com/org/module-a',
+						method: 'copy',
+						path: 'csm/module-a',
+						ref: 'abc123',
+						branch: 'main',
+					},
+				},
+			}),
+			listModuleDirectories: async () => ['custom-module', 'module-a'],
+		};
+		controller.computeStaleModuleKeys = async () => [];
+		mocked.__setWorkspaceFolders([{ name: 'repo', uri: vscode.Uri.file('d:/repo') }]);
+		mocked.__setFindFilesResultForPattern(configSearchPattern, [vscode.Uri.file('d:/repo/csm/csm-modules.yaml')]);
+
+		await controller.refreshSidebarWorkspaceState();
+
+		assert.strictEqual(capturedContext?.moduleRoot, 'csm');
+		assert.deepStrictEqual((capturedContext?.managedModules as Array<{ path: string }>)?.map((entry) => entry.path), ['csm/module-a']);
+		assert.deepStrictEqual((capturedContext?.unmanagedFolders as Array<{ path: string }>)?.map((entry) => entry.path), ['csm/custom-module']);
+		assert.strictEqual((capturedContext?.managedModules as Array<{ moduleEntry: { name: string } }>)[0]?.moduleEntry.name, 'module-a');
+	});
+
 	test('register marks copy modules as applied in a non-git workspace from config file', async () => {
 		const memento = new FakeMemento();
 		await memento.update('csmModules.cache.modules', createCachedSnapshot([
@@ -1805,6 +1860,91 @@ suite('ModuleManagerController Regression Tests', () => {
 			starred: true,
 		}]);
 		assert.strictEqual(renderedModules[renderedModules.length - 1]?.[0]?.starred, true);
+	});
+
+	test('createLocalFolderRepositoryCommand runs the GitHub creation wizard with default topics', async () => {
+		const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'csm-share-module-'));
+		fs.mkdirSync(path.join(workspaceRoot, 'csm', 'custom-module'), { recursive: true });
+		const controller = createController() as any;
+		let createdRequest:
+			| { token: string; name: string; description?: string; private: boolean; topics: string[] }
+			| undefined;
+		let publishedRequest:
+			| { folderPath: string; remoteUrl: string; authToken?: string; defaultBranch?: string; authorName?: string; authorEmail?: string }
+			| undefined;
+		let refreshed = false;
+
+		controller.authService = {
+			getSessionSilently: async () => createSession('token', 'tester'),
+			getSessionInteractively: async () => createSession('token', 'tester'),
+		};
+		controller.githubService = {
+			fetchModules: async () => ({ modules: [] }),
+			fetchReadme: async () => '',
+			createRepository: async (token: string, options: { name: string; description?: string; private: boolean; topics: string[] }) => {
+				createdRequest = { token, ...options };
+				return {
+					id: 1,
+					name: options.name,
+					full_name: `tester/${options.name}`,
+					description: options.description ?? '',
+					private: options.private,
+					default_branch: 'main',
+					html_url: `https://github.com/tester/${options.name}`,
+					topics: options.topics,
+				};
+			},
+		};
+		controller.workspaceModuleService = {
+			resolveGitRepositoryRoot: async () => workspaceRoot,
+			getGitIdentity: async () => ({
+				name: 'Tester',
+				email: 'tester@example.com',
+			}),
+			publishLocalFolder: async (options: { folderPath: string; remoteUrl: string; authToken?: string; defaultBranch?: string; authorName?: string; authorEmail?: string }) => {
+				publishedRequest = options;
+				return {
+					branch: options.defaultBranch ?? 'main',
+					remoteName: 'origin',
+					remoteUrl: options.remoteUrl,
+					createdCommit: true,
+				};
+			},
+		};
+		controller.resolveWorkspaceFolder = async () => ({ name: 'repo', uri: vscode.Uri.file(workspaceRoot) });
+		controller.loadModules = async () => {
+			refreshed = true;
+		};
+		mocked.__setInputBoxResponses(['shared-module', 'Demo repo', 'labview-csm, csm-modsets custom-topic']);
+		mocked.__setQuickPickResponse({ label: 'Private', visibility: 'private' });
+		mocked.__setWarningMessageResponse('Create Repository');
+
+		await controller.createLocalFolderRepositoryCommand({
+			id: 'csm/custom-module',
+			kind: 'unmanaged',
+			name: 'custom-module',
+			path: 'csm/custom-module',
+		});
+
+		assert.deepStrictEqual(createdRequest, {
+			token: 'token',
+			name: 'shared-module',
+			description: 'Demo repo',
+			private: true,
+			topics: ['labview-csm', 'csm-modsets', 'custom-topic'],
+		});
+		assert.deepStrictEqual(publishedRequest, {
+			folderPath: path.join(workspaceRoot, 'csm', 'custom-module'),
+			remoteUrl: 'https://github.com/tester/shared-module.git',
+			authToken: 'token',
+			defaultBranch: 'main',
+			authorName: 'Tester',
+			authorEmail: 'tester@example.com',
+		});
+		assert.strictEqual(refreshed, true);
+		assert.ok(mocked.__getLastWarningPrompt()?.message.includes('csm/custom-module'));
+		const infos = mocked.__getMessageLog().filter((message) => message.level === 'info').map((message) => message.text);
+		assert.ok(infos.some((text) => text.includes('Created GitHub repository tester/shared-module and published the local folder contents.')));
 	});
 
 	test('toggleStar unstars a repository only after confirmation', async () => {

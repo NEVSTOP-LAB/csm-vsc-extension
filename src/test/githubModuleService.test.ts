@@ -197,4 +197,68 @@ suite('GitHubModuleService Tests', () => {
 			},
 		]);
 	});
+
+	test('createRepository creates the repository and assigns default topics', async () => {
+		const requests: Array<{ url: string; method: string | undefined; authorization?: string; body?: string }> = [];
+		globalThis.fetch = (async (input, init) => {
+			requests.push({
+				url: String(input),
+				method: init?.method,
+				authorization: ((init?.headers ?? {}) as Record<string, string>).Authorization,
+				body: typeof init?.body === 'string' ? init.body : undefined,
+			});
+			if (String(input).endsWith('/user/repos')) {
+				return {
+					ok: true,
+					status: 201,
+					headers: createHeaders(),
+					json: async () => ({
+						id: 9,
+						name: 'module-share',
+						full_name: 'tester/module-share',
+						description: 'shared module',
+						private: true,
+						default_branch: 'main',
+						html_url: 'https://github.com/tester/module-share',
+					}),
+				} as Response;
+			}
+			return {
+				ok: true,
+				status: 200,
+				headers: createHeaders(),
+				json: async () => ({ names: ['labview-csm', 'csm-modsets'] }),
+			} as Response;
+		}) as FetchFn;
+
+		const service = new GitHubModuleService();
+		const repository = await service.createRepository('token', {
+			name: 'module-share',
+			description: 'shared module',
+			private: true,
+			topics: ['labview-csm', 'csm-modsets'],
+		});
+
+		assert.strictEqual(repository.full_name, 'tester/module-share');
+		assert.deepStrictEqual(repository.topics, ['labview-csm', 'csm-modsets']);
+		assert.deepStrictEqual(requests, [
+			{
+				url: 'https://api.github.com/user/repos',
+				method: 'POST',
+				authorization: 'Bearer token',
+				body: JSON.stringify({
+					name: 'module-share',
+					description: 'shared module',
+					private: true,
+					auto_init: false,
+				}),
+			},
+			{
+				url: 'https://api.github.com/repos/tester/module-share/topics',
+				method: 'PUT',
+				authorization: 'Bearer token',
+				body: JSON.stringify({ names: ['labview-csm', 'csm-modsets'] }),
+			},
+		]);
+	});
 });

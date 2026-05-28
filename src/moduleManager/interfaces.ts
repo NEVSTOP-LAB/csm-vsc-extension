@@ -1,4 +1,4 @@
-import { CsmModuleEntry } from './types';
+import { CsmModuleEntry, LocalManagedModuleEntry, LocalUnmanagedFolderEntry } from './types';
 
 export type ModuleSortField = 'name' | 'owner' | 'updatedAt' | 'applied';
 export type ModuleSortDirection = 'asc' | 'desc';
@@ -13,6 +13,8 @@ export interface SidebarWorkspaceContext {
 	moduleRoot?: string;
 	appliedModuleKeys: string[];
 	staleModuleKeys?: string[];
+	managedModules?: LocalManagedModuleEntry[];
+	unmanagedFolders?: LocalUnmanagedFolderEntry[];
 }
 
 /**

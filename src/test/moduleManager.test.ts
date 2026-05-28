@@ -5,7 +5,9 @@ import * as os from 'os';
 import * as path from 'path';
 import JSZip from 'jszip';
 import { ModuleCacheStore, mapRepoToModuleEntry } from '../moduleManager';
+import { GitExecOptions, IGitRunner } from '../moduleManager/gitService';
 import { ReadmeAssetCache } from '../moduleManager/readmeAssetCache';
+import { LocalWorkspaceViewProvider } from '../moduleManager/localWorkspaceViewProvider';
 import { ModuleSidebarViewProvider } from '../moduleManager/moduleSidebarViewProvider';
 import { ModuleTreeDataProvider, ModuleTreeItem } from '../moduleManager/moduleTreeDataProvider';
 import { GitHubRepoSummary } from '../moduleManager';
@@ -43,6 +45,24 @@ class FakeMemento {
 			return;
 		}
 		this.store.set(key, value);
+	}
+}
+
+class RecordingGitRunner implements IGitRunner {
+	public readonly calls: GitExecOptions[] = [];
+
+	constructor(private readonly handler: (options: GitExecOptions) => Promise<string> | string) { }
+
+	public async exec(options: GitExecOptions): Promise<string> {
+		this.calls.push({
+			...options,
+			args: [...options.args],
+		});
+		return this.handler(options);
+	}
+
+	public async isAvailable(): Promise<boolean> {
+		return true;
 	}
 }
 
@@ -274,7 +294,41 @@ suite('Module Manager Tests', () => {
 		provider.setWorkspaceContext({
 			workspaceLabel: 'repo',
 			moduleRoot: 'csm',
-			appliedModuleKeys: ['org/module-a'],
+			appliedModuleKeys: ['org/module-b'],
+			managedModules: [{
+				id: 'org__module_a',
+				kind: 'managed',
+				owner: 'org',
+				name: 'module-a',
+				path: 'csm/module-a',
+				source: 'https://github.com/org/module-a',
+				method: 'copy',
+				branch: 'main',
+				ref: 'abc123',
+				repoUrl: 'https://github.com/org/module-a',
+				description: 'A demo module',
+				visibility: 'private',
+				topics: ['csm-modsets', 'labview-csm', 'automation'],
+				moduleEntry: {
+					id: 1,
+					owner: 'org',
+					name: 'module-a',
+					description: 'A demo module',
+					topics: ['csm-modsets', 'labview-csm', 'automation'],
+					visibility: 'private',
+					defaultBranch: 'main',
+					repoUrl: 'https://github.com/org/module-a',
+					starred: true,
+				},
+				moduleKey: 'org/module-a',
+				stale: false,
+			}],
+			unmanagedFolders: [{
+				id: 'csm/custom-module',
+				kind: 'unmanaged',
+				name: 'custom-module',
+				path: 'csm/custom-module',
+			}],
 		});
 		provider.setOfflineMode(true);
 		provider.setViewDescription('Updated 5 minutes ago');
@@ -303,11 +357,12 @@ suite('Module Manager Tests', () => {
 		assert.ok(rendered?.html.includes('--module-icon-size: 16px;'));
 		assert.ok(rendered?.html.includes('data-action="togglePreview"'));
 		assert.ok(rendered?.html.includes('type="text"'));
-		assert.ok(rendered?.html.includes('data-module-applied="true"'));
+		assert.ok(rendered?.html.includes('Include applied modules'));
+		assert.ok(!rendered?.html.includes('data-role="include-applied-toggle"'));
 		assert.ok(rendered?.html.includes('data-vscode-context="'));
 		assert.ok(rendered?.html.includes('webviewSection&quot;:&quot;moduleCard&quot;'));
 		assert.ok(rendered?.html.includes('moduleKey&quot;:&quot;org&#47;module-a&quot;'));
-		assert.ok(rendered?.html.includes('moduleApplied&quot;:true'));
+		assert.ok(rendered?.html.includes('moduleApplied&quot;:false'));
 		assert.ok(rendered?.html.includes('preventDefaultContextMenuItems&quot;:true'));
 		assert.ok(!rendered?.html.includes('data-action="applyOne"'));
 		assert.ok(rendered?.html.includes('.module-card:hover .select-toolbar-item,'));
@@ -316,18 +371,17 @@ suite('Module Manager Tests', () => {
 		assert.ok(rendered?.html.includes('pointer-events: none;'));
 		assert.ok(rendered?.html.includes('data-action="toggleStar" data-module-key="org&#47;module-a" title="Unstar repository" aria-label="Unstar repository" aria-pressed="true"'));
 		assert.ok(rendered?.html.includes('data-action="openReadme" data-module-key="org&#47;module-a" title="Open README" aria-label="Open README"'));
+		assert.ok(!rendered?.html.includes('data-module-key="org&#47;module-b"'));
 		assert.ok(!rendered?.html.includes('Workspace: repo'));
 		assert.ok(rendered?.html.includes('Root: csm/'));
 		assert.ok(!rendered?.html.includes('Signed in as tester.'));
 		assert.ok(!rendered?.html.includes('Loaded 2 module(s), including private.'));
 		assert.ok(rendered?.html.includes('1 applied | 1 public | 1 private | 0 selected'));
-		assert.ok(rendered?.html.includes('Applied'));
 		assert.ok(!rendered?.html.includes('data-role="apply-selected"'));
 		assert.ok(rendered?.html.includes('title="Open README"'));
 		assert.ok(!rendered?.html.includes('class="avatar"'));
 		assert.ok(!rendered?.html.includes('title="Refresh modules"'));
 		assert.ok(!rendered?.html.includes('Cached list'));
-		assert.ok(rendered ? rendered.html.indexOf('Already recorded for repo') < rendered.html.indexOf('>automation</span>') : false);
 
 		provider.setSelection(['org/module-a']);
 		const selectedRender = mocked.__getLastWebviewView();
@@ -443,6 +497,231 @@ suite('Module Manager Tests', () => {
 		assert.strictEqual(removedModuleName, 'module-a');
 		assert.strictEqual(updatedModuleName, 'module-a');
 		disposable.dispose();
+	});
+
+	test('ModuleSidebarViewProvider can include applied modules when toggled', () => {
+		const provider = new ModuleSidebarViewProvider({
+			onLogin: () => undefined,
+			onRefresh: () => undefined,
+			onInitializeWorkspace: () => undefined,
+			onToggleStar: () => undefined,
+			onOpenReadme: () => undefined,
+			onPreviewReadme: async () => '<p>Preview</p>',
+			onApplySelection: () => undefined,
+			onRemoveModule: () => undefined,
+			onUpdateModule: () => undefined,
+			onSelectionChange: () => undefined,
+			onSortChange: () => undefined,
+		});
+
+		provider.setAuthenticated(true);
+		provider.setModules([
+			{
+				id: 1,
+				owner: 'org',
+				name: 'module-a',
+				description: 'A demo module',
+				topics: ['csm-modsets'],
+				visibility: 'public',
+				defaultBranch: 'main',
+				repoUrl: 'https://github.com/org/module-a',
+			},
+			{
+				id: 2,
+				owner: 'org',
+				name: 'module-b',
+				description: 'Applied module',
+				topics: ['csm-modsets'],
+				visibility: 'private',
+				defaultBranch: 'main',
+				repoUrl: 'https://github.com/org/module-b',
+			},
+		]);
+		provider.setWorkspaceContext({
+			workspaceLabel: 'repo',
+			moduleRoot: 'csm',
+			appliedModuleKeys: ['org/module-b'],
+			managedModules: [],
+			unmanagedFolders: [],
+		});
+
+		const disposable = vscode.window.registerWebviewViewProvider('csmModules.view', provider);
+		const resolved = mocked.__resolveWebviewView('csmModules.view');
+		const initialRender = mocked.__getLastWebviewView();
+
+		assert.ok(!initialRender?.html.includes('data-module-key="org&#47;module-b"'));
+
+		resolved?.fireMessage({ type: 'setIncludeApplied', includeApplied: true });
+		const rerendered = mocked.__getLastWebviewView();
+
+		assert.ok(rerendered?.html.includes('data-module-key="org&#47;module-b"'));
+		assert.ok(rerendered?.html.includes('data-action="setIncludeApplied" data-include-applied="false"'));
+		assert.ok(!rerendered?.html.includes('data-role="include-applied-toggle"'));
+		disposable.dispose();
+	});
+
+	test('LocalWorkspaceViewProvider renders managed and unmanaged workspace folders', () => {
+		const provider = new LocalWorkspaceViewProvider({
+			onInitializeWorkspace: () => undefined,
+			onOpenReadme: () => undefined,
+			onRemoveModule: () => undefined,
+			onUpdateModule: () => undefined,
+			onCreateLocalRepository: () => undefined,
+		});
+
+		provider.setAuthenticated(true);
+		provider.setWorkspaceContext({
+			workspaceLabel: 'repo',
+			moduleRoot: 'csm',
+			appliedModuleKeys: [],
+			managedModules: [{
+				id: 'local__module_local',
+				kind: 'managed',
+				owner: 'local',
+				name: 'module-local',
+				path: 'csm/module-local',
+				source: 'https://github.com/local/module-local',
+				method: 'copy',
+				branch: 'main',
+				ref: 'abc123',
+				repoUrl: 'https://github.com/local/module-local',
+				description: 'Local module',
+				visibility: 'public',
+				topics: ['manual'],
+				moduleEntry: {
+					id: 0,
+					owner: 'local',
+					name: 'module-local',
+					description: 'Local module',
+					topics: ['manual'],
+					visibility: 'public',
+					defaultBranch: 'main',
+					repoUrl: 'https://github.com/local/module-local',
+				},
+				stale: false,
+			}],
+			unmanagedFolders: [{
+				id: 'csm/custom-module',
+				kind: 'unmanaged',
+				name: 'custom-module',
+				path: 'csm/custom-module',
+			}],
+		});
+
+		const disposable = vscode.window.registerWebviewViewProvider('csmModules.workspaceView', provider);
+		mocked.__resolveWebviewView('csmModules.workspaceView');
+		const rendered = mocked.__getLastWebviewView();
+
+		assert.strictEqual(rendered?.viewId, 'csmModules.workspaceView');
+		assert.strictEqual(rendered?.description, 'csm');
+		assert.ok(!rendered?.html.includes('Workspace Modules'));
+		assert.ok(!rendered?.html.includes('Managed folders'));
+		assert.ok(rendered?.html.includes('Unmanaged folders'));
+		assert.ok(rendered?.html.includes('1 managed | 1 unmanaged'));
+		assert.ok(rendered?.html.includes('Root: csm/'));
+		assert.ok(!rendered?.html.includes('csm-vsc-extension'));
+		assert.ok(rendered ? rendered.html.indexOf('1 managed | 1 unmanaged') < rendered.html.indexOf('Root: csm/') : false);
+		assert.ok(!rendered?.html.includes('title-row"><span class="module-name" title="module-local">module-local</span><span class="badge applied">Managed'));
+		assert.ok(rendered?.html.includes('<div class="meta-row"><span class="badge applied">Managed</span><span class="badge">Copy</span>'));
+		assert.ok(rendered?.html.includes('class="icon-button" data-action="openLocalReadme"'));
+		assert.ok(rendered?.html.includes('class="icon-button" data-action="updateLocalModule"'));
+		assert.ok(rendered?.html.includes('class="icon-button" data-action="removeLocalModule"'));
+		assert.ok(rendered?.html.includes('module-local'));
+		assert.ok(rendered?.html.includes('custom-module'));
+		assert.ok(rendered?.html.includes('Create GitHub Repo'));
+		disposable.dispose();
+	});
+
+	test('LocalWorkspaceViewProvider forwards local workspace actions', () => {
+		let openedReadmeName = '';
+		let removedModuleName = '';
+		let updatedModuleName = '';
+		let createdRepositoryPath = '';
+		let initialized = false;
+		const provider = new LocalWorkspaceViewProvider({
+			onInitializeWorkspace: () => undefined,
+			onOpenReadme: (entry) => {
+				openedReadmeName = entry.name;
+			},
+			onRemoveModule: (entry) => {
+				removedModuleName = entry.name;
+			},
+			onUpdateModule: (entry) => {
+				updatedModuleName = entry.name;
+			},
+			onCreateLocalRepository: (entry) => {
+				createdRepositoryPath = entry.path;
+			},
+		});
+
+		const initializingProvider = new LocalWorkspaceViewProvider({
+			onInitializeWorkspace: () => {
+				initialized = true;
+			},
+			onOpenReadme: () => undefined,
+			onRemoveModule: () => undefined,
+			onUpdateModule: () => undefined,
+			onCreateLocalRepository: () => undefined,
+		});
+
+		provider.setAuthenticated(true);
+		provider.setWorkspaceContext({
+			workspaceLabel: 'repo',
+			moduleRoot: 'csm',
+			appliedModuleKeys: [],
+			managedModules: [{
+				id: 'local__module_local',
+				kind: 'managed',
+				owner: 'local',
+				name: 'module-local',
+				path: 'csm/module-local',
+				source: 'https://github.com/local/module-local',
+				method: 'copy',
+				branch: 'main',
+				ref: 'abc123',
+				repoUrl: 'https://github.com/local/module-local',
+				description: 'Local module',
+				visibility: 'public',
+				topics: ['manual'],
+				moduleEntry: {
+					id: 0,
+					owner: 'local',
+					name: 'module-local',
+					description: 'Local module',
+					topics: ['manual'],
+					visibility: 'public',
+					defaultBranch: 'main',
+					repoUrl: 'https://github.com/local/module-local',
+				},
+				stale: false,
+			}],
+			unmanagedFolders: [{
+				id: 'csm/custom-module',
+				kind: 'unmanaged',
+				name: 'custom-module',
+				path: 'csm/custom-module',
+			}],
+		});
+		initializingProvider.setCanInitializeWorkspace(true);
+
+		const disposable = vscode.window.registerWebviewViewProvider('csmModules.workspaceView', provider);
+		const resolved = mocked.__resolveWebviewView('csmModules.workspaceView');
+		const initDisposable = vscode.window.registerWebviewViewProvider('csmModules.workspaceInitView', initializingProvider);
+		const initResolved = mocked.__resolveWebviewView('csmModules.workspaceInitView');
+
+		resolved?.fireMessage({ type: 'openLocalReadme', localItemId: 'local__module_local' });
+		resolved?.fireMessage({ type: 'updateLocalModule', localItemId: 'local__module_local' });
+		resolved?.fireMessage({ type: 'removeLocalModule', localItemId: 'local__module_local' });
+		resolved?.fireMessage({ type: 'createLocalRepository', localItemId: 'csm/custom-module' });
+		initResolved?.fireMessage({ type: 'initializeWorkspace' });
+
+		assert.strictEqual(openedReadmeName, 'module-local');
+		assert.strictEqual(updatedModuleName, 'module-local');
+		assert.strictEqual(removedModuleName, 'module-local');
+		assert.strictEqual(createdRepositoryPath, 'csm/custom-module');
+		assert.strictEqual(initialized, true);
+		disposable.dispose();
+		initDisposable.dispose();
 	});
 
 	test('ModuleSidebarViewProvider keeps login and batch apply in the title bar', () => {
@@ -578,6 +857,7 @@ suite('Module Manager Tests', () => {
 		const rendered = mocked.__getLastWebviewView();
 
 		assert.ok(rendered?.html.includes('data-role="filter-button"'));
+		assert.ok(rendered?.html.includes('filter-menu-label">Show</span>'));
 		assert.ok(rendered?.html.includes('Filter and sort modules. Current: Owner, Descending.'));
 		assert.ok(rendered?.html.includes('filter-menu-label">Type</span>'));
 		assert.ok(rendered?.html.includes('filter-menu-label">Order</span>'));
@@ -649,6 +929,76 @@ suite('Module Manager Tests', () => {
 			assert.strictEqual(config.modules.org__module_a?.method, 'submodule');
 		} finally {
 			await fs.rm(repoRoot, { recursive: true, force: true });
+		}
+	});
+
+	test('WorkspaceModuleService publishes a local folder to a new remote repository', async () => {
+		const folderPath = await fs.mkdtemp(path.join(os.tmpdir(), 'csm-publish-module-'));
+		const remoteUrl = 'https://github.com/tester/shared-module.git';
+		await fs.writeFile(path.join(folderPath, 'module.vi'), 'demo', 'utf8');
+
+		const gitRunner = new RecordingGitRunner(async (options) => {
+			const command = options.args.join(' ');
+			switch (command) {
+				case 'init':
+				case 'config user.name Tester':
+				case 'config user.email tester@example.com':
+				case 'add --all':
+				case 'commit -m Initial publish of custom-module':
+				case 'branch -M main':
+				case 'push -u origin main':
+					return '';
+				case 'remote get-url origin':
+				case 'rev-parse --verify HEAD':
+					throw new Error('missing');
+				case 'status --porcelain':
+					return 'A  module.vi';
+				case 'branch --show-current':
+					return 'master';
+				default:
+					if (options.args[0] === 'remote' && options.args[1] === 'add') {
+						assert.strictEqual(options.args[2], 'origin');
+						assert.strictEqual(options.args[3], remoteUrl);
+						return '';
+					}
+					throw new Error(`Unexpected git command: ${command}`);
+			}
+		});
+		const service = new WorkspaceModuleService(gitRunner);
+
+		try {
+			const result = await service.publishLocalFolder({
+				folderPath,
+				remoteUrl,
+				authToken: 'token',
+				defaultBranch: 'main',
+				commitMessage: 'Initial publish of custom-module',
+				authorName: 'Tester',
+				authorEmail: 'tester@example.com',
+			});
+
+			assert.deepStrictEqual(gitRunner.calls.map((call) => call.args.join(' ')), [
+				'init',
+				'config user.name Tester',
+				'config user.email tester@example.com',
+				'remote get-url origin',
+				'remote add origin https://github.com/tester/shared-module.git',
+				'add --all',
+				'rev-parse --verify HEAD',
+				'status --porcelain',
+				'commit -m Initial publish of custom-module',
+				'branch --show-current',
+				'branch -M main',
+				'push -u origin main',
+			]);
+			assert.deepStrictEqual(result, {
+				branch: 'main',
+				remoteName: 'origin',
+				remoteUrl,
+				createdCommit: true,
+			});
+		} finally {
+			await fs.rm(folderPath, { recursive: true, force: true });
 		}
 	});
 

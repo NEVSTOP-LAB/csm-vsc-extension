@@ -14,6 +14,8 @@
 - 阶段二：当仓库已存在 `csm/` 目录及其中的 submodule，但缺少配置文件时，可自动反向生成 `csm/csm-modules.yaml`
 - 阶段四：新增设置项 `csmModules.defaultModuleRoot`，用于为首次初始化 / 首次应用预设默认模块根目录
 - 本地化：扩展全部用户可见字符串现已支持中英文切换，覆盖 package 清单文案、模块管理 UI/提示与 `.csmlog` / `.lvcsm` Hover 内容
+- 阶段四：`CSM Modules` 容器新增独立的 `Workspace Modules` 原生视图，可同时显示已管理模块与当前模块根目录下的未管理文件夹，而上方 `Available Modules` 保持原有 GitHub 目录行为
+- 阶段四：已登录 GitHub 时，未管理本地模块文件夹可通过向导一键创建并发布 GitHub 仓库，默认使用 private 可见性并附带 `labview-csm`、`csm-modsets` topics；若本机缺少 Git 作者信息，会在首次发布前补充询问
 
 ### 变更
 

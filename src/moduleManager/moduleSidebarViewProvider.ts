@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { CsmModuleEntry } from './types';
+import { CsmModuleEntry, LocalManagedModuleEntry, LocalUnmanagedFolderEntry } from './types';
 import { ViewState } from './moduleTreeDataProvider';
 import { IModuleViewProvider, ModuleSortDirection, ModuleSortField, ModuleSortState, SidebarWorkspaceContext } from './interfaces';
 import { DEFAULT_MODULE_SORT_STATE, isModuleSortDirection, isModuleSortField, normalizeModuleSortState } from './sort';
@@ -16,6 +16,7 @@ interface ModuleSidebarActions {
 	onApplySelection: (entry?: CsmModuleEntry) => void;
 	onRemoveModule: (entry: CsmModuleEntry) => void;
 	onUpdateModule: (entry: CsmModuleEntry) => void;
+	onCreateLocalRepository?: (entry: LocalUnmanagedFolderEntry) => void;
 	onSelectionChange: (moduleKeys: string[]) => void;
 	onSortChange: (sortState: Partial<ModuleSortState>) => void;
 }
@@ -25,10 +26,12 @@ interface ModuleSidebarViewProviderOptions {
 }
 
 type WebviewMessage = {
-	type: 'login' | 'refresh' | 'initializeWorkspace' | 'applySelected' | 'toggleStar' | 'openReadme' | 'togglePreview' | 'applyOne' | 'toggleSelection' | 'setFilterQuery' | 'clearFilter' | 'dismissIntroTip' | 'removeModule' | 'updateModule' | 'setSortField' | 'setSortDirection' | 'showMore';
+	type: 'login' | 'refresh' | 'initializeWorkspace' | 'applySelected' | 'toggleStar' | 'openReadme' | 'togglePreview' | 'applyOne' | 'toggleSelection' | 'setFilterQuery' | 'clearFilter' | 'setIncludeApplied' | 'dismissIntroTip' | 'removeModule' | 'updateModule' | 'setSortField' | 'setSortDirection' | 'showMore' | 'openLocalReadme' | 'removeLocalModule' | 'updateLocalModule' | 'createLocalRepository';
 	moduleKey?: string;
+	localItemId?: string;
 	selected?: boolean;
 	query?: string;
+	includeApplied?: boolean;
 	sortField?: ModuleSortField;
 	sortDirection?: ModuleSortDirection;
 };
@@ -45,9 +48,14 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IM
 	private canInitializeWorkspace = false;
 	private readonly selectedModuleKeys = new Set<string>();
 	private readonly appliedModuleKeys = new Set<string>();
+	private localManagedModules: LocalManagedModuleEntry[] = [];
+	private localUnmanagedFolders: LocalUnmanagedFolderEntry[] = [];
+	private readonly localManagedModulesById = new Map<string, LocalManagedModuleEntry>();
+	private readonly localUnmanagedFoldersById = new Map<string, LocalUnmanagedFolderEntry>();
 	private workspaceLabel: string | undefined;
 	private moduleRoot: string | undefined;
 	private filterQuery = '';
+	private includeAppliedModules = false;
 	private introTipVisible = true;
 	private offlineMode = false;
 	private sortState: ModuleSortState = DEFAULT_MODULE_SORT_STATE;
@@ -150,6 +158,16 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IM
 	public setWorkspaceContext(context: SidebarWorkspaceContext): void {
 		this.workspaceLabel = context.workspaceLabel;
 		this.moduleRoot = context.moduleRoot;
+		this.localManagedModules = context.managedModules ?? [];
+		this.localUnmanagedFolders = context.unmanagedFolders ?? [];
+		this.localManagedModulesById.clear();
+		for (const entry of this.localManagedModules) {
+			this.localManagedModulesById.set(entry.id, entry);
+		}
+		this.localUnmanagedFoldersById.clear();
+		for (const entry of this.localUnmanagedFolders) {
+			this.localUnmanagedFoldersById.set(entry.id, entry);
+		}
 		this.appliedModuleKeys.clear();
 		for (const moduleKey of context.appliedModuleKeys) {
 			if (this.findEntry(moduleKey)) {
@@ -203,6 +221,10 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IM
 				return;
 			case 'clearFilter':
 				this.filterQuery = '';
+				return;
+			case 'setIncludeApplied':
+				this.includeAppliedModules = message.includeApplied === true;
+				this.render();
 				return;
 			case 'setSortField':
 				if (isModuleSortField(message.sortField)) {
@@ -302,6 +324,34 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IM
 				}
 				return;
 			}
+			case 'openLocalReadme': {
+				const entry = message.localItemId ? this.localManagedModulesById.get(message.localItemId) : undefined;
+				if (entry) {
+					this.actions.onOpenReadme(entry.moduleEntry);
+				}
+				return;
+			}
+			case 'removeLocalModule': {
+				const entry = message.localItemId ? this.localManagedModulesById.get(message.localItemId) : undefined;
+				if (entry) {
+					this.actions.onRemoveModule(entry.moduleEntry);
+				}
+				return;
+			}
+			case 'updateLocalModule': {
+				const entry = message.localItemId ? this.localManagedModulesById.get(message.localItemId) : undefined;
+				if (entry) {
+					this.actions.onUpdateModule(entry.moduleEntry);
+				}
+				return;
+			}
+			case 'createLocalRepository': {
+				const entry = message.localItemId ? this.localUnmanagedFoldersById.get(message.localItemId) : undefined;
+				if (entry) {
+					this.actions.onCreateLocalRepository?.(entry);
+				}
+				return;
+			}
 			case 'showMore': {
 				this.renderLimit += ModuleSidebarViewProvider.INITIAL_RENDER_LIMIT;
 				this.render();
@@ -352,9 +402,12 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IM
 			canInitializeWorkspace: this.canInitializeWorkspace,
 			selectedModuleKeys: this.selectedModuleKeys,
 			appliedModuleKeys: this.appliedModuleKeys,
+			managedModules: this.localManagedModules,
+			unmanagedFolders: this.localUnmanagedFolders,
 			workspaceLabel: this.workspaceLabel,
 			moduleRoot: this.moduleRoot,
 			introTipVisible: this.introTipVisible,
+			includeAppliedModules: this.includeAppliedModules,
 			offlineMode: this.offlineMode,
 			sortState: this.sortState,
 			staleModuleKeys: this.staleModuleKeys,

@@ -4,12 +4,13 @@ import * as fs from 'fs/promises';
 import { AuthService } from './authService';
 import { GitHubModuleService } from './githubModuleService';
 import { ModuleCacheStore } from './cacheStore';
-import { CopyModuleUpdatePreview, CsmModuleEntry, LocalModuleConfig, LocalModuleConfigEntry, ModuleApplyMethod, ModuleAuthSnapshot, ModuleCacheSnapshot, ModuleUpdateResult } from './types';
+import { CopyModuleUpdatePreview, CsmModuleEntry, LocalManagedModuleEntry, LocalModuleConfig, LocalModuleConfigEntry, LocalUnmanagedFolderEntry, ModuleApplyMethod, ModuleAuthSnapshot, ModuleCacheSnapshot, ModuleUpdateResult } from './types';
+import { LocalWorkspaceViewProvider } from './localWorkspaceViewProvider';
 import { ModuleTreeItem } from './moduleTreeDataProvider';
 import { ModuleSidebarViewProvider } from './moduleSidebarViewProvider';
 import { IModuleViewProvider, ModuleSortField, ModuleSortState, SidebarWorkspaceContext } from './interfaces';
 import { ReadmeAssetCache } from './readmeAssetCache';
-import { DEFAULT_LOCAL_MODULE_ROOT, LEGACY_LOCAL_MODULE_CONFIG_FILE, LOCAL_MODULE_CONFIG_FILE, WorkspaceModuleService } from './workspaceModuleService';
+import { DEFAULT_LOCAL_MODULE_ROOT, GitIdentity, LEGACY_LOCAL_MODULE_CONFIG_FILE, LOCAL_MODULE_CONFIG_FILE, WorkspaceModuleService } from './workspaceModuleService';
 import { COMMAND_IDS, CONFIG_KEYS, CONFIG_SECTIONS, CONTEXT_KEYS, VIEW_IDS } from './constants';
 import { Logger, getLogger, wrapCommand } from './logger';
 import { getApplyMethodLabel, t } from './messages';
@@ -24,6 +25,7 @@ const HAS_SELECTION_CONTEXT_KEY = CONTEXT_KEYS.hasSelection;
 const HAS_APPLIED_SELECTION_CONTEXT_KEY = CONTEXT_KEYS.selectionHasApplied;
 const HAS_UNAPPLIED_SELECTION_CONTEXT_KEY = CONTEXT_KEYS.selectionHasUnapplied;
 const LVPROJ_GLOB = '**/*.lvproj';
+const DEFAULT_SHARED_MODULE_TOPICS = ['labview-csm', 'csm-modsets'] as const;
 
 function getWorkspaceInitPrompt(rootPath: string): string {
 	return t('workspaceInitPrompt', { rootPath });
@@ -46,11 +48,17 @@ type ApplyMethodQuickPickItem = vscode.QuickPickItem & {
 	method?: ModuleApplyMethod;
 };
 
+type RepositoryVisibility = 'private' | 'public';
+
+type RepositoryVisibilityQuickPickItem = vscode.QuickPickItem & {
+	visibility: RepositoryVisibility;
+};
+
 type ModuleManagerAuthService = Pick<AuthService, 'getSessionSilently' | 'getSessionInteractively'>
 	& Partial<Pick<AuthService, 'signOut' | 'verifyScopes'>>;
 
 type ModuleManagerGithubService = Pick<GitHubModuleService, 'fetchModules' | 'fetchReadme'>
-	& Partial<Pick<GitHubModuleService, 'isRepositoryStarred' | 'setRepositoryStarred'>>;
+	& Partial<Pick<GitHubModuleService, 'isRepositoryStarred' | 'setRepositoryStarred' | 'createRepository'>>;
 
 /**
  * Optional dependencies for {@link ModuleManagerController}.
@@ -98,6 +106,9 @@ export class ModuleManagerController {
 		onUpdateModule: (entry) => {
 			void this.updateModuleCommand(entry);
 		},
+		onCreateLocalRepository: (entry) => {
+			void this.createLocalFolderRepositoryCommand(entry);
+		},
 		onSelectionChange: (moduleKeys) => {
 			this.setSelectedModuleKeys(moduleKeys);
 		},
@@ -106,6 +117,23 @@ export class ModuleManagerController {
 		},
 	}, {
 		getLocalResourceRoots: () => [this.readmeAssetCache.rootUri],
+	});
+	private readonly localWorkspaceViewProvider: LocalWorkspaceViewProvider = new LocalWorkspaceViewProvider({
+		onInitializeWorkspace: () => {
+			void this.initializeWorkspaceCommand();
+		},
+		onOpenReadme: (entry) => {
+			void this.openReadmeCommand(entry);
+		},
+		onRemoveModule: (entry) => {
+			void this.removeModuleCommand(entry);
+		},
+		onUpdateModule: (entry) => {
+			void this.updateModuleCommand(entry);
+		},
+		onCreateLocalRepository: (entry) => {
+			void this.createLocalFolderRepositoryCommand(entry);
+		},
 	});
 	// IModuleViewProvider abstraction (review item 2.2). Tests can swap this out.
 	private treeDataProvider: IModuleViewProvider;
@@ -150,6 +178,9 @@ export class ModuleManagerController {
 
 	public register(subscriptions: vscode.Disposable[]): void {
 		subscriptions.push(vscode.window.registerWebviewViewProvider(VIEW_IDS.moduleSidebar, this.sidebarViewProvider, {
+			webviewOptions: { retainContextWhenHidden: true },
+		}));
+		subscriptions.push(vscode.window.registerWebviewViewProvider(VIEW_IDS.localWorkspace, this.localWorkspaceViewProvider, {
 			webviewOptions: { retainContextWhenHidden: true },
 		}));
 
@@ -547,6 +578,103 @@ export class ModuleManagerController {
 			return;
 		}
 		await this.refreshSidebarWorkspaceState();
+	}
+
+	public async createLocalFolderRepositoryCommand(folder: LocalUnmanagedFolderEntry): Promise<void> {
+		const workspaceFolder = await this.resolveWorkspaceFolder();
+		if (!workspaceFolder) {
+			void vscode.window.showWarningMessage(t('openWorkspaceBeforeCreateRepository'));
+			return;
+		}
+		const repoRoot = await this.workspaceModuleService.resolveGitRepositoryRoot(workspaceFolder.uri.fsPath);
+		const workspaceRoot = repoRoot ?? workspaceFolder.uri.fsPath;
+		const folderAbsolutePath = path.resolve(workspaceRoot, folder.path);
+		try {
+			const stat = await fs.stat(folderAbsolutePath);
+			if (!stat.isDirectory()) {
+				void vscode.window.showWarningMessage(t('localFolderMissing', { folder: folder.path }));
+				return;
+			}
+		} catch {
+			void vscode.window.showWarningMessage(t('localFolderMissing', { folder: folder.path }));
+			return;
+		}
+
+		const token = await this.ensureToken(true);
+		if (!token || typeof this.githubService.createRepository !== 'function') {
+			void vscode.window.showWarningMessage(t('signInRequiredForCreateRepository'));
+			return;
+		}
+
+		const repositoryConfig = await this.promptRepositoryCreation(folder.name);
+		if (!repositoryConfig) {
+			return;
+		}
+
+		const confirmation = await vscode.window.showWarningMessage(
+			t('createRepositoryConfirmation', {
+				visibility: repositoryConfig.visibility === 'private' ? t('createRepositoryPrivateLabel') : t('createRepositoryPublicLabel'),
+				name: repositoryConfig.name,
+				folder: folder.path,
+				topics: repositoryConfig.topics.join(', '),
+			}),
+			{ modal: true },
+			t('createRepositoryAction'),
+		);
+		if (confirmation !== t('createRepositoryAction')) {
+			return;
+		}
+
+		const gitIdentity = await this.promptPublishGitIdentity(folderAbsolutePath);
+		if (!gitIdentity) {
+			return;
+		}
+
+		let repositoryCreated = false;
+		try {
+			let repositoryName: string | undefined;
+			await vscode.window.withProgress(
+				{
+					location: vscode.ProgressLocation.Notification,
+					title: t('createRepositoryProgress', { name: repositoryConfig.name }),
+					cancellable: false,
+				},
+				async () => {
+					const repository = await this.githubService.createRepository!(token, {
+						name: repositoryConfig.name,
+						description: repositoryConfig.description,
+						private: repositoryConfig.visibility === 'private',
+						topics: repositoryConfig.topics,
+					});
+					repositoryName = repository.full_name || repository.name;
+					repositoryCreated = true;
+					await this.workspaceModuleService.publishLocalFolder({
+						folderPath: folderAbsolutePath,
+						remoteUrl: this.toGitRemoteUrl(repository.html_url),
+						authToken: token,
+						defaultBranch: repository.default_branch || 'main',
+						commitMessage: `Initial publish of ${folder.name}`,
+						authorName: gitIdentity.name,
+						authorEmail: gitIdentity.email,
+					});
+				},
+			);
+			void vscode.window.showInformationMessage(t('createRepositoryPublishSuccess', { repository: repositoryName ?? repositoryConfig.name }));
+			void this.loadModules({
+				interactiveAuth: false,
+				showSuccessMessage: false,
+				showErrorMessage: false,
+				preserveVisibleModules: true,
+			});
+		} catch (error) {
+			const message = getUserFacingErrorMessage(error, 'createRepo');
+			this.logger.error(`Failed to create or publish GitHub repository for ${folder.path}: ${message}`);
+			void vscode.window.showErrorMessage(
+				repositoryCreated
+					? t('createRepositoryPublishFailed', { folder: folder.path, message })
+					: t('createRepositoryFailed', { message }),
+			);
+		}
 	}
 
 	public setSortOrderCommand(field?: ModuleSortField): void {
@@ -1218,6 +1346,7 @@ export class ModuleManagerController {
 			this.currentAccountLabel = accountLabel;
 		}
 		this.treeDataProvider.setAuthenticated(signedIn, this.currentAccountLabel);
+		this.localWorkspaceViewProvider.setAuthenticated(signedIn);
 		await vscode.commands.executeCommand('setContext', SIGNED_IN_CONTEXT_KEY, signedIn);
 	}
 
@@ -1293,6 +1422,7 @@ export class ModuleManagerController {
 			if (typeof this.treeDataProvider.setWorkspaceContext === 'function') {
 				this.treeDataProvider.setWorkspaceContext(context);
 			}
+			this.localWorkspaceViewProvider.setWorkspaceContext(context);
 			void this.setSelectionContexts();
 		};
 		const workspaceFolder = this.getPreferredWorkspaceFolder();
@@ -1305,12 +1435,84 @@ export class ModuleManagerController {
 		const workspaceRoot = repoRoot ?? workspaceFolder.uri.fsPath;
 
 		const config = await this.tryLoadSidebarLocalModuleConfig(workspaceFolder, workspaceRoot);
+		const moduleRoot = await this.resolveSidebarModuleRoot(workspaceRoot, config);
+		const staleModuleKeys = await this.computeStaleModuleKeys(workspaceRoot, config);
 		setContext({
 			workspaceLabel: path.basename(workspaceRoot) || workspaceFolder.name,
-			moduleRoot: config?.root,
+			moduleRoot,
 			appliedModuleKeys: this.mapAppliedModuleKeys(config),
-			staleModuleKeys: await this.computeStaleModuleKeys(workspaceRoot, config),
+			staleModuleKeys,
+			managedModules: this.mapManagedModules(config, staleModuleKeys),
+			unmanagedFolders: moduleRoot ? await this.mapUnmanagedFolders(workspaceRoot, moduleRoot, config) : [],
 		});
+	}
+
+	private async resolveSidebarModuleRoot(workspaceRoot: string, config: LocalModuleConfig | undefined): Promise<string | undefined> {
+		if (config?.root) {
+			return config.root;
+		}
+		const defaultRoot = this.getConfiguredDefaultModuleRoot();
+		return await this.hasLocalModuleRoot(workspaceRoot, defaultRoot) ? defaultRoot : undefined;
+	}
+
+	private mapManagedModules(config: LocalModuleConfig | undefined, staleModuleKeys: string[]): LocalManagedModuleEntry[] {
+		if (!config) {
+			return [];
+		}
+
+		const staleSet = new Set(staleModuleKeys);
+		const availableModulesBySource = new Map<string, CsmModuleEntry>();
+		for (const moduleEntry of this.availableModules) {
+			availableModulesBySource.set(this.normalizeModuleSource(moduleEntry.repoUrl), moduleEntry);
+		}
+
+		return Object.values(config.modules)
+			.sort((left, right) => left.path.localeCompare(right.path))
+			.map((configEntry) => {
+				const availableModule = this.findAvailableModule(configEntry.owner, configEntry.name)
+					?? availableModulesBySource.get(this.normalizeModuleSource(configEntry.source));
+				const moduleEntry = availableModule ?? this.synthesizeModuleEntry(configEntry);
+				return {
+					id: configEntry.key,
+					kind: 'managed',
+					owner: configEntry.owner,
+					name: configEntry.name,
+					path: configEntry.path,
+					source: configEntry.source,
+					method: configEntry.method,
+					branch: configEntry.branch,
+					ref: configEntry.ref,
+					repoUrl: moduleEntry.repoUrl,
+					description: moduleEntry.description,
+					visibility: moduleEntry.visibility,
+					topics: moduleEntry.topics,
+					moduleEntry,
+					moduleKey: availableModule ? this.getModuleKey(availableModule) : undefined,
+					stale: staleSet.has(`${configEntry.owner}/${configEntry.name}`),
+				};
+			});
+	}
+
+	private async mapUnmanagedFolders(
+		workspaceRoot: string,
+		moduleRoot: string,
+		config: LocalModuleConfig | undefined,
+	): Promise<LocalUnmanagedFolderEntry[]> {
+		const managedPaths = new Set(
+			Object.values(config?.modules ?? {}).map((entry) => entry.path.replace(/\\/g, '/').toLowerCase()),
+		);
+		const directories = await this.workspaceModuleService.listModuleDirectories(workspaceRoot, moduleRoot);
+		return directories
+			.map((directoryName) => {
+				const relativePath = path.posix.join(moduleRoot, directoryName);
+				return {
+					id: relativePath,
+					kind: 'unmanaged' as const,
+					name: directoryName,
+					path: relativePath,
+				};
+			})
+			.filter((entry) => !managedPaths.has(entry.path.toLowerCase()));
 	}
 
 	/**
@@ -1602,6 +1804,139 @@ export class ModuleManagerController {
 		return source.trim().replace(/\.git$/i, '').replace(/\/+$/g, '').toLowerCase();
 	}
 
+	private async promptPublishGitIdentity(folderAbsolutePath: string): Promise<Required<GitIdentity> | undefined> {
+		const currentIdentity = await this.workspaceModuleService.getGitIdentity(folderAbsolutePath);
+		const currentName = currentIdentity.name?.trim();
+		const currentEmail = currentIdentity.email?.trim();
+		const name = currentName || await vscode.window.showInputBox({
+			prompt: t('publishCommitAuthorNamePrompt'),
+			ignoreFocusOut: true,
+			validateInput: (value) => value.trim().length > 0 ? undefined : t('publishCommitAuthorNameRequired'),
+		});
+		if (typeof name === 'undefined') {
+			return undefined;
+		}
+
+		const email = currentEmail || await vscode.window.showInputBox({
+			prompt: t('publishCommitAuthorEmailPrompt'),
+			ignoreFocusOut: true,
+			validateInput: (value) => this.validateGitUserEmail(value),
+		});
+		if (typeof email === 'undefined') {
+			return undefined;
+		}
+
+		return {
+			name: name.trim(),
+			email: email.trim(),
+		};
+	}
+
+	private validateGitUserEmail(value: string): string | undefined {
+		const trimmed = value.trim();
+		if (!trimmed) {
+			return t('publishCommitAuthorEmailRequired');
+		}
+		return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)
+			? undefined
+			: t('publishCommitAuthorEmailInvalid');
+	}
+
+	private toGitRemoteUrl(repositoryUrl: string): string {
+		const trimmed = repositoryUrl.trim().replace(/\.git$/i, '').replace(/\/+$/g, '');
+		return `${trimmed}.git`;
+	}
+
+	private async promptRepositoryCreation(folderName: string): Promise<{
+		name: string;
+		description: string;
+		visibility: RepositoryVisibility;
+		topics: string[];
+	} | undefined> {
+		const name = await vscode.window.showInputBox({
+			prompt: t('createRepositoryNamePrompt', { folder: folderName }),
+			value: folderName,
+			validateInput: (value) => this.validateRepositoryName(value),
+		});
+		if (typeof name === 'undefined') {
+			return undefined;
+		}
+
+		const description = await vscode.window.showInputBox({
+			prompt: t('createRepositoryDescriptionPrompt'),
+			value: '',
+		});
+		if (typeof description === 'undefined') {
+			return undefined;
+		}
+
+		const visibilityPick = await vscode.window.showQuickPick<RepositoryVisibilityQuickPickItem>([
+			{
+				label: t('createRepositoryPrivateLabel'),
+				description: t('createRepositoryPrivateDescription'),
+				picked: true,
+				visibility: 'private',
+			},
+			{
+				label: t('createRepositoryPublicLabel'),
+				description: t('createRepositoryPublicDescription'),
+				visibility: 'public',
+			},
+		], {
+			placeHolder: t('createRepositoryVisibilityPlaceholder'),
+		});
+		if (!visibilityPick) {
+			return undefined;
+		}
+
+		const topicsInput = await vscode.window.showInputBox({
+			prompt: t('createRepositoryTopicsPrompt'),
+			value: DEFAULT_SHARED_MODULE_TOPICS.join(', '),
+		});
+		if (typeof topicsInput === 'undefined') {
+			return undefined;
+		}
+
+		return {
+			name: name.trim(),
+			description: description.trim(),
+			visibility: visibilityPick.visibility,
+			topics: this.normalizeRepositoryTopics(topicsInput),
+		};
+	}
+
+	private normalizeRepositoryTopics(value: string): string[] {
+		const normalized = value
+			.split(/[\s,]+/)
+			.map((segment) => segment.trim().toLowerCase())
+			.filter((segment) => segment.length > 0);
+		const topics = normalized.length > 0 ? normalized : [...DEFAULT_SHARED_MODULE_TOPICS];
+		const deduped: string[] = [];
+		const seen = new Set<string>();
+		for (const topic of topics) {
+			if (seen.has(topic)) {
+				continue;
+			}
+			seen.add(topic);
+			deduped.push(topic);
+		}
+		return deduped;
+	}
+
+	private validateRepositoryName(value: string): string | undefined {
+		const trimmed = value.trim();
+		if (!trimmed) {
+			return t('createRepositoryNameRequired');
+		}
+		if (trimmed.length > 100) {
+			return t('createRepositoryNameTooLong');
+		}
+		if (!/^[A-Za-z0-9._-]+$/.test(trimmed)) {
+			return t('createRepositoryNameInvalid');
+		}
+		return undefined;
+	}
+
 	private async hasLocalModuleRoot(repoRoot: string, rootRelativePath: string): Promise<boolean> {
 		try {
 			await vscode.workspace.fs.stat(vscode.Uri.file(path.join(repoRoot, ...rootRelativePath.split('/'))));
@@ -1642,6 +1977,7 @@ export class ModuleManagerController {
 		if (typeof this.treeDataProvider.setCanInitializeWorkspace === 'function') {
 			this.treeDataProvider.setCanInitializeWorkspace(canInitializeWorkspace);
 		}
+		this.localWorkspaceViewProvider.setCanInitializeWorkspace(canInitializeWorkspace);
 		await vscode.commands.executeCommand('setContext', WORKSPACE_INIT_CONTEXT_KEY, canInitializeWorkspace);
 	}
 

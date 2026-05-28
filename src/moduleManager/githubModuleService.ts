@@ -164,4 +164,53 @@ export class GitHubModuleService {
 		this.logger.warn(`GitHub ${starred ? 'star' : 'unstar'} request for ${owner}/${repo} failed with HTTP ${response.status}`);
 		throw new Error(`GitHub ${starred ? 'star' : 'unstar'} request failed: ${response.status}`);
 	}
+
+	public async createRepository(
+		token: string,
+		options: { name: string; description?: string; private: boolean; topics: string[] },
+	): Promise<GitHubRepoSummary> {
+		const createResponse = await fetch(`${GITHUB_API_BASE}/user/repos`, {
+			method: 'POST',
+			headers: {
+				...this.createHeaders(token),
+				'Content-Type': 'application/json',
+			},
+			body: JSON.stringify({
+				name: options.name,
+				description: options.description?.trim() || '',
+				private: options.private,
+				auto_init: false,
+			}),
+		});
+		if (!createResponse.ok) {
+			this.logger.warn(`GitHub create repository request for ${options.name} failed with HTTP ${createResponse.status}`);
+			throw new Error(`GitHub create repository request failed: ${createResponse.status}`);
+		}
+
+		const repository = await createResponse.json() as GitHubRepoSummary;
+		const [owner] = repository.full_name.split('/');
+		if (!owner || options.topics.length === 0) {
+			return repository;
+		}
+
+		const topicResponse = await fetch(`${GITHUB_API_BASE}/repos/${owner}/${repository.name}/topics`, {
+			method: 'PUT',
+			headers: {
+				...this.createHeaders(token),
+				'Content-Type': 'application/json',
+			},
+			body: JSON.stringify({
+				names: options.topics,
+			}),
+		});
+		if (!topicResponse.ok) {
+			this.logger.warn(`GitHub repository topics request for ${owner}/${repository.name} failed with HTTP ${topicResponse.status}`);
+			throw new Error(`GitHub repository topics request failed: ${topicResponse.status}`);
+		}
+		const topicPayload = await topicResponse.json() as { names?: string[] };
+		return {
+			...repository,
+			topics: topicPayload.names ?? options.topics,
+		};
+	}
 }
