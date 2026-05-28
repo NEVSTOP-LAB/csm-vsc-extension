@@ -19,6 +19,7 @@
 
 ### 变更
 
+- 构建：新增 `.github/hooks/local-finish-stop.json` Copilot `Stop` hook，结束对话时会自动执行编译、VSIX 打包、安装与本地校验；该自动 hook 复用 `scripts/local-finish-hook.mjs --stop-hook`，不会再像手动 `hook:finish` 那样每次都递增版本和改写文档
 - 交互：从 `Workspace Modules` 为未管理本地文件夹创建并发布 GitHub 仓库后，会立即写回本地 `csm-modules.yaml` 并刷新侧边栏状态，无需再手动刷新才能看到已管理状态
 - 交互：标题栏 `Refresh` 在同步 GitHub 模块目录后，也会强制重算当前工作区的本地模块 / 未管理文件夹状态；即使本次远端刷新失败，也会更新本地显示
 - 阶段一：模块发现继续基于 GitHub 全局 `topic:csm-modsets` 搜索；侧边栏启动时改为只显示本地缓存，登录成功后会自动执行一次网络刷新，之后仍通过手动刷新同步当前账号可访问的 public / private 模块

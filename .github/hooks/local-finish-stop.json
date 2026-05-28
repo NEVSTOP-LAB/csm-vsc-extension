@@ -1,0 +1,12 @@
+{
+    "hooks": {
+        "Stop": [
+            {
+                "type": "command",
+                "command": "node scripts/copilot-stop-hook.mjs",
+                "cwd": ".",
+                "timeout": 900
+            }
+        ]
+    }
+}

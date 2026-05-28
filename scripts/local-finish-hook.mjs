@@ -9,6 +9,14 @@ const packageJsonPath = path.join(root, 'package.json');
 const readmePath = path.join(root, 'README.md');
 const changelogPath = path.join(root, 'CHANGELOG.md');
 
+function getCurrentVersion() {
+	const pkg = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
+	if (typeof pkg.version !== 'string' || !pkg.version.trim()) {
+		throw new Error('package.json version is missing');
+	}
+	return pkg.version.trim();
+}
+
 function quote(value) {
 	return `"${String(value).replace(/"/g, '\\"')}"`;
 }
@@ -78,9 +86,19 @@ function runFile(command, args) {
 	const renderedArgs = args.map((arg) => quote(arg)).join(' ');
 	console.log(`[hook] ${quote(command)} ${renderedArgs}`);
 	if (process.platform === 'win32' && ['.cmd', '.bat'].includes(path.extname(command).toLowerCase())) {
-		const cmdExe = process.env.ComSpec ?? 'C:\\Windows\\System32\\cmd.exe';
-		const commandLine = `"${[quoteForCmd(command), ...args.map((arg) => quoteForCmd(arg))].join(' ')}"`;
-		execFileSync(cmdExe, ['/d', '/s', '/c', commandLine], { stdio: 'inherit', cwd: root });
+		const powerShellExe = path.join(
+			process.env.SystemRoot ?? 'C:\\Windows',
+			'System32',
+			'WindowsPowerShell',
+			'v1.0',
+			'powershell.exe',
+		);
+		const argumentList = args.map((arg) => `'${escapePowerShellLiteral(arg)}'`).join(', ');
+		const script = `& '${escapePowerShellLiteral(command)}' @(${argumentList})`;
+		execFileSync(powerShellExe, ['-NoProfile', '-NonInteractive', '-Command', script], {
+			stdio: 'inherit',
+			cwd: root,
+		});
 		return;
 	}
 	execFileSync(command, args, { stdio: 'inherit', cwd: root });
@@ -169,6 +187,23 @@ function updateVersionAndDocs() {
 	return nextVersion;
 }
 
+function runStopHook(needsVsix) {
+	const version = getCurrentVersion();
+	console.log(`[hook] npm runner: ${npmRunner.command}`);
+	if (needsVsix) {
+		console.log('[hook] VSIX build/install is enabled for this run.');
+	} else {
+		console.log('[hook] VSIX build/install skipped (--skip-vsix).');
+	}
+
+	logPhase('Compile');
+	runNpmScript('compile');
+	if (needsVsix) {
+		installVsix(version);
+	}
+	console.log(`[hook] Completed stop hook with version ${version}`);
+}
+
 function installVsix(version) {
 	const vsixFile = `csm-vsc-support-${version}.vsix`;
 	const vsixPath = path.join(root, vsixFile);
@@ -200,9 +235,14 @@ function installVsix(version) {
 function main() {
 	const skipVsix = process.argv.includes('--skip-vsix');
 	const forceVsix = process.argv.includes('--force-vsix');
+	const stopHookMode = process.argv.includes('--stop-hook');
 	const needsVsix = !skipVsix;
 	if (forceVsix) {
 		console.log('[hook] --force-vsix is now redundant; VSIX build/install runs by default.');
+	}
+	if (stopHookMode) {
+		runStopHook(needsVsix);
+		return;
 	}
 	console.log(`[hook] npm runner: ${npmRunner.command}`);
 	if (needsVsix) {
