@@ -921,8 +921,16 @@ export class ModuleManagerController {
 		try {
 			await this.loadModules({ interactiveAuth: false, showSuccessMessage: true, showErrorMessage: true });
 		} finally {
-			await this.refreshSidebarWorkspaceState();
-			await this.refreshWorkspaceInitializationState({ prompt: false });
+			try {
+				await this.refreshSidebarWorkspaceState();
+			} catch (error) {
+				this.logger.warn(`Failed to refresh sidebar workspace state after module refresh: ${error instanceof Error ? error.message : String(error)}`);
+			}
+			try {
+				await this.refreshWorkspaceInitializationState({ prompt: false });
+			} catch (error) {
+				this.logger.warn(`Failed to refresh workspace initialization state after module refresh: ${error instanceof Error ? error.message : String(error)}`);
+			}
 		}
 	}
 
