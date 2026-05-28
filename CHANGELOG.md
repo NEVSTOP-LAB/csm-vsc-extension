@@ -31,6 +31,7 @@
 - UI：`CSM Modules` 侧边栏样式收敛为更接近扩展列表的扁平卡片布局，移除左侧头像图标；单卡 `Apply` 按钮已移除，`README` 保留在卡片右上角，checkbox 仅在 hover 或已选中时显示
 - UI：顶部搜索框固定在最上方，原有头部摘要内容下移到搜索框下方；批量 `Apply Selected` 改由视图标题栏在存在勾选模块时提供，Webview 内不再重复放置登录 / 刷新 / 批量 Apply 按钮
 - UI：模块卡片重新整理为“顶行标题/provider + 工具条、全宽摘要、底部全宽 tags”布局，减少左右分栏造成的压缩感
+- UI：统一后的模块列表会以内联分组标题区分 `Workspace` 与 `Catalog` 内容，在保留单视图结构的同时提升本地项和远端目录项的可扫读性
 - UI：侧边栏整体字号与图标尺寸上调一档；模块卡片与 fallback tree 中会自动隐藏内部发现用 topic（如 `csm-modsets`、`labview-csm`），并且这些内部 topic 不再参与侧边栏前端搜索
 - UI：侧边栏继续显示当前工作区摘要，已应用到当前仓库配置的模块会显示 `Applied` 状态徽标
 - UI：多选模块时，标题栏批量操作会按所选模块的当前状态拆分显示；混合选择同时显示 `Apply to Current Repository` 与 `Remove from Current Repository`，全未安装仅显示 `Apply`，全已安装仅显示 `Remove`

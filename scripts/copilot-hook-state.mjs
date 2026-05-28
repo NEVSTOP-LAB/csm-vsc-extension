@@ -33,6 +33,59 @@ export function emitJson(payload) {
     process.stdout.write(`${JSON.stringify(payload)}\n`);
 }
 
+function getHookStringField(hookInput, fieldNames) {
+    if (!hookInput || typeof hookInput !== 'object') {
+        return undefined;
+    }
+    for (const fieldName of fieldNames) {
+        const value = hookInput[fieldName];
+        if (typeof value === 'string' && value.trim()) {
+            return value.trim();
+        }
+    }
+    return undefined;
+}
+
+function normalizeToolName(toolName) {
+    if (typeof toolName !== 'string') {
+        return undefined;
+    }
+    const trimmed = toolName.trim();
+    if (!trimmed) {
+        return undefined;
+    }
+    const segments = trimmed.split(/[./\\:]/).filter(Boolean);
+    return (segments.length > 0 ? segments[segments.length - 1] : trimmed).trim() || undefined;
+}
+
+export function getHookSessionId(hookInput) {
+    return getHookStringField(hookInput, ['sessionId', 'session_id', 'sessionID']);
+}
+
+export function getHookEventName(hookInput) {
+    return getHookStringField(hookInput, ['hookEventName', 'hook_event_name', 'eventName']);
+}
+
+export function getHookToolName(hookInput) {
+    const direct = getHookStringField(hookInput, ['tool_name', 'toolName', 'tool']);
+    if (direct) {
+        return normalizeToolName(direct);
+    }
+    const nestedTool = hookInput?.toolCall?.tool_name ?? hookInput?.toolCall?.toolName;
+    return normalizeToolName(typeof nestedTool === 'string' ? nestedTool : undefined);
+}
+
+export function getHookTimestamp(hookInput) {
+    return getHookStringField(hookInput, ['timestamp', 'time']);
+}
+
+export function isStopHookActive(hookInput) {
+    if (!hookInput || typeof hookInput !== 'object') {
+        return false;
+    }
+    return hookInput.stop_hook_active === true || hookInput.stopHookActive === true;
+}
+
 export function getSessionMarkerPath(sessionId) {
     if (typeof sessionId !== 'string' || !sessionId.trim()) {
         return undefined;

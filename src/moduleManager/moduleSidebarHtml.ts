@@ -772,6 +772,15 @@ export function renderModuleSidebarHtml(state: ModuleSidebarRenderState): string
 			display: grid;
 			gap: 6px;
 		}
+		.list-section {
+			display: grid;
+			gap: 8px;
+		}
+		.list-section + .list-section {
+			margin-top: 12px;
+			padding-top: 12px;
+			border-top: 1px solid var(--vscode-panel-border);
+		}
 		.local-section {
 			margin-top: 12px;
 			padding-top: 12px;
@@ -1859,6 +1868,37 @@ function renderWorkspaceEmptyState(state: ModuleSidebarRenderState): string {
 	);
 }
 
+function renderListSection(title: string, meta: string | undefined, bodyHtml: string): string {
+	if (!bodyHtml) {
+		return '';
+	}
+	const header = `<div class="section-header"><div class="section-title">${escapeHtml(title)}</div>${meta ? `<div class="section-meta">${meta}</div>` : ''}</div>`;
+	return `<section class="list-section">${header}<div class="list">${bodyHtml}</div></section>`;
+}
+
+function getWorkspaceSectionMeta(state: ModuleSidebarRenderState, workspaceContent: WorkspaceContent): string | undefined {
+	const summary = escapeHtml(t('workspaceModulesSummary', {
+		managed: workspaceContent.managed.length,
+		unmanaged: workspaceContent.unmanaged.length,
+	}));
+	if (!state.moduleRoot) {
+		return summary;
+	}
+	return `${summary} | ${escapeHtml(t('rootLabel'))}: ${escapeHtml(state.moduleRoot)}/`;
+}
+
+function getCatalogSectionMeta(state: ModuleSidebarRenderState, catalogContent: CatalogContent): string | undefined {
+	if (catalogContent.modules.length === 0) {
+		return escapeHtml(t('toolbarMetaCatalog', { total: 0 }));
+	}
+	if (!state.signedIn) {
+		return escapeHtml(t('toolbarMetaCatalog', { total: catalogContent.modules.length }));
+	}
+	const publicCount = catalogContent.modules.filter((entry) => entry.visibility === 'public').length;
+	const privateCount = catalogContent.modules.length - publicCount;
+	return escapeHtml(getVisibilityBreakdownText(publicCount, privateCount));
+}
+
 function renderContent(
 	state: ModuleSidebarRenderState,
 	workspaceContent: WorkspaceContent,
@@ -1889,12 +1929,23 @@ function renderContent(
 		...workspaceContent.unmanaged.map((entry) => renderLocalUnmanagedCard(entry, state)),
 	].join('');
 	const visibleCatalog = catalogContent.modules.slice(0, state.renderLimit);
+	const catalogCards = visibleCatalog.map((entry) => renderModuleCard(entry, state)).join('');
 	const hiddenCount = Math.max(0, catalogContent.filteredCount - visibleCatalog.length);
 	const showMoreButton = hiddenCount > 0
 		? `<section class="notice"><div><strong>${escapeHtml(t('hiddenModulesTitle', { count: hiddenCount }))}</strong><span>${escapeHtml(t('hiddenModulesBody'))}</span></div><button class="toolbar-button" data-action="showMore">${escapeHtml(t('showMore', { count: Math.min(hiddenCount, state.initialRenderLimit) }))}</button></section>`
 		: '';
+	const workspaceSection = renderListSection(
+		t('moduleScopeWorkspace'),
+		getWorkspaceSectionMeta(state, workspaceContent),
+		workspaceCards,
+	);
+	const catalogSection = renderListSection(
+		t('moduleScopeCatalog'),
+		getCatalogSectionMeta(state, catalogContent),
+		catalogCards,
+	);
 
-	return `${statusBanner}<section class="list">${workspaceCards}${visibleCatalog.map((entry) => renderModuleCard(entry, state)).join('')}</section>${showMoreButton}${renderFilterEmptyState()}`;
+	return `${statusBanner}<section class="list">${workspaceSection}${catalogSection}</section>${showMoreButton}${renderFilterEmptyState()}`;
 }
 
 function renderModuleCard(entry: CsmModuleEntry, state: ModuleSidebarRenderState): string {

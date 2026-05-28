@@ -634,10 +634,13 @@ suite('Module Manager Tests', () => {
 		assert.ok(rendered?.html.includes('data-action="setScope" data-scope="all"'));
 		assert.ok(rendered?.html.includes('data-action="setScope" data-scope="workspace"'));
 		assert.ok(rendered?.html.includes('data-action="setScope" data-scope="catalog"'));
+		assert.ok(rendered?.html.includes('<div class="section-title">Workspace</div>'));
+		assert.ok(rendered?.html.includes('<div class="section-title">Catalog</div>'));
 		assert.ok(rendered?.html.includes('Root: csm/'));
 		assert.ok(rendered?.html.includes('module-local'));
 		assert.ok(rendered?.html.includes('custom-module'));
 		assert.ok(rendered?.html.includes('module-remote'));
+		assert.ok(rendered ? rendered.html.indexOf('<div class="section-title">Workspace</div>') < rendered.html.indexOf('<div class="section-title">Catalog</div>') : false);
 		assert.ok(rendered ? rendered.html.indexOf('module-local') < rendered.html.indexOf('module-remote') : false);
 
 		resolved?.fireMessage({ type: 'setScope', scope: 'workspace' });

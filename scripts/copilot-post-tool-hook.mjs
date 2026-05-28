@@ -1,4 +1,4 @@
-import { emitJson, readHookInput, writeSessionMarker } from './copilot-hook-state.mjs';
+import { emitJson, getHookEventName, getHookSessionId, getHookTimestamp, getHookToolName, readHookInput, writeSessionMarker } from './copilot-hook-state.mjs';
 
 const EDITING_TOOL_NAMES = new Set([
     'apply_patch',
@@ -12,24 +12,24 @@ const EDITING_TOOL_NAMES = new Set([
 ]);
 
 function shouldTrackToolUse(hookInput) {
-    if (!hookInput || typeof hookInput !== 'object') {
-        return false;
-    }
-    return typeof hookInput.tool_name === 'string' && EDITING_TOOL_NAMES.has(hookInput.tool_name);
+    const toolName = getHookToolName(hookInput);
+    return typeof toolName === 'string' && EDITING_TOOL_NAMES.has(toolName);
 }
 
 function main() {
     const hookInput = readHookInput();
-    if (!shouldTrackToolUse(hookInput) || typeof hookInput?.sessionId !== 'string' || !hookInput.sessionId.trim()) {
+    const sessionId = getHookSessionId(hookInput);
+    const toolName = getHookToolName(hookInput);
+    if (!shouldTrackToolUse(hookInput) || !sessionId || !toolName) {
         emitJson({ continue: true });
         return;
     }
 
-    writeSessionMarker(hookInput.sessionId, {
-        sessionId: hookInput.sessionId,
-        hookEventName: hookInput.hookEventName,
-        toolName: hookInput.tool_name,
-        timestamp: typeof hookInput.timestamp === 'string' ? hookInput.timestamp : new Date().toISOString(),
+    writeSessionMarker(sessionId, {
+        sessionId,
+        hookEventName: getHookEventName(hookInput),
+        toolName,
+        timestamp: getHookTimestamp(hookInput) ?? new Date().toISOString(),
     });
     emitJson({ continue: true });
 }

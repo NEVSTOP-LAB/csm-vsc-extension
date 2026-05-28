@@ -1,6 +1,6 @@
 import { spawnSync } from 'child_process';
 import path from 'path';
-import { clearSessionMarker, emitJson, readHookInput, readSessionMarker } from './copilot-hook-state.mjs';
+import { clearSessionMarker, emitJson, getHookSessionId, isStopHookActive, readHookInput, readSessionMarker } from './copilot-hook-state.mjs';
 
 const root = process.cwd();
 
@@ -16,7 +16,8 @@ function toReason(message) {
 
 function main() {
     const hookInput = readHookInput();
-    const marker = readSessionMarker(hookInput?.sessionId);
+    const sessionId = getHookSessionId(hookInput);
+    const marker = readSessionMarker(sessionId);
     if (!marker) {
         emitJson({ continue: true });
         return;
@@ -38,7 +39,7 @@ function main() {
     }
 
     if (result.status === 0) {
-        clearSessionMarker(hookInput?.sessionId);
+        clearSessionMarker(sessionId);
         emitJson({ continue: true });
         return;
     }
@@ -47,7 +48,7 @@ function main() {
         .filter((value) => typeof value === 'string' && value.trim().length > 0)
         .join('\n');
     const reason = toReason(failureText || `Local finish hook exited with code ${result.status ?? 'unknown'}.`);
-    if (hookInput?.stop_hook_active) {
+    if (isStopHookActive(hookInput)) {
         emitJson({
             continue: true,
             systemMessage: `Local finish hook still failing during repeated stop attempt after ${marker.toolName ?? 'a code edit'}. Allowing stop to avoid an infinite loop. ${reason}`,
