@@ -118,8 +118,9 @@ code --install-extension csm-vsc-support-*.vsix
 
 - **配置文件**：`.github/hooks/local-finish-stop.json`
 - **触发时机**：Copilot agent `Stop` 事件，也就是一次对话准备结束时
-- **实际执行**：`node scripts/copilot-stop-hook.mjs`，内部会调用 `node scripts/local-finish-hook.mjs --stop-hook`
-- **执行动作**：仅执行 `npm run compile` 与 VSIX 打包 / 安装 / 校验；不会自动升版本，也不会改写 `README.md` / `CHANGELOG.md`
+- **前置标记**：同一配置文件里的 `PostToolUse` 会在本次会话成功调用编辑类工具后执行 `node scripts/copilot-post-tool-hook.mjs`，按 `sessionId` 写入“本会话已改代码”标记
+- **实际执行**：`node scripts/copilot-stop-hook.mjs` 只有在检测到当前 `sessionId` 存在上述标记时，才会继续调用 `node scripts/local-finish-hook.mjs --stop-hook`
+- **执行动作**：仅在本次会话发生代码编辑后执行 `npm run compile` 与 VSIX 打包 / 安装 / 校验；不会自动升版本，也不会改写 `README.md` / `CHANGELOG.md`，纯问答会话会直接跳过
 - **失败行为**：首次失败会阻止 agent 直接结束，并把编译 / 加载失败原因回传给 agent；若再次进入 stop hook 仍失败，则改为放行结束以避免无限循环
 - **排查点**：如发现 hook 没触发，先确认 VS Code 已启用 workspace hooks，并检查 `GitHub Copilot Chat Hooks` 输出面板，以及 `chat.hookFilesLocations` 未禁用 `.github/hooks`
 

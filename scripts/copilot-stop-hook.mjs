@@ -1,28 +1,8 @@
 import { spawnSync } from 'child_process';
-import fs from 'fs';
 import path from 'path';
+import { clearSessionMarker, emitJson, readHookInput, readSessionMarker } from './copilot-hook-state.mjs';
 
 const root = process.cwd();
-
-function readHookInput() {
-    if (process.stdin.isTTY) {
-        return undefined;
-    }
-    const raw = fs.readFileSync(0, 'utf8').trim();
-    if (!raw) {
-        return undefined;
-    }
-    try {
-        return JSON.parse(raw);
-    } catch (error) {
-        process.stderr.write(`[hook] Failed to parse Stop hook input: ${error instanceof Error ? error.message : String(error)}\n`);
-        return undefined;
-    }
-}
-
-function emitJson(payload) {
-    process.stdout.write(`${JSON.stringify(payload)}\n`);
-}
 
 function toReason(message) {
     const normalized = message.replace(/\s+/g, ' ').trim();
@@ -36,6 +16,12 @@ function toReason(message) {
 
 function main() {
     const hookInput = readHookInput();
+    const marker = readSessionMarker(hookInput?.sessionId);
+    if (!marker) {
+        emitJson({ continue: true });
+        return;
+    }
+
     const nodeCommand = process.execPath;
     const scriptPath = path.join(root, 'scripts', 'local-finish-hook.mjs');
     const result = spawnSync(nodeCommand, [scriptPath, '--stop-hook'], {
@@ -52,6 +38,7 @@ function main() {
     }
 
     if (result.status === 0) {
+        clearSessionMarker(hookInput?.sessionId);
         emitJson({ continue: true });
         return;
     }
@@ -63,18 +50,18 @@ function main() {
     if (hookInput?.stop_hook_active) {
         emitJson({
             continue: true,
-            systemMessage: `Local finish hook still failing during repeated stop attempt. Allowing stop to avoid an infinite loop. ${reason}`,
+            systemMessage: `Local finish hook still failing during repeated stop attempt after ${marker.toolName ?? 'a code edit'}. Allowing stop to avoid an infinite loop. ${reason}`,
         });
         return;
     }
 
     emitJson({
         continue: true,
-        systemMessage: `Local finish hook failed: ${reason}`,
+        systemMessage: `Local finish hook failed after ${marker.toolName ?? 'a code edit'}: ${reason}`,
         hookSpecificOutput: {
             hookEventName: 'Stop',
             decision: 'block',
-            reason: `Local finish hook failed. Fix the compile/load problem before ending. ${reason}`,
+            reason: `Local finish hook failed after ${marker.toolName ?? 'a code edit'}. Fix the compile/load problem before ending. ${reason}`,
         },
     });
 }
