@@ -111,6 +111,9 @@ export class ModuleManagerController {
 		onCreateLocalRepository: (entry) => {
 			void this.createLocalFolderRepositoryCommand(entry);
 		},
+		onLinkLocalRepository: (entry) => {
+			void this.linkLocalFolderRepositoryCommand(entry);
+		},
 		onSelectionChange: (moduleKeys) => {
 			this.setSelectedModuleKeys(moduleKeys);
 		},
@@ -746,7 +749,7 @@ export class ModuleManagerController {
 			if (!localStateSyncFailed) {
 				void vscode.window.showInformationMessage(t('createRepositoryPublishSuccess', { repository: repositoryName ?? repositoryConfig.name }));
 			}
-			void this.loadModules({
+			await this.loadModules({
 				interactiveAuth: false,
 				showSuccessMessage: false,
 				showErrorMessage: false,
@@ -761,6 +764,116 @@ export class ModuleManagerController {
 					: t('createRepositoryFailed', { message }),
 			);
 		}
+	}
+
+	public async linkLocalFolderRepositoryCommand(folder: LocalUnmanagedFolderEntry): Promise<void> {
+		const workspaceFolder = await this.resolveWorkspaceFolder();
+		if (!workspaceFolder) {
+			void vscode.window.showWarningMessage(t('openWorkspaceBeforeLinkRepository'));
+			return;
+		}
+		const repoRoot = await this.workspaceModuleService.resolveGitRepositoryRoot(workspaceFolder.uri.fsPath);
+		const workspaceRoot = repoRoot ?? workspaceFolder.uri.fsPath;
+		const folderAbsolutePath = path.resolve(workspaceRoot, folder.path);
+		try {
+			const stat = await fs.stat(folderAbsolutePath);
+			if (!stat.isDirectory()) {
+				void vscode.window.showWarningMessage(t('localFolderMissing', { folder: folder.path }));
+				return;
+			}
+		} catch {
+			void vscode.window.showWarningMessage(t('localFolderMissing', { folder: folder.path }));
+			return;
+		}
+
+		if (this.availableModules.length === 0) {
+			await this.loadModules({
+				interactiveAuth: false,
+				showSuccessMessage: false,
+				showErrorMessage: true,
+			});
+		}
+		if (this.availableModules.length === 0) {
+			void vscode.window.showWarningMessage(t('noRepositoriesAvailableToLink'));
+			return;
+		}
+
+		const selection = await this.promptRepositoryLink(folder);
+		if (!selection) {
+			return;
+		}
+
+		let authToken = await this.ensureToken(false);
+		if (!authToken && selection.visibility === 'private') {
+			authToken = await this.ensureToken(true);
+			if (!authToken) {
+				void vscode.window.showWarningMessage(t('signInRequiredToLinkPrivateModule'));
+				return;
+			}
+		}
+
+		const repositoryLabel = path.basename(workspaceRoot) || workspaceFolder.name;
+		const moduleLabel = `${selection.owner}/${selection.name}`;
+		const confirmation = await vscode.window.showWarningMessage(
+			t('linkRepositoryConfirmation', {
+				folder: folder.path,
+				module: moduleLabel,
+				repository: repositoryLabel,
+			}),
+			{ modal: true },
+			t('linkRepositoryAction'),
+		);
+		if (confirmation !== t('linkRepositoryAction')) {
+			return;
+		}
+
+		try {
+			let config = await this.tryLoadSidebarLocalModuleConfig(workspaceFolder, workspaceRoot)
+				?? await this.initializePublishedFolderConfig(workspaceRoot, folder);
+			const targetPath = this.workspaceModuleService.normalizeRootPath(folder.path);
+			const moduleKey = this.workspaceModuleService.getModuleKey(selection);
+			const existing = config.modules[moduleKey];
+			if (existing && this.workspaceModuleService.normalizeRootPath(existing.path) !== targetPath) {
+				void vscode.window.showWarningMessage(t('linkRepositoryAlreadyManagedAt', {
+					module: moduleLabel,
+					path: existing.path,
+				}));
+				return;
+			}
+
+			const branch = selection.defaultBranch || 'main';
+			let linkedEntry: LocalModuleConfigEntry | undefined;
+			await vscode.window.withProgress(
+				{
+					location: vscode.ProgressLocation.Notification,
+					title: t('linkRepositoryProgress', { folder: folder.path, module: moduleLabel }),
+					cancellable: false,
+				},
+				async () => {
+					const ref = await this.workspaceModuleService.resolveRemoteBranchRef(workspaceRoot, selection.repoUrl, branch, authToken);
+					linkedEntry = {
+						key: moduleKey,
+						name: selection.name,
+						owner: selection.owner,
+						source: selection.repoUrl,
+						method: 'copy',
+						path: targetPath,
+						ref,
+						branch,
+					};
+					config = this.workspaceModuleService.withAppliedModule(config, linkedEntry);
+					await this.workspaceModuleService.writeConfig(config);
+				},
+			);
+			void vscode.window.showInformationMessage(t('linkRepositorySuccess', { folder: folder.path, module: moduleLabel }));
+		} catch (error) {
+			const message = getUserFacingErrorMessage(error, 'config');
+			this.logger.error(`Failed to link local folder ${folder.path} to an online repository: ${message}`);
+			void vscode.window.showErrorMessage(t('linkRepositoryFailed', { message }));
+			return;
+		}
+
+		await this.refreshSidebarWorkspaceState();
 	}
 
 	private async syncPublishedLocalFolderState(
@@ -2068,6 +2181,31 @@ export class ModuleManagerController {
 			visibility: visibilityPick.visibility,
 			topics: this.normalizeRepositoryTopics(topicsInput),
 		};
+	}
+
+	private async promptRepositoryLink(folder: LocalUnmanagedFolderEntry): Promise<CsmModuleEntry | undefined> {
+		const folderName = folder.name.trim().toLowerCase();
+		const items = [...this.availableModules]
+			.sort((left, right) => {
+				const leftPreferred = left.name.trim().toLowerCase() === folderName ? 0 : 1;
+				const rightPreferred = right.name.trim().toLowerCase() === folderName ? 0 : 1;
+				if (leftPreferred !== rightPreferred) {
+					return leftPreferred - rightPreferred;
+				}
+				return `${left.owner}/${left.name}`.localeCompare(`${right.owner}/${right.name}`);
+			})
+			.map((moduleEntry) => ({
+				label: `${moduleEntry.owner}/${moduleEntry.name}`,
+				description: moduleEntry.visibility === 'private' ? t('createRepositoryPrivateLabel') : t('createRepositoryPublicLabel'),
+				detail: moduleEntry.description?.trim() || moduleEntry.repoUrl,
+				moduleEntry,
+			}));
+		const pick = await vscode.window.showQuickPick(items, {
+			placeHolder: t('selectRepositoryToLinkPlaceholder', { folder: folder.path }),
+			matchOnDescription: true,
+			matchOnDetail: true,
+		});
+		return pick?.moduleEntry;
 	}
 
 	private normalizeRepositoryTopics(value: string): string[] {

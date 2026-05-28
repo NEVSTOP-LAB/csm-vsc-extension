@@ -665,6 +665,7 @@ suite('Module Manager Tests', () => {
 		let updatedModuleName = '';
 		let switchedModuleName = '';
 		let createdRepositoryPath = '';
+		let linkedRepositoryPath = '';
 		let initialized = false;
 		const provider = new ModuleSidebarViewProvider({
 			onLogin: () => undefined,
@@ -687,6 +688,9 @@ suite('Module Manager Tests', () => {
 			},
 			onCreateLocalRepository: (entry) => {
 				createdRepositoryPath = entry.path;
+			},
+			onLinkLocalRepository: (entry) => {
+				linkedRepositoryPath = entry.path;
 			},
 			onSelectionChange: () => undefined,
 			onSortChange: () => undefined,
@@ -742,6 +746,7 @@ suite('Module Manager Tests', () => {
 		resolved?.fireMessage({ type: 'switchLocalModuleMethod', localItemId: 'local__module_local' });
 		resolved?.fireMessage({ type: 'removeLocalModule', localItemId: 'local__module_local' });
 		resolved?.fireMessage({ type: 'createLocalRepository', localItemId: 'csm/custom-module' });
+		resolved?.fireMessage({ type: 'linkLocalRepository', localItemId: 'csm/custom-module' });
 		resolved?.fireMessage({ type: 'initializeWorkspace' });
 
 		assert.strictEqual(openedReadmeName, 'module-local');
@@ -749,6 +754,7 @@ suite('Module Manager Tests', () => {
 		assert.strictEqual(switchedModuleName, 'module-local');
 		assert.strictEqual(removedModuleName, 'module-local');
 		assert.strictEqual(createdRepositoryPath, 'csm/custom-module');
+		assert.strictEqual(linkedRepositoryPath, 'csm/custom-module');
 		assert.strictEqual(initialized, true);
 		disposable.dispose();
 	});

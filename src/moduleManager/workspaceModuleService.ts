@@ -901,7 +901,7 @@ export class WorkspaceModuleService {
 		return stripGitSuffix(remoteUrl).replace(/\/+$|\/+$/g, '').toLowerCase();
 	}
 
-	private async resolveRemoteBranchRef(cwd: string, repoUrl: string, branch: string, authToken?: string): Promise<string> {
+	public async resolveRemoteBranchRef(cwd: string, repoUrl: string, branch: string, authToken?: string): Promise<string> {
 		const stdout = await this.runGit(cwd, ['ls-remote', repoUrl, `refs/heads/${branch}`], authToken, repoUrl);
 		const match = stdout.match(/^([0-9a-f]{40})\s+/im);
 		if (!match?.[1]) {

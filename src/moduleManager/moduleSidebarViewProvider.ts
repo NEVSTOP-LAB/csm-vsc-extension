@@ -18,6 +18,7 @@ interface ModuleSidebarActions {
 	onUpdateModule: (entry: CsmModuleEntry) => void;
 	onSwitchLocalModuleMethod?: (entry: LocalManagedModuleEntry) => void;
 	onCreateLocalRepository?: (entry: LocalUnmanagedFolderEntry) => void;
+	onLinkLocalRepository?: (entry: LocalUnmanagedFolderEntry) => void;
 	onSelectionChange: (moduleKeys: string[]) => void;
 	onSortChange: (sortState: Partial<ModuleSortState>) => void;
 }
@@ -27,7 +28,7 @@ interface ModuleSidebarViewProviderOptions {
 }
 
 type WebviewMessage = {
-	type: 'login' | 'refresh' | 'initializeWorkspace' | 'applySelected' | 'toggleStar' | 'openReadme' | 'togglePreview' | 'applyOne' | 'toggleSelection' | 'setFilterQuery' | 'clearFilter' | 'setIncludeApplied' | 'setScope' | 'dismissIntroTip' | 'removeModule' | 'updateModule' | 'setSortField' | 'setSortDirection' | 'showMore' | 'openLocalReadme' | 'removeLocalModule' | 'updateLocalModule' | 'switchLocalModuleMethod' | 'createLocalRepository';
+	type: 'login' | 'refresh' | 'initializeWorkspace' | 'applySelected' | 'toggleStar' | 'openReadme' | 'togglePreview' | 'applyOne' | 'toggleSelection' | 'setFilterQuery' | 'clearFilter' | 'setIncludeApplied' | 'setScope' | 'dismissIntroTip' | 'removeModule' | 'updateModule' | 'setSortField' | 'setSortDirection' | 'showMore' | 'openLocalReadme' | 'removeLocalModule' | 'updateLocalModule' | 'switchLocalModuleMethod' | 'createLocalRepository' | 'linkLocalRepository';
 	moduleKey?: string;
 	localItemId?: string;
 	selected?: boolean;
@@ -367,6 +368,13 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IM
 				const entry = message.localItemId ? this.localUnmanagedFoldersById.get(message.localItemId) : undefined;
 				if (entry) {
 					this.actions.onCreateLocalRepository?.(entry);
+				}
+				return;
+			}
+			case 'linkLocalRepository': {
+				const entry = message.localItemId ? this.localUnmanagedFoldersById.get(message.localItemId) : undefined;
+				if (entry) {
+					this.actions.onLinkLocalRepository?.(entry);
 				}
 				return;
 			}

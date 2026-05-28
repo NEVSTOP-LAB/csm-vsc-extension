@@ -252,6 +252,11 @@ function getLocalUnmanagedSearchText(entry: LocalUnmanagedFolderEntry): string {
 	].join(' ').toLowerCase();
 }
 
+function hasAvailableOnlineRepositories(state: LocalWorkspaceRenderState): boolean {
+	const candidate = state as LocalWorkspaceRenderState & { modules?: CsmModuleEntry[] };
+	return Array.isArray(candidate.modules) && candidate.modules.length > 0;
+}
+
 function getWorkspaceContent(state: ModuleSidebarRenderState): WorkspaceContent {
 	if (!scopeIncludesWorkspace(state.scope)) {
 		return { managed: [], unmanaged: [], totalCount: 0, filteredCount: 0 };
@@ -443,12 +448,16 @@ function renderLocalManagedCard(entry: LocalManagedModuleEntry, state: LocalWork
 }
 
 function renderLocalUnmanagedCard(entry: LocalUnmanagedFolderEntry, state: LocalWorkspaceRenderState): string {
-	const actions = state.signedIn
-		? `<div class="local-card-actions"><button class="chip-button callout" data-action="createLocalRepository" data-local-item-id="${escapeHtml(entry.id)}">${escapeHtml(t('createGithubRepository'))}</button></div>`
+	const canLinkRepository = hasAvailableOnlineRepositories(state);
+	const linkButton = `<button class="chip-button" data-action="linkLocalRepository" data-local-item-id="${escapeHtml(entry.id)}" ${canLinkRepository ? '' : 'disabled aria-disabled="true"'}>${escapeHtml(t('linkGithubRepository'))}</button>`;
+	const createButton = state.signedIn
+		? `<button class="chip-button callout" data-action="createLocalRepository" data-local-item-id="${escapeHtml(entry.id)}">${escapeHtml(t('createGithubRepository'))}</button>`
 		: '';
-	const hint = !state.signedIn
-		? `<div class="local-card-hint">${escapeHtml(t('signInToCreateRepositoryHint'))}</div>`
-		: '';
+	const actions = `<div class="local-card-actions">${linkButton}${createButton}</div>`;
+	const hint = [
+		!state.signedIn ? `<div class="local-card-hint">${escapeHtml(t('signInToCreateRepositoryHint'))}</div>` : '',
+		!canLinkRepository ? `<div class="local-card-hint">${escapeHtml(t('refreshCatalogToLinkRepositoryHint'))}</div>` : '',
+	].filter(Boolean).join('');
 	const searchText = escapeHtml(getLocalUnmanagedSearchText(entry));
 	return renderModuleCardShell({
 		articleClasses: ['local-module-card', 'unmanaged'],
@@ -457,7 +466,7 @@ function renderLocalUnmanagedCard(entry: LocalUnmanagedFolderEntry, state: Local
 		title: entry.name,
 		titleDisplay: truncate(entry.name, 44),
 		owner: entry.path,
-		headerToolsHtml: actions ? renderModuleHeaderTools([actions]) : '',
+		headerToolsHtml: renderModuleHeaderTools([actions]),
 		summary: t('localUnmanagedSummary'),
 		bodyExtrasHtml: hint,
 		metaBadges: [renderBadge(t('unmanagedBadge'))],

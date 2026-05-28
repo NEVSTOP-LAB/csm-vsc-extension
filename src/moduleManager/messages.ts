@@ -206,6 +206,10 @@ const messages = {
 		en: 'Open the target repository as a workspace folder before creating a GitHub repository for a local module folder.',
 		zh: '为本地模块文件夹创建 GitHub 仓库前，请先将目标仓库作为工作区文件夹打开。',
 	},
+	openWorkspaceBeforeLinkRepository: {
+		en: 'Open the target repository as a workspace folder before linking a local module folder to an online repository.',
+		zh: '将本地模块文件夹关联到在线仓库前，请先将目标仓库作为工作区文件夹打开。',
+	},
 	configAlreadyExists: {
 		en: 'Local CSM module config already exists at {configPath}.',
 		zh: '本地 CSM 模块配置已存在：{configPath}。',
@@ -326,9 +330,45 @@ const messages = {
 		en: 'GitHub sign-in is required to create a repository for this local folder.',
 		zh: '为该本地文件夹创建 GitHub 仓库前需要先登录 GitHub。',
 	},
+	signInRequiredToLinkPrivateModule: {
+		en: 'GitHub sign-in is required to link this local folder to a private repository.',
+		zh: '将该本地文件夹关联到私有仓库前需要先登录 GitHub。',
+	},
 	localFolderMissing: {
 		en: 'The local folder {folder} no longer exists.',
 		zh: '本地文件夹 {folder} 已不存在。',
+	},
+	selectRepositoryToLinkPlaceholder: {
+		en: 'Choose an online repository to track for {folder}.',
+		zh: '为 {folder} 选择一个要跟踪的在线仓库。',
+	},
+	noRepositoriesAvailableToLink: {
+		en: 'No online module repositories are currently loaded. Refresh the catalog and try again.',
+		zh: '当前尚未加载任何在线模块仓库。请先刷新目录后再试。',
+	},
+	linkRepositoryAlreadyManagedAt: {
+		en: 'Repository {module} is already recorded at {path}. Remove or update that entry before linking another local folder.',
+		zh: '仓库 {module} 已记录在 {path}。请先移除或更新该条目，再关联其他本地文件夹。',
+	},
+	linkRepositoryConfirmation: {
+		en: 'Link local folder {folder} to online repository {module} in {repository}? This records the current folder as a tracked copy target and does not change files immediately.',
+		zh: '要在 {repository} 中将本地文件夹 {folder} 关联到在线仓库 {module} 吗？这会把当前文件夹记录为受跟踪的 copy 目录，但不会立即修改文件。',
+	},
+	linkRepositoryAction: {
+		en: 'Link Repository',
+		zh: '关联仓库',
+	},
+	linkRepositoryProgress: {
+		en: 'Linking {folder} to {module}... ',
+		zh: '正在将 {folder} 关联到 {module}...',
+	},
+	linkRepositorySuccess: {
+		en: 'Linked {folder} to {module}.',
+		zh: '已将 {folder} 关联到 {module}。',
+	},
+	linkRepositoryFailed: {
+		en: 'Failed to link the local folder: {message}',
+		zh: '关联本地文件夹失败：{message}',
 	},
 	createRepositoryNamePrompt: {
 		en: 'Enter the GitHub repository name for {folder}.',
@@ -714,9 +754,17 @@ const messages = {
 		en: 'Sign in to GitHub to create a shared repository for this folder.',
 		zh: '登录 GitHub 后即可为该文件夹创建共享仓库。',
 	},
+	refreshCatalogToLinkRepositoryHint: {
+		en: 'Refresh the module catalog to link this folder to an existing online repository.',
+		zh: '请先刷新模块目录，然后再把该文件夹关联到已有的在线仓库。',
+	},
 	createGithubRepository: {
 		en: 'Create GitHub Repo',
 		zh: '创建 GitHub 仓库',
+	},
+	linkGithubRepository: {
+		en: 'Link Online Repo',
+		zh: '关联在线仓库',
 	},
 	catalogScopePublicLoggedOut: {
 		en: 'Loaded {count} public module(s). Sign in to see private modules.',

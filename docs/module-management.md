@@ -38,6 +38,7 @@
 
 - 统一视图会继续显示当前工作区、模块根目录与已应用计数；已写入当前仓库配置的模块会显示 `Applied` 状态徽标，并通过内联 `Workspace` / `Catalog` 分组标题帮助快速识别当前卡片来源
 - 当范围切换为 `Workspace` 时，列表只显示当前模块根目录中的已管理模块与未管理文件夹；当范围切换为 `Catalog` 时，列表只显示 GitHub 模块目录；`All` 则同时显示两类内容
+- 对未管理文件夹，可直接从当前已加载的 GitHub 模块目录中选择一个在线仓库进行关联；此操作会把现有本地目录登记为受跟踪的 `copy` 模块，不会立即改动目录内容，后续可继续执行 update/remove，也可在 Git 工作区内再切换成 `submodule`
 - 对未管理文件夹，已登录 GitHub 时可通过向导一键创建远端 GitHub 仓库，并立即执行本地 `git init`、首次提交与 `origin` 推送；若当前机器尚未配置 `user.name` / `user.email`，向导会在发布前补充询问。若当前工作区本身是 Git 仓库，发布完成后会继续把该目录切换为 `submodule` 并写回本地配置；非 Git 工作区则继续记录为 `copy`
 - 若仓库检测到 `csm/` 目录与 `*.lvproj`，但尚未存在本地模块配置，打开侧边栏时会主动提醒初始化，并在标题栏显示 `Initialize Workspace Management` 工具按钮
 - 若仓库内已存在 `csm/` 目录且包含已初始化的 submodule，但尚未存在配置文件，扩展会自动反向生成 `csm/csm-modules.yaml`

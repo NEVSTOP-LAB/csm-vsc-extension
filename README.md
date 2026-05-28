@@ -47,6 +47,7 @@
 - ✅ 对已管理的本地模块，可在 Git 工作区内把 `copy` 与 `submodule` 模式互相切换；非 Git 工作区会禁用这项操作
 - ✅ `CSM Modules` 现合并为单一侧边栏视图：当前工作区中的已管理模块、未管理文件夹与远端 GitHub 模块目录会显示在同一列表中，本地项固定优先展示，并通过轻量分组标题保持层次清晰
 - ✅ 过滤菜单与顶部快捷工具条都提供同步的 `All / Workspace / Catalog` 范围切换，用来快速在统一视图中查看原先两类内容
+- ✅ 对当前模块根目录下的未管理文件夹，可直接关联到当前已加载的在线模块仓库，把现有目录登记为受跟踪的 `copy` 模块；如果当前目录列表还没刷新出目标仓库，可先点 `Refresh`
 - ✅ 对当前模块根目录下的未管理文件夹，已登录 GitHub 时可通过向导一键创建并发布 GitHub 仓库，默认使用 private 可见性并附带 `labview-csm`、`csm-modsets` topics；若本机缺少 Git 作者信息，会在首次发布前补充询问。Git 工作区会在发布成功后直接把该目录接管为 `submodule` 并写回本地 YAML，非 Git 工作区则保持 `copy` 模式
 
 > 详细功能说明参见 [docs/module-management.md](docs/module-management.md)

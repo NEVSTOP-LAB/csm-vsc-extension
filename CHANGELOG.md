@@ -21,6 +21,8 @@
 
 - 构建：`.github/hooks/local-finish-stop.json` 现同时注册 `PostToolUse` 与 `Stop` hook，只有当当前 Copilot 会话成功执行过编辑类工具后，结束对话时才会触发编译、VSIX 打包、安装与本地校验；纯问答会话会直接跳过，自动 hook 仍复用 `scripts/local-finish-hook.mjs --stop-hook`，不会像手动 `hook:finish` 那样递增版本或改写文档
 - 交互：从统一侧边栏中的本地未管理文件夹创建并发布 GitHub 仓库后，Git 工作区会继续把该目录接管为 Git submodule 并立即写回本地 `csm-modules.yaml`；非 Git 工作区则保持 `copy` 模式，侧边栏也会立刻刷新为已管理状态
+- 交互：未管理的本地模块文件夹现在可直接关联到当前已加载的在线 GitHub 模块仓库，先以 `copy` 模式登记为受跟踪目录，后续再按需更新、移除或切换到 `submodule`
+- 交互：从未管理文件夹创建并发布 GitHub 仓库后，命令现在会等待在线模块目录刷新完成，确保新仓库在后续关联/浏览流程中可立即看到
 - 交互：已管理的本地模块现在可在 Git 工作区内直接在 `copy` 与 `submodule` 模式之间切换；非 Git 工作区会禁用该切换入口
 - 交互：标题栏 `Refresh` 在完成远端刷新流程后，也会重新评估当前工作区的本地模块 / 未管理文件夹状态；即使本次远端刷新失败，仍会更新本地显示
 - 阶段一：模块发现继续基于 GitHub 全局 `topic:csm-modsets` 搜索；侧边栏启动时改为只显示本地缓存，登录成功后会自动执行一次网络刷新，之后仍通过手动刷新同步当前账号可访问的 public / private 模块
