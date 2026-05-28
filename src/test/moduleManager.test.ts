@@ -645,13 +645,15 @@ suite('Module Manager Tests', () => {
 
 		resolved?.fireMessage({ type: 'setScope', scope: 'workspace' });
 		const workspaceRender = mocked.__getLastWebviewView();
-		assert.ok(workspaceRender?.html.includes('toolbar-button active" data-action="setScope" data-scope="workspace"'));
+		assert.ok(workspaceRender?.html.includes('data-action="setScope" data-scope="workspace"'));
+		assert.match(workspaceRender?.html ?? '', /class="[^"]*\btoolbar-button\b[^"]*\bactive\b[^"]*"[^>]*data-action="setScope"[^>]*data-scope="workspace"/);
 		assert.ok(workspaceRender?.html.includes('module-local'));
 		assert.ok(!workspaceRender?.html.includes('module-remote'));
 
 		resolved?.fireMessage({ type: 'setScope', scope: 'catalog' });
 		const catalogRender = mocked.__getLastWebviewView();
-		assert.ok(catalogRender?.html.includes('toolbar-button active" data-action="setScope" data-scope="catalog"'));
+		assert.ok(catalogRender?.html.includes('data-action="setScope" data-scope="catalog"'));
+		assert.match(catalogRender?.html ?? '', /class="[^"]*\btoolbar-button\b[^"]*\bactive\b[^"]*"[^>]*data-action="setScope"[^>]*data-scope="catalog"/);
 		assert.ok(catalogRender?.html.includes('module-remote'));
 		assert.ok(!catalogRender?.html.includes('module-local'));
 		disposable.dispose();
