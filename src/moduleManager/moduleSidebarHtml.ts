@@ -1327,7 +1327,7 @@ export function renderModuleSidebarHtml(state: ModuleSidebarRenderState): string
 		}
 
 		function getCards() {
-			return Array.from(document.querySelectorAll('[data-search-text]'));
+			return Array.from(document.querySelectorAll('[data-role="module-card"], [data-role="local-module-card"]'));
 		}
 
 		function isCardApplied(card) {
