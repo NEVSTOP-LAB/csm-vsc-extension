@@ -2,6 +2,7 @@ import { CsmModuleEntry, LocalManagedModuleEntry, LocalUnmanagedFolderEntry } fr
 
 export type ModuleSortField = 'name' | 'owner' | 'updatedAt' | 'applied';
 export type ModuleSortDirection = 'asc' | 'desc';
+export type ModuleListScope = 'all' | 'workspace' | 'catalog';
 
 export interface ModuleSortState {
 	field: ModuleSortField;

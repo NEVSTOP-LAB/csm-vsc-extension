@@ -5,7 +5,6 @@ import { AuthService } from './authService';
 import { GitHubModuleService, mapRepoToModuleEntry } from './githubModuleService';
 import { ModuleCacheStore } from './cacheStore';
 import { CopyModuleUpdatePreview, CsmModuleEntry, GitHubRepoSummary, LocalManagedModuleEntry, LocalModuleConfig, LocalModuleConfigEntry, LocalUnmanagedFolderEntry, ModuleApplyMethod, ModuleAuthSnapshot, ModuleCacheSnapshot, ModuleUpdateResult } from './types';
-import { LocalWorkspaceViewProvider } from './localWorkspaceViewProvider';
 import { ModuleTreeItem } from './moduleTreeDataProvider';
 import { ModuleSidebarViewProvider } from './moduleSidebarViewProvider';
 import { IModuleViewProvider, ModuleSortField, ModuleSortState, SidebarWorkspaceContext } from './interfaces';
@@ -118,23 +117,6 @@ export class ModuleManagerController {
 	}, {
 		getLocalResourceRoots: () => [this.readmeAssetCache.rootUri],
 	});
-	private readonly localWorkspaceViewProvider: LocalWorkspaceViewProvider = new LocalWorkspaceViewProvider({
-		onInitializeWorkspace: () => {
-			void this.initializeWorkspaceCommand();
-		},
-		onOpenReadme: (entry) => {
-			void this.openReadmeCommand(entry);
-		},
-		onRemoveModule: (entry) => {
-			void this.removeModuleCommand(entry);
-		},
-		onUpdateModule: (entry) => {
-			void this.updateModuleCommand(entry);
-		},
-		onCreateLocalRepository: (entry) => {
-			void this.createLocalFolderRepositoryCommand(entry);
-		},
-	});
 	// IModuleViewProvider abstraction (review item 2.2). Tests can swap this out.
 	private treeDataProvider: IModuleViewProvider;
 	private readonly readmeAssetCache: ReadmeAssetCache;
@@ -178,9 +160,6 @@ export class ModuleManagerController {
 
 	public register(subscriptions: vscode.Disposable[]): void {
 		subscriptions.push(vscode.window.registerWebviewViewProvider(VIEW_IDS.moduleSidebar, this.sidebarViewProvider, {
-			webviewOptions: { retainContextWhenHidden: true },
-		}));
-		subscriptions.push(vscode.window.registerWebviewViewProvider(VIEW_IDS.localWorkspace, this.localWorkspaceViewProvider, {
 			webviewOptions: { retainContextWhenHidden: true },
 		}));
 
@@ -1400,7 +1379,6 @@ export class ModuleManagerController {
 			this.currentAccountLabel = accountLabel;
 		}
 		this.treeDataProvider.setAuthenticated(signedIn, this.currentAccountLabel);
-		this.localWorkspaceViewProvider.setAuthenticated(signedIn);
 		await vscode.commands.executeCommand('setContext', SIGNED_IN_CONTEXT_KEY, signedIn);
 	}
 
@@ -1476,7 +1454,6 @@ export class ModuleManagerController {
 			if (typeof this.treeDataProvider.setWorkspaceContext === 'function') {
 				this.treeDataProvider.setWorkspaceContext(context);
 			}
-			this.localWorkspaceViewProvider.setWorkspaceContext(context);
 			void this.setSelectionContexts();
 		};
 		const workspaceFolder = this.getPreferredWorkspaceFolder();
@@ -2031,7 +2008,6 @@ export class ModuleManagerController {
 		if (typeof this.treeDataProvider.setCanInitializeWorkspace === 'function') {
 			this.treeDataProvider.setCanInitializeWorkspace(canInitializeWorkspace);
 		}
-		this.localWorkspaceViewProvider.setCanInitializeWorkspace(canInitializeWorkspace);
 		await vscode.commands.executeCommand('setContext', WORKSPACE_INIT_CONTEXT_KEY, canInitializeWorkspace);
 	}
 

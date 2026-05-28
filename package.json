@@ -32,7 +32,6 @@
     "onLanguage:csmlog",
     "onLanguage:lvcsm",
     "onView:csmModules.view",
-    "onView:csmModules.workspaceView",
     "onCommand:csmModules.initializeWorkspace",
     "onCommand:csmModules.login",
     "onCommand:csmModules.logout",
@@ -139,11 +138,6 @@
         {
           "id": "csmModules.view",
           "name": "%views.csmModules.view.name%",
-          "type": "webview"
-        },
-        {
-          "id": "csmModules.workspaceView",
-          "name": "%views.csmModules.workspaceView.name%",
           "type": "webview"
         }
       ]

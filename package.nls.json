@@ -18,7 +18,6 @@
   "commands.setSortOrder.title": "CSM Modules: Change Sort Order",
   "csmModules.title": "CSM Modules",
   "views.csmModules.view.name": "Available Modules",
-  "views.csmModules.workspaceView.name": "Workspace Modules",
   "configuration.csmModules.defaultModuleRoot.description": "Default relative directory used when initializing local CSM module management for a repository that does not already have a csm-modules.yaml file.",
   "iconThemes.csmFileIcons.label": "CSM File Icons"
 }

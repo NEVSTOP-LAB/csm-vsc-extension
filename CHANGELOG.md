@@ -14,13 +14,13 @@
 - 阶段二：当仓库已存在 `csm/` 目录及其中的 submodule，但缺少配置文件时，可自动反向生成 `csm/csm-modules.yaml`
 - 阶段四：新增设置项 `csmModules.defaultModuleRoot`，用于为首次初始化 / 首次应用预设默认模块根目录
 - 本地化：扩展全部用户可见字符串现已支持中英文切换，覆盖 package 清单文案、模块管理 UI/提示与 `.csmlog` / `.lvcsm` Hover 内容
-- 阶段四：`CSM Modules` 容器新增独立的 `Workspace Modules` 原生视图，可同时显示已管理模块与当前模块根目录下的未管理文件夹，而上方 `Available Modules` 保持原有 GitHub 目录行为
+- 阶段四：`CSM Modules` 现收敛为单一原生视图，本地模块状态与 GitHub 模块目录合并到同一 Webview 列表中，并新增 `All / Workspace / Catalog` 范围切换来承接原先的双视图浏览方式
 - 阶段四：已登录 GitHub 时，未管理本地模块文件夹可通过向导一键创建并发布 GitHub 仓库，默认使用 private 可见性并附带 `labview-csm`、`csm-modsets` topics；若本机缺少 Git 作者信息，会在首次发布前补充询问
 
 ### 变更
 
 - 构建：`.github/hooks/local-finish-stop.json` 现同时注册 `PostToolUse` 与 `Stop` hook，只有当当前 Copilot 会话成功执行过编辑类工具后，结束对话时才会触发编译、VSIX 打包、安装与本地校验；纯问答会话会直接跳过，自动 hook 仍复用 `scripts/local-finish-hook.mjs --stop-hook`，不会像手动 `hook:finish` 那样递增版本或改写文档
-- 交互：从 `Workspace Modules` 为未管理本地文件夹创建并发布 GitHub 仓库后，会立即写回本地 `csm-modules.yaml` 并刷新侧边栏状态，无需再手动刷新才能看到已管理状态
+- 交互：从统一侧边栏中的本地未管理文件夹创建并发布 GitHub 仓库后，会立即写回本地 `csm-modules.yaml` 并刷新侧边栏状态，无需再手动刷新才能看到已管理状态
 - 交互：标题栏 `Refresh` 在同步 GitHub 模块目录后，也会强制重算当前工作区的本地模块 / 未管理文件夹状态；即使本次远端刷新失败，也会更新本地显示
 - 阶段一：模块发现继续基于 GitHub 全局 `topic:csm-modsets` 搜索；侧边栏启动时改为只显示本地缓存，登录成功后会自动执行一次网络刷新，之后仍通过手动刷新同步当前账号可访问的 public / private 模块
 - 阶段四：public 模块 README 支持未登录时匿名加载，避免公共模块浏览流程被 GitHub 登录前置阻断
