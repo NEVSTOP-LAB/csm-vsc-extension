@@ -2003,6 +2003,92 @@ suite('ModuleManagerController Regression Tests', () => {
 		assert.ok(infos.some((text) => text.includes('Created GitHub repository tester/shared-module and published the local folder contents.')));
 	});
 
+	test('createLocalFolderRepositoryCommand warns when local state sync fails after publish', async () => {
+		const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'csm-share-module-sync-fail-'));
+		fs.mkdirSync(path.join(workspaceRoot, 'csm', 'custom-module'), { recursive: true });
+		const controller = createController() as any;
+		const existingConfig: LocalModuleConfig = {
+			version: '2',
+			root: 'csm',
+			configPath: path.join(workspaceRoot, 'csm', 'csm-modules.yaml'),
+			modules: {},
+		};
+		let sidebarRefreshed = false;
+		let refreshed = false;
+
+		controller.authService = {
+			getSessionSilently: async () => createSession('token', 'tester'),
+			getSessionInteractively: async () => createSession('token', 'tester'),
+		};
+		controller.githubService = {
+			fetchModules: async () => ({ modules: [] }),
+			fetchReadme: async () => '',
+			createRepository: async (_token: string, options: { name: string; description?: string; private: boolean; topics: string[] }) => ({
+				id: 1,
+				name: options.name,
+				full_name: `tester/${options.name}`,
+				description: options.description ?? '',
+				private: options.private,
+				default_branch: 'main',
+				html_url: `https://github.com/tester/${options.name}`,
+				topics: options.topics,
+			}),
+		};
+		controller.workspaceModuleService = {
+			resolveGitRepositoryRoot: async () => workspaceRoot,
+			getGitIdentity: async () => ({
+				name: 'Tester',
+				email: 'tester@example.com',
+			}),
+			publishLocalFolder: async (options: { folderPath: string; remoteUrl: string; authToken?: string; defaultBranch?: string; authorName?: string; authorEmail?: string; commitMessage?: string }) => ({
+				branch: options.defaultBranch ?? 'main',
+				remoteName: 'origin',
+				remoteUrl: options.remoteUrl,
+				headRef: 'abc123',
+				createdCommit: true,
+			}),
+			normalizeRootPath: (value: string) => value.replace(/\\/g, '/'),
+			getModuleKey: (entry: CsmModuleEntry) => `${entry.owner}__${entry.name}`,
+			withAppliedModule: (config: LocalModuleConfig, entry: LocalModuleConfig['modules'][string]) => ({
+				...config,
+				modules: {
+					...config.modules,
+					[entry.key]: entry,
+				},
+			}),
+			writeConfig: async () => {
+				throw new Error('disk full');
+			},
+		};
+		controller.resolveWorkspaceFolder = async () => ({ name: 'repo', uri: vscode.Uri.file(workspaceRoot) });
+		controller.tryLoadSidebarLocalModuleConfig = async () => existingConfig;
+		controller.refreshSidebarWorkspaceState = async () => {
+			sidebarRefreshed = true;
+		};
+		controller.loadModules = async () => {
+			refreshed = true;
+		};
+		mocked.__setInputBoxResponses(['shared-module', 'Demo repo', 'labview-csm, csm-modsets custom-topic']);
+		mocked.__setQuickPickResponse({ label: 'Private', visibility: 'private' });
+		mocked.__setWarningMessageResponse('Create Repository');
+
+		await controller.createLocalFolderRepositoryCommand({
+			id: 'csm/custom-module',
+			kind: 'unmanaged',
+			name: 'custom-module',
+			path: 'csm/custom-module',
+		});
+
+		assert.strictEqual(sidebarRefreshed, false);
+		assert.strictEqual(refreshed, true);
+		const warnings = mocked.__getMessageLog().filter((message) => message.level === 'warn').map((message) => message.text);
+		assert.ok(warnings.some((text) => text.includes('Created GitHub repository tester/shared-module and published csm/custom-module, but failed to update the local CSM module state: disk full')));
+		const infos = mocked.__getMessageLog().filter((message) => message.level === 'info').map((message) => message.text);
+		assert.ok(!infos.some((text) => text.includes('Created GitHub repository tester/shared-module and published the local folder contents.')));
+		const errors = mocked.__getMessageLog().filter((message) => message.level === 'error').map((message) => message.text);
+		assert.strictEqual(errors.length, 0);
+	});
+
 	test('toggleStar unstars a repository only after confirmation', async () => {
 		let renderedModules: CsmModuleEntry[] = [];
 		const starRequests: boolean[] = [];

@@ -354,6 +354,10 @@ const messages = {
 		en: 'GitHub repository creation succeeded, but publishing {folder} failed: {message}',
 		zh: 'GitHub 仓库已创建成功，但发布 {folder} 失败：{message}',
 	},
+	createRepositoryLocalStateSyncFailed: {
+		en: 'Created GitHub repository {repository} and published {folder}, but failed to update the local CSM module state: {message}',
+		zh: '已创建 GitHub 仓库 {repository} 并发布 {folder}，但更新本地 CSM 模块状态失败：{message}',
+	},
 	createRepositoryNameRequired: {
 		en: 'Repository name is required.',
 		zh: '仓库名称不能为空。',

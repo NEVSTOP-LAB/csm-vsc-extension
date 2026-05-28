@@ -615,6 +615,7 @@ export class ModuleManagerController {
 			let createdRepository: GitHubRepoSummary | undefined;
 			let publishedHeadRef: string | undefined;
 			let publishedBranch: string | undefined;
+			let localStateSyncFailed = false;
 			await vscode.window.withProgress(
 				{
 					location: vscode.ProgressLocation.Notification,
@@ -645,10 +646,24 @@ export class ModuleManagerController {
 				},
 			);
 			if (createdRepository && publishedHeadRef) {
-				await this.syncPublishedLocalFolderState(workspaceFolder, workspaceRoot, folder, createdRepository, publishedHeadRef, publishedBranch);
-				await this.refreshSidebarWorkspaceState();
+				try {
+					await this.syncPublishedLocalFolderState(workspaceFolder, workspaceRoot, folder, createdRepository, publishedHeadRef, publishedBranch);
+					await this.refreshSidebarWorkspaceState();
+				} catch (error) {
+					localStateSyncFailed = true;
+					const message = getUserFacingErrorMessage(error, 'config');
+					const repositoryLabel = repositoryName ?? repositoryConfig.name;
+					this.logger.error(`Created and published GitHub repository ${repositoryLabel}, but failed to sync local workspace state for ${folder.path}: ${message}`);
+					void vscode.window.showWarningMessage(t('createRepositoryLocalStateSyncFailed', {
+						repository: repositoryLabel,
+						folder: folder.path,
+						message,
+					}));
+				}
 			}
-			void vscode.window.showInformationMessage(t('createRepositoryPublishSuccess', { repository: repositoryName ?? repositoryConfig.name }));
+			if (!localStateSyncFailed) {
+				void vscode.window.showInformationMessage(t('createRepositoryPublishSuccess', { repository: repositoryName ?? repositoryConfig.name }));
+			}
 			void this.loadModules({
 				interactiveAuth: false,
 				showSuccessMessage: false,
