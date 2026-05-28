@@ -375,7 +375,7 @@ suite('Module Manager Tests', () => {
 		assert.ok(rendered?.html.includes('Root: csm/'));
 		assert.ok(!rendered?.html.includes('Signed in as tester.'));
 		assert.ok(!rendered?.html.includes('Loaded 2 module(s), including private.'));
-		assert.ok(rendered?.html.includes('1 applied | 1 public | 1 private | 0 selected'));
+		assert.ok(rendered?.html.includes('1 applied | 2 workspace | 1 catalog | 0 selected'));
 		assert.ok(!rendered?.html.includes('data-role="apply-selected"'));
 		assert.ok(rendered?.html.includes('title="Open README"'));
 		assert.ok(!rendered?.html.includes('class="avatar"'));
@@ -384,7 +384,7 @@ suite('Module Manager Tests', () => {
 
 		provider.setSelection(['org/module-a']);
 		const selectedRender = mocked.__getLastWebviewView();
-		assert.ok(selectedRender?.html.includes('1 applied | 1 public | 1 private | 1 selected'));
+		assert.ok(selectedRender?.html.includes('1 applied | 2 workspace | 1 catalog | 1 selected'));
 		assert.ok(selectedRender?.html.includes('moduleSelected&quot;:true'));
 
 		resolved?.fireMessage({ type: 'dismissIntroTip' });
