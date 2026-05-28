@@ -151,13 +151,104 @@ function renderLocalWorkspaceSection(state: LocalWorkspaceRenderState): string {
 	return `<section class="local-section" data-role="local-section">${sectionMeta ? `<div class="section-header"><div class="section-meta">${sectionMeta}</div></div>` : ''}${emptyState}${managedBlock}${unmanagedBlock}</section>`;
 }
 
+function joinClassNames(...classNames: Array<string | false | null | undefined>): string {
+	return classNames.filter((className): className is string => Boolean(className)).join(' ');
+}
+
+function renderBadge(label: string, variant?: string): string {
+	return `<span class="badge${variant ? ` ${escapeHtml(variant)}` : ''}">${escapeHtml(label)}</span>`;
+}
+
+function renderActionToolbar(actions: string[]): string {
+	return actions.length > 0 ? `<div class="action-toolbar">${actions.join('')}</div>` : '';
+}
+
+function renderModuleHeaderTools(sections: string[]): string {
+	return sections.length > 0 ? `<div class="module-header-tools">${sections.join('')}</div>` : '';
+}
+
+type ModuleCardShellOptions = {
+	articleClasses?: string[];
+	dataRole: string;
+	articleAttributes?: string;
+	title: string;
+	titleDisplay?: string;
+	titleBadges?: string[];
+	owner: string;
+	mainClasses?: string[];
+	mainAttributes?: string;
+	headerToolsHtml?: string;
+	summary: string;
+	summaryClasses?: string[];
+	summaryAttributes?: string;
+	footerHtml?: string;
+	footerClasses?: string[];
+	footerAttributes?: string;
+	bodyExtrasHtml?: string;
+	metaBadges?: string[];
+};
+
+function renderModuleCardShell(options: ModuleCardShellOptions): string {
+	const articleAttributes = options.articleAttributes ? ` ${options.articleAttributes}` : '';
+	const mainAttributes = options.mainAttributes ? ` ${options.mainAttributes}` : '';
+	const summaryAttributes = options.summaryAttributes ? ` ${options.summaryAttributes}` : '';
+	const footerAttributes = options.footerAttributes ? ` ${options.footerAttributes}` : '';
+	const titleBadges = options.titleBadges?.join('') ?? '';
+	const footer = options.footerHtml
+		? `<div class="${joinClassNames('card-footer', ...(options.footerClasses ?? []))}"${footerAttributes}>${options.footerHtml}</div>`
+		: '';
+	const metaRow = options.metaBadges && options.metaBadges.length > 0
+		? `<div class="meta-row">${options.metaBadges.join('')}</div>`
+		: '';
+
+	return `<article class="${joinClassNames('module-card', ...(options.articleClasses ?? []))}" data-role="${escapeHtml(options.dataRole)}"${articleAttributes}><div class="module-header"><div class="${joinClassNames('module-main', ...(options.mainClasses ?? []))}"${mainAttributes}><div class="title-row"><span class="module-name" title="${escapeHtml(options.title)}">${escapeHtml(options.titleDisplay ?? options.title)}</span>${titleBadges}</div><div class="module-owner">${escapeHtml(options.owner)}</div></div>${options.headerToolsHtml ?? ''}</div><div class="${joinClassNames('summary', ...(options.summaryClasses ?? []))}"${summaryAttributes}>${escapeHtml(options.summary)}</div>${footer}${options.bodyExtrasHtml ?? ''}${metaRow}</article>`;
+}
+
 function renderLocalManagedCard(entry: LocalManagedModuleEntry): string {
 	const topics = getVisibleModuleTopics(entry.topics).slice(0, 3);
-	const topicBadges = topics.map((topic) => `<span class="badge">${escapeHtml(topic)}</span>`).join('');
+	const topicBadges = topics.map((topic) => renderBadge(topic));
 	const summary = entry.description.trim().length > 0
 		? entry.description.trim()
 		: t('localManagedFallbackSummary', { source: entry.source });
-	return `<article class="module-card local-module-card managed" data-role="local-module-card"><div class="module-header"><div class="module-main"><div class="title-row"><span class="module-name" title="${escapeHtml(entry.name)}">${escapeHtml(truncate(entry.name, 44))}</span><span class="badge applied">${escapeHtml(t('managedBadge'))}</span><span class="badge">${escapeHtml(getApplyMethodLabel(entry.method))}</span>${entry.stale ? `<span class="badge stale">${escapeHtml(t('staleDirectoryMissing'))}</span>` : ''}</div><div class="module-owner">@${escapeHtml(entry.owner)}</div></div><div class="local-card-actions"><button class="chip-button" data-action="openLocalReadme" data-local-item-id="${escapeHtml(entry.id)}">${escapeHtml(t('openReadme'))}</button><button class="chip-button" data-action="updateLocalModule" data-local-item-id="${escapeHtml(entry.id)}">${escapeHtml(t('updateAction'))}</button><button class="chip-button" data-action="removeLocalModule" data-local-item-id="${escapeHtml(entry.id)}">${escapeHtml(t('removeAction'))}</button></div></div><div class="summary">${escapeHtml(truncate(summary, 132))}</div><div class="card-footer"><div class="card-footer-note">${escapeHtml(t('localFolderPathLabel', { path: entry.path }))}</div></div><div class="meta-row"><span class="badge ${entry.visibility === 'private' ? 'private' : ''}">${escapeHtml(getVisibilityLabel(entry.visibility))}</span><span class="badge">${escapeHtml(t('branchBadge', { branch: entry.branch }))}</span>${topicBadges}</div></article>`;
+	const actionButtons = renderActionToolbar([
+		renderIconActionButton({
+			action: 'openLocalReadme',
+			localItemId: entry.id,
+			title: t('openReadme'),
+			icon: 'readme',
+		}),
+		renderIconActionButton({
+			action: 'updateLocalModule',
+			localItemId: entry.id,
+			title: t('updateAction'),
+			icon: 'update',
+		}),
+		renderIconActionButton({
+			action: 'removeLocalModule',
+			localItemId: entry.id,
+			title: t('removeAction'),
+			icon: 'remove',
+		}),
+	]);
+	const metaBadges = [
+		renderBadge(t('managedBadge'), 'applied'),
+		renderBadge(getApplyMethodLabel(entry.method)),
+		...(entry.stale ? [renderBadge(t('staleDirectoryMissing'), 'stale')] : []),
+		renderBadge(getVisibilityLabel(entry.visibility), entry.visibility === 'private' ? 'private' : undefined),
+		renderBadge(t('branchBadge', { branch: entry.branch })),
+		...topicBadges,
+	];
+	return renderModuleCardShell({
+		articleClasses: ['local-module-card', 'managed'],
+		dataRole: 'local-module-card',
+		title: entry.name,
+		titleDisplay: truncate(entry.name, 44),
+		owner: `@${entry.owner}`,
+		headerToolsHtml: renderModuleHeaderTools([actionButtons]),
+		summary: truncate(summary, 132),
+		footerHtml: `<div class="card-footer-note">${escapeHtml(t('localFolderPathLabel', { path: entry.path }))}</div>`,
+		metaBadges,
+	});
 }
 
 function renderLocalUnmanagedCard(entry: LocalUnmanagedFolderEntry, state: LocalWorkspaceRenderState): string {
@@ -167,10 +258,26 @@ function renderLocalUnmanagedCard(entry: LocalUnmanagedFolderEntry, state: Local
 	const hint = !state.signedIn
 		? `<div class="local-card-hint">${escapeHtml(t('signInToCreateRepositoryHint'))}</div>`
 		: '';
-	return `<article class="module-card local-module-card unmanaged" data-role="local-module-card"><div class="module-header"><div class="module-main"><div class="title-row"><span class="module-name" title="${escapeHtml(entry.name)}">${escapeHtml(truncate(entry.name, 44))}</span><span class="badge">${escapeHtml(t('unmanagedBadge'))}</span></div><div class="module-owner">${escapeHtml(entry.path)}</div></div>${actions}</div><div class="summary">${escapeHtml(t('localUnmanagedSummary'))}</div>${hint}</article>`;
+	return renderModuleCardShell({
+		articleClasses: ['local-module-card', 'unmanaged'],
+		dataRole: 'local-module-card',
+		title: entry.name,
+		titleDisplay: truncate(entry.name, 44),
+		owner: entry.path,
+		headerToolsHtml: actions ? renderModuleHeaderTools([actions]) : '',
+		summary: t('localUnmanagedSummary'),
+		bodyExtrasHtml: hint,
+		metaBadges: [renderBadge(t('unmanagedBadge'))],
+	});
 }
 
-type IconName = 'close' | 'filter' | 'readme' | 'search';
+type IconName = 'close' | 'filter' | 'readme' | 'search' | 'update' | 'remove';
+
+function renderIconActionButton(options: { action: string; title: string; icon: IconName; moduleKey?: string; localItemId?: string }): string {
+	const moduleKeyAttribute = options.moduleKey ? ` data-module-key="${escapeHtml(options.moduleKey)}"` : '';
+	const localItemIdAttribute = options.localItemId ? ` data-local-item-id="${escapeHtml(options.localItemId)}"` : '';
+	return `<button class="icon-button" data-action="${escapeHtml(options.action)}"${moduleKeyAttribute}${localItemIdAttribute} title="${escapeHtml(options.title)}" aria-label="${escapeHtml(options.title)}">${renderIcon(options.icon)}</button>`;
+}
 
 function renderIcon(name: IconName): string {
 	switch (name) {
@@ -182,6 +289,10 @@ function renderIcon(name: IconName): string {
 			return '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 2.5h4.5a2 2 0 0 1 2 2V13a2 2 0 0 0-2-2H3z"></path><path d="M13 2.5H8.5a2 2 0 0 0-2 2V13a2 2 0 0 1 2-2H13z"></path></svg>';
 		case 'search':
 			return '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="7" cy="7" r="4.5"></circle><path d="M10.5 10.5L14 14"></path></svg>';
+		case 'update':
+			return '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 6V3h-3"></path><path d="M13 3 9.75 6.25"></path><path d="M12 8.5a4.5 4.5 0 1 1-1.6-3.45"></path></svg>';
+		case 'remove':
+			return '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 4.5h9"></path><path d="M6 4.5v-1a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v1"></path><path d="M5 6.5v5"></path><path d="M8 6.5v5"></path><path d="M11 6.5v5"></path><path d="M4.5 4.5V13a1 1 0 0 0 1 1h5a1 1 0 0 0 1-1V4.5"></path></svg>';
 	}
 }
 
@@ -1170,6 +1281,7 @@ export function renderLocalWorkspaceViewHtml(state: LocalWorkspaceRenderState): 
 			--module-font-sm: 12px;
 			--module-font-md: 13px;
 			--module-font-lg: 15px;
+			--module-icon-size: 16px;
 		}
 		body {
 			margin: 0;
@@ -1299,6 +1411,12 @@ export function renderLocalWorkspaceViewHtml(state: LocalWorkspaceRenderState): 
 			display: grid;
 			gap: 1px;
 		}
+		.module-header-tools {
+			display: flex;
+			align-items: center;
+			gap: 2px;
+			margin-top: -2px;
+		}
 		.title-row {
 			display: flex;
 			align-items: center;
@@ -1351,6 +1469,11 @@ export function renderLocalWorkspaceViewHtml(state: LocalWorkspaceRenderState): 
 			border-color: var(--vscode-inputValidation-warningBorder, var(--vscode-panel-border));
 			color: var(--vscode-editorWarning-foreground, var(--vscode-foreground));
 		}
+		.action-toolbar {
+			display: flex;
+			align-items: center;
+			gap: 2px;
+		}
 		.card-footer {
 			display: flex;
 			justify-content: flex-start;
@@ -1363,6 +1486,23 @@ export function renderLocalWorkspaceViewHtml(state: LocalWorkspaceRenderState): 
 			font-size: var(--module-font-xs);
 			line-height: 1.4;
 			color: var(--vscode-descriptionForeground);
+		}
+		.icon-button {
+			display: inline-flex;
+			align-items: center;
+			justify-content: center;
+			width: 26px;
+			height: 26px;
+			padding: 0;
+			color: var(--vscode-descriptionForeground);
+		}
+		.icon-button svg {
+			width: var(--module-icon-size, 16px);
+			height: var(--module-icon-size, 16px);
+		}
+		.icon-button[disabled] {
+			opacity: 0.5;
+			cursor: default;
 		}
 		.local-card-actions {
 			display: flex;
@@ -1549,7 +1689,6 @@ function renderModuleCard(entry: CsmModuleEntry, state: ModuleSidebarRenderState
 	const previewOpen = state.previewState?.moduleKey === moduleKey;
 	const stale = state.staleModuleKeys.has(moduleKey);
 	const topics = getVisibleModuleTopics(entry.topics).slice(0, 3);
-	const topicBadges = topics.map((topic) => `<span class="badge">${escapeHtml(topic)}</span>`).join('');
 	const summary = entry.description.trim().length > 0 ? entry.description.trim() : t('noRepositoryDescription');
 	const footerNote = applied && state.workspaceLabel
 		? `<div class="card-footer-note">${escapeHtml(state.moduleRoot
@@ -1566,36 +1705,41 @@ function renderModuleCard(entry: CsmModuleEntry, state: ModuleSidebarRenderState
 	}));
 	const preview = previewOpen ? renderReadmePreview(moduleKey, state.previewState) : '';
 
-	return `<article class="module-card${selected ? ' selected' : ''}${applied ? ' applied' : ''}" data-role="module-card" data-module-key="${escapeHtml(moduleKey)}" data-module-applied="${applied ? 'true' : 'false'}" data-module-selected="${selected ? 'true' : 'false'}" data-search-text="${searchText}" data-vscode-context="${vscodeContext}">
-			<div class="module-header">
-				<div class="module-main module-preview-trigger" data-action="togglePreview" data-module-key="${escapeHtml(moduleKey)}" tabindex="0" role="button" aria-expanded="${previewOpen ? 'true' : 'false'}" aria-label="${escapeHtml(t('toggleReadmePreviewAria', { name: entry.name }))}">
-					<div class="title-row">
-						<span class="module-name" title="${escapeHtml(entry.name)}">${escapeHtml(truncate(entry.name, 44))}</span>
-						${applied ? `<span class="badge applied">${escapeHtml(t('appliedBadge'))}</span>` : ''}
-					</div>
-					<div class="module-owner">@${escapeHtml(entry.owner)}</div>
-				</div>
-				<div class="module-header-tools">
-					<label class="select-toolbar-item" title="${escapeHtml(t('selectModule'))}" aria-label="${escapeHtml(t('selectModule'))}">
-						<input class="module-select" type="checkbox" data-role="select-toggle" data-action="toggleSelection" data-module-key="${escapeHtml(moduleKey)}" ${selected ? 'checked' : ''} aria-label="${escapeHtml(t('selectNamedModule', { name: entry.name }))}">
-					</label>
-					<div class="action-toolbar">
-							${renderStarButton(entry, moduleKey, state.signedIn)}
-						<button class="icon-button" data-action="openReadme" data-module-key="${escapeHtml(moduleKey)}" title="${escapeHtml(t('openReadme'))}" aria-label="${escapeHtml(t('openReadme'))}">${renderIcon('readme')}</button>
-					</div>
-				</div>
-			</div>
-			<div class="summary module-preview-trigger" data-action="togglePreview" data-module-key="${escapeHtml(moduleKey)}">${escapeHtml(truncate(summary, 132))}</div>
-			<div class="card-footer module-preview-trigger" data-action="togglePreview" data-module-key="${escapeHtml(moduleKey)}">
-				${footerNote}
-			</div>
-			${preview}
-			<div class="meta-row">
-				<span class="badge ${entry.visibility === 'private' ? 'private' : ''}">${escapeHtml(getVisibilityLabel(entry.visibility))}</span>
-				<span class="badge">${escapeHtml(t('branchBadge', { branch: entry.defaultBranch }))}</span>
-				${topicBadges}
-			</div>
-		</article>`;
+	return renderModuleCardShell({
+		articleClasses: [selected ? 'selected' : '', applied ? 'applied' : ''],
+		dataRole: 'module-card',
+		articleAttributes: `data-module-key="${escapeHtml(moduleKey)}" data-module-applied="${applied ? 'true' : 'false'}" data-module-selected="${selected ? 'true' : 'false'}" data-search-text="${searchText}" data-vscode-context="${vscodeContext}"`,
+		title: entry.name,
+		titleDisplay: truncate(entry.name, 44),
+		titleBadges: applied ? [renderBadge(t('appliedBadge'), 'applied')] : [],
+		owner: `@${entry.owner}`,
+		mainClasses: ['module-preview-trigger'],
+		mainAttributes: `data-action="togglePreview" data-module-key="${escapeHtml(moduleKey)}" tabindex="0" role="button" aria-expanded="${previewOpen ? 'true' : 'false'}" aria-label="${escapeHtml(t('toggleReadmePreviewAria', { name: entry.name }))}"`,
+		headerToolsHtml: renderModuleHeaderTools([
+			`<label class="select-toolbar-item" title="${escapeHtml(t('selectModule'))}" aria-label="${escapeHtml(t('selectModule'))}"><input class="module-select" type="checkbox" data-role="select-toggle" data-action="toggleSelection" data-module-key="${escapeHtml(moduleKey)}" ${selected ? 'checked' : ''} aria-label="${escapeHtml(t('selectNamedModule', { name: entry.name }))}"></label>`,
+			renderActionToolbar([
+				renderStarButton(entry, moduleKey, state.signedIn),
+				renderIconActionButton({
+					action: 'openReadme',
+					moduleKey,
+					title: t('openReadme'),
+					icon: 'readme',
+				}),
+			]),
+		]),
+		summary: truncate(summary, 132),
+		summaryClasses: ['module-preview-trigger'],
+		summaryAttributes: `data-action="togglePreview" data-module-key="${escapeHtml(moduleKey)}"`,
+		footerHtml: footerNote,
+		footerClasses: ['module-preview-trigger'],
+		footerAttributes: `data-action="togglePreview" data-module-key="${escapeHtml(moduleKey)}"`,
+		bodyExtrasHtml: preview,
+		metaBadges: [
+			renderBadge(getVisibilityLabel(entry.visibility), entry.visibility === 'private' ? 'private' : undefined),
+			renderBadge(t('branchBadge', { branch: entry.defaultBranch })),
+			...topics.map((topic) => renderBadge(topic)),
+		],
+	});
 }
 
 function renderReadmePreview(moduleKey: string, previewState: ReadmePreviewState | undefined): string {
