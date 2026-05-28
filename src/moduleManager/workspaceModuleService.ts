@@ -215,6 +215,31 @@ export class WorkspaceModuleService {
 		};
 	}
 
+	public async switchModuleMethod(
+		workspaceRoot: string,
+		entry: LocalModuleConfigEntry,
+		nextMethod: ModuleApplyMethod,
+		authToken?: string,
+		repoRoot?: string,
+	): Promise<LocalModuleConfigEntry> {
+		if (entry.method === nextMethod) {
+			return entry;
+		}
+
+		if (nextMethod === 'copy') {
+			if (!repoRoot) {
+				throw new Error('Git repository root is required to convert a submodule to copy mode.');
+			}
+			return this.convertSubmoduleToCopy(workspaceRoot, entry, repoRoot);
+		}
+
+		if (!repoRoot) {
+			throw new Error('Git repository root is required to convert a copied module to submodule mode.');
+		}
+
+		return this.convertCopyToSubmodule(repoRoot, entry, authToken);
+	}
+
 	public async initializeConfig(repoRoot: string, rootRelativePath: string): Promise<LocalModuleConfig> {
 		const root = this.normalizeRootPath(rootRelativePath);
 		const configPath = this.getConfigPath(repoRoot, root);
@@ -542,6 +567,95 @@ export class WorkspaceModuleService {
 			await fs.rm(targetPath, { recursive: true, force: true });
 			throw error;
 		} finally {
+			await fs.rm(tempRoot, { recursive: true, force: true });
+		}
+	}
+
+	private async convertSubmoduleToCopy(
+		workspaceRoot: string,
+		entry: LocalModuleConfigEntry,
+		repoRoot: string,
+	): Promise<LocalModuleConfigEntry> {
+		const targetRelativePath = this.normalizeRootPath(entry.path);
+		const targetPath = this.toAbsoluteTargetPath(workspaceRoot, targetRelativePath);
+		const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'csm-switch-copy-'));
+		const snapshotPath = path.join(tempRoot, 'snapshot');
+		try {
+			await this.copyDirectory(targetPath, snapshotPath);
+			await this.removeModule(workspaceRoot, entry, repoRoot);
+			await fs.mkdir(path.dirname(targetPath), { recursive: true });
+			await this.copyDirectory(snapshotPath, targetPath);
+			return {
+				...entry,
+				method: 'copy',
+			};
+		} finally {
+			await fs.rm(tempRoot, { recursive: true, force: true });
+		}
+	}
+
+	private async convertCopyToSubmodule(
+		repoRoot: string,
+		entry: LocalModuleConfigEntry,
+		authToken?: string,
+	): Promise<LocalModuleConfigEntry> {
+		if (!await this.gitRunner.isAvailable()) {
+			throw new Error('git unavailable');
+		}
+
+		const targetRelativePath = this.normalizeRootPath(entry.path);
+		const targetPath = this.toAbsoluteTargetPath(repoRoot, targetRelativePath);
+		const branch = entry.branch?.trim() || 'main';
+		const expectedRef = this.normalizeRef(entry.ref);
+		const tempRoot = await fs.mkdtemp(path.join(path.dirname(targetPath), '.csm-switch-submodule-'));
+		const checkoutPath = path.join(tempRoot, 'checkout');
+		const backupPath = path.join(
+			path.dirname(targetPath),
+			`.csm-switch-backup-${path.basename(targetPath)}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+		);
+		let cleanupBackup = false;
+		try {
+			await this.runGit(tempRoot, ['clone', '--branch', branch, entry.source, checkoutPath], authToken, entry.source);
+			if (expectedRef) {
+				await this.runGit(checkoutPath, ['checkout', expectedRef]);
+			}
+			await fs.rename(targetPath, backupPath);
+			cleanupBackup = true;
+			await fs.rename(checkoutPath, targetPath);
+			await this.runGit(repoRoot, ['rm', '-r', '--cached', '--ignore-unmatch', '--', targetRelativePath]);
+			await this.runGit(
+				repoRoot,
+				['submodule', 'add', '-f', '-b', branch, entry.source, targetRelativePath],
+				authToken,
+				entry.source,
+			);
+			await this.runGit(repoRoot, ['submodule', 'absorbgitdirs', '--', targetRelativePath]);
+			const ref = (await this.runGit(targetPath, ['rev-parse', 'HEAD'])).trim();
+			return {
+				...entry,
+				method: 'submodule',
+				ref,
+				branch,
+			};
+		} catch (error) {
+			if (cleanupBackup) {
+				try {
+					await fs.rm(targetPath, { recursive: true, force: true });
+				} catch {
+					// best effort
+				}
+				try {
+					await fs.rename(backupPath, targetPath);
+					cleanupBackup = false;
+				} catch {
+					cleanupBackup = false;
+				}
+			}
+			throw error;
+		} finally {
+			if (cleanupBackup) {
+				await fs.rm(backupPath, { recursive: true, force: true });
+			}
 			await fs.rm(tempRoot, { recursive: true, force: true });
 		}
 	}

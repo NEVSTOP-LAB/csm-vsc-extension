@@ -663,6 +663,7 @@ suite('Module Manager Tests', () => {
 		let openedReadmeName = '';
 		let removedModuleName = '';
 		let updatedModuleName = '';
+		let switchedModuleName = '';
 		let createdRepositoryPath = '';
 		let initialized = false;
 		const provider = new ModuleSidebarViewProvider({
@@ -680,6 +681,9 @@ suite('Module Manager Tests', () => {
 			},
 			onUpdateModule: (entry) => {
 				updatedModuleName = entry.name;
+			},
+			onSwitchLocalModuleMethod: (entry) => {
+				switchedModuleName = entry.name;
 			},
 			onCreateLocalRepository: (entry) => {
 				createdRepositoryPath = entry.path;
@@ -735,12 +739,14 @@ suite('Module Manager Tests', () => {
 
 		resolved?.fireMessage({ type: 'openLocalReadme', localItemId: 'local__module_local' });
 		resolved?.fireMessage({ type: 'updateLocalModule', localItemId: 'local__module_local' });
+		resolved?.fireMessage({ type: 'switchLocalModuleMethod', localItemId: 'local__module_local' });
 		resolved?.fireMessage({ type: 'removeLocalModule', localItemId: 'local__module_local' });
 		resolved?.fireMessage({ type: 'createLocalRepository', localItemId: 'csm/custom-module' });
 		resolved?.fireMessage({ type: 'initializeWorkspace' });
 
 		assert.strictEqual(openedReadmeName, 'module-local');
 		assert.strictEqual(updatedModuleName, 'module-local');
+		assert.strictEqual(switchedModuleName, 'module-local');
 		assert.strictEqual(removedModuleName, 'module-local');
 		assert.strictEqual(createdRepositoryPath, 'csm/custom-module');
 		assert.strictEqual(initialized, true);
@@ -1075,6 +1081,111 @@ suite('Module Manager Tests', () => {
 				branch: 'main',
 				headRef: 'abc123',
 			});
+		} finally {
+			await fs.rm(repoRoot, { recursive: true, force: true });
+		}
+	});
+
+	test('WorkspaceModuleService switches a submodule to copy mode without changing module files', async () => {
+		const workspaceRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'csm-switch-to-copy-'));
+		const targetPath = path.join(workspaceRoot, 'csm', 'module-a');
+		await fs.mkdir(targetPath, { recursive: true });
+		await fs.writeFile(path.join(targetPath, 'README.md'), 'demo', 'utf8');
+
+		const gitRunner = new RecordingGitRunner(async (options) => {
+			const command = options.args.join(' ');
+			switch (command) {
+				case 'submodule deinit -f -- csm/module-a':
+				case 'rm -rf -- csm/module-a':
+					return '';
+				default:
+					throw new Error(`Unexpected git command: ${command}`);
+			}
+		});
+		const service = new WorkspaceModuleService(gitRunner);
+
+		try {
+			const result = await service.switchModuleMethod(
+				workspaceRoot,
+				{
+					key: 'org__module_a',
+					name: 'module-a',
+					owner: 'org',
+					source: 'https://github.com/org/module-a',
+					method: 'submodule',
+					path: 'csm/module-a',
+					ref: 'abc123',
+					branch: 'main',
+				},
+				'copy',
+				undefined,
+				workspaceRoot,
+			);
+
+			assert.strictEqual(result.method, 'copy');
+			assert.strictEqual(result.ref, 'abc123');
+			assert.strictEqual(await fs.readFile(path.join(targetPath, 'README.md'), 'utf8'), 'demo');
+			assert.deepStrictEqual(gitRunner.calls.map((call) => call.args.join(' ')), [
+				'submodule deinit -f -- csm/module-a',
+				'rm -rf -- csm/module-a',
+			]);
+		} finally {
+			await fs.rm(workspaceRoot, { recursive: true, force: true });
+		}
+	});
+
+	test('WorkspaceModuleService switches a copied module to submodule mode', async () => {
+		const repoRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'csm-switch-to-submodule-'));
+		const targetPath = path.join(repoRoot, 'csm', 'module-a');
+		await fs.mkdir(targetPath, { recursive: true });
+		await fs.writeFile(path.join(targetPath, 'README.md'), 'demo', 'utf8');
+
+		const gitRunner = new RecordingGitRunner(async (options) => {
+			const command = options.args.join(' ');
+			switch (command) {
+				case 'checkout abc123':
+				case 'rm -r --cached --ignore-unmatch -- csm/module-a':
+				case 'submodule add -f -b main https://github.com/org/module-a csm/module-a':
+				case 'submodule absorbgitdirs -- csm/module-a':
+					return '';
+				case 'rev-parse HEAD':
+					assert.strictEqual(path.normalize(options.cwd), path.normalize(targetPath));
+					return 'abc123\n';
+				default:
+					if (options.args[0] === 'clone') {
+						assert.deepStrictEqual(options.args.slice(0, 4), ['clone', '--branch', 'main', 'https://github.com/org/module-a']);
+						await fs.mkdir(String(options.args[4]), { recursive: true });
+						await fs.writeFile(path.join(String(options.args[4]), 'README.md'), 'demo', 'utf8');
+						return '';
+					}
+					throw new Error(`Unexpected git command: ${command}`);
+			}
+		});
+		const service = new WorkspaceModuleService(gitRunner);
+
+		try {
+			const result = await service.switchModuleMethod(
+				repoRoot,
+				{
+					key: 'org__module_a',
+					name: 'module-a',
+					owner: 'org',
+					source: 'https://github.com/org/module-a',
+					method: 'copy',
+					path: 'csm/module-a',
+					ref: 'abc123',
+					branch: 'main',
+				},
+				'submodule',
+				'token',
+				repoRoot,
+			);
+
+			assert.strictEqual(result.method, 'submodule');
+			assert.strictEqual(result.ref, 'abc123');
+			assert.ok(gitRunner.calls.some((call) => call.args[0] === 'clone'));
+			assert.ok(gitRunner.calls.some((call) => call.args.join(' ') === 'checkout abc123'));
+			assert.ok(gitRunner.calls.some((call) => call.args.join(' ') === 'submodule add -f -b main https://github.com/org/module-a csm/module-a'));
 		} finally {
 			await fs.rm(repoRoot, { recursive: true, force: true });
 		}

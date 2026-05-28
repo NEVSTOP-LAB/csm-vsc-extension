@@ -126,6 +126,10 @@ const messages = {
 		en: 'Open the target repository as a workspace folder before updating modules.',
 		zh: '更新模块前，请先将目标仓库作为工作区文件夹打开。',
 	},
+	openWorkspaceBeforeSwitchMethod: {
+		en: 'Open the target repository as a workspace folder before switching a local module between copy and submodule mode.',
+		zh: '在 copy 和 submodule 模式之间切换本地模块前，请先将目标仓库作为工作区文件夹打开。',
+	},
 	progressUpdating: {
 		en: 'Updating {module}...',
 		zh: '正在更新 {module}...',
@@ -161,6 +165,38 @@ const messages = {
 	updateFailed: {
 		en: 'Failed to update module: {message}',
 		zh: '更新模块失败：{message}',
+	},
+	switchMethodAction: {
+		en: 'Switch',
+		zh: '切换',
+	},
+	switchMethodToTarget: {
+		en: 'Switch to {method}',
+		zh: '切换为 {method}',
+	},
+	switchMethodRequiresGitRepo: {
+		en: 'Switching between copy and submodule is only available when the current workspace folder is a Git repository.',
+		zh: '只有当前工作区文件夹是 Git 仓库时，才允许在 copy 和 submodule 之间切换。',
+	},
+	signInRequiredToSwitchPrivateModule: {
+		en: 'GitHub sign-in is required to switch a private module into submodule mode.',
+		zh: '将私有模块切换到 submodule 模式前需要登录 GitHub。',
+	},
+	switchMethodConfirmation: {
+		en: 'Switch module {module} in {repository} from {currentMethod} to {targetMethod}? This recreates {targetPath} from the configured source repository.',
+		zh: '要在 {repository} 中将模块 {module} 从 {currentMethod} 切换为 {targetMethod} 吗？这会根据已配置的源仓库重新创建 {targetPath}。',
+	},
+	progressSwitchingMethod: {
+		en: 'Switching {module} to {method}...',
+		zh: '正在将 {module} 切换为 {method}...',
+	},
+	switchMethodSuccess: {
+		en: 'Switched {module} to {method}.',
+		zh: '已将 {module} 切换为 {method}。',
+	},
+	switchMethodFailed: {
+		en: 'Failed to switch module method: {message}',
+		zh: '切换模块方式失败：{message}',
 	},
 	openWorkspaceBeforeInitialize: {
 		en: 'Open the target repository as a workspace folder before initializing CSM module management.',

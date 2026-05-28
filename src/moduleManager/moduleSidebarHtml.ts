@@ -21,6 +21,7 @@ export interface LocalWorkspaceRenderState {
 	unmanagedFolders: LocalUnmanagedFolderEntry[];
 	workspaceLabel?: string;
 	moduleRoot?: string;
+	gitAvailable: boolean;
 }
 
 export interface ModuleSidebarRenderState extends LocalWorkspaceRenderState {
@@ -314,7 +315,7 @@ function renderLocalWorkspaceSection(state: LocalWorkspaceRenderState): string {
 		? `${summaryText} | ${escapeHtml(t('rootLabel'))}: ${escapeHtml(state.moduleRoot)}/`
 		: summaryText;
 	const managedBlock = managedCount > 0
-		? `<section class="list local-list">${state.managedModules.map((entry) => renderLocalManagedCard(entry)).join('')}</section>`
+		? `<section class="list local-list">${state.managedModules.map((entry) => renderLocalManagedCard(entry, state)).join('')}</section>`
 		: '';
 	const unmanagedBlock = unmanagedCount > 0
 		? `<div class="section-group"><div class="section-subtitle">${escapeHtml(t('workspaceUnmanagedSectionTitle'))}</div><section class="list local-list">${state.unmanagedFolders.map((entry) => renderLocalUnmanagedCard(entry, state)).join('')}</section></div>`
@@ -382,9 +383,10 @@ function renderModuleCardShell(options: ModuleCardShellOptions): string {
 	return `<article class="${joinClassNames('module-card', ...(options.articleClasses ?? []))}" data-role="${escapeHtml(options.dataRole)}"${articleAttributes}><div class="module-header"><div class="${joinClassNames('module-main', ...(options.mainClasses ?? []))}"${mainAttributes}><div class="title-row"><span class="module-name" title="${escapeHtml(options.title)}">${escapeHtml(options.titleDisplay ?? options.title)}</span>${titleBadges}</div><div class="module-owner">${escapeHtml(options.owner)}</div></div>${options.headerToolsHtml ?? ''}</div><div class="${joinClassNames('summary', ...(options.summaryClasses ?? []))}"${summaryAttributes}>${escapeHtml(options.summary)}</div>${footer}${options.bodyExtrasHtml ?? ''}${metaRow}</article>`;
 }
 
-function renderLocalManagedCard(entry: LocalManagedModuleEntry): string {
+function renderLocalManagedCard(entry: LocalManagedModuleEntry, state: LocalWorkspaceRenderState): string {
 	const topics = getVisibleModuleTopics(entry.topics).slice(0, 3);
 	const topicBadges = topics.map((topic) => renderBadge(topic));
+	const nextMethod = entry.method === 'copy' ? 'submodule' : 'copy';
 	const summary = entry.description.trim().length > 0
 		? entry.description.trim()
 		: t('localManagedFallbackSummary', { source: entry.source });
@@ -401,6 +403,15 @@ function renderLocalManagedCard(entry: LocalManagedModuleEntry): string {
 			localItemId: entry.id,
 			title: t('updateAction'),
 			icon: 'update',
+		}),
+		renderIconActionButton({
+			action: 'switchLocalModuleMethod',
+			localItemId: entry.id,
+			title: state.gitAvailable
+				? t('switchMethodToTarget', { method: getApplyMethodLabel(nextMethod) })
+				: t('switchMethodRequiresGitRepo'),
+			icon: 'switch',
+			disabled: !state.gitAvailable,
 		}),
 		renderIconActionButton({
 			action: 'removeLocalModule',
@@ -453,12 +464,13 @@ function renderLocalUnmanagedCard(entry: LocalUnmanagedFolderEntry, state: Local
 	});
 }
 
-type IconName = 'close' | 'filter' | 'readme' | 'search' | 'update' | 'remove';
+type IconName = 'close' | 'filter' | 'readme' | 'search' | 'update' | 'remove' | 'switch';
 
-function renderIconActionButton(options: { action: string; title: string; icon: IconName; moduleKey?: string; localItemId?: string }): string {
+function renderIconActionButton(options: { action: string; title: string; icon: IconName; moduleKey?: string; localItemId?: string; disabled?: boolean }): string {
 	const moduleKeyAttribute = options.moduleKey ? ` data-module-key="${escapeHtml(options.moduleKey)}"` : '';
 	const localItemIdAttribute = options.localItemId ? ` data-local-item-id="${escapeHtml(options.localItemId)}"` : '';
-	return `<button class="icon-button" data-action="${escapeHtml(options.action)}"${moduleKeyAttribute}${localItemIdAttribute} title="${escapeHtml(options.title)}" aria-label="${escapeHtml(options.title)}">${renderIcon(options.icon)}</button>`;
+	const disabledAttribute = options.disabled ? ' disabled aria-disabled="true"' : '';
+	return `<button class="icon-button" data-action="${escapeHtml(options.action)}"${moduleKeyAttribute}${localItemIdAttribute} title="${escapeHtml(options.title)}" aria-label="${escapeHtml(options.title)}"${disabledAttribute}>${renderIcon(options.icon)}</button>`;
 }
 
 function renderIcon(name: IconName): string {
@@ -475,6 +487,8 @@ function renderIcon(name: IconName): string {
 			return '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 6V3h-3"></path><path d="M13 3 9.75 6.25"></path><path d="M12 8.5a4.5 4.5 0 1 1-1.6-3.45"></path></svg>';
 		case 'remove':
 			return '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 4.5h9"></path><path d="M6 4.5v-1a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v1"></path><path d="M5 6.5v5"></path><path d="M8 6.5v5"></path><path d="M11 6.5v5"></path><path d="M4.5 4.5V13a1 1 0 0 0 1 1h5a1 1 0 0 0 1-1V4.5"></path></svg>';
+		case 'switch':
+			return '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 5h8"></path><path d="M9.5 2.5 12 5 9.5 7.5"></path><path d="M13 11H5"></path><path d="M6.5 8.5 4 11l2.5 2.5"></path></svg>';
 	}
 }
 
@@ -1995,7 +2009,7 @@ function renderContent(
 	}
 
 	const workspaceCards = [
-		...workspaceContent.managed.map((entry) => renderLocalManagedCard(entry)),
+		...workspaceContent.managed.map((entry) => renderLocalManagedCard(entry, state)),
 		...workspaceContent.unmanaged.map((entry) => renderLocalUnmanagedCard(entry, state)),
 	].join('');
 	const visibleCatalog = catalogContent.modules.slice(0, state.renderLimit);

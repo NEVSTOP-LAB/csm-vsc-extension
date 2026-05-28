@@ -31,6 +31,7 @@
 - 模块卡片支持 VS Code 原生右键菜单，可直接执行 `Apply` / `Update` / `Remove` / `Open README` / 选择操作，并按模块当前状态自动启用、禁用或切换对应项
 - 首次应用时可初始化本地模块目录，默认生成 `csm/csm-modules.yaml`，也可指定仓库内自定义相对路径
 - 支持 `submodule` / `copy` 两种引入方式
+- 对已管理的本地模块，若当前工作区本身是 Git 仓库，可在侧边栏中把 `copy` 与 `submodule` 方式互相切换；非 Git 工作区会禁用该操作
 - 刷新 / 应用 / 更新 / 删除模块时会把 GitHub HTTP 状态、Git 权限失败、Git 缺失、网络错误与 YAML 解析错误转换为更可操作的提示
 
 ### 工作区状态

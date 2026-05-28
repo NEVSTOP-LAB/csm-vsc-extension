@@ -6,7 +6,7 @@ import * as vscode from 'vscode';
 import { DEFAULT_LOCAL_MODULE_ROOT, IModuleViewProvider, LEGACY_LOCAL_MODULE_CONFIG_FILE, LOCAL_MODULE_CONFIG_FILE } from '../moduleManager';
 import { ModuleManagerController, ModuleManagerControllerDeps } from '../moduleManager/moduleManagerController';
 import { ModuleTreeItem } from '../moduleManager/moduleTreeDataProvider';
-import { CsmModuleEntry, LocalModuleConfig, ModuleCacheSnapshot } from '../moduleManager/types';
+import { CsmModuleEntry, LocalModuleConfig, ModuleApplyMethod, ModuleCacheSnapshot } from '../moduleManager/types';
 
 type VscodeMock = typeof vscode & {
 	__getMessageLog: () => Array<{ level: 'info' | 'warn' | 'error'; text: string }>;
@@ -928,6 +928,150 @@ suite('ModuleManagerController Regression Tests', () => {
 		assert.ok(infos.some((text) => text.includes('Backup saved to d:/plain-workspace/.csm-module-backups/org__module-copy.zip.')));
 	});
 
+	test('switchLocalModuleMethodCommand switches a managed local module to submodule mode in a git workspace', async () => {
+		const controller = createController() as any;
+		let config: LocalModuleConfig = {
+			version: '2',
+			root: 'csm',
+			configPath: 'd:/repo/csm/csm-modules.yaml',
+			modules: {
+				org__module_copy: {
+					key: 'org__module_copy',
+					name: 'module-copy',
+					owner: 'org',
+					source: 'https://github.com/org/module-copy',
+					method: 'copy',
+					path: 'csm/module-copy',
+					ref: 'abc123',
+					branch: 'main',
+				},
+			},
+		};
+		let switchCall:
+			| { workspaceRoot: string; nextMethod: ModuleApplyMethod; repoRoot?: string; authToken?: string }
+			| undefined;
+		let sidebarRefreshed = false;
+
+		controller.workspaceModuleService = {
+			resolveGitRepositoryRoot: async () => 'd:/repo',
+			switchModuleMethod: async (
+				workspaceRoot: string,
+				entry: LocalModuleConfig['modules'][string],
+				nextMethod: ModuleApplyMethod,
+				authToken?: string,
+				repoRoot?: string,
+			) => {
+				switchCall = { workspaceRoot, nextMethod, repoRoot, authToken };
+				return {
+					...entry,
+					method: 'submodule',
+					ref: 'def456',
+				};
+			},
+			withAppliedModule: (currentConfig: LocalModuleConfig, entry: LocalModuleConfig['modules'][string]) => {
+				config = {
+					...currentConfig,
+					modules: {
+						...currentConfig.modules,
+						[entry.key]: entry,
+					},
+				};
+				return config;
+			},
+			writeConfig: async () => undefined,
+		};
+		controller.resolveWorkspaceFolder = async () => ({ name: 'repo', uri: vscode.Uri.file('d:/repo') });
+		controller.tryLoadSidebarLocalModuleConfig = async () => config;
+		controller.refreshSidebarWorkspaceState = async () => {
+			sidebarRefreshed = true;
+		};
+		mocked.__setWarningMessageResponse('Switch');
+
+		await controller.switchLocalModuleMethodCommand({
+			id: 'org__module_copy',
+			kind: 'managed',
+			owner: 'org',
+			name: 'module-copy',
+			path: 'csm/module-copy',
+			source: 'https://github.com/org/module-copy',
+			method: 'copy',
+			branch: 'main',
+			ref: 'abc123',
+			repoUrl: 'https://github.com/org/module-copy',
+			description: 'demo',
+			visibility: 'public',
+			topics: ['csm-modsets'],
+			moduleEntry: {
+				id: 1,
+				owner: 'org',
+				name: 'module-copy',
+				description: 'demo',
+				topics: ['csm-modsets'],
+				visibility: 'public',
+				defaultBranch: 'main',
+				repoUrl: 'https://github.com/org/module-copy',
+			},
+			stale: false,
+		});
+
+		assert.deepStrictEqual(switchCall, {
+			workspaceRoot: 'd:/repo',
+			nextMethod: 'submodule',
+			repoRoot: 'd:/repo',
+			authToken: undefined,
+		});
+		assert.strictEqual(config.modules.org__module_copy?.method, 'submodule');
+		assert.strictEqual(config.modules.org__module_copy?.ref, 'def456');
+		assert.strictEqual(sidebarRefreshed, true);
+		const infos = mocked.__getMessageLog().filter((message) => message.level === 'info').map((message) => message.text);
+		assert.ok(infos.some((text) => text.includes('Switched org/module-copy to submodule.')));
+	});
+
+	test('switchLocalModuleMethodCommand is blocked in a non-git workspace', async () => {
+		const controller = createController() as any;
+		let switchAttempted = false;
+
+		controller.workspaceModuleService = {
+			resolveGitRepositoryRoot: async () => undefined,
+			switchModuleMethod: async () => {
+				switchAttempted = true;
+				throw new Error('should not run');
+			},
+		};
+		controller.resolveWorkspaceFolder = async () => ({ name: 'plain-workspace', uri: vscode.Uri.file('d:/plain-workspace') });
+
+		await controller.switchLocalModuleMethodCommand({
+			id: 'org__module_copy',
+			kind: 'managed',
+			owner: 'org',
+			name: 'module-copy',
+			path: 'csm/module-copy',
+			source: 'https://github.com/org/module-copy',
+			method: 'copy',
+			branch: 'main',
+			ref: 'abc123',
+			repoUrl: 'https://github.com/org/module-copy',
+			description: 'demo',
+			visibility: 'public',
+			topics: ['csm-modsets'],
+			moduleEntry: {
+				id: 1,
+				owner: 'org',
+				name: 'module-copy',
+				description: 'demo',
+				topics: ['csm-modsets'],
+				visibility: 'public',
+				defaultBranch: 'main',
+				repoUrl: 'https://github.com/org/module-copy',
+			},
+			stale: false,
+		});
+
+		assert.strictEqual(switchAttempted, false);
+		const warnings = mocked.__getMessageLog().filter((message) => message.level === 'warn').map((message) => message.text);
+		assert.ok(warnings.some((text) => text.includes('only available when the current workspace folder is a Git repository')));
+	});
+
 	test('remove command allows copy modules in a non-git workspace', async () => {
 		const controller = createController() as any;
 		let config: LocalModuleConfig = {
@@ -1461,6 +1605,7 @@ suite('ModuleManagerController Regression Tests', () => {
 		await controller.refreshSidebarWorkspaceState();
 
 		assert.strictEqual(capturedContext?.moduleRoot, 'csm');
+		assert.strictEqual(capturedContext?.gitAvailable, true);
 		assert.deepStrictEqual((capturedContext?.managedModules as Array<{ path: string }>)?.map((entry) => entry.path), ['csm/module-a']);
 		assert.deepStrictEqual((capturedContext?.unmanagedFolders as Array<{ path: string }>)?.map((entry) => entry.path), ['csm/custom-module']);
 		assert.strictEqual((capturedContext?.managedModules as Array<{ moduleEntry: { name: string } }>)[0]?.moduleEntry.name, 'module-a');

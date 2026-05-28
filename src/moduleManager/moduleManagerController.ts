@@ -105,6 +105,9 @@ export class ModuleManagerController {
 		onUpdateModule: (entry) => {
 			void this.updateModuleCommand(entry);
 		},
+		onSwitchLocalModuleMethod: (entry) => {
+			void this.switchLocalModuleMethodCommand(entry);
+		},
 		onCreateLocalRepository: (entry) => {
 			void this.createLocalFolderRepositoryCommand(entry);
 		},
@@ -559,6 +562,85 @@ export class ModuleManagerController {
 		await this.refreshSidebarWorkspaceState();
 	}
 
+	public async switchLocalModuleMethodCommand(entry: LocalManagedModuleEntry): Promise<void> {
+		const workspaceFolder = await this.resolveWorkspaceFolder();
+		if (!workspaceFolder) {
+			void vscode.window.showWarningMessage(t('openWorkspaceBeforeSwitchMethod'));
+			return;
+		}
+
+		const repoRoot = await this.workspaceModuleService.resolveGitRepositoryRoot(workspaceFolder.uri.fsPath);
+		if (!repoRoot) {
+			void vscode.window.showWarningMessage(t('switchMethodRequiresGitRepo'));
+			return;
+		}
+
+		let config = await this.tryLoadSidebarLocalModuleConfig(workspaceFolder, repoRoot);
+		if (!config) {
+			void vscode.window.showWarningMessage(t('noWorkspaceConfig'));
+			return;
+		}
+
+		const target = this.findAppliedLocalManagedEntry(config, entry);
+		if (!target) {
+			void vscode.window.showWarningMessage(t('selectedModuleNotApplied'));
+			return;
+		}
+
+		const nextMethod: ModuleApplyMethod = target.method === 'copy' ? 'submodule' : 'copy';
+		let authToken: string | undefined;
+		if (nextMethod === 'submodule' && entry.visibility === 'private') {
+			authToken = await this.ensureToken(true);
+			if (!authToken) {
+				void vscode.window.showWarningMessage(t('signInRequiredToSwitchPrivateModule'));
+				return;
+			}
+		}
+
+		const repository = path.basename(repoRoot) || workspaceFolder.name;
+		const moduleLabel = `${target.owner}/${target.name}`;
+		const currentMethodLabel = getApplyMethodLabel(target.method);
+		const nextMethodLabel = getApplyMethodLabel(nextMethod);
+		const confirmation = await vscode.window.showWarningMessage(
+			t('switchMethodConfirmation', {
+				module: moduleLabel,
+				repository,
+				currentMethod: currentMethodLabel,
+				targetMethod: nextMethodLabel,
+				targetPath: target.path,
+			}),
+			{ modal: true },
+			t('switchMethodAction'),
+		);
+		if (confirmation !== t('switchMethodAction')) {
+			return;
+		}
+
+		try {
+			let switchedEntry: LocalModuleConfigEntry | undefined;
+			await vscode.window.withProgress(
+				{
+					location: vscode.ProgressLocation.Notification,
+					title: t('progressSwitchingMethod', { module: moduleLabel, method: nextMethodLabel }),
+					cancellable: false,
+				},
+				async () => {
+					switchedEntry = await this.workspaceModuleService.switchModuleMethod(repoRoot, target, nextMethod, authToken, repoRoot);
+					config = this.workspaceModuleService.withAppliedModule(config!, switchedEntry);
+					await this.workspaceModuleService.writeConfig(config);
+				},
+			);
+			void vscode.window.showInformationMessage(t('switchMethodSuccess', { module: moduleLabel, method: nextMethodLabel }));
+		} catch (error) {
+			const message = getUserFacingErrorMessage(error, 'update');
+			this.logger.error(`Failed to switch module ${target.owner}/${target.name} to ${nextMethod}: ${message}`);
+			void vscode.window.showErrorMessage(t('switchMethodFailed', { message }));
+			return;
+		}
+
+		await this.refreshSidebarWorkspaceState();
+	}
+
 	public async createLocalFolderRepositoryCommand(folder: LocalUnmanagedFolderEntry): Promise<void> {
 		const workspaceFolder = await this.resolveWorkspaceFolder();
 		if (!workspaceFolder) {
@@ -770,6 +852,12 @@ export class ModuleManagerController {
 			return candidates.length === 1 ? candidates[0] : undefined;
 		}
 		return candidates.find((m) => m.owner === entry.owner && m.name === entry.name);
+	}
+
+	private findAppliedLocalManagedEntry(config: LocalModuleConfig, entry: LocalManagedModuleEntry): LocalModuleConfigEntry | undefined {
+		return config.modules[entry.id]
+			?? Object.values(config.modules).find((module) => module.key === entry.id)
+			?? Object.values(config.modules).find((module) => module.owner === entry.owner && module.name === entry.name && module.path === entry.path);
 	}
 
 	private getRemovalTargets(config: LocalModuleConfig, entry?: CsmModuleEntry): LocalModuleConfigEntry[] {
@@ -1516,6 +1604,7 @@ export class ModuleManagerController {
 		setContext({
 			workspaceLabel: path.basename(workspaceRoot) || workspaceFolder.name,
 			moduleRoot,
+			gitAvailable: !!repoRoot,
 			appliedModuleKeys: this.mapAppliedModuleKeys(config),
 			staleModuleKeys,
 			managedModules: this.mapManagedModules(config, staleModuleKeys),
