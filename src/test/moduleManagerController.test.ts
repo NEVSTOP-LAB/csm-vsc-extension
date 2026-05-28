@@ -2089,6 +2089,35 @@ suite('ModuleManagerController Regression Tests', () => {
 		assert.strictEqual(errors.length, 0);
 	});
 
+		test('initializePublishedFolderConfig derives the root from Windows-style folder paths', async () => {
+			const controller = createController() as any;
+			let capturedRoot: string | undefined;
+
+			controller.workspaceModuleService = {
+				normalizeRootPath: (value: string) => value.replace(/\\/g, '/').replace(/^\.\//, '').replace(/^\/+|\/+$/g, ''),
+				initializeConfig: async (_workspaceRoot: string, rootRelativePath: string) => {
+					capturedRoot = rootRelativePath;
+					return {
+						version: '2',
+						root: rootRelativePath,
+						configPath: path.join('d:/repo', rootRelativePath, 'csm-modules.yaml'),
+						modules: {},
+					};
+				},
+			};
+			controller.setWorkspaceInitializationContext = async () => undefined;
+
+			const config = await controller.initializePublishedFolderConfig('d:/repo', {
+				id: 'csm\\nested\\custom-module',
+				kind: 'unmanaged',
+				name: 'custom-module',
+				path: 'csm\\nested\\custom-module',
+			});
+
+			assert.strictEqual(capturedRoot, 'csm/nested');
+			assert.strictEqual(config.root, 'csm/nested');
+		});
+
 	test('toggleStar unstars a repository only after confirmation', async () => {
 		let renderedModules: CsmModuleEntry[] = [];
 		const starRequests: boolean[] = [];

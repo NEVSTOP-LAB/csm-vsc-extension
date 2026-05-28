@@ -711,7 +711,8 @@ export class ModuleManagerController {
 		workspaceRoot: string,
 		folder: LocalUnmanagedFolderEntry,
 	): Promise<LocalModuleConfig> {
-		const inferredRoot = path.posix.dirname(folder.path);
+		const normalizedFolderPath = this.workspaceModuleService.normalizeRootPath(folder.path);
+		const inferredRoot = path.posix.dirname(normalizedFolderPath);
 		const configRoot = inferredRoot === '.'
 			? this.getConfiguredDefaultModuleRoot()
 			: this.workspaceModuleService.normalizeRootPath(inferredRoot);
