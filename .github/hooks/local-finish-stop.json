@@ -1,0 +1,20 @@
+{
+    "hooks": {
+        "PostToolUse": [
+            {
+                "type": "command",
+                "command": "node scripts/copilot-post-tool-hook.mjs",
+                "cwd": ".",
+                "timeout": 30
+            }
+        ],
+        "Stop": [
+            {
+                "type": "command",
+                "command": "node scripts/copilot-stop-hook.mjs",
+                "cwd": ".",
+                "timeout": 900
+            }
+        ]
+    }
+}

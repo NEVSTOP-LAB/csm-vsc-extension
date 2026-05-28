@@ -354,6 +354,10 @@ const messages = {
 		en: 'GitHub repository creation succeeded, but publishing {folder} failed: {message}',
 		zh: 'GitHub 仓库已创建成功，但发布 {folder} 失败：{message}',
 	},
+	createRepositoryLocalStateSyncFailed: {
+		en: 'Created GitHub repository {repository} and published {folder}, but failed to update the local CSM module state: {message}',
+		zh: '已创建 GitHub 仓库 {repository} 并发布 {folder}，但更新本地 CSM 模块状态失败：{message}',
+	},
 	createRepositoryNameRequired: {
 		en: 'Repository name is required.',
 		zh: '仓库名称不能为空。',
@@ -586,9 +590,29 @@ const messages = {
 		en: 'Show',
 		zh: '显示',
 	},
+	filterMenuScope: {
+		en: 'Scope',
+		zh: '范围',
+	},
 	filterMenuOrder: {
 		en: 'Order',
 		zh: '顺序',
+	},
+	moduleScopeAll: {
+		en: 'All',
+		zh: '全部',
+	},
+	moduleScopeWorkspace: {
+		en: 'Workspace',
+		zh: '工作区',
+	},
+	moduleScopeCatalog: {
+		en: 'Catalog',
+		zh: '目录',
+	},
+	scopeToolbarLabel: {
+		en: 'Switch module scope',
+		zh: '切换模块范围',
 	},
 	includeAppliedModules: {
 		en: 'Include applied modules',
@@ -690,13 +714,21 @@ const messages = {
 		en: 'Detected an existing csm/ layout and LabVIEW project files in the current repository.',
 		zh: '检测到当前仓库中已存在 csm/ 目录结构和 LabVIEW 项目文件。',
 	},
-	toolbarMetaAvailable: {
-		en: '{total} available',
-		zh: '{total} 个可用',
-	},
 	toolbarMetaShown: {
 		en: '{filtered} of {total} shown',
 		zh: '显示 {filtered}/{total} 个',
+	},
+	toolbarMetaWorkspace: {
+		en: '{total} workspace',
+		zh: '{total} 个工作区项',
+	},
+	toolbarMetaCatalog: {
+		en: '{total} catalog',
+		zh: '{total} 个目录项',
+	},
+	toolbarMetaMixed: {
+		en: '{workspace} workspace | {catalog} catalog',
+		zh: '{workspace} 个工作区项 | {catalog} 个目录项',
 	},
 	toolbarMeta: {
 		en: '{applied} applied | {visibility} | {selected} selected',

@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { CsmModuleEntry, LocalManagedModuleEntry, LocalUnmanagedFolderEntry } from './types';
 import { ViewState } from './moduleTreeDataProvider';
-import { IModuleViewProvider, ModuleSortDirection, ModuleSortField, ModuleSortState, SidebarWorkspaceContext } from './interfaces';
+import { IModuleViewProvider, ModuleListScope, ModuleSortDirection, ModuleSortField, ModuleSortState, SidebarWorkspaceContext } from './interfaces';
 import { DEFAULT_MODULE_SORT_STATE, isModuleSortDirection, isModuleSortField, normalizeModuleSortState } from './sort';
 import { t } from './messages';
 import { ReadmePreviewState, renderModuleSidebarHtml } from './moduleSidebarHtml';
@@ -26,12 +26,13 @@ interface ModuleSidebarViewProviderOptions {
 }
 
 type WebviewMessage = {
-	type: 'login' | 'refresh' | 'initializeWorkspace' | 'applySelected' | 'toggleStar' | 'openReadme' | 'togglePreview' | 'applyOne' | 'toggleSelection' | 'setFilterQuery' | 'clearFilter' | 'setIncludeApplied' | 'dismissIntroTip' | 'removeModule' | 'updateModule' | 'setSortField' | 'setSortDirection' | 'showMore' | 'openLocalReadme' | 'removeLocalModule' | 'updateLocalModule' | 'createLocalRepository';
+	type: 'login' | 'refresh' | 'initializeWorkspace' | 'applySelected' | 'toggleStar' | 'openReadme' | 'togglePreview' | 'applyOne' | 'toggleSelection' | 'setFilterQuery' | 'clearFilter' | 'setIncludeApplied' | 'setScope' | 'dismissIntroTip' | 'removeModule' | 'updateModule' | 'setSortField' | 'setSortDirection' | 'showMore' | 'openLocalReadme' | 'removeLocalModule' | 'updateLocalModule' | 'createLocalRepository';
 	moduleKey?: string;
 	localItemId?: string;
 	selected?: boolean;
 	query?: string;
 	includeApplied?: boolean;
+	scope?: ModuleListScope;
 	sortField?: ModuleSortField;
 	sortDirection?: ModuleSortDirection;
 };
@@ -56,6 +57,7 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IM
 	private moduleRoot: string | undefined;
 	private filterQuery = '';
 	private includeAppliedModules = false;
+	private scope: ModuleListScope = 'all';
 	private introTipVisible = true;
 	private offlineMode = false;
 	private sortState: ModuleSortState = DEFAULT_MODULE_SORT_STATE;
@@ -225,6 +227,12 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IM
 			case 'setIncludeApplied':
 				this.includeAppliedModules = message.includeApplied === true;
 				this.render();
+				return;
+			case 'setScope':
+				if (message.scope === 'all' || message.scope === 'workspace' || message.scope === 'catalog') {
+					this.scope = message.scope;
+					this.render();
+				}
 				return;
 			case 'setSortField':
 				if (isModuleSortField(message.sortField)) {
@@ -408,6 +416,7 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IM
 			moduleRoot: this.moduleRoot,
 			introTipVisible: this.introTipVisible,
 			includeAppliedModules: this.includeAppliedModules,
+			scope: this.scope,
 			offlineMode: this.offlineMode,
 			sortState: this.sortState,
 			staleModuleKeys: this.staleModuleKeys,

@@ -1,5 +1,5 @@
 import * as crypto from 'crypto';
-import { ModuleSortDirection, ModuleSortField, ModuleSortState } from './interfaces';
+import { ModuleListScope, ModuleSortDirection, ModuleSortField, ModuleSortState } from './interfaces';
 import { getApplyMethodLabel, getHtmlLang, getVisibilityLabel, t } from './messages';
 import { ViewState } from './moduleTreeDataProvider';
 import { sortModules } from './sort';
@@ -26,6 +26,7 @@ export interface LocalWorkspaceRenderState {
 export interface ModuleSidebarRenderState extends LocalWorkspaceRenderState {
 	filterQuery: string;
 	includeAppliedModules: boolean;
+	scope: ModuleListScope;
 	modules: CsmModuleEntry[];
 	state: ViewState;
 	message: string;
@@ -66,44 +67,144 @@ function createNonce(): string {
 	return crypto.randomBytes(16).toString('base64');
 }
 
-function getToolbarMetaText(appliedCount: number, totalCount: number, filteredCount: number, selectedCount: number): string {
-	const visibilityText = filteredCount === totalCount
-		? t('toolbarMetaAvailable', { total: totalCount })
-		: t('toolbarMetaShown', { filtered: filteredCount, total: totalCount });
-	return t('toolbarMeta', {
-		applied: appliedCount,
-		visibility: visibilityText,
-		selected: selectedCount,
-	});
+type WorkspaceContent = {
+	managed: LocalManagedModuleEntry[];
+	unmanaged: LocalUnmanagedFolderEntry[];
+	totalCount: number;
+	filteredCount: number;
+};
+
+type CatalogContent = {
+	modules: CsmModuleEntry[];
+	totalCount: number;
+	filteredCount: number;
+	publicCount: number;
+	privateCount: number;
+};
+
+type ToolbarMetaCounts = {
+	appliedCount: number;
+	totalCount: number;
+	filteredCount: number;
+	workspaceCount: number;
+	catalogCount: number;
+	publicCount: number;
+	privateCount: number;
+};
+
+type ToolbarVisibilityFormatters = {
+	shown: (filtered: number, total: number) => string;
+	workspace: (total: number) => string;
+	catalog: (total: number) => string;
+	mixed: (workspace: number, catalog: number) => string;
+	visibilityBreakdown: (publicCount: number, privateCount: number) => string;
+};
+
+function scopeIncludesWorkspace(scope: ModuleListScope): boolean {
+	return scope !== 'catalog';
 }
 
-function getSignedInToolbarMetaText(
-	appliedCount: number,
-	filteredCount: number,
-	selectedCount: number,
-	publicCount: number,
-	privateCount: number,
-	totalCount: number,
+function scopeIncludesCatalog(scope: ModuleListScope): boolean {
+	return scope !== 'workspace';
+}
+
+function getNormalizedFilterQuery(state: ModuleSidebarRenderState): string {
+	return state.filterQuery.trim().toLowerCase();
+}
+
+function matchesFilterQuery(searchText: string, query: string): boolean {
+	return query.length === 0 || searchText.includes(query);
+}
+
+function buildVisibilityBreakdownText(publicCount: number, privateCount: number, publicLabel: string, privateLabel: string): string {
+	const segments: string[] = [];
+	if (publicCount > 0 || privateCount === 0) {
+		segments.push(`${publicCount} ${publicLabel}`);
+	}
+	if (privateCount > 0) {
+		segments.push(`${privateCount} ${privateLabel}`);
+	}
+	return segments.join(' | ');
+}
+
+function buildToolbarVisibilityText(
+	scope: ModuleListScope,
+	counts: ToolbarMetaCounts,
+	signedIn: boolean,
+	formatters: ToolbarVisibilityFormatters,
 ): string {
-	const visibilityText = filteredCount === totalCount
-		? getVisibilityBreakdownText(publicCount, privateCount)
-		: t('toolbarMetaShown', { filtered: filteredCount, total: totalCount });
-	return t('toolbarMeta', {
-		applied: appliedCount,
-		visibility: visibilityText,
-		selected: selectedCount,
-	});
+	if (counts.filteredCount !== counts.totalCount) {
+		return formatters.shown(counts.filteredCount, counts.totalCount);
+	}
+
+	switch (scope) {
+		case 'workspace':
+			return formatters.workspace(counts.totalCount);
+		case 'catalog':
+			return signedIn
+				? formatters.visibilityBreakdown(counts.publicCount, counts.privateCount)
+				: formatters.catalog(counts.totalCount);
+		case 'all':
+		default:
+			if (counts.workspaceCount > 0 && counts.catalogCount > 0) {
+				return formatters.mixed(counts.workspaceCount, counts.catalogCount);
+			}
+			if (counts.workspaceCount > 0) {
+				return formatters.workspace(counts.workspaceCount);
+			}
+			return signedIn
+				? formatters.visibilityBreakdown(counts.publicCount, counts.privateCount)
+				: formatters.catalog(counts.catalogCount);
+	}
+}
+
+function buildToolbarMetaText(
+	scope: ModuleListScope,
+	counts: ToolbarMetaCounts,
+	selectedCount: number,
+	signedIn: boolean,
+	getVisibilityText: (scope: ModuleListScope, counts: ToolbarMetaCounts, signedIn: boolean) => string,
+	formatMeta: (appliedCount: number, visibilityText: string, selectedCount: number) => string,
+): string {
+	return formatMeta(
+		counts.appliedCount,
+		getVisibilityText(scope, counts, signedIn),
+		selectedCount,
+	);
+}
+
+function getToolbarVisibilityFormatters(): ToolbarVisibilityFormatters {
+	return {
+		shown: (filtered, total) => t('toolbarMetaShown', { filtered, total }),
+		workspace: (total) => t('toolbarMetaWorkspace', { total }),
+		catalog: (total) => t('toolbarMetaCatalog', { total }),
+		mixed: (workspace, catalog) => t('toolbarMetaMixed', { workspace, catalog }),
+		visibilityBreakdown: (publicCount, privateCount) => getVisibilityBreakdownText(publicCount, privateCount),
+	};
+}
+
+function getToolbarVisibilityText(state: ModuleSidebarRenderState, counts: ToolbarMetaCounts): string {
+	return buildToolbarVisibilityText(state.scope, counts, state.signedIn, getToolbarVisibilityFormatters());
+}
+
+function getToolbarMetaText(state: ModuleSidebarRenderState, counts: ToolbarMetaCounts, selectedCount: number): string {
+	const formatters = getToolbarVisibilityFormatters();
+	return buildToolbarMetaText(
+		state.scope,
+		counts,
+		selectedCount,
+		state.signedIn,
+		(scope, nextCounts, signedIn) => buildToolbarVisibilityText(scope, nextCounts, signedIn, formatters),
+		(appliedCount, visibilityText, nextSelectedCount) => t('toolbarMeta', {
+			applied: appliedCount,
+			visibility: visibilityText,
+			selected: nextSelectedCount,
+		}),
+	);
 }
 
 function getVisibilityBreakdownText(publicCount: number, privateCount: number): string {
-	const segments: string[] = [];
-	if (publicCount > 0 || privateCount === 0) {
-		segments.push(`${publicCount} ${t('publicVisibility')}`);
-	}
-	if (privateCount > 0) {
-		segments.push(`${privateCount} ${t('privateVisibility')}`);
-	}
-	return segments.join(' | ');
+	return buildVisibilityBreakdownText(publicCount, privateCount, t('publicVisibility'), t('privateVisibility'));
 }
 
 function getModuleKey(entry: CsmModuleEntry): string {
@@ -111,6 +212,9 @@ function getModuleKey(entry: CsmModuleEntry): string {
 }
 
 function getCatalogScopeSummaryText(state: ModuleSidebarRenderState): string | undefined {
+	if (!scopeIncludesCatalog(state.scope)) {
+		return undefined;
+	}
 	if (state.modules.length === 0) {
 		return undefined;
 	}
@@ -122,6 +226,80 @@ function getCatalogScopeSummaryText(state: ModuleSidebarRenderState): string | u
 
 function shouldRenderLocalWorkspaceSection(state: LocalWorkspaceRenderState): boolean {
 	return Boolean(state.moduleRoot) || state.managedModules.length > 0 || state.unmanagedFolders.length > 0;
+}
+
+function getLocalManagedSearchText(entry: LocalManagedModuleEntry): string {
+	return [
+		entry.name,
+		entry.owner,
+		entry.description,
+		entry.path,
+		entry.source,
+		entry.branch,
+		entry.visibility,
+		getApplyMethodLabel(entry.method),
+		...getVisibleModuleTopics(entry.topics),
+	].join(' ').toLowerCase();
+}
+
+function getLocalUnmanagedSearchText(entry: LocalUnmanagedFolderEntry): string {
+	return [
+		entry.name,
+		entry.path,
+		t('unmanagedBadge'),
+		t('localUnmanagedSummary'),
+	].join(' ').toLowerCase();
+}
+
+function getWorkspaceContent(state: ModuleSidebarRenderState): WorkspaceContent {
+	if (!scopeIncludesWorkspace(state.scope)) {
+		return { managed: [], unmanaged: [], totalCount: 0, filteredCount: 0 };
+	}
+
+	const query = getNormalizedFilterQuery(state);
+	const managed = state.managedModules.filter((entry) => matchesFilterQuery(getLocalManagedSearchText(entry), query));
+	const unmanaged = state.unmanagedFolders.filter((entry) => matchesFilterQuery(getLocalUnmanagedSearchText(entry), query));
+	return {
+		managed,
+		unmanaged,
+		totalCount: state.managedModules.length + state.unmanagedFolders.length,
+		filteredCount: managed.length + unmanaged.length,
+	};
+}
+
+function getCatalogContent(state: ModuleSidebarRenderState): CatalogContent {
+	if (!scopeIncludesCatalog(state.scope)) {
+		return { modules: [], totalCount: 0, filteredCount: 0, publicCount: 0, privateCount: 0 };
+	}
+
+	const baseModules = getBaseVisibleModules(state);
+	const query = getNormalizedFilterQuery(state);
+	const filteredModules = query.length === 0
+		? getSortedModules(baseModules, state)
+		: getSortedModules(
+			baseModules.filter((entry) => matchesFilterQuery(getSearchText(entry), query)),
+			state,
+		);
+	const publicCount = baseModules.filter((entry) => entry.visibility === 'public').length;
+	return {
+		modules: filteredModules,
+		totalCount: baseModules.length,
+		filteredCount: filteredModules.length,
+		publicCount,
+		privateCount: baseModules.length - publicCount,
+	};
+}
+
+function getToolbarMetaCounts(state: ModuleSidebarRenderState, workspaceContent: WorkspaceContent, catalogContent: CatalogContent): ToolbarMetaCounts {
+	return {
+		appliedCount: state.managedModules.length,
+		totalCount: workspaceContent.totalCount + catalogContent.totalCount,
+		filteredCount: workspaceContent.filteredCount + catalogContent.filteredCount,
+		workspaceCount: workspaceContent.totalCount,
+		catalogCount: catalogContent.totalCount,
+		publicCount: catalogContent.publicCount,
+		privateCount: catalogContent.privateCount,
+	};
 }
 
 function renderLocalWorkspaceSection(state: LocalWorkspaceRenderState): string {
@@ -210,6 +388,7 @@ function renderLocalManagedCard(entry: LocalManagedModuleEntry): string {
 	const summary = entry.description.trim().length > 0
 		? entry.description.trim()
 		: t('localManagedFallbackSummary', { source: entry.source });
+	const searchText = escapeHtml(getLocalManagedSearchText(entry));
 	const actionButtons = renderActionToolbar([
 		renderIconActionButton({
 			action: 'openLocalReadme',
@@ -241,6 +420,7 @@ function renderLocalManagedCard(entry: LocalManagedModuleEntry): string {
 	return renderModuleCardShell({
 		articleClasses: ['local-module-card', 'managed'],
 		dataRole: 'local-module-card',
+		articleAttributes: `data-search-text="${searchText}" data-card-scope="workspace"`,
 		title: entry.name,
 		titleDisplay: truncate(entry.name, 44),
 		owner: `@${entry.owner}`,
@@ -258,9 +438,11 @@ function renderLocalUnmanagedCard(entry: LocalUnmanagedFolderEntry, state: Local
 	const hint = !state.signedIn
 		? `<div class="local-card-hint">${escapeHtml(t('signInToCreateRepositoryHint'))}</div>`
 		: '';
+	const searchText = escapeHtml(getLocalUnmanagedSearchText(entry));
 	return renderModuleCardShell({
 		articleClasses: ['local-module-card', 'unmanaged'],
 		dataRole: 'local-module-card',
+		articleAttributes: `data-search-text="${searchText}" data-card-scope="workspace"`,
 		title: entry.name,
 		titleDisplay: truncate(entry.name, 44),
 		owner: entry.path,
@@ -301,34 +483,33 @@ function renderStarIcon(filled: boolean): string {
 }
 
 function getBaseVisibleModules(state: ModuleSidebarRenderState): CsmModuleEntry[] {
+	if (!scopeIncludesCatalog(state.scope)) {
+		return [];
+	}
 	if (state.includeAppliedModules) {
 		return state.modules;
 	}
 	return state.modules.filter((entry) => !isModuleApplied(getModuleKey(entry), state));
 }
 
-function getFilteredModules(state: ModuleSidebarRenderState): CsmModuleEntry[] {
-	const modules = getBaseVisibleModules(state);
-	const normalizedQuery = state.filterQuery.trim().toLowerCase();
-	if (!normalizedQuery) {
-		return getSortedModules(modules, state);
-	}
-	return getSortedModules(
-		modules.filter((entry) => getSearchText(entry).includes(normalizedQuery)),
-		state,
-	);
-}
-
-function getToolbarFilteredCount(state: ModuleSidebarRenderState): number {
-	return state.filterQuery.trim().length > 0
-		? getFilteredModules(state).length
-		: state.modules.length;
-}
-
 function getSortedModules(modules: CsmModuleEntry[], state: ModuleSidebarRenderState): CsmModuleEntry[] {
 	return sortModules(modules, state.sortState, {
 		appliedModuleKeys: state.appliedModuleKeys,
 	});
+}
+
+function getVisibleSidebarEntries(state: ModuleSidebarRenderState): {
+	workspaceContent: WorkspaceContent;
+	catalogContent: CatalogContent;
+	toolbarCounts: ToolbarMetaCounts;
+} {
+	const workspaceContent = getWorkspaceContent(state);
+	const catalogContent = getCatalogContent(state);
+	return {
+		workspaceContent,
+		catalogContent,
+		toolbarCounts: getToolbarMetaCounts(state, workspaceContent, catalogContent),
+	};
 }
 
 function getSearchText(entry: CsmModuleEntry): string {
@@ -361,15 +542,9 @@ function renderStarButton(entry: CsmModuleEntry, moduleKey: string, signedIn: bo
 export function renderModuleSidebarHtml(state: ModuleSidebarRenderState): string {
 	const nonce = createNonce();
 	const imgCspSource = state.webviewCspSource ?? 'https:';
+	const visibleEntries = getVisibleSidebarEntries(state);
 	const selectedCount = state.selectedModuleKeys.size;
-	const moduleCount = state.modules.length;
-	const publicCount = state.modules.filter((entry) => entry.visibility === 'public').length;
-	const privateCount = moduleCount - publicCount;
-	const filteredCount = getToolbarFilteredCount(state);
-	const appliedCount = state.appliedModuleKeys.size;
-	const toolbarMetaText = state.signedIn
-		? getSignedInToolbarMetaText(appliedCount, filteredCount, selectedCount, publicCount, privateCount, moduleCount)
-		: getToolbarMetaText(appliedCount, moduleCount, filteredCount, selectedCount);
+	const toolbarMetaText = getToolbarMetaText(state, visibleEntries.toolbarCounts, selectedCount);
 	const catalogScopeSummaryText = getCatalogScopeSummaryText(state);
 	const filterButtonTitle = getFilterButtonTitle(state.sortState);
 	const sortFieldOptions: Array<{ value: ModuleSortField; label: string }> = [
@@ -378,18 +553,24 @@ export function renderModuleSidebarHtml(state: ModuleSidebarRenderState): string
 		{ value: 'updatedAt', label: t('sortFieldUpdated') },
 		{ value: 'applied', label: t('sortFieldApplied') },
 	];
+	const scopeOptions: Array<{ value: ModuleListScope; label: string }> = [
+		{ value: 'all', label: t('moduleScopeAll') },
+		{ value: 'workspace', label: t('moduleScopeWorkspace') },
+		{ value: 'catalog', label: t('moduleScopeCatalog') },
+	];
 	const sortDirectionOptions: Array<{ value: ModuleSortDirection; label: string }> = [
 		{ value: 'asc', label: t('sortDirectionAsc') },
 		{ value: 'desc', label: t('sortDirectionDesc') },
 	];
-	const content = renderContent(state);
+	const content = renderContent(state, visibleEntries.workspaceContent, visibleEntries.catalogContent);
 	const clientStrings = JSON.stringify({
-		toolbarMetaAvailable: t('toolbarMetaAvailable'),
 		toolbarMetaShown: t('toolbarMetaShown'),
+		toolbarMetaWorkspace: t('toolbarMetaWorkspace'),
+		toolbarMetaCatalog: t('toolbarMetaCatalog'),
+		toolbarMetaMixed: t('toolbarMetaMixed'),
 		toolbarMeta: t('toolbarMeta'),
 		publicVisibility: t('publicVisibility'),
 		privateVisibility: t('privateVisibility'),
-		includeAppliedModules: t('includeAppliedModules'),
 	}).replace(/</g, '\\u003c');
 
 	return `<!DOCTYPE html>
@@ -478,6 +659,23 @@ export function renderModuleSidebarHtml(state: ModuleSidebarRenderState): string
 			color: var(--vscode-foreground);
 			border-color: var(--vscode-panel-border);
 			background: var(--vscode-editorWidget-background, var(--vscode-button-secondaryBackground));
+		}
+		.scope-switch {
+			display: inline-flex;
+			align-items: center;
+			gap: 4px;
+			flex-wrap: wrap;
+		}
+		.scope-switch .toolbar-button {
+			height: 24px;
+			padding: 0 10px;
+			border-radius: 999px;
+			border-color: var(--vscode-panel-border);
+		}
+		.scope-switch .toolbar-button.active {
+			color: var(--vscode-foreground);
+			background: var(--vscode-editorWidget-background, var(--vscode-button-secondaryBackground));
+			border-color: var(--vscode-focusBorder, var(--vscode-panel-border));
 		}
 		.toolbar-meta {
 			font-size: var(--module-font-sm);
@@ -624,6 +822,15 @@ export function renderModuleSidebarHtml(state: ModuleSidebarRenderState): string
 		.list {
 			display: grid;
 			gap: 6px;
+		}
+		.list-section {
+			display: grid;
+			gap: 8px;
+		}
+		.list-section + .list-section {
+			margin-top: 12px;
+			padding-top: 12px;
+			border-top: 1px solid var(--vscode-panel-border);
 		}
 		.local-section {
 			margin-top: 12px;
@@ -992,6 +1199,10 @@ export function renderModuleSidebarHtml(state: ModuleSidebarRenderState): string
 					${renderFilterMenuToggleOption(t('includeAppliedModules'), state.includeAppliedModules)}
 				</div>
 				<div class="filter-menu-section">
+					<span class="filter-menu-label">${escapeHtml(t('filterMenuScope'))}</span>
+					${scopeOptions.map((option) => renderScopeFilterMenuOption(option.value, option.label, state.scope === option.value)).join('')}
+				</div>
+				<div class="filter-menu-section">
 					<span class="filter-menu-label">${escapeHtml(t('filterMenuType'))}</span>
 					${sortFieldOptions.map((option) => renderFilterMenuOption('field', option.value, option.label, state.sortState.field === option.value)).join('')}
 				</div>
@@ -1002,7 +1213,8 @@ export function renderModuleSidebarHtml(state: ModuleSidebarRenderState): string
 			</div>
 		</div>
 		<div class="toolbar-row">
-			<span class="toolbar-meta" data-role="toolbar-meta" data-applied-count="${appliedCount}" data-total-count="${moduleCount}" data-filtered-count="${filteredCount}" data-public-count="${publicCount}" data-private-count="${privateCount}" data-signed-in="${state.signedIn ? 'true' : 'false'}">${toolbarMetaText}</span>
+			<span class="toolbar-meta" data-role="toolbar-meta" data-scope="${escapeHtml(state.scope)}" data-applied-count="${visibleEntries.toolbarCounts.appliedCount}" data-total-count="${visibleEntries.toolbarCounts.totalCount}" data-filtered-count="${visibleEntries.toolbarCounts.filteredCount}" data-workspace-count="${visibleEntries.toolbarCounts.workspaceCount}" data-catalog-count="${visibleEntries.toolbarCounts.catalogCount}" data-public-count="${visibleEntries.toolbarCounts.publicCount}" data-private-count="${visibleEntries.toolbarCounts.privateCount}" data-signed-in="${state.signedIn ? 'true' : 'false'}">${toolbarMetaText}</span>
+			<div class="scope-switch" role="toolbar" aria-label="${escapeHtml(t('scopeToolbarLabel'))}">${scopeOptions.map((option) => renderScopeToolbarButton(option.value, option.label, state.scope === option.value)).join('')}</div>
 		</div>
 			${catalogScopeSummaryText || (state.workspaceLabel && state.moduleRoot)
 			? `<div class="workspace-summary">${catalogScopeSummaryText ? `<span>${escapeHtml(catalogScopeSummaryText)}</span>` : ''}${state.workspaceLabel && state.moduleRoot ? `<span>${escapeHtml(t('rootLabel'))}: ${escapeHtml(state.moduleRoot)}/</span>` : ''}</div>`
@@ -1025,36 +1237,65 @@ export function renderModuleSidebarHtml(state: ModuleSidebarRenderState): string
 			return String(template).replace(/\{([A-Za-z0-9_]+)\}/g, (match, token) => token in values ? String(values[token]) : match);
 		}
 
-		function getToolbarMetaText(appliedCount, totalCount, filteredCount, selectedCount) {
-			const visibilityText = filteredCount === totalCount
-				? formatMessage(uiStrings.toolbarMetaAvailable, { total: totalCount })
-				: formatMessage(uiStrings.toolbarMetaShown, { filtered: filteredCount, total: totalCount });
-			return formatMessage(uiStrings.toolbarMeta, {
-				applied: appliedCount,
-				visibility: visibilityText,
-				selected: selectedCount,
-			});
+		${buildVisibilityBreakdownText.toString()}
+
+		${buildToolbarVisibilityText.toString()}
+
+		${buildToolbarMetaText.toString()}
+
+		function getToolbarVisibilityFormatters() {
+			return {
+				shown: function (filtered, total) {
+					return formatMessage(uiStrings.toolbarMetaShown, { filtered: filtered, total: total });
+				},
+				workspace: function (total) {
+					return formatMessage(uiStrings.toolbarMetaWorkspace, { total: total });
+				},
+				catalog: function (total) {
+					return formatMessage(uiStrings.toolbarMetaCatalog, { total: total });
+				},
+				mixed: function (workspace, catalog) {
+					return formatMessage(uiStrings.toolbarMetaMixed, { workspace: workspace, catalog: catalog });
+				},
+				visibilityBreakdown: function (publicCount, privateCount) {
+					return buildVisibilityBreakdownText(publicCount, privateCount, uiStrings.publicVisibility, uiStrings.privateVisibility);
+				},
+			};
 		}
 
 		function getVisibilityBreakdownText(publicCount, privateCount) {
-			const segments = [];
-			if (publicCount > 0 || privateCount === 0) {
-				segments.push(String(publicCount) + ' ' + uiStrings.publicVisibility);
-			}
-			if (privateCount > 0) {
-				segments.push(String(privateCount) + ' ' + uiStrings.privateVisibility);
-			}
-			return segments.join(' | ');
+			return buildVisibilityBreakdownText(publicCount, privateCount, uiStrings.publicVisibility, uiStrings.privateVisibility);
 		}
 
-		function getSignedInToolbarMetaText(appliedCount, totalCount, filteredCount, selectedCount, publicCount, privateCount) {
-			const visibilityText = filteredCount === totalCount
-				? getVisibilityBreakdownText(publicCount, privateCount)
-				: formatMessage(uiStrings.toolbarMetaShown, { filtered: filteredCount, total: totalCount });
-			return formatMessage(uiStrings.toolbarMeta, {
-				applied: appliedCount,
-				visibility: visibilityText,
-				selected: selectedCount,
+		function getToolbarVisibilityText(scope, totalCount, filteredCount, workspaceCount, catalogCount, publicCount, privateCount, signedIn) {
+			return buildToolbarVisibilityText(scope, {
+				totalCount: totalCount,
+				filteredCount: filteredCount,
+				workspaceCount: workspaceCount,
+				catalogCount: catalogCount,
+				publicCount: publicCount,
+				privateCount: privateCount,
+			}, signedIn, getToolbarVisibilityFormatters());
+		}
+
+		function getToolbarMetaText(scope, appliedCount, totalCount, filteredCount, selectedCount, workspaceCount, catalogCount, publicCount, privateCount, signedIn) {
+			const formatters = getToolbarVisibilityFormatters();
+			return buildToolbarMetaText(scope, {
+				appliedCount: appliedCount,
+				totalCount: totalCount,
+				filteredCount: filteredCount,
+				workspaceCount: workspaceCount,
+				catalogCount: catalogCount,
+				publicCount: publicCount,
+				privateCount: privateCount,
+			}, selectedCount, signedIn, function (nextScope, counts, nextSignedIn) {
+				return buildToolbarVisibilityText(nextScope, counts, nextSignedIn, formatters);
+			}, function (nextAppliedCount, visibilityText, nextSelectedCount) {
+				return formatMessage(uiStrings.toolbarMeta, {
+					applied: nextAppliedCount,
+					visibility: visibilityText,
+					selected: nextSelectedCount,
+				});
 			});
 		}
 
@@ -1086,7 +1327,7 @@ export function renderModuleSidebarHtml(state: ModuleSidebarRenderState): string
 		}
 
 		function getCards() {
-			return Array.from(document.querySelectorAll('[data-role="module-card"]'));
+			return Array.from(document.querySelectorAll('[data-role="module-card"], [data-role="local-module-card"]'));
 		}
 
 		function isCardApplied(card) {
@@ -1129,8 +1370,11 @@ export function renderModuleSidebarHtml(state: ModuleSidebarRenderState): string
 			if (!toolbarMeta) {
 				return;
 			}
+			const scope = String(toolbarMeta.getAttribute('data-scope') || 'all');
 			const appliedCount = Number(toolbarMeta.getAttribute('data-applied-count') || '0');
 			const totalCount = Number(toolbarMeta.getAttribute('data-total-count') || '0');
+			const workspaceCount = Number(toolbarMeta.getAttribute('data-workspace-count') || '0');
+			const catalogCount = Number(toolbarMeta.getAttribute('data-catalog-count') || '0');
 			const publicCount = Number(toolbarMeta.getAttribute('data-public-count') || '0');
 			const privateCount = Number(toolbarMeta.getAttribute('data-private-count') || '0');
 			const signedIn = toolbarMeta.getAttribute('data-signed-in') === 'true';
@@ -1140,9 +1384,7 @@ export function renderModuleSidebarHtml(state: ModuleSidebarRenderState): string
 				: totalCount;
 			const selectedCount = document.querySelectorAll('[data-role="select-toggle"]:checked').length;
 			toolbarMeta.setAttribute('data-filtered-count', String(filteredCount));
-			toolbarMeta.textContent = signedIn
-				? getSignedInToolbarMetaText(appliedCount, totalCount, filteredCount, selectedCount, publicCount, privateCount)
-				: getToolbarMetaText(appliedCount, totalCount, filteredCount, selectedCount);
+			toolbarMeta.textContent = getToolbarMetaText(scope, appliedCount, totalCount, filteredCount, selectedCount, workspaceCount, catalogCount, publicCount, privateCount, signedIn);
 		}
 
 		function applyFilter(shouldNotify) {
@@ -1208,6 +1450,12 @@ export function renderModuleSidebarHtml(state: ModuleSidebarRenderState): string
 				const includeApplied = target.getAttribute('data-include-applied') === 'true';
 				closeFilterMenu();
 				vscode.postMessage({ type: 'setIncludeApplied', includeApplied });
+				return;
+			}
+			if (action === 'setScope') {
+				const scope = target.getAttribute('data-scope') || undefined;
+				closeFilterMenu();
+				vscode.postMessage({ type: 'setScope', scope });
 				return;
 			}
 			const moduleKey = target.getAttribute('data-module-key') || undefined;
@@ -1586,6 +1834,14 @@ function renderFilterMenuOption(
 	return `<button class="filter-menu-option${selected ? ' selected' : ''}" data-action="${action}" ${dataAttribute} role="menuitemradio" aria-checked="${selected ? 'true' : 'false'}"><span class="filter-menu-check">&#10003;</span><span class="filter-menu-option-label">${escapeHtml(label)}</span></button>`;
 }
 
+function renderScopeFilterMenuOption(scope: ModuleListScope, label: string, selected: boolean): string {
+	return `<button class="filter-menu-option${selected ? ' selected' : ''}" data-action="setScope" data-scope="${escapeHtml(scope)}" role="menuitemradio" aria-checked="${selected ? 'true' : 'false'}"><span class="filter-menu-check">&#10003;</span><span class="filter-menu-option-label">${escapeHtml(label)}</span></button>`;
+}
+
+function renderScopeToolbarButton(scope: ModuleListScope, label: string, selected: boolean): string {
+	return `<button class="toolbar-button${selected ? ' active' : ''}" data-action="setScope" data-scope="${escapeHtml(scope)}" aria-pressed="${selected ? 'true' : 'false'}">${escapeHtml(label)}</button>`;
+}
+
 function renderFilterMenuToggleOption(label: string, selected: boolean): string {
 	return `<button class="filter-menu-option${selected ? ' selected' : ''}" data-action="setIncludeApplied" data-include-applied="${selected ? 'false' : 'true'}" role="menuitemcheckbox" aria-checked="${selected ? 'true' : 'false'}"><span class="filter-menu-check">&#10003;</span><span class="filter-menu-option-label">${escapeHtml(label)}</span></button>`;
 }
@@ -1615,11 +1871,11 @@ function getFilterButtonTitle(sortState: ModuleSortState): string {
 	});
 }
 
-function renderContent(state: ModuleSidebarRenderState): string {
-	return renderCatalogContent(state);
+function renderFilterEmptyState(): string {
+	return `<section class="empty-state" data-role="filter-empty" hidden><h2>${escapeHtml(t('filterNoMatchesTitle'))}</h2><p>${escapeHtml(t('filterNoMatchesBody'))}</p><div class="action-toolbar"><button class="toolbar-button callout" data-action="clearFilter">${escapeHtml(t('clearFilter'))}</button></div></section>`;
 }
 
-function renderCatalogContent(state: ModuleSidebarRenderState): string {
+function renderCatalogEmptyState(state: ModuleSidebarRenderState): string {
 	if (state.offlineMode && state.state === 'error' && state.modules.length === 0) {
 		return renderEmptyState(
 			t('noCachedModulesTitle'),
@@ -1646,40 +1902,120 @@ function renderCatalogContent(state: ModuleSidebarRenderState): string {
 		);
 	}
 
-	if (state.modules.length === 0) {
-		return renderEmptyState(
-			t('noModulesFoundTitle'),
-			state.message,
-		);
-	}
+	return renderEmptyState(
+		t('noModulesFoundTitle'),
+		state.message,
+	);
+}
 
-	const statusBanner = state.state === 'loading'
+function renderCatalogStatusBanner(state: ModuleSidebarRenderState): string {
+	if (!scopeIncludesCatalog(state.scope)) {
+		return '';
+	}
+	return state.state === 'loading'
 		? `<section class="notice"><div><strong>${escapeHtml(t('refreshingCatalogTitle'))}</strong><span>${escapeHtml(state.message)}</span></div></section>`
 		: state.state === 'error'
 			? `<section class="notice"><div><strong>${escapeHtml(t('catalogRefreshFailedTitle'))}</strong><span>${escapeHtml(state.message)}</span></div></section>`
 			: '';
+}
 
-	const sortedAll = getFilteredModules(state);
-	if (sortedAll.length === 0) {
-		const emptyAction = state.filterQuery.trim().length > 0
-			? `<div class="action-toolbar"><button class="toolbar-button callout" data-action="clearFilter">${escapeHtml(t('clearFilter'))}</button></div>`
-			: !state.includeAppliedModules && state.appliedModuleKeys.size > 0
-				? `<div class="action-toolbar"><button class="toolbar-button callout" data-action="setIncludeApplied" data-include-applied="true">${escapeHtml(t('includeAppliedModules'))}</button></div>`
-				: undefined;
+function getFilteredEmptyAction(state: ModuleSidebarRenderState): string | undefined {
+	if (state.filterQuery.trim().length > 0) {
+		return `<div class="action-toolbar"><button class="toolbar-button callout" data-action="clearFilter">${escapeHtml(t('clearFilter'))}</button></div>`;
+	}
+	if (scopeIncludesCatalog(state.scope) && !state.includeAppliedModules && state.appliedModuleKeys.size > 0) {
+		return `<div class="action-toolbar"><button class="toolbar-button callout" data-action="setIncludeApplied" data-include-applied="true">${escapeHtml(t('includeAppliedModules'))}</button></div>`;
+	}
+	return undefined;
+}
+
+function renderWorkspaceEmptyState(state: ModuleSidebarRenderState): string {
+	return renderEmptyState(
+		state.moduleRoot
+			? t('workspaceModulesEmptyTitle', { root: state.moduleRoot })
+			: t('workspaceModulesTitle'),
+		t('workspaceModulesEmptyBody'),
+	);
+}
+
+function renderListSection(title: string, meta: string | undefined, bodyHtml: string): string {
+	if (!bodyHtml) {
+		return '';
+	}
+	const header = `<div class="section-header"><div class="section-title">${escapeHtml(title)}</div>${meta ? `<div class="section-meta">${meta}</div>` : ''}</div>`;
+	return `<section class="list-section">${header}<div class="list">${bodyHtml}</div></section>`;
+}
+
+function getWorkspaceSectionMeta(state: ModuleSidebarRenderState, workspaceContent: WorkspaceContent): string | undefined {
+	const summary = escapeHtml(t('workspaceModulesSummary', {
+		managed: workspaceContent.managed.length,
+		unmanaged: workspaceContent.unmanaged.length,
+	}));
+	if (!state.moduleRoot) {
+		return summary;
+	}
+	return `${summary} | ${escapeHtml(t('rootLabel'))}: ${escapeHtml(state.moduleRoot)}/`;
+}
+
+function getCatalogSectionMeta(state: ModuleSidebarRenderState, catalogContent: CatalogContent): string | undefined {
+	if (catalogContent.modules.length === 0) {
+		return escapeHtml(t('toolbarMetaCatalog', { total: 0 }));
+	}
+	if (!state.signedIn) {
+		return escapeHtml(t('toolbarMetaCatalog', { total: catalogContent.modules.length }));
+	}
+	const publicCount = catalogContent.modules.filter((entry) => entry.visibility === 'public').length;
+	const privateCount = catalogContent.modules.length - publicCount;
+	return escapeHtml(getVisibilityBreakdownText(publicCount, privateCount));
+}
+
+function renderContent(
+	state: ModuleSidebarRenderState,
+	workspaceContent: WorkspaceContent,
+	catalogContent: CatalogContent,
+): string {
+	const statusBanner = renderCatalogStatusBanner(state);
+	const totalScopedCount = workspaceContent.totalCount + catalogContent.totalCount;
+	const totalVisibleCount = workspaceContent.filteredCount + catalogContent.filteredCount;
+
+	if (state.scope === 'workspace' && totalScopedCount === 0) {
+		return renderWorkspaceEmptyState(state);
+	}
+
+	if (totalScopedCount === 0) {
+		return renderCatalogEmptyState(state);
+	}
+
+	if (totalVisibleCount === 0) {
 		return `${statusBanner}${renderEmptyState(
 			t('filterNoMatchesTitle'),
 			t('filterNoMatchesBody'),
-			emptyAction,
+			getFilteredEmptyAction(state),
 		)}`;
 	}
-	const total = sortedAll.length;
-	const visible = sortedAll.slice(0, state.renderLimit);
-	const hiddenCount = Math.max(0, total - visible.length);
+
+	const workspaceCards = [
+		...workspaceContent.managed.map((entry) => renderLocalManagedCard(entry)),
+		...workspaceContent.unmanaged.map((entry) => renderLocalUnmanagedCard(entry, state)),
+	].join('');
+	const visibleCatalog = catalogContent.modules.slice(0, state.renderLimit);
+	const catalogCards = visibleCatalog.map((entry) => renderModuleCard(entry, state)).join('');
+	const hiddenCount = Math.max(0, catalogContent.filteredCount - visibleCatalog.length);
 	const showMoreButton = hiddenCount > 0
 		? `<section class="notice"><div><strong>${escapeHtml(t('hiddenModulesTitle', { count: hiddenCount }))}</strong><span>${escapeHtml(t('hiddenModulesBody'))}</span></div><button class="toolbar-button" data-action="showMore">${escapeHtml(t('showMore', { count: Math.min(hiddenCount, state.initialRenderLimit) }))}</button></section>`
 		: '';
+	const workspaceSection = renderListSection(
+		t('moduleScopeWorkspace'),
+		getWorkspaceSectionMeta(state, workspaceContent),
+		workspaceCards,
+	);
+	const catalogSection = renderListSection(
+		t('moduleScopeCatalog'),
+		getCatalogSectionMeta(state, catalogContent),
+		catalogCards,
+	);
 
-	return `${statusBanner}<section class="list">${visible.map((entry) => renderModuleCard(entry, state)).join('')}</section>${showMoreButton}<section class="empty-state" data-role="filter-empty" hidden><h2>${escapeHtml(t('filterNoMatchesTitle'))}</h2><p>${escapeHtml(t('filterNoMatchesBody'))}</p><div class="action-toolbar"><button class="toolbar-button callout" data-action="clearFilter">${escapeHtml(t('clearFilter'))}</button></div></section>`;
+	return `${statusBanner}<section class="list">${workspaceSection}${catalogSection}</section>${showMoreButton}${renderFilterEmptyState()}`;
 }
 
 function renderModuleCard(entry: CsmModuleEntry, state: ModuleSidebarRenderState): string {
@@ -1708,7 +2044,7 @@ function renderModuleCard(entry: CsmModuleEntry, state: ModuleSidebarRenderState
 	return renderModuleCardShell({
 		articleClasses: [selected ? 'selected' : '', applied ? 'applied' : ''],
 		dataRole: 'module-card',
-		articleAttributes: `data-module-key="${escapeHtml(moduleKey)}" data-module-applied="${applied ? 'true' : 'false'}" data-module-selected="${selected ? 'true' : 'false'}" data-search-text="${searchText}" data-vscode-context="${vscodeContext}"`,
+		articleAttributes: `data-module-key="${escapeHtml(moduleKey)}" data-module-applied="${applied ? 'true' : 'false'}" data-module-selected="${selected ? 'true' : 'false'}" data-card-scope="catalog" data-search-text="${searchText}" data-vscode-context="${vscodeContext}"`,
 		title: entry.name,
 		titleDisplay: truncate(entry.name, 44),
 		titleBadges: applied ? [renderBadge(t('appliedBadge'), 'applied')] : [],

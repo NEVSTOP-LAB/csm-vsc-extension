@@ -159,6 +159,8 @@ suite('ModuleManagerController Regression Tests', () => {
 
 	test('refresh github error sets tree error and error toast', async () => {
 		let setErrorText = '';
+		let sidebarRefreshCount = 0;
+		let initRefreshCount = 0;
 
 		const controller = createController(undefined, {
 			authService: {
@@ -177,12 +179,50 @@ suite('ModuleManagerController Regression Tests', () => {
 				},
 			}),
 		});
+		(controller as any).refreshSidebarWorkspaceState = async () => {
+			sidebarRefreshCount += 1;
+		};
+		(controller as any).refreshWorkspaceInitializationState = async (options: { prompt: boolean }) => {
+			assert.strictEqual(options.prompt, false);
+			initRefreshCount += 1;
+		};
 
 		await controller.refreshCommand();
 
 		assert.strictEqual(setErrorText, 'GitHub is temporarily unavailable (HTTP 503). Try again in a moment.');
+		assert.strictEqual(sidebarRefreshCount, 1);
+		assert.strictEqual(initRefreshCount, 1);
 		const errors = mocked.__getMessageLog().filter((m) => m.level === 'error').map((m) => m.text);
 		assert.ok(errors.some((text) => text.includes('Failed to refresh CSM modules: GitHub is temporarily unavailable (HTTP 503). Try again in a moment.')));
+	});
+
+	test('refreshCommand recomputes workspace state after a successful refresh', async () => {
+		let loadCalls = 0;
+		let sidebarRefreshCount = 0;
+		let initRefreshCount = 0;
+		const controller = createController() as any;
+
+		controller.loadModules = async (options: { interactiveAuth: boolean; showSuccessMessage: boolean; showErrorMessage: boolean }) => {
+			assert.deepStrictEqual(options, {
+				interactiveAuth: false,
+				showSuccessMessage: true,
+				showErrorMessage: true,
+			});
+			loadCalls += 1;
+		};
+		controller.refreshSidebarWorkspaceState = async () => {
+			sidebarRefreshCount += 1;
+		};
+		controller.refreshWorkspaceInitializationState = async (options: { prompt: boolean }) => {
+			assert.deepStrictEqual(options, { prompt: false });
+			initRefreshCount += 1;
+		};
+
+		await controller.refreshCommand();
+
+		assert.strictEqual(loadCalls, 1);
+		assert.strictEqual(sidebarRefreshCount, 1);
+		assert.strictEqual(initRefreshCount, 1);
 	});
 
 	test('login passes the signed-in account label to the sidebar view', async () => {
@@ -1869,13 +1909,21 @@ suite('ModuleManagerController Regression Tests', () => {
 		const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'csm-share-module-'));
 		fs.mkdirSync(path.join(workspaceRoot, 'csm', 'custom-module'), { recursive: true });
 		const controller = createController() as any;
+		const existingConfig: LocalModuleConfig = {
+			version: '2',
+			root: 'csm',
+			configPath: path.join(workspaceRoot, 'csm', 'csm-modules.yaml'),
+			modules: {},
+		};
 		let createdRequest:
 			| { token: string; name: string; description?: string; private: boolean; topics: string[] }
 			| undefined;
 		let publishedRequest:
-			| { folderPath: string; remoteUrl: string; authToken?: string; defaultBranch?: string; authorName?: string; authorEmail?: string }
+			| { folderPath: string; remoteUrl: string; authToken?: string; defaultBranch?: string; authorName?: string; authorEmail?: string; commitMessage?: string }
 			| undefined;
 		let refreshed = false;
+		let sidebarRefreshed = false;
+		let writtenConfig: LocalModuleConfig | undefined;
 
 		controller.authService = {
 			getSessionSilently: async () => createSession('token', 'tester'),
@@ -1904,17 +1952,34 @@ suite('ModuleManagerController Regression Tests', () => {
 				name: 'Tester',
 				email: 'tester@example.com',
 			}),
-			publishLocalFolder: async (options: { folderPath: string; remoteUrl: string; authToken?: string; defaultBranch?: string; authorName?: string; authorEmail?: string }) => {
+			publishLocalFolder: async (options: { folderPath: string; remoteUrl: string; authToken?: string; defaultBranch?: string; authorName?: string; authorEmail?: string; commitMessage?: string }) => {
 				publishedRequest = options;
 				return {
 					branch: options.defaultBranch ?? 'main',
 					remoteName: 'origin',
 					remoteUrl: options.remoteUrl,
+					headRef: 'abc123',
 					createdCommit: true,
 				};
 			},
+			normalizeRootPath: (value: string) => value.replace(/\\/g, '/'),
+			getModuleKey: (entry: CsmModuleEntry) => `${entry.owner}__${entry.name}`,
+			withAppliedModule: (config: LocalModuleConfig, entry: LocalModuleConfig['modules'][string]) => ({
+				...config,
+				modules: {
+					...config.modules,
+					[entry.key]: entry,
+				},
+			}),
+			writeConfig: async (config: LocalModuleConfig) => {
+				writtenConfig = config;
+			},
 		};
 		controller.resolveWorkspaceFolder = async () => ({ name: 'repo', uri: vscode.Uri.file(workspaceRoot) });
+		controller.tryLoadSidebarLocalModuleConfig = async () => existingConfig;
+		controller.refreshSidebarWorkspaceState = async () => {
+			sidebarRefreshed = true;
+		};
 		controller.loadModules = async () => {
 			refreshed = true;
 		};
@@ -1945,11 +2010,142 @@ suite('ModuleManagerController Regression Tests', () => {
 			authorEmail: 'tester@example.com',
 			commitMessage: 'Initial publish of custom-module',
 		});
+		assert.deepStrictEqual(writtenConfig, {
+			...existingConfig,
+			modules: {
+				'tester__shared-module': {
+					key: 'tester__shared-module',
+					name: 'shared-module',
+					owner: 'tester',
+					source: 'https://github.com/tester/shared-module',
+					method: 'copy',
+					path: 'csm/custom-module',
+					ref: 'abc123',
+					branch: 'main',
+				},
+			},
+		});
+		assert.strictEqual(sidebarRefreshed, true);
 		assert.strictEqual(refreshed, true);
 		assert.ok(mocked.__getLastWarningPrompt()?.message.includes('csm/custom-module'));
 		const infos = mocked.__getMessageLog().filter((message) => message.level === 'info').map((message) => message.text);
 		assert.ok(infos.some((text) => text.includes('Created GitHub repository tester/shared-module and published the local folder contents.')));
 	});
+
+	test('createLocalFolderRepositoryCommand warns when local state sync fails after publish', async () => {
+		const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'csm-share-module-sync-fail-'));
+		fs.mkdirSync(path.join(workspaceRoot, 'csm', 'custom-module'), { recursive: true });
+		const controller = createController() as any;
+		const existingConfig: LocalModuleConfig = {
+			version: '2',
+			root: 'csm',
+			configPath: path.join(workspaceRoot, 'csm', 'csm-modules.yaml'),
+			modules: {},
+		};
+		let sidebarRefreshed = false;
+		let refreshed = false;
+
+		controller.authService = {
+			getSessionSilently: async () => createSession('token', 'tester'),
+			getSessionInteractively: async () => createSession('token', 'tester'),
+		};
+		controller.githubService = {
+			fetchModules: async () => ({ modules: [] }),
+			fetchReadme: async () => '',
+			createRepository: async (_token: string, options: { name: string; description?: string; private: boolean; topics: string[] }) => ({
+				id: 1,
+				name: options.name,
+				full_name: `tester/${options.name}`,
+				description: options.description ?? '',
+				private: options.private,
+				default_branch: 'main',
+				html_url: `https://github.com/tester/${options.name}`,
+				topics: options.topics,
+			}),
+		};
+		controller.workspaceModuleService = {
+			resolveGitRepositoryRoot: async () => workspaceRoot,
+			getGitIdentity: async () => ({
+				name: 'Tester',
+				email: 'tester@example.com',
+			}),
+			publishLocalFolder: async (options: { folderPath: string; remoteUrl: string; authToken?: string; defaultBranch?: string; authorName?: string; authorEmail?: string; commitMessage?: string }) => ({
+				branch: options.defaultBranch ?? 'main',
+				remoteName: 'origin',
+				remoteUrl: options.remoteUrl,
+				headRef: 'abc123',
+				createdCommit: true,
+			}),
+			normalizeRootPath: (value: string) => value.replace(/\\/g, '/'),
+			getModuleKey: (entry: CsmModuleEntry) => `${entry.owner}__${entry.name}`,
+			withAppliedModule: (config: LocalModuleConfig, entry: LocalModuleConfig['modules'][string]) => ({
+				...config,
+				modules: {
+					...config.modules,
+					[entry.key]: entry,
+				},
+			}),
+			writeConfig: async () => {
+				throw new Error('disk full');
+			},
+		};
+		controller.resolveWorkspaceFolder = async () => ({ name: 'repo', uri: vscode.Uri.file(workspaceRoot) });
+		controller.tryLoadSidebarLocalModuleConfig = async () => existingConfig;
+		controller.refreshSidebarWorkspaceState = async () => {
+			sidebarRefreshed = true;
+		};
+		controller.loadModules = async () => {
+			refreshed = true;
+		};
+		mocked.__setInputBoxResponses(['shared-module', 'Demo repo', 'labview-csm, csm-modsets custom-topic']);
+		mocked.__setQuickPickResponse({ label: 'Private', visibility: 'private' });
+		mocked.__setWarningMessageResponse('Create Repository');
+
+		await controller.createLocalFolderRepositoryCommand({
+			id: 'csm/custom-module',
+			kind: 'unmanaged',
+			name: 'custom-module',
+			path: 'csm/custom-module',
+		});
+
+		assert.strictEqual(sidebarRefreshed, false);
+		assert.strictEqual(refreshed, true);
+		const warnings = mocked.__getMessageLog().filter((message) => message.level === 'warn').map((message) => message.text);
+		assert.ok(warnings.some((text) => text.includes('Created GitHub repository tester/shared-module and published csm/custom-module, but failed to update the local CSM module state: disk full')));
+		const infos = mocked.__getMessageLog().filter((message) => message.level === 'info').map((message) => message.text);
+		assert.ok(!infos.some((text) => text.includes('Created GitHub repository tester/shared-module and published the local folder contents.')));
+		const errors = mocked.__getMessageLog().filter((message) => message.level === 'error').map((message) => message.text);
+		assert.strictEqual(errors.length, 0);
+	});
+
+		test('initializePublishedFolderConfig derives the root from Windows-style folder paths', async () => {
+			const controller = createController() as any;
+			let capturedRoot: string | undefined;
+
+			controller.workspaceModuleService = {
+				normalizeRootPath: (value: string) => value.replace(/\\/g, '/').replace(/^\.\//, '').replace(/^\/+|\/+$/g, ''),
+				initializeConfig: async (_workspaceRoot: string, rootRelativePath: string) => {
+					capturedRoot = rootRelativePath;
+					return {
+						version: '2',
+						root: rootRelativePath,
+						configPath: path.join('d:/repo', rootRelativePath, 'csm-modules.yaml'),
+						modules: {},
+					};
+				},
+			};
+			controller.setWorkspaceInitializationContext = async () => undefined;
+
+			const config = await controller.initializePublishedFolderConfig('d:/repo', {
+				id: 'csm\\nested\\custom-module',
+				kind: 'unmanaged',
+				name: 'custom-module',
+				path: 'csm\\nested\\custom-module',
+			});
+
+			assert.strictEqual(capturedRoot, 'csm/nested');
+			assert.strictEqual(config.root, 'csm/nested');
+		});
 
 	test('toggleStar unstars a repository only after confirmation', async () => {
 		let renderedModules: CsmModuleEntry[] = [];

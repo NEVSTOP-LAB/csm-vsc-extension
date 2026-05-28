@@ -14,11 +14,14 @@
 - 阶段二：当仓库已存在 `csm/` 目录及其中的 submodule，但缺少配置文件时，可自动反向生成 `csm/csm-modules.yaml`
 - 阶段四：新增设置项 `csmModules.defaultModuleRoot`，用于为首次初始化 / 首次应用预设默认模块根目录
 - 本地化：扩展全部用户可见字符串现已支持中英文切换，覆盖 package 清单文案、模块管理 UI/提示与 `.csmlog` / `.lvcsm` Hover 内容
-- 阶段四：`CSM Modules` 容器新增独立的 `Workspace Modules` 原生视图，可同时显示已管理模块与当前模块根目录下的未管理文件夹，而上方 `Available Modules` 保持原有 GitHub 目录行为
+- 阶段四：`CSM Modules` 现收敛为单一原生视图，本地模块状态与 GitHub 模块目录合并到同一 Webview 列表中，并新增 `All / Workspace / Catalog` 范围切换来承接原先的双视图浏览方式
 - 阶段四：已登录 GitHub 时，未管理本地模块文件夹可通过向导一键创建并发布 GitHub 仓库，默认使用 private 可见性并附带 `labview-csm`、`csm-modsets` topics；若本机缺少 Git 作者信息，会在首次发布前补充询问
 
 ### 变更
 
+- 构建：`.github/hooks/local-finish-stop.json` 现同时注册 `PostToolUse` 与 `Stop` hook，只有当当前 Copilot 会话成功执行过编辑类工具后，结束对话时才会触发编译、VSIX 打包、安装与本地校验；纯问答会话会直接跳过，自动 hook 仍复用 `scripts/local-finish-hook.mjs --stop-hook`，不会像手动 `hook:finish` 那样递增版本或改写文档
+- 交互：从统一侧边栏中的本地未管理文件夹创建并发布 GitHub 仓库后，会立即写回本地 `csm-modules.yaml` 并刷新侧边栏状态，无需再手动刷新才能看到已管理状态
+- 交互：标题栏 `Refresh` 在完成远端刷新流程后，也会重新评估当前工作区的本地模块 / 未管理文件夹状态；即使本次远端刷新失败，仍会更新本地显示
 - 阶段一：模块发现继续基于 GitHub 全局 `topic:csm-modsets` 搜索；侧边栏启动时改为只显示本地缓存，登录成功后会自动执行一次网络刷新，之后仍通过手动刷新同步当前账号可访问的 public / private 模块
 - 阶段四：public 模块 README 支持未登录时匿名加载，避免公共模块浏览流程被 GitHub 登录前置阻断
 - 构建：`@types/js-yaml` 已移入 `devDependencies`，`tsconfig.json` 明确 `outDir = out`，并清理过时的 `skipLibCheck` 注释
@@ -28,6 +31,7 @@
 - UI：`CSM Modules` 侧边栏样式收敛为更接近扩展列表的扁平卡片布局，移除左侧头像图标；单卡 `Apply` 按钮已移除，`README` 保留在卡片右上角，checkbox 仅在 hover 或已选中时显示
 - UI：顶部搜索框固定在最上方，原有头部摘要内容下移到搜索框下方；批量 `Apply Selected` 改由视图标题栏在存在勾选模块时提供，Webview 内不再重复放置登录 / 刷新 / 批量 Apply 按钮
 - UI：模块卡片重新整理为“顶行标题/provider + 工具条、全宽摘要、底部全宽 tags”布局，减少左右分栏造成的压缩感
+- UI：统一后的模块列表会以内联分组标题区分 `Workspace` 与 `Catalog` 内容，在保留单视图结构的同时提升本地项和远端目录项的可扫读性
 - UI：侧边栏整体字号与图标尺寸上调一档；模块卡片与 fallback tree 中会自动隐藏内部发现用 topic（如 `csm-modsets`、`labview-csm`），并且这些内部 topic 不再参与侧边栏前端搜索
 - UI：侧边栏继续显示当前工作区摘要，已应用到当前仓库配置的模块会显示 `Applied` 状态徽标
 - UI：多选模块时，标题栏批量操作会按所选模块的当前状态拆分显示；混合选择同时显示 `Apply to Current Repository` 与 `Remove from Current Repository`，全未安装仅显示 `Apply`，全已安装仅显示 `Remove`

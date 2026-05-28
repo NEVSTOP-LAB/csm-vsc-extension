@@ -7,7 +7,6 @@ import JSZip from 'jszip';
 import { ModuleCacheStore, mapRepoToModuleEntry } from '../moduleManager';
 import { GitExecOptions, IGitRunner } from '../moduleManager/gitService';
 import { ReadmeAssetCache } from '../moduleManager/readmeAssetCache';
-import { LocalWorkspaceViewProvider } from '../moduleManager/localWorkspaceViewProvider';
 import { ModuleSidebarViewProvider } from '../moduleManager/moduleSidebarViewProvider';
 import { ModuleTreeDataProvider, ModuleTreeItem } from '../moduleManager/moduleTreeDataProvider';
 import { GitHubRepoSummary } from '../moduleManager';
@@ -376,7 +375,7 @@ suite('Module Manager Tests', () => {
 		assert.ok(rendered?.html.includes('Root: csm/'));
 		assert.ok(!rendered?.html.includes('Signed in as tester.'));
 		assert.ok(!rendered?.html.includes('Loaded 2 module(s), including private.'));
-		assert.ok(rendered?.html.includes('1 applied | 1 public | 1 private | 0 selected'));
+		assert.ok(rendered?.html.includes('1 applied | 2 workspace | 1 catalog | 0 selected'));
 		assert.ok(!rendered?.html.includes('data-role="apply-selected"'));
 		assert.ok(rendered?.html.includes('title="Open README"'));
 		assert.ok(!rendered?.html.includes('class="avatar"'));
@@ -385,7 +384,7 @@ suite('Module Manager Tests', () => {
 
 		provider.setSelection(['org/module-a']);
 		const selectedRender = mocked.__getLastWebviewView();
-		assert.ok(selectedRender?.html.includes('1 applied | 1 public | 1 private | 1 selected'));
+		assert.ok(selectedRender?.html.includes('1 applied | 2 workspace | 1 catalog | 1 selected'));
 		assert.ok(selectedRender?.html.includes('moduleSelected&quot;:true'));
 
 		resolved?.fireMessage({ type: 'dismissIntroTip' });
@@ -560,16 +559,35 @@ suite('Module Manager Tests', () => {
 		disposable.dispose();
 	});
 
-	test('LocalWorkspaceViewProvider renders managed and unmanaged workspace folders', () => {
-		const provider = new LocalWorkspaceViewProvider({
+	test('ModuleSidebarViewProvider renders merged workspace and catalog content and switches scope', () => {
+		const provider = new ModuleSidebarViewProvider({
+			onLogin: () => undefined,
+			onRefresh: () => undefined,
 			onInitializeWorkspace: () => undefined,
+			onToggleStar: () => undefined,
 			onOpenReadme: () => undefined,
+			onPreviewReadme: async () => '<p>Preview</p>',
+			onApplySelection: () => undefined,
 			onRemoveModule: () => undefined,
 			onUpdateModule: () => undefined,
 			onCreateLocalRepository: () => undefined,
+			onSelectionChange: () => undefined,
+			onSortChange: () => undefined,
 		});
 
 		provider.setAuthenticated(true);
+		provider.setModules([
+			{
+				id: 1,
+				owner: 'org',
+				name: 'module-remote',
+				description: 'Remote module',
+				topics: ['csm-modsets'],
+				visibility: 'public',
+				defaultBranch: 'main',
+				repoUrl: 'https://github.com/org/module-remote',
+			},
+		]);
 		provider.setWorkspaceContext({
 			workspaceLabel: 'repo',
 			moduleRoot: 'csm',
@@ -608,38 +626,52 @@ suite('Module Manager Tests', () => {
 			}],
 		});
 
-		const disposable = vscode.window.registerWebviewViewProvider('csmModules.workspaceView', provider);
-		mocked.__resolveWebviewView('csmModules.workspaceView');
+		const disposable = vscode.window.registerWebviewViewProvider('csmModules.view', provider);
+		const resolved = mocked.__resolveWebviewView('csmModules.view');
 		const rendered = mocked.__getLastWebviewView();
 
-		assert.strictEqual(rendered?.viewId, 'csmModules.workspaceView');
-		assert.strictEqual(rendered?.description, 'csm');
-		assert.ok(!rendered?.html.includes('Workspace Modules'));
-		assert.ok(!rendered?.html.includes('Managed folders'));
-		assert.ok(rendered?.html.includes('Unmanaged folders'));
-		assert.ok(rendered?.html.includes('1 managed | 1 unmanaged'));
+		assert.strictEqual(rendered?.viewId, 'csmModules.view');
+		assert.ok(rendered?.html.includes('data-action="setScope" data-scope="all"'));
+		assert.ok(rendered?.html.includes('data-action="setScope" data-scope="workspace"'));
+		assert.ok(rendered?.html.includes('data-action="setScope" data-scope="catalog"'));
+		assert.ok(rendered?.html.includes('<div class="section-title">Workspace</div>'));
+		assert.ok(rendered?.html.includes('<div class="section-title">Catalog</div>'));
 		assert.ok(rendered?.html.includes('Root: csm/'));
-		assert.ok(!rendered?.html.includes('csm-vsc-extension'));
-		assert.ok(rendered ? rendered.html.indexOf('1 managed | 1 unmanaged') < rendered.html.indexOf('Root: csm/') : false);
-		assert.ok(!rendered?.html.includes('title-row"><span class="module-name" title="module-local">module-local</span><span class="badge applied">Managed'));
-		assert.ok(rendered?.html.includes('<div class="meta-row"><span class="badge applied">Managed</span><span class="badge">copy</span>'));
-		assert.ok(rendered?.html.includes('class="icon-button" data-action="openLocalReadme"'));
-		assert.ok(rendered?.html.includes('class="icon-button" data-action="updateLocalModule"'));
-		assert.ok(rendered?.html.includes('class="icon-button" data-action="removeLocalModule"'));
 		assert.ok(rendered?.html.includes('module-local'));
 		assert.ok(rendered?.html.includes('custom-module'));
-		assert.ok(rendered?.html.includes('Create GitHub Repo'));
+		assert.ok(rendered?.html.includes('module-remote'));
+		assert.ok(rendered ? rendered.html.indexOf('<div class="section-title">Workspace</div>') < rendered.html.indexOf('<div class="section-title">Catalog</div>') : false);
+		assert.ok(rendered ? rendered.html.indexOf('module-local') < rendered.html.indexOf('module-remote') : false);
+
+		resolved?.fireMessage({ type: 'setScope', scope: 'workspace' });
+		const workspaceRender = mocked.__getLastWebviewView();
+		assert.ok(workspaceRender?.html.includes('data-action="setScope" data-scope="workspace"'));
+		assert.match(workspaceRender?.html ?? '', /class="[^"]*\btoolbar-button\b[^"]*\bactive\b[^"]*"[^>]*data-action="setScope"[^>]*data-scope="workspace"/);
+		assert.ok(workspaceRender?.html.includes('module-local'));
+		assert.ok(!workspaceRender?.html.includes('module-remote'));
+
+		resolved?.fireMessage({ type: 'setScope', scope: 'catalog' });
+		const catalogRender = mocked.__getLastWebviewView();
+		assert.ok(catalogRender?.html.includes('data-action="setScope" data-scope="catalog"'));
+		assert.match(catalogRender?.html ?? '', /class="[^"]*\btoolbar-button\b[^"]*\bactive\b[^"]*"[^>]*data-action="setScope"[^>]*data-scope="catalog"/);
+		assert.ok(catalogRender?.html.includes('module-remote'));
+		assert.ok(!catalogRender?.html.includes('module-local'));
 		disposable.dispose();
 	});
 
-	test('LocalWorkspaceViewProvider forwards local workspace actions', () => {
+	test('ModuleSidebarViewProvider forwards local workspace actions', () => {
 		let openedReadmeName = '';
 		let removedModuleName = '';
 		let updatedModuleName = '';
 		let createdRepositoryPath = '';
 		let initialized = false;
-		const provider = new LocalWorkspaceViewProvider({
-			onInitializeWorkspace: () => undefined,
+		const provider = new ModuleSidebarViewProvider({
+			onLogin: () => undefined,
+			onRefresh: () => undefined,
+			onInitializeWorkspace: () => {
+				initialized = true;
+			},
+			onToggleStar: () => undefined,
 			onOpenReadme: (entry) => {
 				openedReadmeName = entry.name;
 			},
@@ -652,16 +684,10 @@ suite('Module Manager Tests', () => {
 			onCreateLocalRepository: (entry) => {
 				createdRepositoryPath = entry.path;
 			},
-		});
-
-		const initializingProvider = new LocalWorkspaceViewProvider({
-			onInitializeWorkspace: () => {
-				initialized = true;
-			},
-			onOpenReadme: () => undefined,
-			onRemoveModule: () => undefined,
-			onUpdateModule: () => undefined,
-			onCreateLocalRepository: () => undefined,
+			onSelectionChange: () => undefined,
+			onSortChange: () => undefined,
+			onPreviewReadme: async () => '<p>Preview</p>',
+			onApplySelection: () => undefined,
 		});
 
 		provider.setAuthenticated(true);
@@ -702,18 +728,16 @@ suite('Module Manager Tests', () => {
 				path: 'csm/custom-module',
 			}],
 		});
-		initializingProvider.setCanInitializeWorkspace(true);
+		provider.setCanInitializeWorkspace(true);
 
-		const disposable = vscode.window.registerWebviewViewProvider('csmModules.workspaceView', provider);
-		const resolved = mocked.__resolveWebviewView('csmModules.workspaceView');
-		const initDisposable = vscode.window.registerWebviewViewProvider('csmModules.workspaceInitView', initializingProvider);
-		const initResolved = mocked.__resolveWebviewView('csmModules.workspaceInitView');
+		const disposable = vscode.window.registerWebviewViewProvider('csmModules.view', provider);
+		const resolved = mocked.__resolveWebviewView('csmModules.view');
 
 		resolved?.fireMessage({ type: 'openLocalReadme', localItemId: 'local__module_local' });
 		resolved?.fireMessage({ type: 'updateLocalModule', localItemId: 'local__module_local' });
 		resolved?.fireMessage({ type: 'removeLocalModule', localItemId: 'local__module_local' });
 		resolved?.fireMessage({ type: 'createLocalRepository', localItemId: 'csm/custom-module' });
-		initResolved?.fireMessage({ type: 'initializeWorkspace' });
+		resolved?.fireMessage({ type: 'initializeWorkspace' });
 
 		assert.strictEqual(openedReadmeName, 'module-local');
 		assert.strictEqual(updatedModuleName, 'module-local');
@@ -721,7 +745,6 @@ suite('Module Manager Tests', () => {
 		assert.strictEqual(createdRepositoryPath, 'csm/custom-module');
 		assert.strictEqual(initialized, true);
 		disposable.dispose();
-		initDisposable.dispose();
 	});
 
 	test('ModuleSidebarViewProvider keeps login and batch apply in the title bar', () => {
@@ -758,7 +781,7 @@ suite('Module Manager Tests', () => {
 		const rendered = mocked.__getLastWebviewView();
 
 		assert.strictEqual(rendered?.title, 'Available Modules');
-		assert.ok(rendered?.html.includes('1 available | 0 selected'));
+		assert.ok(rendered?.html.includes('0 applied | 1 catalog | 0 selected'));
 		assert.ok(rendered?.html.includes('Loaded 1 public module(s). Sign in to see private modules.'));
 		assert.ok(!rendered?.html.includes('data-action="login"'));
 		assert.ok(!rendered?.html.includes('data-role="apply-selected"'));
@@ -858,10 +881,12 @@ suite('Module Manager Tests', () => {
 
 		assert.ok(rendered?.html.includes('data-role="filter-button"'));
 		assert.ok(rendered?.html.includes('filter-menu-label">Show</span>'));
+		assert.ok(rendered?.html.includes('filter-menu-label">Scope</span>'));
 		assert.ok(rendered?.html.includes('Filter and sort modules. Current: Owner, Descending.'));
 		assert.ok(rendered?.html.includes('filter-menu-label">Type</span>'));
 		assert.ok(rendered?.html.includes('filter-menu-label">Order</span>'));
 		assert.ok(rendered?.html.includes('data-sort-field="owner"'));
+		assert.ok(rendered?.html.includes('data-action="setScope" data-scope="all"'));
 		assert.ok(rendered?.html.includes('filter-menu-option selected" data-action="setSortField" data-sort-field="owner"'));
 		assert.ok(rendered?.html.includes('filter-menu-option selected" data-action="setSortDirection" data-sort-direction="desc"'));
 
@@ -951,6 +976,8 @@ suite('Module Manager Tests', () => {
 				case 'remote get-url origin':
 				case 'rev-parse --verify HEAD':
 					throw new Error('missing');
+				case 'rev-parse HEAD':
+					return 'abc123\n';
 				case 'status --porcelain':
 					return 'A  module.vi';
 				case 'branch --show-current':
@@ -990,11 +1017,13 @@ suite('Module Manager Tests', () => {
 				'branch --show-current',
 				'branch -M main',
 				'push -u origin main',
+				'rev-parse HEAD',
 			]);
 			assert.deepStrictEqual(result, {
 				branch: 'main',
 				remoteName: 'origin',
 				remoteUrl,
+				headRef: 'abc123',
 				createdCommit: true,
 			});
 		} finally {

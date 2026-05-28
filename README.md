@@ -40,11 +40,13 @@
 - ✅ 支持搜索、筛选、排序和批量选择
 - ✅ 支持 README 预览与图片显示
 - ✅ 支持仓库 `Star` / `Unstar`
+- ✅ 标题栏 `Refresh` 除了同步 GitHub 模块目录，也会重算当前工作区的本地模块与未管理文件夹状态
 - ✅ 支持将模块引入当前工作区，Git 仓库可选 `submodule` 或 `copy`，非 Git 工作区自动限制为 `copy`，且后续可直接移除或更新 `copy` 模式模块
 - ✅ 支持按当前多选状态批量应用未安装模块，并批量移除已安装模块
 - ✅ 支持更新模块；`copy` 模式会先比较远端最新提交，确认后备份当前目录为 zip 再整体替换
-- ✅ `CSM Modules` 容器现提供独立的 `Workspace Modules` 原生视图，用于区分当前模块根目录下的已管理模块与未管理文件夹
-- ✅ 对当前模块根目录下的未管理文件夹，已登录 GitHub 时可通过向导一键创建并发布 GitHub 仓库，默认使用 private 可见性并附带 `labview-csm`、`csm-modsets` topics；若本机缺少 Git 作者信息，会在首次发布前补充询问
+- ✅ `CSM Modules` 现合并为单一侧边栏视图：当前工作区中的已管理模块、未管理文件夹与远端 GitHub 模块目录会显示在同一列表中，本地项固定优先展示，并通过轻量分组标题保持层次清晰
+- ✅ 过滤菜单与顶部快捷工具条都提供同步的 `All / Workspace / Catalog` 范围切换，用来快速在统一视图中查看原先两类内容
+- ✅ 对当前模块根目录下的未管理文件夹，已登录 GitHub 时可通过向导一键创建并发布 GitHub 仓库，默认使用 private 可见性并附带 `labview-csm`、`csm-modsets` topics；若本机缺少 Git 作者信息，会在首次发布前补充询问，发布成功后会立即写回本地 YAML 并切换为已管理状态
 
 > 详细功能说明参见 [docs/module-management.md](docs/module-management.md)
 

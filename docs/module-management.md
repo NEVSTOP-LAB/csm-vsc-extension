@@ -2,7 +2,7 @@
 
 ## 功能概述
 
-侧边栏 `CSM Modules` 容器包含两个原生视图：`Available Modules` 用于浏览、搜索和管理 GitHub 模块目录，`Workspace Modules` 用于查看当前模块根目录下的已管理模块与未管理文件夹。模块可通过 `submodule` 或 `copy` 方式引入本地仓库，并通过本地 YAML 配置文件记录已应用模块。
+侧边栏 `CSM Modules` 容器现在只保留一个原生视图。当前工作区中的已管理模块、未管理文件夹与 GitHub 模块目录会在同一个 Webview 卡片列表中统一显示；本地项目条目固定排在前面，远端目录条目跟在后面。模块可通过 `submodule` 或 `copy` 方式引入本地仓库，并通过本地 YAML 配置文件记录已应用模块。
 
 ## 功能特性
 
@@ -19,8 +19,9 @@
 
 - 模块视图为类扩展市场的 Webview 卡片列表，显示仓库名、发布者、摘要、默认分支、可见性与用户可见 topic 标签；内部发现用 topic（如 `csm-modsets`、`labview-csm`）会自动隐藏
 - 侧边栏顶部搜索框采用类扩展市场的搜索栏样式，末尾集成 `Filter` 菜单，可按仓库名、owner、显示中的 topic、分支与摘要快速过滤模块
+- `Filter` 菜单新增 `Scope` 分组，可在 `All / Workspace / Catalog` 三种范围间切换；顶部工具条也提供同步的快捷切换入口，便于在统一列表中快速切回“只看本地”或“只看目录”
 - `Filter` 菜单内可按类型切换名称 / owner / 更新时间 / 已应用状态排序，并切换升序 / 降序，排序偏好会跨会话保留
-- 已登录 GitHub 时，顶部摘要会优先显示当前账号，并把模块总数按 `public` / `private` 拆分展示；原先冗长的 `Loaded ...` 文案不再重复显示
+- 顶部摘要会根据当前范围切换显示工作区项、目录项或二者混合计数；已登录 GitHub 且范围为 `Catalog` 时，会继续显示 `public / private` 拆分
 - 卡片顶行将名称 / provider 与右上角紧凑操作组对齐；`README` 按钮保留在右上角，checkbox 仅在卡片 hover 或已选中时显示
 - 点击模块卡片正文可在侧边栏内直接展开 README 预览；public 模块的 README 在未登录时也可匿名加载，右上角 `README` 按钮仍可打开完整 README 面板，预览同时支持 Markdown 图片语法和常见的原生 `<img>` 标签
 
@@ -34,8 +35,8 @@
 
 ### 工作区状态
 
-- `Available Modules` 会继续显示当前工作区、模块根目录与已应用计数；已登录时，顶部摘要会优先显示当前 GitHub 账号，并将模块数量拆分为 `public / private`；已写入当前仓库配置的模块会显示 `Applied` 状态徽标
-- `Workspace Modules` 视图会单独列出当前模块根目录中的已管理模块与未管理文件夹，便于直接查看本地状态而不打断上方 GitHub 模块目录的浏览与筛选
+- 统一视图会继续显示当前工作区、模块根目录与已应用计数；已写入当前仓库配置的模块会显示 `Applied` 状态徽标，并通过内联 `Workspace` / `Catalog` 分组标题帮助快速识别当前卡片来源
+- 当范围切换为 `Workspace` 时，列表只显示当前模块根目录中的已管理模块与未管理文件夹；当范围切换为 `Catalog` 时，列表只显示 GitHub 模块目录；`All` 则同时显示两类内容
 - 对未管理文件夹，已登录 GitHub 时可通过向导一键创建远端 GitHub 仓库，并立即执行本地 `git init`、首次提交与 `origin` 推送；若当前机器尚未配置 `user.name` / `user.email`，向导会在发布前补充询问
 - 若仓库检测到 `csm/` 目录与 `*.lvproj`，但尚未存在本地模块配置，打开侧边栏时会主动提醒初始化，并在标题栏显示 `Initialize Workspace Management` 工具按钮
 - 若仓库内已存在 `csm/` 目录且包含已初始化的 submodule，但尚未存在配置文件，扩展会自动反向生成 `csm/csm-modules.yaml`

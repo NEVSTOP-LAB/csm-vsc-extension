@@ -2,10 +2,9 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs/promises';
 import { AuthService } from './authService';
-import { GitHubModuleService } from './githubModuleService';
+import { GitHubModuleService, mapRepoToModuleEntry } from './githubModuleService';
 import { ModuleCacheStore } from './cacheStore';
-import { CopyModuleUpdatePreview, CsmModuleEntry, LocalManagedModuleEntry, LocalModuleConfig, LocalModuleConfigEntry, LocalUnmanagedFolderEntry, ModuleApplyMethod, ModuleAuthSnapshot, ModuleCacheSnapshot, ModuleUpdateResult } from './types';
-import { LocalWorkspaceViewProvider } from './localWorkspaceViewProvider';
+import { CopyModuleUpdatePreview, CsmModuleEntry, GitHubRepoSummary, LocalManagedModuleEntry, LocalModuleConfig, LocalModuleConfigEntry, LocalUnmanagedFolderEntry, ModuleApplyMethod, ModuleAuthSnapshot, ModuleCacheSnapshot, ModuleUpdateResult } from './types';
 import { ModuleTreeItem } from './moduleTreeDataProvider';
 import { ModuleSidebarViewProvider } from './moduleSidebarViewProvider';
 import { IModuleViewProvider, ModuleSortField, ModuleSortState, SidebarWorkspaceContext } from './interfaces';
@@ -118,23 +117,6 @@ export class ModuleManagerController {
 	}, {
 		getLocalResourceRoots: () => [this.readmeAssetCache.rootUri],
 	});
-	private readonly localWorkspaceViewProvider: LocalWorkspaceViewProvider = new LocalWorkspaceViewProvider({
-		onInitializeWorkspace: () => {
-			void this.initializeWorkspaceCommand();
-		},
-		onOpenReadme: (entry) => {
-			void this.openReadmeCommand(entry);
-		},
-		onRemoveModule: (entry) => {
-			void this.removeModuleCommand(entry);
-		},
-		onUpdateModule: (entry) => {
-			void this.updateModuleCommand(entry);
-		},
-		onCreateLocalRepository: (entry) => {
-			void this.createLocalFolderRepositoryCommand(entry);
-		},
-	});
 	// IModuleViewProvider abstraction (review item 2.2). Tests can swap this out.
 	private treeDataProvider: IModuleViewProvider;
 	private readonly readmeAssetCache: ReadmeAssetCache;
@@ -178,9 +160,6 @@ export class ModuleManagerController {
 
 	public register(subscriptions: vscode.Disposable[]): void {
 		subscriptions.push(vscode.window.registerWebviewViewProvider(VIEW_IDS.moduleSidebar, this.sidebarViewProvider, {
-			webviewOptions: { retainContextWhenHidden: true },
-		}));
-		subscriptions.push(vscode.window.registerWebviewViewProvider(VIEW_IDS.localWorkspace, this.localWorkspaceViewProvider, {
 			webviewOptions: { retainContextWhenHidden: true },
 		}));
 
@@ -633,6 +612,10 @@ export class ModuleManagerController {
 		let repositoryCreated = false;
 		try {
 			let repositoryName: string | undefined;
+			let createdRepository: GitHubRepoSummary | undefined;
+			let publishedHeadRef: string | undefined;
+			let publishedBranch: string | undefined;
+			let localStateSyncFailed = false;
 			await vscode.window.withProgress(
 				{
 					location: vscode.ProgressLocation.Notification,
@@ -646,9 +629,10 @@ export class ModuleManagerController {
 						private: repositoryConfig.visibility === 'private',
 						topics: repositoryConfig.topics,
 					});
+					createdRepository = repository;
 					repositoryName = repository.full_name || repository.name;
 					repositoryCreated = true;
-					await this.workspaceModuleService.publishLocalFolder({
+					const publishedFolder = await this.workspaceModuleService.publishLocalFolder({
 						folderPath: folderAbsolutePath,
 						remoteUrl: this.toGitRemoteUrl(repository.html_url),
 						authToken: token,
@@ -657,9 +641,29 @@ export class ModuleManagerController {
 						authorName: gitIdentity.name,
 						authorEmail: gitIdentity.email,
 					});
+					publishedHeadRef = publishedFolder.headRef;
+					publishedBranch = publishedFolder.branch;
 				},
 			);
-			void vscode.window.showInformationMessage(t('createRepositoryPublishSuccess', { repository: repositoryName ?? repositoryConfig.name }));
+			if (createdRepository && publishedHeadRef) {
+				try {
+					await this.syncPublishedLocalFolderState(workspaceFolder, workspaceRoot, folder, createdRepository, publishedHeadRef, publishedBranch);
+					await this.refreshSidebarWorkspaceState();
+				} catch (error) {
+					localStateSyncFailed = true;
+					const message = getUserFacingErrorMessage(error, 'config');
+					const repositoryLabel = repositoryName ?? repositoryConfig.name;
+					this.logger.error(`Created and published GitHub repository ${repositoryLabel}, but failed to sync local workspace state for ${folder.path}: ${message}`);
+					void vscode.window.showWarningMessage(t('createRepositoryLocalStateSyncFailed', {
+						repository: repositoryLabel,
+						folder: folder.path,
+						message,
+					}));
+				}
+			}
+			if (!localStateSyncFailed) {
+				void vscode.window.showInformationMessage(t('createRepositoryPublishSuccess', { repository: repositoryName ?? repositoryConfig.name }));
+			}
 			void this.loadModules({
 				interactiveAuth: false,
 				showSuccessMessage: false,
@@ -675,6 +679,46 @@ export class ModuleManagerController {
 					: t('createRepositoryFailed', { message }),
 			);
 		}
+	}
+
+	private async syncPublishedLocalFolderState(
+		workspaceFolder: vscode.WorkspaceFolder,
+		workspaceRoot: string,
+		folder: LocalUnmanagedFolderEntry,
+		repository: GitHubRepoSummary,
+		headRef: string,
+		branch: string | undefined,
+	): Promise<void> {
+		const config = await this.tryLoadSidebarLocalModuleConfig(workspaceFolder, workspaceRoot)
+			?? await this.initializePublishedFolderConfig(workspaceRoot, folder);
+		const moduleEntry = mapRepoToModuleEntry(repository);
+		const targetPath = this.workspaceModuleService.normalizeRootPath(folder.path);
+		const nextEntry: LocalModuleConfigEntry = {
+			key: this.workspaceModuleService.getModuleKey(moduleEntry),
+			name: moduleEntry.name,
+			owner: moduleEntry.owner,
+			source: moduleEntry.repoUrl,
+			method: 'copy',
+			path: targetPath,
+			ref: headRef,
+			branch: branch || moduleEntry.defaultBranch || 'main',
+		};
+		const nextConfig = this.workspaceModuleService.withAppliedModule(config, nextEntry);
+		await this.workspaceModuleService.writeConfig(nextConfig);
+	}
+
+	private async initializePublishedFolderConfig(
+		workspaceRoot: string,
+		folder: LocalUnmanagedFolderEntry,
+	): Promise<LocalModuleConfig> {
+		const normalizedFolderPath = this.workspaceModuleService.normalizeRootPath(folder.path);
+		const inferredRoot = path.posix.dirname(normalizedFolderPath);
+		const configRoot = inferredRoot === '.'
+			? this.getConfiguredDefaultModuleRoot()
+			: this.workspaceModuleService.normalizeRootPath(inferredRoot);
+		const config = await this.workspaceModuleService.initializeConfig(workspaceRoot, configRoot);
+		await this.setWorkspaceInitializationContext(false);
+		return config;
 	}
 
 	public setSortOrderCommand(field?: ModuleSortField): void {
@@ -889,8 +933,25 @@ export class ModuleManagerController {
 			&& Date.now() - this.lastTokenVerifiedAt < ModuleManagerController.TOKEN_VERIFY_INTERVAL_MS;
 	}
 
+	/**
+	 * Refreshes the GitHub module catalog and then recomputes the unified sidebar's
+	 * local workspace state and initialization prompt, even if the remote refresh fails.
+	 */
 	public async refreshCommand(): Promise<void> {
-		await this.loadModules({ interactiveAuth: false, showSuccessMessage: true, showErrorMessage: true });
+		try {
+			await this.loadModules({ interactiveAuth: false, showSuccessMessage: true, showErrorMessage: true });
+		} finally {
+			try {
+				await this.refreshSidebarWorkspaceState();
+			} catch (error) {
+				this.logger.warn(`Failed to refresh sidebar workspace state after module refresh: ${error instanceof Error ? error.message : String(error)}`);
+			}
+			try {
+				await this.refreshWorkspaceInitializationState({ prompt: false });
+			} catch (error) {
+				this.logger.warn(`Failed to refresh workspace initialization state after module refresh: ${error instanceof Error ? error.message : String(error)}`);
+			}
+		}
 	}
 
 	private async toggleStarCommand(entry: CsmModuleEntry): Promise<void> {
@@ -1346,7 +1407,6 @@ export class ModuleManagerController {
 			this.currentAccountLabel = accountLabel;
 		}
 		this.treeDataProvider.setAuthenticated(signedIn, this.currentAccountLabel);
-		this.localWorkspaceViewProvider.setAuthenticated(signedIn);
 		await vscode.commands.executeCommand('setContext', SIGNED_IN_CONTEXT_KEY, signedIn);
 	}
 
@@ -1422,7 +1482,6 @@ export class ModuleManagerController {
 			if (typeof this.treeDataProvider.setWorkspaceContext === 'function') {
 				this.treeDataProvider.setWorkspaceContext(context);
 			}
-			this.localWorkspaceViewProvider.setWorkspaceContext(context);
 			void this.setSelectionContexts();
 		};
 		const workspaceFolder = this.getPreferredWorkspaceFolder();
@@ -1977,7 +2036,6 @@ export class ModuleManagerController {
 		if (typeof this.treeDataProvider.setCanInitializeWorkspace === 'function') {
 			this.treeDataProvider.setCanInitializeWorkspace(canInitializeWorkspace);
 		}
-		this.localWorkspaceViewProvider.setCanInitializeWorkspace(canInitializeWorkspace);
 		await vscode.commands.executeCommand('setContext', WORKSPACE_INIT_CONTEXT_KEY, canInitializeWorkspace);
 	}
 

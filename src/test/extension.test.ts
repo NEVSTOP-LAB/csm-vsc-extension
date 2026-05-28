@@ -355,7 +355,7 @@ suite('Language Definition Tests', () => {
         assert.ok(commands.every((c) => typeof c.icon === 'string' && c.icon.startsWith('$(')), 'module manager commands should declare product icons for toolbar buttons');
         assert.ok(viewContainers.some((v: { id: string }) => v.id === 'csmModules'), 'csmModules activity bar container should be declared');
         assert.ok(views.some((v: { id: string }) => v.id === 'csmModules.view'), 'csmModules.view should be declared');
-        assert.ok(views.some((v: { id: string }) => v.id === 'csmModules.workspaceView'), 'csmModules.workspaceView should be declared');
+        assert.strictEqual(views.length, 1, 'module manager should contribute a single merged webview');
         assert.ok(initMenu, 'csmModules.initializeWorkspace should be available from the view title toolbar');
         assert.ok(applyMenu, 'csmModules.applyToWorkspace should be available from the view title toolbar');
         assert.ok(removeMenu, 'csmModules.removeModule should be available from the view title toolbar');

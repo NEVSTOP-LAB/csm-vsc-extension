@@ -114,6 +114,16 @@ code --install-extension csm-vsc-support-*.vsix
 - **安装校验**：`npm run vsix:verify-local`（检查本地扩展目录是否存在目标版本）
 - **说明**：脚本会优先解析本机 VS Code CLI 与 Node/NPM 可执行路径，规避 Windows 下空格路径与 shell 引号导致的安装失败；如仍无法定位 CLI，可通过环境变量 `VSCODE_CLI` 显式指定
 
+### Copilot 结束时自动 Hook
+
+- **配置文件**：`.github/hooks/local-finish-stop.json`
+- **触发时机**：Copilot agent `Stop` 事件，也就是一次对话准备结束时
+- **前置标记**：同一配置文件里的 `PostToolUse` 会在本次会话成功调用编辑类工具后执行 `node scripts/copilot-post-tool-hook.mjs`，按 `sessionId` 写入“本会话已改代码”标记
+- **实际执行**：`node scripts/copilot-stop-hook.mjs` 只有在检测到当前 `sessionId` 存在上述标记时，才会继续调用 `node scripts/local-finish-hook.mjs --stop-hook`
+- **执行动作**：仅在本次会话发生代码编辑后执行 `npm run compile` 与 VSIX 打包 / 安装 / 校验；不会自动升版本，也不会改写 `README.md` / `CHANGELOG.md`，纯问答会话会直接跳过
+- **失败行为**：首次失败会阻止 agent 直接结束，并把编译 / 加载失败原因回传给 agent；若再次进入 stop hook 仍失败，则改为放行结束以避免无限循环
+- **排查点**：如发现 hook 没触发，先确认 VS Code 已启用 workspace hooks，并检查 `GitHub Copilot Chat Hooks` 输出面板，以及 `chat.hookFilesLocations` 未禁用 `.github/hooks`
+
 ## 代码风格约定
 
 - 源码位于 `src/`，TypeScript 严格模式开启。
