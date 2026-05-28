@@ -976,6 +976,8 @@ suite('Module Manager Tests', () => {
 				case 'remote get-url origin':
 				case 'rev-parse --verify HEAD':
 					throw new Error('missing');
+				case 'rev-parse HEAD':
+					return 'abc123\n';
 				case 'status --porcelain':
 					return 'A  module.vi';
 				case 'branch --show-current':
@@ -1015,11 +1017,13 @@ suite('Module Manager Tests', () => {
 				'branch --show-current',
 				'branch -M main',
 				'push -u origin main',
+				'rev-parse HEAD',
 			]);
 			assert.deepStrictEqual(result, {
 				branch: 'main',
 				remoteName: 'origin',
 				remoteUrl,
+				headRef: 'abc123',
 				createdCommit: true,
 			});
 		} finally {

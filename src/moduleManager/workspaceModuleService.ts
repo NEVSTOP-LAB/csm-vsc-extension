@@ -168,7 +168,7 @@ export class WorkspaceModuleService {
 		}
 
 		await this.runGit(folderPath, ['push', '-u', 'origin', branch], options.authToken, remoteUrl);
-		const headRef = await this.runGit(folderPath, ['rev-parse', 'HEAD']);
+		const headRef = (await this.runGit(folderPath, ['rev-parse', 'HEAD'])).trim();
 		return {
 			branch,
 			remoteName: 'origin',
