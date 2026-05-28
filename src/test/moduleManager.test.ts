@@ -614,11 +614,13 @@ suite('Module Manager Tests', () => {
 
 		assert.strictEqual(rendered?.viewId, 'csmModules.workspaceView');
 		assert.strictEqual(rendered?.description, 'csm');
-		assert.ok(rendered?.html.includes('Workspace Modules'));
+		assert.ok(!rendered?.html.includes('Workspace Modules'));
 		assert.ok(!rendered?.html.includes('Managed folders'));
 		assert.ok(rendered?.html.includes('Unmanaged folders'));
+		assert.ok(rendered?.html.includes('1 managed | 1 unmanaged'));
 		assert.ok(rendered?.html.includes('Root: csm/'));
-		assert.ok(rendered ? rendered.html.indexOf('Workspace Modules') < rendered.html.indexOf('Root: csm/') : false);
+		assert.ok(!rendered?.html.includes('csm-vsc-extension'));
+		assert.ok(rendered ? rendered.html.indexOf('1 managed | 1 unmanaged') < rendered.html.indexOf('Root: csm/') : false);
 		assert.ok(rendered?.html.includes('module-local'));
 		assert.ok(rendered?.html.includes('custom-module'));
 		assert.ok(rendered?.html.includes('Create GitHub Repo'));

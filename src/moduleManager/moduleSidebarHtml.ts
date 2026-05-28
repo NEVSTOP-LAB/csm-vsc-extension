@@ -131,13 +131,10 @@ function renderLocalWorkspaceSection(state: LocalWorkspaceRenderState): string {
 
 	const managedCount = state.managedModules.length;
 	const unmanagedCount = state.unmanagedFolders.length;
-	const workspaceSummary = state.workspaceLabel && state.moduleRoot
-		? `<div class="workspace-summary"><span>${escapeHtml(state.workspaceLabel)}</span><span>${escapeHtml(t('rootLabel'))}: ${escapeHtml(state.moduleRoot)}/</span></div>`
-		: state.moduleRoot
-			? `<div class="workspace-summary"><span>${escapeHtml(t('rootLabel'))}: ${escapeHtml(state.moduleRoot)}/</span></div>`
-			: state.workspaceLabel
-				? `<div class="workspace-summary"><span>${escapeHtml(state.workspaceLabel)}</span></div>`
-				: '';
+	const summaryText = escapeHtml(t('workspaceModulesSummary', { managed: managedCount, unmanaged: unmanagedCount }));
+	const sectionMeta = state.moduleRoot
+		? `${summaryText} | ${escapeHtml(t('rootLabel'))}: ${escapeHtml(state.moduleRoot)}/`
+		: summaryText;
 	const managedBlock = managedCount > 0
 		? `<section class="list local-list">${state.managedModules.map((entry) => renderLocalManagedCard(entry)).join('')}</section>`
 		: '';
@@ -151,7 +148,7 @@ function renderLocalWorkspaceSection(state: LocalWorkspaceRenderState): string {
 		)
 		: '';
 
-	return `<section class="local-section" data-role="local-section"><div class="section-header"><div class="section-title">${escapeHtml(t('workspaceModulesTitle'))}</div><div class="section-meta">${escapeHtml(t('workspaceModulesSummary', { managed: managedCount, unmanaged: unmanagedCount }))}</div></div>${workspaceSummary}${emptyState}${managedBlock}${unmanagedBlock}</section>`;
+	return `<section class="local-section" data-role="local-section">${sectionMeta ? `<div class="section-header"><div class="section-meta">${sectionMeta}</div></div>` : ''}${emptyState}${managedBlock}${unmanagedBlock}</section>`;
 }
 
 function renderLocalManagedCard(entry: LocalManagedModuleEntry): string {
