@@ -19,6 +19,7 @@
 
 ### 变更
 
+- 交互：从 `Workspace Modules` 为未管理本地文件夹创建并发布 GitHub 仓库后，会立即写回本地 `csm-modules.yaml` 并刷新侧边栏状态，无需再手动刷新才能看到已管理状态
 - 阶段一：模块发现继续基于 GitHub 全局 `topic:csm-modsets` 搜索；侧边栏启动时改为只显示本地缓存，登录成功后会自动执行一次网络刷新，之后仍通过手动刷新同步当前账号可访问的 public / private 模块
 - 阶段四：public 模块 README 支持未登录时匿名加载，避免公共模块浏览流程被 GitHub 登录前置阻断
 - 构建：`@types/js-yaml` 已移入 `devDependencies`，`tsconfig.json` 明确 `outDir = out`，并清理过时的 `skipLibCheck` 注释

@@ -1869,13 +1869,21 @@ suite('ModuleManagerController Regression Tests', () => {
 		const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'csm-share-module-'));
 		fs.mkdirSync(path.join(workspaceRoot, 'csm', 'custom-module'), { recursive: true });
 		const controller = createController() as any;
+		const existingConfig: LocalModuleConfig = {
+			version: '2',
+			root: 'csm',
+			configPath: path.join(workspaceRoot, 'csm', 'csm-modules.yaml'),
+			modules: {},
+		};
 		let createdRequest:
 			| { token: string; name: string; description?: string; private: boolean; topics: string[] }
 			| undefined;
 		let publishedRequest:
-			| { folderPath: string; remoteUrl: string; authToken?: string; defaultBranch?: string; authorName?: string; authorEmail?: string }
+			| { folderPath: string; remoteUrl: string; authToken?: string; defaultBranch?: string; authorName?: string; authorEmail?: string; commitMessage?: string }
 			| undefined;
 		let refreshed = false;
+		let sidebarRefreshed = false;
+		let writtenConfig: LocalModuleConfig | undefined;
 
 		controller.authService = {
 			getSessionSilently: async () => createSession('token', 'tester'),
@@ -1904,17 +1912,34 @@ suite('ModuleManagerController Regression Tests', () => {
 				name: 'Tester',
 				email: 'tester@example.com',
 			}),
-			publishLocalFolder: async (options: { folderPath: string; remoteUrl: string; authToken?: string; defaultBranch?: string; authorName?: string; authorEmail?: string }) => {
+			publishLocalFolder: async (options: { folderPath: string; remoteUrl: string; authToken?: string; defaultBranch?: string; authorName?: string; authorEmail?: string; commitMessage?: string }) => {
 				publishedRequest = options;
 				return {
 					branch: options.defaultBranch ?? 'main',
 					remoteName: 'origin',
 					remoteUrl: options.remoteUrl,
+					headRef: 'abc123',
 					createdCommit: true,
 				};
 			},
+			normalizeRootPath: (value: string) => value.replace(/\\/g, '/'),
+			getModuleKey: (entry: CsmModuleEntry) => `${entry.owner}__${entry.name}`,
+			withAppliedModule: (config: LocalModuleConfig, entry: LocalModuleConfig['modules'][string]) => ({
+				...config,
+				modules: {
+					...config.modules,
+					[entry.key]: entry,
+				},
+			}),
+			writeConfig: async (config: LocalModuleConfig) => {
+				writtenConfig = config;
+			},
 		};
 		controller.resolveWorkspaceFolder = async () => ({ name: 'repo', uri: vscode.Uri.file(workspaceRoot) });
+		controller.tryLoadSidebarLocalModuleConfig = async () => existingConfig;
+		controller.refreshSidebarWorkspaceState = async () => {
+			sidebarRefreshed = true;
+		};
 		controller.loadModules = async () => {
 			refreshed = true;
 		};
@@ -1945,6 +1970,22 @@ suite('ModuleManagerController Regression Tests', () => {
 			authorEmail: 'tester@example.com',
 			commitMessage: 'Initial publish of custom-module',
 		});
+		assert.deepStrictEqual(writtenConfig, {
+			...existingConfig,
+			modules: {
+				'tester__shared-module': {
+					key: 'tester__shared-module',
+					name: 'shared-module',
+					owner: 'tester',
+					source: 'https://github.com/tester/shared-module',
+					method: 'copy',
+					path: 'csm/custom-module',
+					ref: 'abc123',
+					branch: 'main',
+				},
+			},
+		});
+		assert.strictEqual(sidebarRefreshed, true);
 		assert.strictEqual(refreshed, true);
 		assert.ok(mocked.__getLastWarningPrompt()?.message.includes('csm/custom-module'));
 		const infos = mocked.__getMessageLog().filter((message) => message.level === 'info').map((message) => message.text);

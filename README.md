@@ -44,7 +44,7 @@
 - ✅ 支持按当前多选状态批量应用未安装模块，并批量移除已安装模块
 - ✅ 支持更新模块；`copy` 模式会先比较远端最新提交，确认后备份当前目录为 zip 再整体替换
 - ✅ `CSM Modules` 容器现提供独立的 `Workspace Modules` 原生视图，用于区分当前模块根目录下的已管理模块与未管理文件夹
-- ✅ 对当前模块根目录下的未管理文件夹，已登录 GitHub 时可通过向导一键创建并发布 GitHub 仓库，默认使用 private 可见性并附带 `labview-csm`、`csm-modsets` topics；若本机缺少 Git 作者信息，会在首次发布前补充询问
+- ✅ 对当前模块根目录下的未管理文件夹，已登录 GitHub 时可通过向导一键创建并发布 GitHub 仓库，默认使用 private 可见性并附带 `labview-csm`、`csm-modsets` topics；若本机缺少 Git 作者信息，会在首次发布前补充询问，发布成功后会立即写回本地 YAML 并切换为已管理状态
 
 > 详细功能说明参见 [docs/module-management.md](docs/module-management.md)
 

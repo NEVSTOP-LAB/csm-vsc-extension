@@ -2,9 +2,9 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs/promises';
 import { AuthService } from './authService';
-import { GitHubModuleService } from './githubModuleService';
+import { GitHubModuleService, mapRepoToModuleEntry } from './githubModuleService';
 import { ModuleCacheStore } from './cacheStore';
-import { CopyModuleUpdatePreview, CsmModuleEntry, LocalManagedModuleEntry, LocalModuleConfig, LocalModuleConfigEntry, LocalUnmanagedFolderEntry, ModuleApplyMethod, ModuleAuthSnapshot, ModuleCacheSnapshot, ModuleUpdateResult } from './types';
+import { CopyModuleUpdatePreview, CsmModuleEntry, GitHubRepoSummary, LocalManagedModuleEntry, LocalModuleConfig, LocalModuleConfigEntry, LocalUnmanagedFolderEntry, ModuleApplyMethod, ModuleAuthSnapshot, ModuleCacheSnapshot, ModuleUpdateResult } from './types';
 import { LocalWorkspaceViewProvider } from './localWorkspaceViewProvider';
 import { ModuleTreeItem } from './moduleTreeDataProvider';
 import { ModuleSidebarViewProvider } from './moduleSidebarViewProvider';
@@ -633,6 +633,9 @@ export class ModuleManagerController {
 		let repositoryCreated = false;
 		try {
 			let repositoryName: string | undefined;
+			let createdRepository: GitHubRepoSummary | undefined;
+			let publishedHeadRef: string | undefined;
+			let publishedBranch: string | undefined;
 			await vscode.window.withProgress(
 				{
 					location: vscode.ProgressLocation.Notification,
@@ -646,9 +649,10 @@ export class ModuleManagerController {
 						private: repositoryConfig.visibility === 'private',
 						topics: repositoryConfig.topics,
 					});
+					createdRepository = repository;
 					repositoryName = repository.full_name || repository.name;
 					repositoryCreated = true;
-					await this.workspaceModuleService.publishLocalFolder({
+					const publishedFolder = await this.workspaceModuleService.publishLocalFolder({
 						folderPath: folderAbsolutePath,
 						remoteUrl: this.toGitRemoteUrl(repository.html_url),
 						authToken: token,
@@ -657,8 +661,14 @@ export class ModuleManagerController {
 						authorName: gitIdentity.name,
 						authorEmail: gitIdentity.email,
 					});
+					publishedHeadRef = publishedFolder.headRef;
+					publishedBranch = publishedFolder.branch;
 				},
 			);
+			if (createdRepository && publishedHeadRef) {
+				await this.syncPublishedLocalFolderState(workspaceFolder, workspaceRoot, folder, createdRepository, publishedHeadRef, publishedBranch);
+				await this.refreshSidebarWorkspaceState();
+			}
 			void vscode.window.showInformationMessage(t('createRepositoryPublishSuccess', { repository: repositoryName ?? repositoryConfig.name }));
 			void this.loadModules({
 				interactiveAuth: false,
@@ -675,6 +685,45 @@ export class ModuleManagerController {
 					: t('createRepositoryFailed', { message }),
 			);
 		}
+	}
+
+	private async syncPublishedLocalFolderState(
+		workspaceFolder: vscode.WorkspaceFolder,
+		workspaceRoot: string,
+		folder: LocalUnmanagedFolderEntry,
+		repository: GitHubRepoSummary,
+		headRef: string,
+		branch: string | undefined,
+	): Promise<void> {
+		const config = await this.tryLoadSidebarLocalModuleConfig(workspaceFolder, workspaceRoot)
+			?? await this.initializePublishedFolderConfig(workspaceRoot, folder);
+		const moduleEntry = mapRepoToModuleEntry(repository);
+		const targetPath = this.workspaceModuleService.normalizeRootPath(folder.path);
+		const nextEntry: LocalModuleConfigEntry = {
+			key: this.workspaceModuleService.getModuleKey(moduleEntry),
+			name: moduleEntry.name,
+			owner: moduleEntry.owner,
+			source: moduleEntry.repoUrl,
+			method: 'copy',
+			path: targetPath,
+			ref: headRef,
+			branch: branch || moduleEntry.defaultBranch || 'main',
+		};
+		const nextConfig = this.workspaceModuleService.withAppliedModule(config, nextEntry);
+		await this.workspaceModuleService.writeConfig(nextConfig);
+	}
+
+	private async initializePublishedFolderConfig(
+		workspaceRoot: string,
+		folder: LocalUnmanagedFolderEntry,
+	): Promise<LocalModuleConfig> {
+		const inferredRoot = path.posix.dirname(folder.path);
+		const configRoot = inferredRoot === '.'
+			? this.getConfiguredDefaultModuleRoot()
+			: this.workspaceModuleService.normalizeRootPath(inferredRoot);
+		const config = await this.workspaceModuleService.initializeConfig(workspaceRoot, configRoot);
+		await this.setWorkspaceInitializationContext(false);
+		return config;
 	}
 
 	public setSortOrderCommand(field?: ModuleSortField): void {

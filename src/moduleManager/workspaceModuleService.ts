@@ -46,6 +46,7 @@ export interface PublishLocalFolderResult {
 	branch: string;
 	remoteName: string;
 	remoteUrl: string;
+	headRef: string;
 	createdCommit: boolean;
 }
 
@@ -167,10 +168,12 @@ export class WorkspaceModuleService {
 		}
 
 		await this.runGit(folderPath, ['push', '-u', 'origin', branch], options.authToken, remoteUrl);
+		const headRef = await this.runGit(folderPath, ['rev-parse', 'HEAD']);
 		return {
 			branch,
 			remoteName: 'origin',
 			remoteUrl,
+			headRef,
 			createdCommit,
 		};
 	}
