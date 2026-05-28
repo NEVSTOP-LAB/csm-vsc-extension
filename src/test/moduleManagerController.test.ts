@@ -159,6 +159,8 @@ suite('ModuleManagerController Regression Tests', () => {
 
 	test('refresh github error sets tree error and error toast', async () => {
 		let setErrorText = '';
+		let sidebarRefreshCount = 0;
+		let initRefreshCount = 0;
 
 		const controller = createController(undefined, {
 			authService: {
@@ -177,10 +179,19 @@ suite('ModuleManagerController Regression Tests', () => {
 				},
 			}),
 		});
+		(controller as any).refreshSidebarWorkspaceState = async () => {
+			sidebarRefreshCount += 1;
+		};
+		(controller as any).refreshWorkspaceInitializationState = async (options: { prompt: boolean }) => {
+			assert.strictEqual(options.prompt, false);
+			initRefreshCount += 1;
+		};
 
 		await controller.refreshCommand();
 
 		assert.strictEqual(setErrorText, 'GitHub is temporarily unavailable (HTTP 503). Try again in a moment.');
+		assert.strictEqual(sidebarRefreshCount, 1);
+		assert.strictEqual(initRefreshCount, 1);
 		const errors = mocked.__getMessageLog().filter((m) => m.level === 'error').map((m) => m.text);
 		assert.ok(errors.some((text) => text.includes('Failed to refresh CSM modules: GitHub is temporarily unavailable (HTTP 503). Try again in a moment.')));
 	});

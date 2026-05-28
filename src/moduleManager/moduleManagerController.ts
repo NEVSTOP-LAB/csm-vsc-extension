@@ -939,7 +939,12 @@ export class ModuleManagerController {
 	}
 
 	public async refreshCommand(): Promise<void> {
-		await this.loadModules({ interactiveAuth: false, showSuccessMessage: true, showErrorMessage: true });
+		try {
+			await this.loadModules({ interactiveAuth: false, showSuccessMessage: true, showErrorMessage: true });
+		} finally {
+			await this.refreshSidebarWorkspaceState();
+			await this.refreshWorkspaceInitializationState({ prompt: false });
+		}
 	}
 
 	private async toggleStarCommand(entry: CsmModuleEntry): Promise<void> {
