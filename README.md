@@ -46,7 +46,7 @@
 - ✅ 支持更新模块；`copy` 模式会先比较远端最新提交，确认后备份当前目录为 zip 再整体替换
 - ✅ `CSM Modules` 现合并为单一侧边栏视图：当前工作区中的已管理模块、未管理文件夹与远端 GitHub 模块目录会显示在同一列表中，本地项固定优先展示，并通过轻量分组标题保持层次清晰
 - ✅ 过滤菜单与顶部快捷工具条都提供同步的 `All / Workspace / Catalog` 范围切换，用来快速在统一视图中查看原先两类内容
-- ✅ 对当前模块根目录下的未管理文件夹，已登录 GitHub 时可通过向导一键创建并发布 GitHub 仓库，默认使用 private 可见性并附带 `labview-csm`、`csm-modsets` topics；若本机缺少 Git 作者信息，会在首次发布前补充询问，发布成功后会立即写回本地 YAML 并切换为已管理状态
+- ✅ 对当前模块根目录下的未管理文件夹，已登录 GitHub 时可通过向导一键创建并发布 GitHub 仓库，默认使用 private 可见性并附带 `labview-csm`、`csm-modsets` topics；若本机缺少 Git 作者信息，会在首次发布前补充询问。Git 工作区会在发布成功后直接把该目录接管为 `submodule` 并写回本地 YAML，非 Git 工作区则保持 `copy` 模式
 
 > 详细功能说明参见 [docs/module-management.md](docs/module-management.md)
 

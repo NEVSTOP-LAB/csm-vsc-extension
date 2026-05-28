@@ -1921,6 +1921,9 @@ suite('ModuleManagerController Regression Tests', () => {
 		let publishedRequest:
 			| { folderPath: string; remoteUrl: string; authToken?: string; defaultBranch?: string; authorName?: string; authorEmail?: string; commitMessage?: string }
 			| undefined;
+		let convertedRequest:
+			| { repoRoot: string; targetRelativePath: string; remoteUrl: string; branch?: string; authToken?: string }
+			| undefined;
 		let refreshed = false;
 		let sidebarRefreshed = false;
 		let writtenConfig: LocalModuleConfig | undefined;
@@ -1960,6 +1963,13 @@ suite('ModuleManagerController Regression Tests', () => {
 					remoteUrl: options.remoteUrl,
 					headRef: 'abc123',
 					createdCommit: true,
+				};
+			},
+			convertPublishedFolderToSubmodule: async (options: { repoRoot: string; targetRelativePath: string; remoteUrl: string; branch?: string; authToken?: string }) => {
+				convertedRequest = options;
+				return {
+					branch: options.branch ?? 'main',
+					headRef: 'def456',
 				};
 			},
 			normalizeRootPath: (value: string) => value.replace(/\\/g, '/'),
@@ -2010,6 +2020,13 @@ suite('ModuleManagerController Regression Tests', () => {
 			authorEmail: 'tester@example.com',
 			commitMessage: 'Initial publish of custom-module',
 		});
+		assert.deepStrictEqual(convertedRequest, {
+			repoRoot: workspaceRoot,
+			targetRelativePath: 'csm/custom-module',
+			remoteUrl: 'https://github.com/tester/shared-module.git',
+			branch: 'main',
+			authToken: 'token',
+		});
 		assert.deepStrictEqual(writtenConfig, {
 			...existingConfig,
 			modules: {
@@ -2018,9 +2035,9 @@ suite('ModuleManagerController Regression Tests', () => {
 					name: 'shared-module',
 					owner: 'tester',
 					source: 'https://github.com/tester/shared-module',
-					method: 'copy',
+					method: 'submodule',
 					path: 'csm/custom-module',
-					ref: 'abc123',
+					ref: 'def456',
 					branch: 'main',
 				},
 			},
@@ -2076,6 +2093,10 @@ suite('ModuleManagerController Regression Tests', () => {
 				headRef: 'abc123',
 				createdCommit: true,
 			}),
+			convertPublishedFolderToSubmodule: async (options: { branch?: string }) => ({
+				branch: options.branch ?? 'main',
+				headRef: 'abc123',
+			}),
 			normalizeRootPath: (value: string) => value.replace(/\\/g, '/'),
 			getModuleKey: (entry: CsmModuleEntry) => `${entry.owner}__${entry.name}`,
 			withAppliedModule: (config: LocalModuleConfig, entry: LocalModuleConfig['modules'][string]) => ({
@@ -2118,34 +2139,131 @@ suite('ModuleManagerController Regression Tests', () => {
 		assert.strictEqual(errors.length, 0);
 	});
 
-		test('initializePublishedFolderConfig derives the root from Windows-style folder paths', async () => {
-			const controller = createController() as any;
-			let capturedRoot: string | undefined;
+	test('createLocalFolderRepositoryCommand keeps copy mode when workspace is not a git repo', async () => {
+		const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'csm-share-module-copy-fallback-'));
+		fs.mkdirSync(path.join(workspaceRoot, 'csm', 'custom-module'), { recursive: true });
+		const controller = createController() as any;
+		const existingConfig: LocalModuleConfig = {
+			version: '2',
+			root: 'csm',
+			configPath: path.join(workspaceRoot, 'csm', 'csm-modules.yaml'),
+			modules: {},
+		};
+		let convertedToSubmodule = false;
+		let writtenConfig: LocalModuleConfig | undefined;
 
-			controller.workspaceModuleService = {
-				normalizeRootPath: (value: string) => value.replace(/\\/g, '/').replace(/^\.\//, '').replace(/^\/+|\/+$/g, ''),
-				initializeConfig: async (_workspaceRoot: string, rootRelativePath: string) => {
-					capturedRoot = rootRelativePath;
-					return {
-						version: '2',
-						root: rootRelativePath,
-						configPath: path.join('d:/repo', rootRelativePath, 'csm-modules.yaml'),
-						modules: {},
-					};
+		controller.authService = {
+			getSessionSilently: async () => createSession('token', 'tester'),
+			getSessionInteractively: async () => createSession('token', 'tester'),
+		};
+		controller.githubService = {
+			fetchModules: async () => ({ modules: [] }),
+			fetchReadme: async () => '',
+			createRepository: async (_token: string, options: { name: string; description?: string; private: boolean; topics: string[] }) => ({
+				id: 1,
+				name: options.name,
+				full_name: `tester/${options.name}`,
+				description: options.description ?? '',
+				private: options.private,
+				default_branch: 'main',
+				html_url: `https://github.com/tester/${options.name}`,
+				topics: options.topics,
+			}),
+		};
+		controller.workspaceModuleService = {
+			resolveGitRepositoryRoot: async () => undefined,
+			getGitIdentity: async () => ({
+				name: 'Tester',
+				email: 'tester@example.com',
+			}),
+			publishLocalFolder: async (options: { remoteUrl: string; defaultBranch?: string }) => ({
+				branch: options.defaultBranch ?? 'main',
+				remoteName: 'origin',
+				remoteUrl: options.remoteUrl,
+				headRef: 'abc123',
+				createdCommit: true,
+			}),
+			convertPublishedFolderToSubmodule: async () => {
+				convertedToSubmodule = true;
+				return {
+					branch: 'main',
+					headRef: 'def456',
+				};
+			},
+			normalizeRootPath: (value: string) => value.replace(/\\/g, '/'),
+			getModuleKey: (entry: CsmModuleEntry) => `${entry.owner}__${entry.name}`,
+			withAppliedModule: (config: LocalModuleConfig, entry: LocalModuleConfig['modules'][string]) => ({
+				...config,
+				modules: {
+					...config.modules,
+					[entry.key]: entry,
 				},
-			};
-			controller.setWorkspaceInitializationContext = async () => undefined;
+			}),
+			writeConfig: async (config: LocalModuleConfig) => {
+				writtenConfig = config;
+			},
+		};
+		controller.resolveWorkspaceFolder = async () => ({ name: 'repo', uri: vscode.Uri.file(workspaceRoot) });
+		controller.tryLoadSidebarLocalModuleConfig = async () => existingConfig;
+		controller.refreshSidebarWorkspaceState = async () => undefined;
+		controller.loadModules = async () => undefined;
+		mocked.__setInputBoxResponses(['shared-module', 'Demo repo', 'labview-csm, csm-modsets custom-topic']);
+		mocked.__setQuickPickResponse({ label: 'Private', visibility: 'private' });
+		mocked.__setWarningMessageResponse('Create Repository');
 
-			const config = await controller.initializePublishedFolderConfig('d:/repo', {
-				id: 'csm\\nested\\custom-module',
-				kind: 'unmanaged',
-				name: 'custom-module',
-				path: 'csm\\nested\\custom-module',
-			});
-
-			assert.strictEqual(capturedRoot, 'csm/nested');
-			assert.strictEqual(config.root, 'csm/nested');
+		await controller.createLocalFolderRepositoryCommand({
+			id: 'csm/custom-module',
+			kind: 'unmanaged',
+			name: 'custom-module',
+			path: 'csm/custom-module',
 		});
+
+		assert.strictEqual(convertedToSubmodule, false);
+		assert.deepStrictEqual(writtenConfig, {
+			...existingConfig,
+			modules: {
+				'tester__shared-module': {
+					key: 'tester__shared-module',
+					name: 'shared-module',
+					owner: 'tester',
+					source: 'https://github.com/tester/shared-module',
+					method: 'copy',
+					path: 'csm/custom-module',
+					ref: 'abc123',
+					branch: 'main',
+				},
+			},
+		});
+	});
+
+	test('initializePublishedFolderConfig derives the root from Windows-style folder paths', async () => {
+		const controller = createController() as any;
+		let capturedRoot: string | undefined;
+
+		controller.workspaceModuleService = {
+			normalizeRootPath: (value: string) => value.replace(/\\/g, '/').replace(/^\.\//, '').replace(/^\/+|\/+$/g, ''),
+			initializeConfig: async (_workspaceRoot: string, rootRelativePath: string) => {
+				capturedRoot = rootRelativePath;
+				return {
+					version: '2',
+					root: rootRelativePath,
+					configPath: path.join('d:/repo', rootRelativePath, 'csm-modules.yaml'),
+					modules: {},
+				};
+			},
+		};
+		controller.setWorkspaceInitializationContext = async () => undefined;
+
+		const config = await controller.initializePublishedFolderConfig('d:/repo', {
+			id: 'csm\\nested\\custom-module',
+			kind: 'unmanaged',
+			name: 'custom-module',
+			path: 'csm\\nested\\custom-module',
+		});
+
+		assert.strictEqual(capturedRoot, 'csm/nested');
+		assert.strictEqual(config.root, 'csm/nested');
+	});
 
 	test('toggleStar unstars a repository only after confirmation', async () => {
 		let renderedModules: CsmModuleEntry[] = [];

@@ -178,6 +178,43 @@ export class WorkspaceModuleService {
 		};
 	}
 
+	public async convertPublishedFolderToSubmodule(options: {
+		repoRoot: string;
+		targetRelativePath: string;
+		remoteUrl: string;
+		branch?: string;
+		authToken?: string;
+	}): Promise<{ branch: string; headRef: string }> {
+		if (!await this.gitRunner.isAvailable()) {
+			throw new Error('git unavailable');
+		}
+
+		const repoRoot = path.resolve(options.repoRoot);
+		const targetRelativePath = this.normalizeRootPath(options.targetRelativePath);
+		const targetPath = this.toAbsoluteTargetPath(repoRoot, targetRelativePath);
+		const stat = await fs.stat(targetPath);
+		if (!stat.isDirectory()) {
+			throw new Error(`Published folder is not a directory: ${targetRelativePath}`);
+		}
+
+		const branch = options.branch?.trim() || 'main';
+		const remoteUrl = options.remoteUrl.trim();
+		await this.runGit(repoRoot, ['rm', '-r', '--cached', '--ignore-unmatch', '--', targetRelativePath]);
+		await this.runGit(
+			repoRoot,
+			['submodule', 'add', '-f', '-b', branch, remoteUrl, targetRelativePath],
+			options.authToken,
+			remoteUrl,
+		);
+		await this.runGit(repoRoot, ['submodule', 'absorbgitdirs', '--', targetRelativePath]);
+		await this.runGit(repoRoot, ['submodule', 'update', '--init', '--recursive', targetRelativePath], options.authToken, remoteUrl);
+		const headRef = (await this.runGit(targetPath, ['rev-parse', 'HEAD'])).trim();
+		return {
+			branch,
+			headRef,
+		};
+	}
+
 	public async initializeConfig(repoRoot: string, rootRelativePath: string): Promise<LocalModuleConfig> {
 		const root = this.normalizeRootPath(rootRelativePath);
 		const configPath = this.getConfigPath(repoRoot, root);

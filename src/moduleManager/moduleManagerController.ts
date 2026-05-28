@@ -647,7 +647,7 @@ export class ModuleManagerController {
 			);
 			if (createdRepository && publishedHeadRef) {
 				try {
-					await this.syncPublishedLocalFolderState(workspaceFolder, workspaceRoot, folder, createdRepository, publishedHeadRef, publishedBranch);
+					await this.syncPublishedLocalFolderState(workspaceFolder, workspaceRoot, repoRoot, folder, createdRepository, publishedHeadRef, publishedBranch, token);
 					await this.refreshSidebarWorkspaceState();
 				} catch (error) {
 					localStateSyncFailed = true;
@@ -684,24 +684,41 @@ export class ModuleManagerController {
 	private async syncPublishedLocalFolderState(
 		workspaceFolder: vscode.WorkspaceFolder,
 		workspaceRoot: string,
+		repoRoot: string | undefined,
 		folder: LocalUnmanagedFolderEntry,
 		repository: GitHubRepoSummary,
 		headRef: string,
 		branch: string | undefined,
+		authToken: string,
 	): Promise<void> {
 		const config = await this.tryLoadSidebarLocalModuleConfig(workspaceFolder, workspaceRoot)
 			?? await this.initializePublishedFolderConfig(workspaceRoot, folder);
 		const moduleEntry = mapRepoToModuleEntry(repository);
 		const targetPath = this.workspaceModuleService.normalizeRootPath(folder.path);
+		let nextMethod: ModuleApplyMethod = 'copy';
+		let nextRef = headRef;
+		let nextBranch = branch || moduleEntry.defaultBranch || 'main';
+		if (repoRoot) {
+			const converted = await this.workspaceModuleService.convertPublishedFolderToSubmodule({
+				repoRoot,
+				targetRelativePath: targetPath,
+				remoteUrl: this.toGitRemoteUrl(repository.html_url),
+				branch: nextBranch,
+				authToken,
+			});
+			nextMethod = 'submodule';
+			nextRef = converted.headRef;
+			nextBranch = converted.branch;
+		}
 		const nextEntry: LocalModuleConfigEntry = {
 			key: this.workspaceModuleService.getModuleKey(moduleEntry),
 			name: moduleEntry.name,
 			owner: moduleEntry.owner,
 			source: moduleEntry.repoUrl,
-			method: 'copy',
+			method: nextMethod,
 			path: targetPath,
-			ref: headRef,
-			branch: branch || moduleEntry.defaultBranch || 'main',
+			ref: nextRef,
+			branch: nextBranch,
 		};
 		const nextConfig = this.workspaceModuleService.withAppliedModule(config, nextEntry);
 		await this.workspaceModuleService.writeConfig(nextConfig);

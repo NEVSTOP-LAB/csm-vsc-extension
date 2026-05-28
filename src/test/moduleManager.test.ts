@@ -1031,6 +1031,55 @@ suite('Module Manager Tests', () => {
 		}
 	});
 
+	test('WorkspaceModuleService converts a published local folder into a git submodule', async () => {
+		const repoRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'csm-convert-submodule-'));
+		const targetRelativePath = 'csm/custom-module';
+		const targetPath = path.join(repoRoot, 'csm', 'custom-module');
+		const remoteUrl = 'https://github.com/tester/shared-module.git';
+		await fs.mkdir(targetPath, { recursive: true });
+
+		const gitRunner = new RecordingGitRunner(async (options) => {
+			const command = options.args.join(' ');
+			switch (command) {
+				case 'rm -r --cached --ignore-unmatch -- csm/custom-module':
+				case 'submodule add -f -b main https://github.com/tester/shared-module.git csm/custom-module':
+				case 'submodule absorbgitdirs -- csm/custom-module':
+				case 'submodule update --init --recursive csm/custom-module':
+					return '';
+				case 'rev-parse HEAD':
+					assert.strictEqual(path.normalize(options.cwd), path.normalize(targetPath));
+					return 'abc123\n';
+				default:
+					throw new Error(`Unexpected git command: ${command}`);
+			}
+		});
+		const service = new WorkspaceModuleService(gitRunner);
+
+		try {
+			const result = await service.convertPublishedFolderToSubmodule({
+				repoRoot,
+				targetRelativePath,
+				remoteUrl,
+				branch: 'main',
+				authToken: 'token',
+			});
+
+			assert.deepStrictEqual(gitRunner.calls.map((call) => call.args.join(' ')), [
+				'rm -r --cached --ignore-unmatch -- csm/custom-module',
+				'submodule add -f -b main https://github.com/tester/shared-module.git csm/custom-module',
+				'submodule absorbgitdirs -- csm/custom-module',
+				'submodule update --init --recursive csm/custom-module',
+				'rev-parse HEAD',
+			]);
+			assert.deepStrictEqual(result, {
+				branch: 'main',
+				headRef: 'abc123',
+			});
+		} finally {
+			await fs.rm(repoRoot, { recursive: true, force: true });
+		}
+	});
+
 	test('WorkspaceModuleService reconstructs yaml config from existing csm submodules', async function () {
 		this.timeout(20000);
 		const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'csm-modules-recover-'));
