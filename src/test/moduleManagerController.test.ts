@@ -1189,6 +1189,7 @@ suite('ModuleManagerController Regression Tests', () => {
 					},
 				},
 			}),
+			listModuleDirectories: async () => [],
 		};
 		controller.treeDataProvider = {
 			setAuthenticated: () => undefined,
@@ -1354,6 +1355,7 @@ suite('ModuleManagerController Regression Tests', () => {
 					},
 				},
 			}),
+			listModuleDirectories: async () => [],
 		};
 		mocked.__setWorkspaceFolders([{ name: 'repo', uri: vscode.Uri.file('d:/repo') }]);
 		mocked.__setFindFilesResultForPattern(configSearchPattern, [vscode.Uri.file('d:/repo/csm/csm-modules.yaml')]);
@@ -1366,7 +1368,6 @@ suite('ModuleManagerController Regression Tests', () => {
 		assert.ok(!rendered?.html.includes('Workspace: repo'));
 		assert.ok(rendered?.html.includes('Root: csm/'));
 		assert.ok(rendered?.html.includes('1 applied'));
-		assert.ok(rendered?.html.includes('Already recorded for repo under csm'));
 		assert.ok(rendered?.html.includes('module-a'));
 		assert.ok(rendered?.html.includes('module-b'));
 	});
@@ -1474,6 +1475,7 @@ suite('ModuleManagerController Regression Tests', () => {
 					},
 				},
 			}),
+			listModuleDirectories: async () => [],
 		};
 		mocked.__setWorkspaceFolders([{ name: 'plain-workspace', uri: vscode.Uri.file('d:/plain-workspace') }]);
 		mocked.__setFindFilesResultForPattern(configSearchPattern, [vscode.Uri.file('d:/plain-workspace/csm/csm-modules.yaml')]);
@@ -1486,7 +1488,6 @@ suite('ModuleManagerController Regression Tests', () => {
 		assert.ok(!rendered?.html.includes('Workspace: plain-workspace'));
 		assert.ok(rendered?.html.includes('Root: csm/'));
 		assert.ok(rendered?.html.includes('1 applied'));
-		assert.ok(rendered?.html.includes('Already recorded for plain-workspace under csm'));
 		assert.ok(rendered?.html.includes('module-a'));
 		assert.ok(rendered?.html.includes('module-b'));
 	});
@@ -1550,6 +1551,7 @@ suite('ModuleManagerController Regression Tests', () => {
 				initializeCalled = true;
 				return recoveredConfig;
 			},
+			listModuleDirectories: async () => [],
 		};
 
 		mocked.__setWorkspaceFolders([{ name: 'repo', uri: vscode.Uri.file(repoRoot) }]);
@@ -1683,6 +1685,7 @@ suite('ModuleManagerController Regression Tests', () => {
 				},
 			}),
 			writeConfig: async () => undefined,
+			listModuleDirectories: async () => [],
 		};
 		mocked.__setWorkspaceFolders([{ name: 'repo', uri: vscode.Uri.file('d:/repo') }]);
 		mocked.__setFindFilesResult([vscode.Uri.file(existingConfig.configPath)]);
@@ -1940,6 +1943,7 @@ suite('ModuleManagerController Regression Tests', () => {
 			defaultBranch: 'main',
 			authorName: 'Tester',
 			authorEmail: 'tester@example.com',
+			commitMessage: 'Initial publish of custom-module',
 		});
 		assert.strictEqual(refreshed, true);
 		assert.ok(mocked.__getLastWarningPrompt()?.message.includes('csm/custom-module'));

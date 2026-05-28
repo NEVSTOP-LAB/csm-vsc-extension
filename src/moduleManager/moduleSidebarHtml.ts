@@ -1273,7 +1273,7 @@ export function renderLocalWorkspaceViewHtml(state: LocalWorkspaceRenderState): 
 	<meta charset="UTF-8">
 	<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'nonce-${nonce}'; script-src 'nonce-${nonce}';">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
-	<title>${escapeHtml(t('workspaceModulesTitle'))}</title>
+	<title>${escapeHtml(t('outputChannelName'))}</title>
 	<style nonce="${nonce}">
 		:root {
 			color-scheme: light dark;

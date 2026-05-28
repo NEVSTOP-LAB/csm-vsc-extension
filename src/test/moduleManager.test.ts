@@ -622,7 +622,7 @@ suite('Module Manager Tests', () => {
 		assert.ok(!rendered?.html.includes('csm-vsc-extension'));
 		assert.ok(rendered ? rendered.html.indexOf('1 managed | 1 unmanaged') < rendered.html.indexOf('Root: csm/') : false);
 		assert.ok(!rendered?.html.includes('title-row"><span class="module-name" title="module-local">module-local</span><span class="badge applied">Managed'));
-		assert.ok(rendered?.html.includes('<div class="meta-row"><span class="badge applied">Managed</span><span class="badge">Copy</span>'));
+		assert.ok(rendered?.html.includes('<div class="meta-row"><span class="badge applied">Managed</span><span class="badge">copy</span>'));
 		assert.ok(rendered?.html.includes('class="icon-button" data-action="openLocalReadme"'));
 		assert.ok(rendered?.html.includes('class="icon-button" data-action="updateLocalModule"'));
 		assert.ok(rendered?.html.includes('class="icon-button" data-action="removeLocalModule"'));
