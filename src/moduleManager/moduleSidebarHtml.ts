@@ -92,6 +92,14 @@ type ToolbarMetaCounts = {
 	privateCount: number;
 };
 
+type ToolbarVisibilityFormatters = {
+	shown: (filtered: number, total: number) => string;
+	workspace: (total: number) => string;
+	catalog: (total: number) => string;
+	mixed: (workspace: number, catalog: number) => string;
+	visibilityBreakdown: (publicCount: number, privateCount: number) => string;
+};
+
 function scopeIncludesWorkspace(scope: ModuleListScope): boolean {
 	return scope !== 'catalog';
 }
@@ -108,52 +116,95 @@ function matchesFilterQuery(searchText: string, query: string): boolean {
 	return query.length === 0 || searchText.includes(query);
 }
 
-function getToolbarVisibilityText(state: ModuleSidebarRenderState, counts: ToolbarMetaCounts): string {
+function buildVisibilityBreakdownText(publicCount: number, privateCount: number, publicLabel: string, privateLabel: string): string {
+	const segments: string[] = [];
+	if (publicCount > 0 || privateCount === 0) {
+		segments.push(`${publicCount} ${publicLabel}`);
+	}
+	if (privateCount > 0) {
+		segments.push(`${privateCount} ${privateLabel}`);
+	}
+	return segments.join(' | ');
+}
+
+function buildToolbarVisibilityText(
+	scope: ModuleListScope,
+	counts: ToolbarMetaCounts,
+	signedIn: boolean,
+	formatters: ToolbarVisibilityFormatters,
+): string {
 	if (counts.filteredCount !== counts.totalCount) {
-		return t('toolbarMetaShown', { filtered: counts.filteredCount, total: counts.totalCount });
+		return formatters.shown(counts.filteredCount, counts.totalCount);
 	}
 
-	switch (state.scope) {
+	switch (scope) {
 		case 'workspace':
-			return t('toolbarMetaWorkspace', { total: counts.totalCount });
+			return formatters.workspace(counts.totalCount);
 		case 'catalog':
-			return state.signedIn
-				? getVisibilityBreakdownText(counts.publicCount, counts.privateCount)
-				: t('toolbarMetaCatalog', { total: counts.totalCount });
+			return signedIn
+				? formatters.visibilityBreakdown(counts.publicCount, counts.privateCount)
+				: formatters.catalog(counts.totalCount);
 		case 'all':
 		default:
 			if (counts.workspaceCount > 0 && counts.catalogCount > 0) {
-				return t('toolbarMetaMixed', {
-					workspace: counts.workspaceCount,
-					catalog: counts.catalogCount,
-				});
+				return formatters.mixed(counts.workspaceCount, counts.catalogCount);
 			}
 			if (counts.workspaceCount > 0) {
-				return t('toolbarMetaWorkspace', { total: counts.workspaceCount });
+				return formatters.workspace(counts.workspaceCount);
 			}
-			return state.signedIn
-				? getVisibilityBreakdownText(counts.publicCount, counts.privateCount)
-				: t('toolbarMetaCatalog', { total: counts.catalogCount });
+			return signedIn
+				? formatters.visibilityBreakdown(counts.publicCount, counts.privateCount)
+				: formatters.catalog(counts.catalogCount);
 	}
+}
+
+function buildToolbarMetaText(
+	scope: ModuleListScope,
+	counts: ToolbarMetaCounts,
+	selectedCount: number,
+	signedIn: boolean,
+	getVisibilityText: (scope: ModuleListScope, counts: ToolbarMetaCounts, signedIn: boolean) => string,
+	formatMeta: (appliedCount: number, visibilityText: string, selectedCount: number) => string,
+): string {
+	return formatMeta(
+		counts.appliedCount,
+		getVisibilityText(scope, counts, signedIn),
+		selectedCount,
+	);
+}
+
+function getToolbarVisibilityFormatters(): ToolbarVisibilityFormatters {
+	return {
+		shown: (filtered, total) => t('toolbarMetaShown', { filtered, total }),
+		workspace: (total) => t('toolbarMetaWorkspace', { total }),
+		catalog: (total) => t('toolbarMetaCatalog', { total }),
+		mixed: (workspace, catalog) => t('toolbarMetaMixed', { workspace, catalog }),
+		visibilityBreakdown: (publicCount, privateCount) => getVisibilityBreakdownText(publicCount, privateCount),
+	};
+}
+
+function getToolbarVisibilityText(state: ModuleSidebarRenderState, counts: ToolbarMetaCounts): string {
+	return buildToolbarVisibilityText(state.scope, counts, state.signedIn, getToolbarVisibilityFormatters());
 }
 
 function getToolbarMetaText(state: ModuleSidebarRenderState, counts: ToolbarMetaCounts, selectedCount: number): string {
-	return t('toolbarMeta', {
-		applied: counts.appliedCount,
-		visibility: getToolbarVisibilityText(state, counts),
-		selected: selectedCount,
-	});
+	const formatters = getToolbarVisibilityFormatters();
+	return buildToolbarMetaText(
+		state.scope,
+		counts,
+		selectedCount,
+		state.signedIn,
+		(scope, nextCounts, signedIn) => buildToolbarVisibilityText(scope, nextCounts, signedIn, formatters),
+		(appliedCount, visibilityText, nextSelectedCount) => t('toolbarMeta', {
+			applied: appliedCount,
+			visibility: visibilityText,
+			selected: nextSelectedCount,
+		}),
+	);
 }
 
 function getVisibilityBreakdownText(publicCount: number, privateCount: number): string {
-	const segments: string[] = [];
-	if (publicCount > 0 || privateCount === 0) {
-		segments.push(`${publicCount} ${t('publicVisibility')}`);
-	}
-	if (privateCount > 0) {
-		segments.push(`${privateCount} ${t('privateVisibility')}`);
-	}
-	return segments.join(' | ');
+	return buildVisibilityBreakdownText(publicCount, privateCount, t('publicVisibility'), t('privateVisibility'));
 }
 
 function getModuleKey(entry: CsmModuleEntry): string {
@@ -1186,46 +1237,65 @@ export function renderModuleSidebarHtml(state: ModuleSidebarRenderState): string
 			return String(template).replace(/\{([A-Za-z0-9_]+)\}/g, (match, token) => token in values ? String(values[token]) : match);
 		}
 
+		${buildVisibilityBreakdownText.toString()}
+
+		${buildToolbarVisibilityText.toString()}
+
+		${buildToolbarMetaText.toString()}
+
+		function getToolbarVisibilityFormatters() {
+			return {
+				shown: function (filtered, total) {
+					return formatMessage(uiStrings.toolbarMetaShown, { filtered: filtered, total: total });
+				},
+				workspace: function (total) {
+					return formatMessage(uiStrings.toolbarMetaWorkspace, { total: total });
+				},
+				catalog: function (total) {
+					return formatMessage(uiStrings.toolbarMetaCatalog, { total: total });
+				},
+				mixed: function (workspace, catalog) {
+					return formatMessage(uiStrings.toolbarMetaMixed, { workspace: workspace, catalog: catalog });
+				},
+				visibilityBreakdown: function (publicCount, privateCount) {
+					return buildVisibilityBreakdownText(publicCount, privateCount, uiStrings.publicVisibility, uiStrings.privateVisibility);
+				},
+			};
+		}
+
 		function getVisibilityBreakdownText(publicCount, privateCount) {
-			const segments = [];
-			if (publicCount > 0 || privateCount === 0) {
-				segments.push(String(publicCount) + ' ' + uiStrings.publicVisibility);
-			}
-			if (privateCount > 0) {
-				segments.push(String(privateCount) + ' ' + uiStrings.privateVisibility);
-			}
-			return segments.join(' | ');
+			return buildVisibilityBreakdownText(publicCount, privateCount, uiStrings.publicVisibility, uiStrings.privateVisibility);
 		}
 
 		function getToolbarVisibilityText(scope, totalCount, filteredCount, workspaceCount, catalogCount, publicCount, privateCount, signedIn) {
-			if (filteredCount !== totalCount) {
-				return formatMessage(uiStrings.toolbarMetaShown, { filtered: filteredCount, total: totalCount });
-			}
-			if (scope === 'workspace') {
-				return formatMessage(uiStrings.toolbarMetaWorkspace, { total: totalCount });
-			}
-			if (scope === 'catalog') {
-				return signedIn
-					? getVisibilityBreakdownText(publicCount, privateCount)
-					: formatMessage(uiStrings.toolbarMetaCatalog, { total: totalCount });
-			}
-			if (workspaceCount > 0 && catalogCount > 0) {
-				return formatMessage(uiStrings.toolbarMetaMixed, { workspace: workspaceCount, catalog: catalogCount });
-			}
-			if (workspaceCount > 0) {
-				return formatMessage(uiStrings.toolbarMetaWorkspace, { total: workspaceCount });
-			}
-			return signedIn
-				? getVisibilityBreakdownText(publicCount, privateCount)
-				: formatMessage(uiStrings.toolbarMetaCatalog, { total: catalogCount });
+			return buildToolbarVisibilityText(scope, {
+				totalCount: totalCount,
+				filteredCount: filteredCount,
+				workspaceCount: workspaceCount,
+				catalogCount: catalogCount,
+				publicCount: publicCount,
+				privateCount: privateCount,
+			}, signedIn, getToolbarVisibilityFormatters());
 		}
 
 		function getToolbarMetaText(scope, appliedCount, totalCount, filteredCount, selectedCount, workspaceCount, catalogCount, publicCount, privateCount, signedIn) {
-			const visibilityText = getToolbarVisibilityText(scope, totalCount, filteredCount, workspaceCount, catalogCount, publicCount, privateCount, signedIn);
-			return formatMessage(uiStrings.toolbarMeta, {
-				applied: appliedCount,
-				visibility: visibilityText,
-				selected: selectedCount,
+			const formatters = getToolbarVisibilityFormatters();
+			return buildToolbarMetaText(scope, {
+				appliedCount: appliedCount,
+				totalCount: totalCount,
+				filteredCount: filteredCount,
+				workspaceCount: workspaceCount,
+				catalogCount: catalogCount,
+				publicCount: publicCount,
+				privateCount: privateCount,
+			}, selectedCount, signedIn, function (nextScope, counts, nextSignedIn) {
+				return buildToolbarVisibilityText(nextScope, counts, nextSignedIn, formatters);
+			}, function (nextAppliedCount, visibilityText, nextSelectedCount) {
+				return formatMessage(uiStrings.toolbarMeta, {
+					applied: nextAppliedCount,
+					visibility: visibilityText,
+					selected: nextSelectedCount,
+				});
 			});
 		}
 
