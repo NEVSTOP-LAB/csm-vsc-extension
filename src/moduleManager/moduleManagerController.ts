@@ -105,8 +105,14 @@ export class ModuleManagerController {
 		onUpdateModule: (entry) => {
 			void this.updateModuleCommand(entry);
 		},
+		onSwitchLocalModuleMethod: (entry) => {
+			void this.switchLocalModuleMethodCommand(entry);
+		},
 		onCreateLocalRepository: (entry) => {
 			void this.createLocalFolderRepositoryCommand(entry);
+		},
+		onLinkLocalRepository: (entry) => {
+			void this.linkLocalFolderRepositoryCommand(entry);
 		},
 		onSelectionChange: (moduleKeys) => {
 			this.setSelectedModuleKeys(moduleKeys);
@@ -559,6 +565,85 @@ export class ModuleManagerController {
 		await this.refreshSidebarWorkspaceState();
 	}
 
+	public async switchLocalModuleMethodCommand(entry: LocalManagedModuleEntry): Promise<void> {
+		const workspaceFolder = await this.resolveWorkspaceFolder();
+		if (!workspaceFolder) {
+			void vscode.window.showWarningMessage(t('openWorkspaceBeforeSwitchMethod'));
+			return;
+		}
+
+		const repoRoot = await this.workspaceModuleService.resolveGitRepositoryRoot(workspaceFolder.uri.fsPath);
+		if (!repoRoot) {
+			void vscode.window.showWarningMessage(t('switchMethodRequiresGitRepo'));
+			return;
+		}
+
+		let config = await this.tryLoadSidebarLocalModuleConfig(workspaceFolder, repoRoot);
+		if (!config) {
+			void vscode.window.showWarningMessage(t('noWorkspaceConfig'));
+			return;
+		}
+
+		const target = this.findAppliedLocalManagedEntry(config, entry);
+		if (!target) {
+			void vscode.window.showWarningMessage(t('selectedModuleNotApplied'));
+			return;
+		}
+
+		const nextMethod: ModuleApplyMethod = target.method === 'copy' ? 'submodule' : 'copy';
+		let authToken: string | undefined;
+		if (nextMethod === 'submodule' && entry.visibility === 'private') {
+			authToken = await this.ensureToken(true);
+			if (!authToken) {
+				void vscode.window.showWarningMessage(t('signInRequiredToSwitchPrivateModule'));
+				return;
+			}
+		}
+
+		const repository = path.basename(repoRoot) || workspaceFolder.name;
+		const moduleLabel = `${target.owner}/${target.name}`;
+		const currentMethodLabel = getApplyMethodLabel(target.method);
+		const nextMethodLabel = getApplyMethodLabel(nextMethod);
+		const confirmation = await vscode.window.showWarningMessage(
+			t('switchMethodConfirmation', {
+				module: moduleLabel,
+				repository,
+				currentMethod: currentMethodLabel,
+				targetMethod: nextMethodLabel,
+				targetPath: target.path,
+			}),
+			{ modal: true },
+			t('switchMethodAction'),
+		);
+		if (confirmation !== t('switchMethodAction')) {
+			return;
+		}
+
+		try {
+			let switchedEntry: LocalModuleConfigEntry | undefined;
+			await vscode.window.withProgress(
+				{
+					location: vscode.ProgressLocation.Notification,
+					title: t('progressSwitchingMethod', { module: moduleLabel, method: nextMethodLabel }),
+					cancellable: false,
+				},
+				async () => {
+					switchedEntry = await this.workspaceModuleService.switchModuleMethod(repoRoot, target, nextMethod, authToken, repoRoot);
+					config = this.workspaceModuleService.withAppliedModule(config!, switchedEntry);
+					await this.workspaceModuleService.writeConfig(config);
+				},
+			);
+			void vscode.window.showInformationMessage(t('switchMethodSuccess', { module: moduleLabel, method: nextMethodLabel }));
+		} catch (error) {
+			const message = getUserFacingErrorMessage(error, 'update');
+			this.logger.error(`Failed to switch module ${target.owner}/${target.name} to ${nextMethod}: ${message}`);
+			void vscode.window.showErrorMessage(t('switchMethodFailed', { message }));
+			return;
+		}
+
+		await this.refreshSidebarWorkspaceState();
+	}
+
 	public async createLocalFolderRepositoryCommand(folder: LocalUnmanagedFolderEntry): Promise<void> {
 		const workspaceFolder = await this.resolveWorkspaceFolder();
 		if (!workspaceFolder) {
@@ -647,7 +732,7 @@ export class ModuleManagerController {
 			);
 			if (createdRepository && publishedHeadRef) {
 				try {
-					await this.syncPublishedLocalFolderState(workspaceFolder, workspaceRoot, folder, createdRepository, publishedHeadRef, publishedBranch);
+					await this.syncPublishedLocalFolderState(workspaceFolder, workspaceRoot, repoRoot, folder, createdRepository, publishedHeadRef, publishedBranch, token);
 					await this.refreshSidebarWorkspaceState();
 				} catch (error) {
 					localStateSyncFailed = true;
@@ -664,7 +749,7 @@ export class ModuleManagerController {
 			if (!localStateSyncFailed) {
 				void vscode.window.showInformationMessage(t('createRepositoryPublishSuccess', { repository: repositoryName ?? repositoryConfig.name }));
 			}
-			void this.loadModules({
+			await this.loadModules({
 				interactiveAuth: false,
 				showSuccessMessage: false,
 				showErrorMessage: false,
@@ -681,27 +766,155 @@ export class ModuleManagerController {
 		}
 	}
 
+	public async linkLocalFolderRepositoryCommand(folder: LocalUnmanagedFolderEntry): Promise<void> {
+		const workspaceFolder = await this.resolveWorkspaceFolder();
+		if (!workspaceFolder) {
+			void vscode.window.showWarningMessage(t('openWorkspaceBeforeLinkRepository'));
+			return;
+		}
+		const repoRoot = await this.workspaceModuleService.resolveGitRepositoryRoot(workspaceFolder.uri.fsPath);
+		const workspaceRoot = repoRoot ?? workspaceFolder.uri.fsPath;
+		const folderAbsolutePath = path.resolve(workspaceRoot, folder.path);
+		try {
+			const stat = await fs.stat(folderAbsolutePath);
+			if (!stat.isDirectory()) {
+				void vscode.window.showWarningMessage(t('localFolderMissing', { folder: folder.path }));
+				return;
+			}
+		} catch {
+			void vscode.window.showWarningMessage(t('localFolderMissing', { folder: folder.path }));
+			return;
+		}
+
+		if (this.availableModules.length === 0) {
+			await this.loadModules({
+				interactiveAuth: false,
+				showSuccessMessage: false,
+				showErrorMessage: true,
+				preserveVisibleModules: true,
+			});
+		}
+		if (this.availableModules.length === 0) {
+			void vscode.window.showWarningMessage(t('noRepositoriesAvailableToLink'));
+			return;
+		}
+
+		const selection = await this.promptRepositoryLink(folder);
+		if (!selection) {
+			return;
+		}
+
+		let authToken = await this.ensureToken(false);
+		if (!authToken && selection.visibility === 'private') {
+			authToken = await this.ensureToken(true);
+			if (!authToken) {
+				void vscode.window.showWarningMessage(t('signInRequiredToLinkPrivateModule'));
+				return;
+			}
+		}
+
+		const repositoryLabel = path.basename(workspaceRoot) || workspaceFolder.name;
+		const moduleLabel = `${selection.owner}/${selection.name}`;
+		const confirmation = await vscode.window.showWarningMessage(
+			t('linkRepositoryConfirmation', {
+				folder: folder.path,
+				module: moduleLabel,
+				repository: repositoryLabel,
+			}),
+			{ modal: true },
+			t('linkRepositoryAction'),
+		);
+		if (confirmation !== t('linkRepositoryAction')) {
+			return;
+		}
+
+		try {
+			let config = await this.tryLoadSidebarLocalModuleConfig(workspaceFolder, workspaceRoot)
+				?? await this.initializePublishedFolderConfig(workspaceRoot, folder);
+			const targetPath = this.workspaceModuleService.normalizeRootPath(folder.path);
+			const moduleKey = this.workspaceModuleService.getModuleKey(selection);
+			const existing = config.modules[moduleKey];
+			if (existing && this.workspaceModuleService.normalizeRootPath(existing.path) !== targetPath) {
+				void vscode.window.showWarningMessage(t('linkRepositoryAlreadyManagedAt', {
+					module: moduleLabel,
+					path: existing.path,
+				}));
+				return;
+			}
+
+			const branch = selection.defaultBranch || 'main';
+			let linkedEntry: LocalModuleConfigEntry | undefined;
+			await vscode.window.withProgress(
+				{
+					location: vscode.ProgressLocation.Notification,
+					title: t('linkRepositoryProgress', { folder: folder.path, module: moduleLabel }),
+					cancellable: false,
+				},
+				async () => {
+					const ref = await this.workspaceModuleService.resolveRemoteBranchRef(workspaceRoot, selection.repoUrl, branch, authToken);
+					linkedEntry = {
+						key: moduleKey,
+						name: selection.name,
+						owner: selection.owner,
+						source: selection.repoUrl,
+						method: 'copy',
+						path: targetPath,
+						ref,
+						branch,
+					};
+					config = this.workspaceModuleService.withAppliedModule(config, linkedEntry);
+					await this.workspaceModuleService.writeConfig(config);
+				},
+			);
+			void vscode.window.showInformationMessage(t('linkRepositorySuccess', { folder: folder.path, module: moduleLabel }));
+		} catch (error) {
+			const message = getUserFacingErrorMessage(error, 'config');
+			this.logger.error(`Failed to link local folder ${folder.path} to an online repository: ${message}`);
+			void vscode.window.showErrorMessage(t('linkRepositoryFailed', { message }));
+			return;
+		}
+
+		await this.refreshSidebarWorkspaceState();
+	}
+
 	private async syncPublishedLocalFolderState(
 		workspaceFolder: vscode.WorkspaceFolder,
 		workspaceRoot: string,
+		repoRoot: string | undefined,
 		folder: LocalUnmanagedFolderEntry,
 		repository: GitHubRepoSummary,
 		headRef: string,
 		branch: string | undefined,
+		authToken: string,
 	): Promise<void> {
 		const config = await this.tryLoadSidebarLocalModuleConfig(workspaceFolder, workspaceRoot)
 			?? await this.initializePublishedFolderConfig(workspaceRoot, folder);
 		const moduleEntry = mapRepoToModuleEntry(repository);
 		const targetPath = this.workspaceModuleService.normalizeRootPath(folder.path);
+		let nextMethod: ModuleApplyMethod = 'copy';
+		let nextRef = headRef;
+		let nextBranch = branch || moduleEntry.defaultBranch || 'main';
+		if (repoRoot) {
+			const converted = await this.workspaceModuleService.convertPublishedFolderToSubmodule({
+				repoRoot,
+				targetRelativePath: targetPath,
+				remoteUrl: this.toGitRemoteUrl(repository.html_url),
+				branch: nextBranch,
+				authToken,
+			});
+			nextMethod = 'submodule';
+			nextRef = converted.headRef;
+			nextBranch = converted.branch;
+		}
 		const nextEntry: LocalModuleConfigEntry = {
 			key: this.workspaceModuleService.getModuleKey(moduleEntry),
 			name: moduleEntry.name,
 			owner: moduleEntry.owner,
 			source: moduleEntry.repoUrl,
-			method: 'copy',
+			method: nextMethod,
 			path: targetPath,
-			ref: headRef,
-			branch: branch || moduleEntry.defaultBranch || 'main',
+			ref: nextRef,
+			branch: nextBranch,
 		};
 		const nextConfig = this.workspaceModuleService.withAppliedModule(config, nextEntry);
 		await this.workspaceModuleService.writeConfig(nextConfig);
@@ -753,6 +966,12 @@ export class ModuleManagerController {
 			return candidates.length === 1 ? candidates[0] : undefined;
 		}
 		return candidates.find((m) => m.owner === entry.owner && m.name === entry.name);
+	}
+
+	private findAppliedLocalManagedEntry(config: LocalModuleConfig, entry: LocalManagedModuleEntry): LocalModuleConfigEntry | undefined {
+		return config.modules[entry.id]
+			?? Object.values(config.modules).find((module) => module.key === entry.id)
+			?? Object.values(config.modules).find((module) => module.owner === entry.owner && module.name === entry.name && module.path === entry.path);
 	}
 
 	private getRemovalTargets(config: LocalModuleConfig, entry?: CsmModuleEntry): LocalModuleConfigEntry[] {
@@ -1499,6 +1718,7 @@ export class ModuleManagerController {
 		setContext({
 			workspaceLabel: path.basename(workspaceRoot) || workspaceFolder.name,
 			moduleRoot,
+			gitAvailable: !!repoRoot,
 			appliedModuleKeys: this.mapAppliedModuleKeys(config),
 			staleModuleKeys,
 			managedModules: this.mapManagedModules(config, staleModuleKeys),
@@ -1962,6 +2182,31 @@ export class ModuleManagerController {
 			visibility: visibilityPick.visibility,
 			topics: this.normalizeRepositoryTopics(topicsInput),
 		};
+	}
+
+	private async promptRepositoryLink(folder: LocalUnmanagedFolderEntry): Promise<CsmModuleEntry | undefined> {
+		const folderName = folder.name.trim().toLowerCase();
+		const items = [...this.availableModules]
+			.sort((left, right) => {
+				const leftPreferred = left.name.trim().toLowerCase() === folderName ? 0 : 1;
+				const rightPreferred = right.name.trim().toLowerCase() === folderName ? 0 : 1;
+				if (leftPreferred !== rightPreferred) {
+					return leftPreferred - rightPreferred;
+				}
+				return `${left.owner}/${left.name}`.localeCompare(`${right.owner}/${right.name}`);
+			})
+			.map((moduleEntry) => ({
+				label: `${moduleEntry.owner}/${moduleEntry.name}`,
+				description: moduleEntry.visibility === 'private' ? t('createRepositoryPrivateLabel') : t('createRepositoryPublicLabel'),
+				detail: moduleEntry.description?.trim() || moduleEntry.repoUrl,
+				moduleEntry,
+			}));
+		const pick = await vscode.window.showQuickPick(items, {
+			placeHolder: t('selectRepositoryToLinkPlaceholder', { folder: folder.path }),
+			matchOnDescription: true,
+			matchOnDetail: true,
+		});
+		return pick?.moduleEntry;
 	}
 
 	private normalizeRepositoryTopics(value: string): string[] {

@@ -16,7 +16,9 @@ interface ModuleSidebarActions {
 	onApplySelection: (entry?: CsmModuleEntry) => void;
 	onRemoveModule: (entry: CsmModuleEntry) => void;
 	onUpdateModule: (entry: CsmModuleEntry) => void;
+	onSwitchLocalModuleMethod?: (entry: LocalManagedModuleEntry) => void;
 	onCreateLocalRepository?: (entry: LocalUnmanagedFolderEntry) => void;
+	onLinkLocalRepository?: (entry: LocalUnmanagedFolderEntry) => void;
 	onSelectionChange: (moduleKeys: string[]) => void;
 	onSortChange: (sortState: Partial<ModuleSortState>) => void;
 }
@@ -26,7 +28,7 @@ interface ModuleSidebarViewProviderOptions {
 }
 
 type WebviewMessage = {
-	type: 'login' | 'refresh' | 'initializeWorkspace' | 'applySelected' | 'toggleStar' | 'openReadme' | 'togglePreview' | 'applyOne' | 'toggleSelection' | 'setFilterQuery' | 'clearFilter' | 'setIncludeApplied' | 'setScope' | 'dismissIntroTip' | 'removeModule' | 'updateModule' | 'setSortField' | 'setSortDirection' | 'showMore' | 'openLocalReadme' | 'removeLocalModule' | 'updateLocalModule' | 'createLocalRepository';
+	type: 'login' | 'refresh' | 'initializeWorkspace' | 'applySelected' | 'toggleStar' | 'openReadme' | 'togglePreview' | 'applyOne' | 'toggleSelection' | 'setFilterQuery' | 'clearFilter' | 'setIncludeApplied' | 'setScope' | 'dismissIntroTip' | 'removeModule' | 'updateModule' | 'setSortField' | 'setSortDirection' | 'showMore' | 'openLocalReadme' | 'removeLocalModule' | 'updateLocalModule' | 'switchLocalModuleMethod' | 'createLocalRepository' | 'linkLocalRepository';
 	moduleKey?: string;
 	localItemId?: string;
 	selected?: boolean;
@@ -51,6 +53,7 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IM
 	private readonly appliedModuleKeys = new Set<string>();
 	private localManagedModules: LocalManagedModuleEntry[] = [];
 	private localUnmanagedFolders: LocalUnmanagedFolderEntry[] = [];
+	private gitAvailable = false;
 	private readonly localManagedModulesById = new Map<string, LocalManagedModuleEntry>();
 	private readonly localUnmanagedFoldersById = new Map<string, LocalUnmanagedFolderEntry>();
 	private workspaceLabel: string | undefined;
@@ -160,6 +163,7 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IM
 	public setWorkspaceContext(context: SidebarWorkspaceContext): void {
 		this.workspaceLabel = context.workspaceLabel;
 		this.moduleRoot = context.moduleRoot;
+		this.gitAvailable = context.gitAvailable === true;
 		this.localManagedModules = context.managedModules ?? [];
 		this.localUnmanagedFolders = context.unmanagedFolders ?? [];
 		this.localManagedModulesById.clear();
@@ -353,10 +357,24 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IM
 				}
 				return;
 			}
+			case 'switchLocalModuleMethod': {
+				const entry = message.localItemId ? this.localManagedModulesById.get(message.localItemId) : undefined;
+				if (entry) {
+					this.actions.onSwitchLocalModuleMethod?.(entry);
+				}
+				return;
+			}
 			case 'createLocalRepository': {
 				const entry = message.localItemId ? this.localUnmanagedFoldersById.get(message.localItemId) : undefined;
 				if (entry) {
 					this.actions.onCreateLocalRepository?.(entry);
+				}
+				return;
+			}
+			case 'linkLocalRepository': {
+				const entry = message.localItemId ? this.localUnmanagedFoldersById.get(message.localItemId) : undefined;
+				if (entry) {
+					this.actions.onLinkLocalRepository?.(entry);
 				}
 				return;
 			}
@@ -414,6 +432,7 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IM
 			unmanagedFolders: this.localUnmanagedFolders,
 			workspaceLabel: this.workspaceLabel,
 			moduleRoot: this.moduleRoot,
+			gitAvailable: this.gitAvailable,
 			introTipVisible: this.introTipVisible,
 			includeAppliedModules: this.includeAppliedModules,
 			scope: this.scope,

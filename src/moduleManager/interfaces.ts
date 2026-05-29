@@ -12,6 +12,7 @@ export interface ModuleSortState {
 export interface SidebarWorkspaceContext {
 	workspaceLabel?: string;
 	moduleRoot?: string;
+	gitAvailable?: boolean;
 	appliedModuleKeys: string[];
 	staleModuleKeys?: string[];
 	managedModules?: LocalManagedModuleEntry[];

@@ -126,6 +126,10 @@ const messages = {
 		en: 'Open the target repository as a workspace folder before updating modules.',
 		zh: '更新模块前，请先将目标仓库作为工作区文件夹打开。',
 	},
+	openWorkspaceBeforeSwitchMethod: {
+		en: 'Open the target repository as a workspace folder before switching a local module between copy and submodule mode.',
+		zh: '在 copy 和 submodule 模式之间切换本地模块前，请先将目标仓库作为工作区文件夹打开。',
+	},
 	progressUpdating: {
 		en: 'Updating {module}...',
 		zh: '正在更新 {module}...',
@@ -162,6 +166,38 @@ const messages = {
 		en: 'Failed to update module: {message}',
 		zh: '更新模块失败：{message}',
 	},
+	switchMethodAction: {
+		en: 'Switch',
+		zh: '切换',
+	},
+	switchMethodToTarget: {
+		en: 'Switch to {method}',
+		zh: '切换为 {method}',
+	},
+	switchMethodRequiresGitRepo: {
+		en: 'Switching between copy and submodule is only available when the current workspace folder is a Git repository.',
+		zh: '只有当前工作区文件夹是 Git 仓库时，才允许在 copy 和 submodule 之间切换。',
+	},
+	signInRequiredToSwitchPrivateModule: {
+		en: 'GitHub sign-in is required to switch a private module into submodule mode.',
+		zh: '将私有模块切换到 submodule 模式前需要登录 GitHub。',
+	},
+	switchMethodConfirmation: {
+		en: 'Switch module {module} in {repository} from {currentMethod} to {targetMethod}? This recreates {targetPath} from the configured source repository.',
+		zh: '要在 {repository} 中将模块 {module} 从 {currentMethod} 切换为 {targetMethod} 吗？这会根据已配置的源仓库重新创建 {targetPath}。',
+	},
+	progressSwitchingMethod: {
+		en: 'Switching {module} to {method}...',
+		zh: '正在将 {module} 切换为 {method}...',
+	},
+	switchMethodSuccess: {
+		en: 'Switched {module} to {method}.',
+		zh: '已将 {module} 切换为 {method}。',
+	},
+	switchMethodFailed: {
+		en: 'Failed to switch module method: {message}',
+		zh: '切换模块方式失败：{message}',
+	},
 	openWorkspaceBeforeInitialize: {
 		en: 'Open the target repository as a workspace folder before initializing CSM module management.',
 		zh: '初始化 CSM 模块管理前，请先将目标仓库作为工作区文件夹打开。',
@@ -169,6 +205,10 @@ const messages = {
 	openWorkspaceBeforeCreateRepository: {
 		en: 'Open the target repository as a workspace folder before creating a GitHub repository for a local module folder.',
 		zh: '为本地模块文件夹创建 GitHub 仓库前，请先将目标仓库作为工作区文件夹打开。',
+	},
+	openWorkspaceBeforeLinkRepository: {
+		en: 'Open the target repository as a workspace folder before linking a local module folder to an online repository.',
+		zh: '将本地模块文件夹关联到在线仓库前，请先将目标仓库作为工作区文件夹打开。',
 	},
 	configAlreadyExists: {
 		en: 'Local CSM module config already exists at {configPath}.',
@@ -290,9 +330,45 @@ const messages = {
 		en: 'GitHub sign-in is required to create a repository for this local folder.',
 		zh: '为该本地文件夹创建 GitHub 仓库前需要先登录 GitHub。',
 	},
+	signInRequiredToLinkPrivateModule: {
+		en: 'GitHub sign-in is required to link this local folder to a private repository.',
+		zh: '将该本地文件夹关联到私有仓库前需要先登录 GitHub。',
+	},
 	localFolderMissing: {
 		en: 'The local folder {folder} no longer exists.',
 		zh: '本地文件夹 {folder} 已不存在。',
+	},
+	selectRepositoryToLinkPlaceholder: {
+		en: 'Choose an online repository to track for {folder}.',
+		zh: '为 {folder} 选择一个要跟踪的在线仓库。',
+	},
+	noRepositoriesAvailableToLink: {
+		en: 'No online module repositories are currently loaded. Refresh the catalog and try again.',
+		zh: '当前尚未加载任何在线模块仓库。请先刷新目录后再试。',
+	},
+	linkRepositoryAlreadyManagedAt: {
+		en: 'Repository {module} is already recorded at {path}. Remove or update that entry before linking another local folder.',
+		zh: '仓库 {module} 已记录在 {path}。请先移除或更新该条目，再关联其他本地文件夹。',
+	},
+	linkRepositoryConfirmation: {
+		en: 'Link local folder {folder} to online repository {module} in {repository}? This records the current folder as a tracked copy target and does not change files immediately.',
+		zh: '要在 {repository} 中将本地文件夹 {folder} 关联到在线仓库 {module} 吗？这会把当前文件夹记录为受跟踪的 copy 目录，但不会立即修改文件。',
+	},
+	linkRepositoryAction: {
+		en: 'Link Repository',
+		zh: '关联仓库',
+	},
+	linkRepositoryProgress: {
+		en: 'Linking {folder} to {module}...',
+		zh: '正在将 {folder} 关联到 {module}...',
+	},
+	linkRepositorySuccess: {
+		en: 'Linked {folder} to {module}.',
+		zh: '已将 {folder} 关联到 {module}。',
+	},
+	linkRepositoryFailed: {
+		en: 'Failed to link the local folder: {message}',
+		zh: '关联本地文件夹失败：{message}',
 	},
 	createRepositoryNamePrompt: {
 		en: 'Enter the GitHub repository name for {folder}.',
@@ -678,9 +754,17 @@ const messages = {
 		en: 'Sign in to GitHub to create a shared repository for this folder.',
 		zh: '登录 GitHub 后即可为该文件夹创建共享仓库。',
 	},
+	refreshCatalogToLinkRepositoryHint: {
+		en: 'Click Link Online Repo to load the module catalog first if it is not ready yet.',
+		zh: '如果模块目录还没就绪，点击“关联在线仓库”会先自动加载。',
+	},
 	createGithubRepository: {
 		en: 'Create GitHub Repo',
 		zh: '创建 GitHub 仓库',
+	},
+	linkGithubRepository: {
+		en: 'Link Online Repo',
+		zh: '关联在线仓库',
 	},
 	catalogScopePublicLoggedOut: {
 		en: 'Loaded {count} public module(s). Sign in to see private modules.',
