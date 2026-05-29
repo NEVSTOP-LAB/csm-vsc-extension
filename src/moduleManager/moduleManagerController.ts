@@ -40,6 +40,9 @@ type WebviewModuleContext = {
 	moduleApplied?: boolean;
 	moduleSelected?: boolean;
 	webviewSection?: string;
+	workspaceCardKind?: string;
+	localItemId?: string;
+	localItemPath?: string;
 	preventDefaultContextMenuItems?: boolean;
 };
 
@@ -117,6 +120,9 @@ export class ModuleManagerController {
 		onLinkLocalRepository: (entry) => {
 			void this.linkLocalFolderRepositoryCommand(entry);
 		},
+		onOpenLocalFolder: (entry) => {
+			void this.openLocalFolderCommand(entry);
+		},
 		onSelectionChange: (moduleKeys) => {
 			this.setSelectedModuleKeys(moduleKeys);
 		},
@@ -187,6 +193,7 @@ export class ModuleManagerController {
 			vscode.commands.registerCommand(COMMAND_IDS.contextUpdateModule, wrapCommand(COMMAND_IDS.contextUpdateModule, (context?: WebviewModuleContext) => this.contextUpdateModuleCommand(context), this.logger)),
 			vscode.commands.registerCommand(COMMAND_IDS.contextSelectModule, wrapCommand(COMMAND_IDS.contextSelectModule, (context?: WebviewModuleContext) => this.contextSelectModuleCommand(context), this.logger)),
 			vscode.commands.registerCommand(COMMAND_IDS.contextClearModuleSelection, wrapCommand(COMMAND_IDS.contextClearModuleSelection, (context?: WebviewModuleContext) => this.contextClearModuleSelectionCommand(context), this.logger)),
+			vscode.commands.registerCommand(COMMAND_IDS.contextOpenFolder, wrapCommand(COMMAND_IDS.contextOpenFolder, (context?: WebviewModuleContext) => this.contextOpenFolderCommand(context), this.logger)),
 			vscode.commands.registerCommand(COMMAND_IDS.setSortOrder, wrapCommand(COMMAND_IDS.setSortOrder, (field?: ModuleSortField) => this.setSortOrderCommand(field), this.logger)),
 		);
 
@@ -1554,6 +1561,29 @@ export class ModuleManagerController {
 
 	public contextClearModuleSelectionCommand(context?: WebviewModuleContext): void {
 		this.setContextModuleSelection(context, false);
+	}
+
+	public async contextOpenFolderCommand(context?: WebviewModuleContext): Promise<void> {
+		if (!context?.localItemPath && !context?.localItemId) {
+			return;
+		}
+		await this.openLocalFolderByPath(context.localItemPath ?? context.localItemId!);
+	}
+
+	public async openLocalFolderCommand(entry: LocalManagedModuleEntry | LocalUnmanagedFolderEntry): Promise<void> {
+		await this.openLocalFolderByPath(entry.path);
+	}
+
+	private async openLocalFolderByPath(relativePath: string): Promise<void> {
+		const workspaceFolder = await this.resolveWorkspaceFolder();
+		if (!workspaceFolder) {
+			return;
+		}
+		const repoRoot = await this.workspaceModuleService.resolveGitRepositoryRoot(workspaceFolder.uri.fsPath);
+		const workspaceRoot = repoRoot ?? workspaceFolder.uri.fsPath;
+		const folderPath = path.join(workspaceRoot, relativePath);
+		const folderUri = vscode.Uri.file(folderPath);
+		await vscode.commands.executeCommand('revealFileInOS', folderUri);
 	}
 
 	private resolveContextModuleEntry(context?: WebviewModuleContext): CsmModuleEntry | undefined {

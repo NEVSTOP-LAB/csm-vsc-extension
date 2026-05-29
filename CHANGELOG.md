@@ -16,6 +16,7 @@
 - 本地化：扩展全部用户可见字符串现已支持中英文切换，覆盖 package 清单文案、模块管理 UI/提示与 `.csmlog` / `.lvcsm` Hover 内容
 - 阶段四：`CSM Modules` 现收敛为单一原生视图，本地模块状态与 GitHub 模块目录合并到同一 Webview 列表中，并新增 `All / Workspace / Catalog` 范围切换来承接原先的双视图浏览方式
 - 阶段四：已登录 GitHub 时，未管理本地模块文件夹可通过向导一键创建并发布 GitHub 仓库，默认使用 private 可见性并附带 `labview-csm`、`csm-modsets` topics；若本机缺少 Git 作者信息，会在首次发布前补充询问
+- 交互：工作区模块卡片（已管理/未管理）现支持 VS Code 原生右键上下文菜单；已管理模块提供 Open Folder（Reveal in OS）、Open README、Update 和 Remove 操作（后三项仅在模块存在于在线目录时显示），未管理文件夹提供 Open Folder 操作
 
 ### 变更
 

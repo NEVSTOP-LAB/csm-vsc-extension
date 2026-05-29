@@ -15,6 +15,7 @@
   "commands.contextUpdateModule.title": "更新已应用模块",
   "commands.contextSelectModule.title": "选择模块",
   "commands.contextClearModuleSelection.title": "清除选择",
+  "commands.contextOpenFolder.title": "打开目录",
   "commands.setSortOrder.title": "CSM 模块：更改排序方式",
   "csmModules.title": "CSM 模块",
   "views.csmModules.view.name": "可用模块",

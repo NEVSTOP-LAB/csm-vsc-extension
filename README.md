@@ -34,6 +34,7 @@
 - ✅ 支持 README 预览、图片显示，以及仓库 `Star` / `Unstar`
 - ✅ 支持将模块引入、更新、移除，并在 `copy` / `submodule` 模式间切换
 - ✅ 本地已管理模块默认以只读 lock 状态保存，可在侧边栏中解锁或重新锁定，状态会写回 `csm-modules.yaml`
+- ✅ 工作区模块卡片支持右键上下文菜单，已管理模块提供 Open Folder、Open README、Update 和 Remove 操作，未管理文件夹提供 Open Folder 操作
 - ✅ 支持将本地未管理文件夹关联到已有模块仓库，或直接发布为新的 GitHub 仓库
 
 ### 文件图标主题
