@@ -359,7 +359,7 @@ const messages = {
 		zh: '关联仓库',
 	},
 	linkRepositoryProgress: {
-		en: 'Linking {folder} to {module}... ',
+		en: 'Linking {folder} to {module}...',
 		zh: '正在将 {folder} 关联到 {module}...',
 	},
 	linkRepositorySuccess: {
