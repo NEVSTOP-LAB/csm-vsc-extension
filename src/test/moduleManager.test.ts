@@ -1328,4 +1328,78 @@ suite('Module Manager Tests', () => {
 			await fs.rm(tempRoot, { recursive: true, force: true });
 		}
 	});
+
+	test('WorkspaceModuleService syncSubmoduleEntriesToConfig adds untracked submodules to an existing config', async function () {
+		this.timeout(20000);
+		const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'csm-sync-submodules-'));
+		const moduleRepo = path.join(tempRoot, 'module-b-repo');
+		const repoRoot = path.join(tempRoot, 'workspace-repo');
+		const service = new WorkspaceModuleService();
+		try {
+			await fs.mkdir(moduleRepo, { recursive: true });
+			runGit(moduleRepo, ['init', '--initial-branch=main']);
+			runGit(moduleRepo, ['config', 'user.name', 'Test User']);
+			runGit(moduleRepo, ['config', 'user.email', 'test@example.com']);
+			await fs.writeFile(path.join(moduleRepo, 'README.md'), '# module-b\n', 'utf8');
+			runGit(moduleRepo, ['add', 'README.md']);
+			runGit(moduleRepo, ['commit', '-m', 'init module-b']);
+
+			await fs.mkdir(repoRoot, { recursive: true });
+			runGit(repoRoot, ['init', '--initial-branch=main']);
+			runGit(repoRoot, ['config', 'user.name', 'Test User']);
+			runGit(repoRoot, ['config', 'user.email', 'test@example.com']);
+			runGit(repoRoot, ['-c', 'protocol.file.allow=always', 'submodule', 'add', moduleRepo, 'csm/module-b']);
+			runGit(repoRoot, ['commit', '-am', 'add submodule module-b']);
+
+			// Existing config that does NOT mention module-b
+			const existingConfig = await service.initializeConfig(repoRoot, 'csm');
+
+			const { config: synced, addedCount } = await service.syncSubmoduleEntriesToConfig(repoRoot, existingConfig);
+
+			assert.strictEqual(addedCount, 1);
+			assert.ok(synced.modules['local__module-b']);
+			assert.strictEqual(synced.modules['local__module-b'].method, 'submodule');
+			assert.strictEqual(synced.modules['local__module-b'].path, 'csm/module-b');
+
+			const yamlText = await fs.readFile(synced.configPath, 'utf8');
+			assert.ok(yamlText.includes('local__module-b:'));
+		} finally {
+			await fs.rm(tempRoot, { recursive: true, force: true });
+		}
+	});
+
+	test('WorkspaceModuleService syncSubmoduleEntriesToConfig skips already-tracked submodules', async function () {
+		this.timeout(20000);
+		const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'csm-sync-skip-'));
+		const moduleRepo = path.join(tempRoot, 'module-c-repo');
+		const repoRoot = path.join(tempRoot, 'workspace-repo');
+		const service = new WorkspaceModuleService();
+		try {
+			await fs.mkdir(moduleRepo, { recursive: true });
+			runGit(moduleRepo, ['init', '--initial-branch=main']);
+			runGit(moduleRepo, ['config', 'user.name', 'Test User']);
+			runGit(moduleRepo, ['config', 'user.email', 'test@example.com']);
+			await fs.writeFile(path.join(moduleRepo, 'README.md'), '# module-c\n', 'utf8');
+			runGit(moduleRepo, ['add', 'README.md']);
+			runGit(moduleRepo, ['commit', '-m', 'init module-c']);
+
+			await fs.mkdir(repoRoot, { recursive: true });
+			runGit(repoRoot, ['init', '--initial-branch=main']);
+			runGit(repoRoot, ['config', 'user.name', 'Test User']);
+			runGit(repoRoot, ['config', 'user.email', 'test@example.com']);
+			runGit(repoRoot, ['-c', 'protocol.file.allow=always', 'submodule', 'add', moduleRepo, 'csm/module-c']);
+			runGit(repoRoot, ['commit', '-am', 'add submodule module-c']);
+
+			// Recover config (already includes module-c)
+			const recovered = await service.recoverConfigFromExistingSubmodules(repoRoot, 'csm');
+			assert.ok(recovered);
+
+			// Syncing again should add nothing
+			const { addedCount } = await service.syncSubmoduleEntriesToConfig(repoRoot, recovered!);
+
+			assert.strictEqual(addedCount, 0);
+		} finally {
+			await fs.rm(tempRoot, { recursive: true, force: true });
+		}
+	});
 });

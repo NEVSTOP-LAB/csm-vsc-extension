@@ -490,6 +490,10 @@ const messages = {
 		en: 'Recovered local CSM module config from existing submodules at {configPath}.',
 		zh: '已从现有子模块恢复本地 CSM 模块配置：{configPath}。',
 	},
+	submodulesAutoSyncedToConfig: {
+		en: 'Auto-added {count} git submodule(s) to CSM module config: {configPath}.',
+		zh: '已自动将 {count} 个 git 子模块添加到 CSM 模块配置：{configPath}。',
+	},
 	selectConfigToUpdatePlaceholder: {
 		en: 'Multiple CSM module configs were found. Select one to update.',
 		zh: '发现多个 CSM 模块配置。请选择一个进行更新。',
