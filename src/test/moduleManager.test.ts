@@ -1048,6 +1048,37 @@ suite('Module Manager Tests', () => {
 		}
 	});
 
+	test('WorkspaceModuleService backfills missing locked flags when loading yaml config', async () => {
+		const repoRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'csm-modules-locked-migrate-'));
+		const service = new WorkspaceModuleService();
+		try {
+			const configDir = path.join(repoRoot, 'csm');
+			const configPath = path.join(configDir, LOCAL_MODULE_CONFIG_FILE);
+			await fs.mkdir(configDir, { recursive: true });
+			await fs.writeFile(configPath, [
+				'version: "2"',
+				'root: "csm"',
+				'modules:',
+				'  org__module_a:',
+				'    name: "module-a"',
+				'    owner: "org"',
+				'    source: "https://github.com/org/module-a"',
+				'    method: "copy"',
+				'    path: "csm/module-a"',
+				'    ref: "abc123"',
+				'    branch: "main"',
+			].join('\n'), 'utf8');
+
+			const config = await service.loadConfig(repoRoot, configPath);
+			const migratedYaml = await fs.readFile(configPath, 'utf8');
+
+			assert.strictEqual(config.modules.org__module_a?.locked, true);
+			assert.ok(migratedYaml.includes('locked: true'));
+		} finally {
+			await fs.rm(repoRoot, { recursive: true, force: true });
+		}
+	});
+
 	test('WorkspaceModuleService publishes a local folder to a new remote repository', async () => {
 		const folderPath = await fs.mkdtemp(path.join(os.tmpdir(), 'csm-publish-module-'));
 		const remoteUrl = 'https://github.com/tester/shared-module.git';

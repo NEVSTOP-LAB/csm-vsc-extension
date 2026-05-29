@@ -18,6 +18,7 @@ interface ParsedConfigShape {
 	version?: string;
 	root?: string;
 	modules: Record<string, LocalModuleConfigEntry>;
+	needsLockedMigration?: boolean;
 }
 
 interface GitSubmoduleDefinition {
@@ -268,12 +269,16 @@ export class WorkspaceModuleService {
 		const parsed = this.isLegacyConfigPath(configPath) ? this.parseLegacyConfig(raw) : this.parseYamlConfig(raw);
 		const derivedRoot = toPosixPath(path.relative(repoRoot, path.dirname(configPath)));
 		const root = parsed.root ? this.normalizeRootPath(parsed.root) : this.normalizeRootPath(derivedRoot || DEFAULT_LOCAL_MODULE_ROOT);
-		return {
+		const config: LocalModuleConfig = {
 			version: CONFIG_VERSION,
 			root,
 			configPath: this.getConfigPath(repoRoot, root),
 			modules: parsed.modules,
 		};
+		if (parsed.needsLockedMigration) {
+			await this.writeConfig(config);
+		}
+		return config;
 	}
 
 	public async recoverConfigFromExistingSubmodules(
@@ -1148,6 +1153,7 @@ export class WorkspaceModuleService {
 		const version = typeof obj.version === 'string' ? obj.version : (obj.version !== undefined && obj.version !== null ? String(obj.version) : undefined);
 		const root = typeof obj.root === 'string' ? obj.root : undefined;
 		const modules: Record<string, LocalModuleConfigEntry> = {};
+		let needsLockedMigration = false;
 
 		const modulesRaw = obj.modules;
 		if (modulesRaw && typeof modulesRaw === 'object' && !Array.isArray(modulesRaw)) {
@@ -1156,6 +1162,9 @@ export class WorkspaceModuleService {
 					continue;
 				}
 				const entry = value as Record<string, unknown>;
+				if (typeof entry.locked !== 'boolean') {
+					needsLockedMigration = true;
+				}
 				modules[key] = this.finalizeModuleSection({
 					key,
 					name: typeof entry.name === 'string' ? entry.name : undefined,
@@ -1170,7 +1179,7 @@ export class WorkspaceModuleService {
 			}
 		}
 
-		return { version, root, modules };
+		return { version, root, modules, needsLockedMigration };
 	}
 
 	private finalizeModuleSection(module: Partial<LocalModuleConfigEntry>): LocalModuleConfigEntry {
