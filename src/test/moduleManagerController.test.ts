@@ -1770,10 +1770,29 @@ suite('ModuleManagerController Regression Tests', () => {
 		assert.ok(infos.some((text) => text.includes('Auto-added 1 git submodule')));
 	});
 
-	test('refreshSidebarWorkspaceState fails when local module lock sync fails', async () => {
+	test('refreshSidebarWorkspaceState warns and continues when local module lock sync fails', async () => {
+		const loggedWarnings: string[] = [];
 		const controller = createController(undefined, {
 			viewProvider: createViewProvider(),
+			logger: {
+				name: 'test',
+				appendLine: () => undefined,
+				append: () => undefined,
+				clear: () => undefined,
+				dispose: () => undefined,
+				replace: () => undefined,
+				show: () => undefined,
+				hide: () => undefined,
+				info: () => undefined,
+				warn: (message: string) => {
+					loggedWarnings.push(message);
+				},
+				error: () => undefined,
+				debug: () => undefined,
+				trace: () => undefined,
+			} as any,
 		}) as any;
+		let capturedContext: unknown;
 
 		controller.workspaceModuleService = {
 			resolveGitRepositoryRoot: async () => 'd:/repo',
@@ -1799,12 +1818,31 @@ suite('ModuleManagerController Regression Tests', () => {
 			syncModuleLockStates: async () => {
 				throw new Error('chmod denied');
 			},
+			listModuleDirectories: async () => [],
 		};
 		controller.computeStaleModuleKeys = async () => [];
+		controller.treeDataProvider = {
+			setWorkspaceContext: (context: unknown) => {
+				capturedContext = context;
+			},
+			setModules: () => undefined,
+		};
 		mocked.__setWorkspaceFolders([{ name: 'repo', uri: vscode.Uri.file('d:/repo') }]);
 		mocked.__setFindFilesResultForPattern(configSearchPattern, [vscode.Uri.file('d:/repo/csm/csm-modules.yaml')]);
 
-		await assert.rejects(() => controller.refreshSidebarWorkspaceState(), /chmod denied/);
+		await controller.refreshSidebarWorkspaceState();
+
+		assert.ok(loggedWarnings.some((text) => text.includes('Failed to synchronize local module lock states: chmod denied')));
+		assert.ok(capturedContext);
+		assert.strictEqual((capturedContext as { workspaceLabel: string }).workspaceLabel, 'repo');
+		assert.strictEqual((capturedContext as { moduleRoot: string }).moduleRoot, 'csm');
+		assert.strictEqual((capturedContext as { gitAvailable: boolean }).gitAvailable, true);
+		assert.deepStrictEqual((capturedContext as { staleModuleKeys: string[] }).staleModuleKeys, []);
+		assert.deepStrictEqual((capturedContext as { unmanagedFolders: unknown[] }).unmanagedFolders, []);
+		assert.strictEqual((capturedContext as { managedModules: Array<{ name: string; locked: boolean; path: string }> }).managedModules.length, 1);
+		assert.strictEqual((capturedContext as { managedModules: Array<{ name: string }> }).managedModules[0].name, 'module-a');
+		assert.strictEqual((capturedContext as { managedModules: Array<{ locked: boolean }> }).managedModules[0].locked, true);
+		assert.strictEqual((capturedContext as { managedModules: Array<{ path: string }> }).managedModules[0].path, 'csm/module-a');
 	});
 
 	test('register marks copy modules as applied in a non-git workspace from config file', async () => {

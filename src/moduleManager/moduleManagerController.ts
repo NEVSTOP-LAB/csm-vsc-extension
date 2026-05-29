@@ -1836,7 +1836,11 @@ export class ModuleManagerController {
 			}
 		}
 		if (config) {
-			await this.syncWorkspaceModuleLockStates(workspaceRoot, config);
+			try {
+				await this.syncWorkspaceModuleLockStates(workspaceRoot, config);
+			} catch (error) {
+				this.logger.warn(`Failed to synchronize local module lock states: ${error instanceof Error ? error.message : String(error)}`);
+			}
 		}
 		const moduleRoot = await this.resolveSidebarModuleRoot(workspaceRoot, config);
 		const staleModuleKeys = await this.computeStaleModuleKeys(workspaceRoot, config);
