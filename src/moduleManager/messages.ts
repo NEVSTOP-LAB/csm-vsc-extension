@@ -755,8 +755,8 @@ const messages = {
 		zh: '登录 GitHub 后即可为该文件夹创建共享仓库。',
 	},
 	refreshCatalogToLinkRepositoryHint: {
-		en: 'Refresh the module catalog to link this folder to an existing online repository.',
-		zh: '请先刷新模块目录，然后再把该文件夹关联到已有的在线仓库。',
+		en: 'Click Link Online Repo to load the module catalog first if it is not ready yet.',
+		zh: '如果模块目录还没就绪，点击“关联在线仓库”会先自动加载。',
 	},
 	createGithubRepository: {
 		en: 'Create GitHub Repo',

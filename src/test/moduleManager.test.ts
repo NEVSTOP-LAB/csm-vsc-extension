@@ -393,6 +393,46 @@ suite('Module Manager Tests', () => {
 		disposable.dispose();
 	});
 
+	test('ModuleSidebarViewProvider keeps local link action enabled before catalog load', () => {
+		const provider = new ModuleSidebarViewProvider({
+			onLogin: () => undefined,
+			onRefresh: () => undefined,
+			onInitializeWorkspace: () => undefined,
+			onToggleStar: () => undefined,
+			onOpenReadme: () => undefined,
+			onPreviewReadme: async () => '<p>Preview</p>',
+			onApplySelection: () => undefined,
+			onRemoveModule: () => undefined,
+			onUpdateModule: () => undefined,
+			onSelectionChange: () => undefined,
+			onSortChange: () => undefined,
+			onLinkLocalRepository: () => undefined,
+		});
+
+		provider.setAuthenticated(false);
+		provider.setModules([]);
+		provider.setWorkspaceContext({
+			workspaceLabel: 'repo',
+			moduleRoot: 'csm',
+			appliedModuleKeys: [],
+			managedModules: [],
+			unmanagedFolders: [{
+				id: 'csm/custom-module',
+				kind: 'unmanaged',
+				name: 'custom-module',
+				path: 'csm/custom-module',
+			}],
+		});
+
+		const disposable = vscode.window.registerWebviewViewProvider('csmModules.view', provider);
+		const rendered = mocked.__resolveWebviewView('csmModules.view');
+
+		assert.ok(rendered?.html.includes('data-action="linkLocalRepository" data-local-item-id="csm&#47;custom-module"'));
+		assert.ok(!rendered?.html.includes('data-action="linkLocalRepository" data-local-item-id="csm&#47;custom-module" disabled'));
+		assert.ok(rendered?.html.includes('Click Link Online Repo to load the module catalog first if it is not ready yet.'));
+		disposable.dispose();
+	});
+
 	test('ModuleSidebarViewProvider forwards checkbox selection and card actions', () => {
 		const selectionUpdates: string[][] = [];
 		let appliedModuleName = '';

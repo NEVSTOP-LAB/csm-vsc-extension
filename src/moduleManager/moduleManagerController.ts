@@ -791,6 +791,7 @@ export class ModuleManagerController {
 				interactiveAuth: false,
 				showSuccessMessage: false,
 				showErrorMessage: true,
+				preserveVisibleModules: true,
 			});
 		}
 		if (this.availableModules.length === 0) {

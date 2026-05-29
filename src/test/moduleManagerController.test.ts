@@ -2478,6 +2478,16 @@ suite('ModuleManagerController Regression Tests', () => {
 		const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'csm-link-module-'));
 		fs.mkdirSync(path.join(workspaceRoot, 'csm', 'custom-module'), { recursive: true });
 		const controller = createController() as any;
+		const moduleToLink: CsmModuleEntry = {
+			id: 1,
+			owner: 'org',
+			name: 'module-a',
+			description: 'demo',
+			topics: ['csm-modsets'],
+			visibility: 'public',
+			defaultBranch: 'main',
+			repoUrl: 'https://github.com/org/module-a',
+		};
 		let config: LocalModuleConfig = {
 			version: '2',
 			root: 'csm',
@@ -2487,18 +2497,12 @@ suite('ModuleManagerController Regression Tests', () => {
 		let resolvedRefRequest:
 			| { cwd: string; repoUrl: string; branch: string; authToken?: string }
 			| undefined;
+		let loadOptions:
+			| { interactiveAuth: boolean; showSuccessMessage: boolean; showErrorMessage: boolean; preserveVisibleModules?: boolean }
+			| undefined;
 		let sidebarRefreshed = false;
 
-		controller.availableModules = [{
-			id: 1,
-			owner: 'org',
-			name: 'module-a',
-			description: 'demo',
-			topics: ['csm-modsets'],
-			visibility: 'public',
-			defaultBranch: 'main',
-			repoUrl: 'https://github.com/org/module-a',
-		}];
+		controller.availableModules = [];
 		controller.workspaceModuleService = {
 			resolveGitRepositoryRoot: async () => undefined,
 			resolveRemoteBranchRef: async (cwd: string, repoUrl: string, branch: string, authToken?: string) => {
@@ -2524,7 +2528,11 @@ suite('ModuleManagerController Regression Tests', () => {
 		controller.refreshSidebarWorkspaceState = async () => {
 			sidebarRefreshed = true;
 		};
-		mocked.__setQuickPickResponse({ moduleEntry: controller.availableModules[0] });
+		controller.loadModules = async (options: { interactiveAuth: boolean; showSuccessMessage: boolean; showErrorMessage: boolean; preserveVisibleModules?: boolean }) => {
+			loadOptions = options;
+			controller.availableModules = [moduleToLink];
+		};
+		mocked.__setQuickPickResponse({ moduleEntry: moduleToLink });
 		mocked.__setWarningMessageResponse('Link Repository');
 
 		await controller.linkLocalFolderRepositoryCommand({
@@ -2539,6 +2547,12 @@ suite('ModuleManagerController Regression Tests', () => {
 			repoUrl: 'https://github.com/org/module-a',
 			branch: 'main',
 			authToken: undefined,
+		});
+		assert.deepStrictEqual(loadOptions, {
+			interactiveAuth: false,
+			showSuccessMessage: false,
+			showErrorMessage: true,
+			preserveVisibleModules: true,
 		});
 		assert.deepStrictEqual(config.modules, {
 			'org__module-a': {

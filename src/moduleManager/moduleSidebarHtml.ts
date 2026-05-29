@@ -449,7 +449,7 @@ function renderLocalManagedCard(entry: LocalManagedModuleEntry, state: LocalWork
 
 function renderLocalUnmanagedCard(entry: LocalUnmanagedFolderEntry, state: LocalWorkspaceRenderState): string {
 	const canLinkRepository = hasAvailableOnlineRepositories(state);
-	const linkButton = `<button class="chip-button" data-action="linkLocalRepository" data-local-item-id="${escapeHtml(entry.id)}" ${canLinkRepository ? '' : 'disabled aria-disabled="true"'}>${escapeHtml(t('linkGithubRepository'))}</button>`;
+	const linkButton = `<button class="chip-button" data-action="linkLocalRepository" data-local-item-id="${escapeHtml(entry.id)}">${escapeHtml(t('linkGithubRepository'))}</button>`;
 	const createButton = state.signedIn
 		? `<button class="chip-button callout" data-action="createLocalRepository" data-local-item-id="${escapeHtml(entry.id)}">${escapeHtml(t('createGithubRepository'))}</button>`
 		: '';
