@@ -1305,6 +1305,7 @@ suite('Module Manager Tests', () => {
 			assert.strictEqual(config?.modules['local__module-a'].method, 'submodule');
 			assert.strictEqual(config?.modules['local__module-a'].path, 'csm/module-a');
 			assert.strictEqual(config?.modules['local__module-a'].locked, true);
+			assert.strictEqual((await fs.stat(path.join(repoRoot, 'csm', 'module-a', 'README.md'))).mode & 0o222, 0);
 			const yamlText = await fs.readFile(config?.configPath ?? '', 'utf8');
 			assert.ok(yamlText.includes('modules:'));
 			assert.ok(yamlText.includes('local__module-a:'));
@@ -1406,6 +1407,7 @@ suite('Module Manager Tests', () => {
 			assert.strictEqual(synced.modules['local__module-b'].method, 'submodule');
 			assert.strictEqual(synced.modules['local__module-b'].path, 'csm/module-b');
 			assert.strictEqual(synced.modules['local__module-b'].locked, true);
+			assert.strictEqual((await fs.stat(path.join(repoRoot, 'csm', 'module-b', 'README.md'))).mode & 0o222, 0);
 
 			const yamlText = await fs.readFile(synced.configPath, 'utf8');
 			assert.ok(yamlText.includes('local__module-b:'));

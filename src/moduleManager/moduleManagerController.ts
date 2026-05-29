@@ -208,7 +208,11 @@ export class ModuleManagerController {
 		}
 		void this.setSelectionContexts();
 		const sidebarWorkspaceRefresh = this.refreshSidebarWorkspaceState();
-		void sidebarWorkspaceRefresh;
+		void sidebarWorkspaceRefresh.catch((error) => {
+			const message = getUserFacingErrorMessage(error, 'config');
+			this.logger.error(`Failed to refresh local workspace lock state during registration: ${message}`);
+			void vscode.window.showErrorMessage(t('commandErrorPrefix', { message }));
+		});
 
 		void this.refreshWorkspaceInitializationState({ prompt: true });
 	}
@@ -1832,11 +1836,7 @@ export class ModuleManagerController {
 			}
 		}
 		if (config) {
-			try {
-				await this.syncWorkspaceModuleLockStates(workspaceRoot, config);
-			} catch (error) {
-				this.logger.warn(`Failed to sync local module lock state: ${error instanceof Error ? error.message : String(error)}`);
-			}
+			await this.syncWorkspaceModuleLockStates(workspaceRoot, config);
 		}
 		const moduleRoot = await this.resolveSidebarModuleRoot(workspaceRoot, config);
 		const staleModuleKeys = await this.computeStaleModuleKeys(workspaceRoot, config);

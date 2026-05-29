@@ -298,6 +298,7 @@ export class WorkspaceModuleService {
 
 		for (const submodule of relevantSubmodules) {
 			const entry = await this.buildExistingSubmoduleEntry(repoRoot, submodule);
+			await this.applyEntryLockState(repoRoot, entry);
 			config.modules[entry.key] = entry;
 		}
 
@@ -335,6 +336,7 @@ export class WorkspaceModuleService {
 		let updatedConfig = config;
 		for (const submodule of untracked) {
 			const entry = await this.buildExistingSubmoduleEntry(repoRoot, submodule);
+			await this.applyEntryLockState(repoRoot, entry);
 			updatedConfig = this.withAppliedModule(updatedConfig, entry);
 		}
 

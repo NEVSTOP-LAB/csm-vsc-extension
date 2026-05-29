@@ -1770,6 +1770,43 @@ suite('ModuleManagerController Regression Tests', () => {
 		assert.ok(infos.some((text) => text.includes('Auto-added 1 git submodule')));
 	});
 
+	test('refreshSidebarWorkspaceState fails when local module lock sync fails', async () => {
+		const controller = createController(undefined, {
+			viewProvider: createViewProvider(),
+		}) as any;
+
+		controller.workspaceModuleService = {
+			resolveGitRepositoryRoot: async () => 'd:/repo',
+			loadConfig: async () => ({
+				version: '2',
+				root: 'csm',
+				configPath: 'd:/repo/csm/csm-modules.yaml',
+				modules: {
+					org__module_a: {
+						key: 'org__module_a',
+						name: 'module-a',
+						owner: 'org',
+						source: 'https://github.com/org/module-a',
+						method: 'copy',
+						path: 'csm/module-a',
+						ref: 'abc123',
+						branch: 'main',
+						locked: true,
+					},
+				},
+			}),
+			syncSubmoduleEntriesToConfig: async (_repoRoot: string, cfg: LocalModuleConfig) => ({ config: cfg, addedCount: 0 }),
+			syncModuleLockStates: async () => {
+				throw new Error('chmod denied');
+			},
+		};
+		controller.computeStaleModuleKeys = async () => [];
+		mocked.__setWorkspaceFolders([{ name: 'repo', uri: vscode.Uri.file('d:/repo') }]);
+		mocked.__setFindFilesResultForPattern(configSearchPattern, [vscode.Uri.file('d:/repo/csm/csm-modules.yaml')]);
+
+		await assert.rejects(() => controller.refreshSidebarWorkspaceState(), /chmod denied/);
+	});
+
 	test('register marks copy modules as applied in a non-git workspace from config file', async () => {
 		const memento = new FakeMemento();
 		await memento.update('csmModules.cache.modules', createCachedSnapshot([
