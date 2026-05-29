@@ -1597,7 +1597,7 @@ suite('ModuleManagerController Regression Tests', () => {
 				},
 			}),
 			listModuleDirectories: async () => ['custom-module', 'module-a'],
-			syncSubmoduleEntriesToConfig: async (repoRoot: string, cfg: LocalModuleConfig) => ({ config: cfg, addedCount: 0 }),
+			syncSubmoduleEntriesToConfig: async (_repoRoot: string, cfg: LocalModuleConfig) => ({ config: cfg, addedCount: 0 }),
 		};
 		controller.computeStaleModuleKeys = async () => [];
 		mocked.__setWorkspaceFolders([{ name: 'repo', uri: vscode.Uri.file('d:/repo') }]);
