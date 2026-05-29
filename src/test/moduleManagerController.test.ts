@@ -1833,6 +1833,8 @@ suite('ModuleManagerController Regression Tests', () => {
 		await controller.refreshSidebarWorkspaceState();
 
 		assert.ok(loggedWarnings.some((text) => text.includes('Failed to synchronize local module lock states: chmod denied')));
+		const errors = mocked.__getMessageLog().filter((message) => message.level === 'error').map((message) => message.text);
+		assert.deepStrictEqual(errors, []);
 		assert.ok(capturedContext);
 		assert.strictEqual((capturedContext as { workspaceLabel: string }).workspaceLabel, 'repo');
 		assert.strictEqual((capturedContext as { moduleRoot: string }).moduleRoot, 'csm');
