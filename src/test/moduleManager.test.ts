@@ -1017,6 +1017,22 @@ suite('Module Manager Tests', () => {
 		}
 	});
 
+	test('WorkspaceModuleService computes platform-aware lock modes', () => {
+		const service = new WorkspaceModuleService() as any;
+		if (process.platform === 'win32') {
+			assert.strictEqual(service.getLockMode(0o777, true, true), 0o555);
+			assert.strictEqual(service.getLockMode(0o555, true, false), 0o755);
+			assert.strictEqual(service.getLockMode(0o711, false, true), 0o511);
+			assert.strictEqual(service.getLockMode(0o444, false, false), 0o644);
+			return;
+		}
+
+		assert.strictEqual(service.getLockMode(0o755, true, true), 0o555);
+		assert.strictEqual(service.getLockMode(0o555, true, false), 0o755);
+		assert.strictEqual(service.getLockMode(0o744, false, true), 0o544);
+		assert.strictEqual(service.getLockMode(0o544, false, false), 0o744);
+	});
+
 	test('WorkspaceModuleService continues locking remaining files when one chmod fails', async () => {
 		const workspaceRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'csm-lock-partial-failure-'));
 		const service = new WorkspaceModuleService();

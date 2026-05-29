@@ -882,6 +882,9 @@ export class WorkspaceModuleService {
 	}
 
 	private getLockMode(currentMode: number, isDirectory: boolean, locked: boolean): number {
+		if (process.platform === 'win32') {
+			return locked ? (currentMode & ~0o222) : (currentMode | 0o200);
+		}
 		const executeBits = isDirectory ? 0o111 : (currentMode & 0o111);
 		if (locked) {
 			return (isDirectory ? 0o555 : 0o444) | executeBits;
