@@ -427,7 +427,7 @@ function renderLocalManagedCard(entry: LocalManagedModuleEntry, state: LocalWork
 	]);
 	const metaBadges = [
 		renderBadge(t('managedBadge'), 'applied'),
-		renderBadge(getApplyMethodLabel(entry.method)),
+		renderBadge(getApplyMethodLabel(entry.method), entry.method),
 		...(entry.stale ? [renderBadge(t('staleDirectoryMissing'), 'stale')] : []),
 		renderBadge(getVisibilityLabel(entry.visibility), entry.visibility === 'private' ? 'private' : undefined),
 		renderBadge(t('branchBadge', { branch: entry.branch })),
@@ -1004,6 +1004,14 @@ export function renderModuleSidebarHtml(state: ModuleSidebarRenderState): string
 		.badge.stale {
 			border-color: var(--vscode-inputValidation-warningBorder, var(--vscode-panel-border));
 			color: var(--vscode-editorWarning-foreground, var(--vscode-foreground));
+		}
+		.badge.copy {
+			border-color: rgba(14, 99, 156, 0.5);
+			color: var(--vscode-terminal-ansiBlue, #0e639c);
+		}
+		.badge.submodule {
+			border-color: rgba(188, 63, 188, 0.4);
+			color: var(--vscode-terminal-ansiMagenta, #bc3fbc);
 		}
 		.card-footer {
 			display: flex;
@@ -1739,6 +1747,14 @@ export function renderLocalWorkspaceViewHtml(state: LocalWorkspaceRenderState): 
 		.badge.stale {
 			border-color: var(--vscode-inputValidation-warningBorder, var(--vscode-panel-border));
 			color: var(--vscode-editorWarning-foreground, var(--vscode-foreground));
+		}
+		.badge.copy {
+			border-color: rgba(14, 99, 156, 0.5);
+			color: var(--vscode-terminal-ansiBlue, #0e639c);
+		}
+		.badge.submodule {
+			border-color: rgba(188, 63, 188, 0.4);
+			color: var(--vscode-terminal-ansiMagenta, #bc3fbc);
 		}
 		.action-toolbar {
 			display: flex;
