@@ -1969,15 +1969,11 @@ function renderListSection(title: string, meta: string | undefined, bodyHtml: st
 	return `<section class="list-section">${header}<div class="list">${bodyHtml}</div></section>`;
 }
 
-function getWorkspaceSectionMeta(state: ModuleSidebarRenderState, workspaceContent: WorkspaceContent): string | undefined {
-	const summary = escapeHtml(t('workspaceModulesSummary', {
+function getWorkspaceSectionMeta(_state: ModuleSidebarRenderState, workspaceContent: WorkspaceContent): string | undefined {
+	return escapeHtml(t('workspaceModulesSummary', {
 		managed: workspaceContent.managed.length,
 		unmanaged: workspaceContent.unmanaged.length,
 	}));
-	if (!state.moduleRoot) {
-		return summary;
-	}
-	return `${summary} | ${escapeHtml(t('rootLabel'))}: ${escapeHtml(state.moduleRoot)}/`;
 }
 
 function getCatalogSectionMeta(state: ModuleSidebarRenderState, catalogContent: CatalogContent): string | undefined {
