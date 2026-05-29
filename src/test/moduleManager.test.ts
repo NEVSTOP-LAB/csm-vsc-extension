@@ -1518,6 +1518,43 @@ suite('Module Manager Tests', () => {
 		}
 	});
 
+	test('WorkspaceModuleService reconstructs yaml config from existing nested git module directories', async function () {
+		this.timeout(20000);
+		const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'csm-modules-recover-nested-'));
+		const moduleRepo = path.join(tempRoot, 'module-nested-repo');
+		const repoRoot = path.join(tempRoot, 'workspace-repo');
+		const service = new WorkspaceModuleService();
+		try {
+			await fs.mkdir(moduleRepo, { recursive: true });
+			runGit(moduleRepo, ['init', '--initial-branch=main']);
+			runGit(moduleRepo, ['config', 'user.name', 'Test User']);
+			runGit(moduleRepo, ['config', 'user.email', 'test@example.com']);
+			await fs.writeFile(path.join(moduleRepo, 'README.md'), '# nested module\n', 'utf8');
+			runGit(moduleRepo, ['add', 'README.md']);
+			runGit(moduleRepo, ['commit', '-m', 'init nested module']);
+			runGit(moduleRepo, ['remote', 'add', 'origin', moduleRepo]);
+			const nestedRef = runGit(moduleRepo, ['rev-parse', 'HEAD']);
+
+			await fs.mkdir(path.join(repoRoot, 'csm'), { recursive: true });
+			runGit(repoRoot, ['init', '--initial-branch=main']);
+			runGit(repoRoot, ['config', 'user.name', 'Test User']);
+			runGit(repoRoot, ['config', 'user.email', 'test@example.com']);
+			await fs.cp(moduleRepo, path.join(repoRoot, 'csm', 'nested-module'), { recursive: true });
+
+			const config = await service.recoverConfigFromExistingSubmodules(repoRoot);
+			assert.ok(config);
+			assert.ok(config?.modules['local__nested-module']);
+			assert.strictEqual(config?.modules['local__nested-module'].method, 'copy');
+			assert.strictEqual(config?.modules['local__nested-module'].path, 'csm/nested-module');
+			assert.strictEqual(config?.modules['local__nested-module'].source, moduleRepo);
+			assert.strictEqual(config?.modules['local__nested-module'].ref, nestedRef);
+			assert.strictEqual(config?.modules['local__nested-module'].branch, 'main');
+			assert.strictEqual(config?.modules['local__nested-module'].locked, true);
+		} finally {
+			await removeWritableTree(tempRoot);
+		}
+	});
+
 	test('WorkspaceModuleService previews and updates copy modules with a zip backup', async function () {
 		this.timeout(20000);
 		const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'csm-modules-copy-update-'));
@@ -1650,6 +1687,43 @@ suite('Module Manager Tests', () => {
 			const { addedCount } = await service.syncSubmoduleEntriesToConfig(repoRoot, recovered!);
 
 			assert.strictEqual(addedCount, 0);
+		} finally {
+			await removeWritableTree(tempRoot);
+		}
+	});
+
+	test('WorkspaceModuleService syncSubmoduleEntriesToConfig adds untracked nested git module directories to an existing config', async function () {
+		this.timeout(20000);
+		const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'csm-sync-nested-repos-'));
+		const moduleRepo = path.join(tempRoot, 'module-d-repo');
+		const repoRoot = path.join(tempRoot, 'workspace-repo');
+		const service = new WorkspaceModuleService();
+		try {
+			await fs.mkdir(moduleRepo, { recursive: true });
+			runGit(moduleRepo, ['init', '--initial-branch=main']);
+			runGit(moduleRepo, ['config', 'user.name', 'Test User']);
+			runGit(moduleRepo, ['config', 'user.email', 'test@example.com']);
+			await fs.writeFile(path.join(moduleRepo, 'README.md'), '# module-d\n', 'utf8');
+			runGit(moduleRepo, ['add', 'README.md']);
+			runGit(moduleRepo, ['commit', '-m', 'init module-d']);
+			runGit(moduleRepo, ['remote', 'add', 'origin', moduleRepo]);
+			const nestedRef = runGit(moduleRepo, ['rev-parse', 'HEAD']);
+
+			await fs.mkdir(path.join(repoRoot, 'csm'), { recursive: true });
+			runGit(repoRoot, ['init', '--initial-branch=main']);
+			runGit(repoRoot, ['config', 'user.name', 'Test User']);
+			runGit(repoRoot, ['config', 'user.email', 'test@example.com']);
+			await fs.cp(moduleRepo, path.join(repoRoot, 'csm', 'module-d'), { recursive: true });
+
+			const existingConfig = await service.initializeConfig(repoRoot, 'csm');
+			const { config: synced, addedCount } = await service.syncSubmoduleEntriesToConfig(repoRoot, existingConfig);
+
+			assert.strictEqual(addedCount, 1);
+			assert.ok(synced.modules['local__module-d']);
+			assert.strictEqual(synced.modules['local__module-d'].method, 'copy');
+			assert.strictEqual(synced.modules['local__module-d'].source, moduleRepo);
+			assert.strictEqual(synced.modules['local__module-d'].ref, nestedRef);
+			assert.strictEqual(synced.modules['local__module-d'].branch, 'main');
 		} finally {
 			await removeWritableTree(tempRoot);
 		}

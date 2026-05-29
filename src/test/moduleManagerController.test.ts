@@ -1767,7 +1767,64 @@ suite('ModuleManagerController Regression Tests', () => {
 		);
 		assert.deepStrictEqual(capturedContext?.unmanagedFolders, []);
 		const infos = mocked.__getMessageLog().filter((m) => m.level === 'info').map((m) => m.text);
-		assert.ok(infos.some((text) => text.includes('Auto-added 1 git submodule')));
+		assert.ok(infos.some((text) => text.includes('Auto-added 1 existing git module folder')));
+	});
+
+	test('refreshSidebarWorkspaceState auto-syncs untracked nested git module directories into the yaml config', async () => {
+		const controller = createController(undefined, {
+			viewProvider: createViewProvider(),
+		}) as any;
+		let capturedContext: Record<string, unknown> | undefined;
+		let syncCalled = false;
+
+		const baseConfig: LocalModuleConfig = {
+			version: '2',
+			root: 'csm',
+			configPath: 'd:/repo/csm/csm-modules.yaml',
+			modules: {},
+		};
+		const syncedConfig: LocalModuleConfig = {
+			...baseConfig,
+			modules: {
+				local__nested_repo: {
+					key: 'local__nested_repo',
+					name: 'nested-repo',
+					owner: '',
+					source: 'https://github.com/org/nested-repo',
+					method: 'copy',
+					path: 'csm/nested-repo',
+					ref: 'abc123',
+					branch: 'main',
+				},
+			},
+		};
+
+		controller.treeDataProvider = createViewProvider({
+			setWorkspaceContext: (context) => {
+				capturedContext = context as unknown as Record<string, unknown>;
+			},
+		});
+		controller.workspaceModuleService = {
+			resolveGitRepositoryRoot: async () => 'd:/repo',
+			loadConfig: async () => baseConfig,
+			listModuleDirectories: async () => ['nested-repo'],
+			syncSubmoduleEntriesToConfig: async (_repoRoot: string, _cfg: LocalModuleConfig) => {
+				syncCalled = true;
+				return { config: syncedConfig, addedCount: 1 };
+			},
+		};
+		controller.computeStaleModuleKeys = async () => [];
+		mocked.__setWorkspaceFolders([{ name: 'repo', uri: vscode.Uri.file('d:/repo') }]);
+		mocked.__setFindFilesResultForPattern(configSearchPattern, [vscode.Uri.file('d:/repo/csm/csm-modules.yaml')]);
+
+		await controller.refreshSidebarWorkspaceState();
+
+		assert.strictEqual(syncCalled, true);
+		assert.deepStrictEqual(
+			(capturedContext?.managedModules as Array<{ path: string }>)?.map((entry) => entry.path),
+			['csm/nested-repo'],
+		);
+		assert.deepStrictEqual(capturedContext?.unmanagedFolders, []);
 	});
 
 	test('refreshSidebarWorkspaceState warns and continues when local module lock sync fails', async () => {
@@ -1984,7 +2041,7 @@ suite('ModuleManagerController Regression Tests', () => {
 
 		assert.strictEqual(initializeCalled, false);
 		const infos = mocked.__getMessageLog().filter((message) => message.level === 'info').map((message) => message.text);
-		assert.ok(infos.some((text) => text.includes('Initialized local CSM module config from existing submodules')));
+		assert.ok(infos.some((text) => text.includes('Initialized local CSM module config from existing git module folders')));
 		assert.strictEqual(mocked.__getContextValue('csmModules.canInitializeWorkspace'), false);
 	});
 
@@ -2826,6 +2883,204 @@ suite('ModuleManagerController Regression Tests', () => {
 		assert.ok(infos.some((text) => text.includes('Linked csm/custom-module to org/module-a.')));
 	});
 
+	test('linkLocalFolderRepositoryCommand keeps existing git submodule metadata instead of rewriting it as copy', async () => {
+		const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'csm-link-existing-submodule-'));
+		fs.mkdirSync(path.join(workspaceRoot, 'csm', 'custom-module'), { recursive: true });
+		const controller = createController() as any;
+		const moduleToLink: CsmModuleEntry = {
+			id: 1,
+			owner: 'org',
+			name: 'module-a',
+			description: 'demo',
+			topics: ['csm-modsets'],
+			visibility: 'public',
+			defaultBranch: 'main',
+			repoUrl: 'https://github.com/org/module-a',
+		};
+		let config: LocalModuleConfig = {
+			version: '2',
+			root: 'csm',
+			configPath: path.join(workspaceRoot, 'csm', 'csm-modules.yaml'),
+			modules: {
+				'local__custom-module': {
+					key: 'local__custom-module',
+					name: 'custom-module',
+					owner: '',
+					source: 'git@github.com:org/module-a.git',
+					method: 'submodule',
+					path: 'csm/custom-module',
+					ref: 'old-ref',
+					branch: 'main',
+					locked: true,
+				},
+			},
+		};
+		let resolvedRemoteRef = false;
+		let sidebarRefreshed = false;
+
+		controller.availableModules = [moduleToLink];
+		controller.workspaceModuleService = {
+			resolveGitRepositoryRoot: async () => workspaceRoot,
+			getExistingSubmoduleConfigEntry: async () => ({
+				key: 'local__custom-module',
+				name: 'custom-module',
+				owner: '',
+				source: 'git@github.com:org/module-a.git',
+				method: 'submodule',
+				path: 'csm/custom-module',
+				ref: 'def456',
+				branch: 'develop',
+				locked: true,
+			}),
+			resolveRemoteBranchRef: async () => {
+				resolvedRemoteRef = true;
+				return 'abc123';
+			},
+			normalizeRootPath: (value: string) => value.replace(/\\/g, '/'),
+			getModuleKey: (entry: CsmModuleEntry) => `${entry.owner}__${entry.name}`,
+			setModuleLocked: async (_workspaceRoot: string, entry: LocalModuleConfig['modules'][string], locked: boolean) => ({
+				...entry,
+				locked,
+			}),
+			withoutModule: (currentConfig: LocalModuleConfig, moduleKey: string) => {
+				const { [moduleKey]: _removed, ...rest } = currentConfig.modules;
+				config = {
+					...currentConfig,
+					modules: rest,
+				};
+				return config;
+			},
+			withAppliedModule: (currentConfig: LocalModuleConfig, entry: LocalModuleConfig['modules'][string]) => {
+				config = {
+					...currentConfig,
+					modules: {
+						...currentConfig.modules,
+						[entry.key]: entry,
+					},
+				};
+				return config;
+			},
+			writeConfig: async () => undefined,
+		};
+		controller.resolveWorkspaceFolder = async () => ({ name: 'git-workspace', uri: vscode.Uri.file(workspaceRoot) });
+		controller.tryLoadSidebarLocalModuleConfig = async () => config;
+		controller.refreshSidebarWorkspaceState = async () => {
+			sidebarRefreshed = true;
+		};
+		mocked.__setQuickPickResponse({ moduleEntry: moduleToLink });
+		mocked.__setWarningMessageResponse('Link Repository');
+
+		await controller.linkLocalFolderRepositoryCommand({
+			id: 'csm/custom-module',
+			kind: 'unmanaged',
+			name: 'custom-module',
+			path: 'csm/custom-module',
+		});
+
+		assert.strictEqual(resolvedRemoteRef, false);
+		assert.deepStrictEqual(config.modules, {
+			'org__module-a': {
+				key: 'org__module-a',
+				name: 'module-a',
+				owner: 'org',
+				source: 'git@github.com:org/module-a.git',
+				method: 'submodule',
+				path: 'csm/custom-module',
+				ref: 'def456',
+				branch: 'develop',
+				locked: true,
+			},
+		});
+		assert.strictEqual(sidebarRefreshed, true);
+	});
+
+	test('linkLocalFolderRepositoryCommand reuses existing nested git repository metadata instead of remote head state', async () => {
+		const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'csm-link-existing-nested-repo-'));
+		fs.mkdirSync(path.join(workspaceRoot, 'csm', 'custom-module'), { recursive: true });
+		const controller = createController() as any;
+		const moduleToLink: CsmModuleEntry = {
+			id: 1,
+			owner: 'org',
+			name: 'module-a',
+			description: 'demo',
+			topics: ['csm-modsets'],
+			visibility: 'public',
+			defaultBranch: 'main',
+			repoUrl: 'https://github.com/org/module-a',
+		};
+		let config: LocalModuleConfig = {
+			version: '2',
+			root: 'csm',
+			configPath: path.join(workspaceRoot, 'csm', 'csm-modules.yaml'),
+			modules: {},
+		};
+		let resolvedRemoteRef = false;
+
+		controller.availableModules = [moduleToLink];
+		controller.workspaceModuleService = {
+			resolveGitRepositoryRoot: async () => workspaceRoot,
+			getExistingSubmoduleConfigEntry: async () => ({
+				key: 'local__custom-module',
+				name: 'custom-module',
+				owner: '',
+				source: 'git@github.com:org/module-a.git',
+				method: 'copy',
+				path: 'csm/custom-module',
+				ref: 'def456',
+				branch: 'feature/test',
+				locked: true,
+			}),
+			resolveRemoteBranchRef: async () => {
+				resolvedRemoteRef = true;
+				return 'abc123';
+			},
+			normalizeRootPath: (value: string) => value.replace(/\\/g, '/'),
+			getModuleKey: (entry: CsmModuleEntry) => `${entry.owner}__${entry.name}`,
+			setModuleLocked: async (_workspaceRoot: string, entry: LocalModuleConfig['modules'][string], locked: boolean) => ({
+				...entry,
+				locked,
+			}),
+			withAppliedModule: (currentConfig: LocalModuleConfig, entry: LocalModuleConfig['modules'][string]) => {
+				config = {
+					...currentConfig,
+					modules: {
+						...currentConfig.modules,
+						[entry.key]: entry,
+					},
+				};
+				return config;
+			},
+			writeConfig: async () => undefined,
+		};
+		controller.resolveWorkspaceFolder = async () => ({ name: 'git-workspace', uri: vscode.Uri.file(workspaceRoot) });
+		controller.tryLoadSidebarLocalModuleConfig = async () => config;
+		controller.refreshSidebarWorkspaceState = async () => undefined;
+		mocked.__setQuickPickResponse({ moduleEntry: moduleToLink });
+		mocked.__setWarningMessageResponse('Link Repository');
+
+		await controller.linkLocalFolderRepositoryCommand({
+			id: 'csm/custom-module',
+			kind: 'unmanaged',
+			name: 'custom-module',
+			path: 'csm/custom-module',
+		});
+
+		assert.strictEqual(resolvedRemoteRef, false);
+		assert.deepStrictEqual(config.modules, {
+			'org__module-a': {
+				key: 'org__module-a',
+				name: 'module-a',
+				owner: 'org',
+				source: 'git@github.com:org/module-a.git',
+				method: 'copy',
+				path: 'csm/custom-module',
+				ref: 'def456',
+				branch: 'feature/test',
+				locked: true,
+			},
+		});
+	});
+
 	test('linkLocalFolderRepositoryCommand refuses to overwrite a different managed path for the same repository', async () => {
 		const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'csm-link-module-conflict-'));
 		fs.mkdirSync(path.join(workspaceRoot, 'csm', 'custom-module'), { recursive: true });
@@ -3114,7 +3369,7 @@ suite('ModuleManagerController Regression Tests', () => {
 
 		assert.strictEqual(initializeCalled, false);
 		const infos = mocked.__getMessageLog().filter((message) => message.level === 'info').map((message) => message.text);
-		assert.ok(infos.some((text) => text.includes('Recovered local CSM module config from existing submodules')));
+		assert.ok(infos.some((text) => text.includes('Recovered local CSM module config from existing git module folders')));
 	});
 
 	test('webview context commands target the clicked module and update selection', async () => {

@@ -251,8 +251,8 @@ const messages = {
 		zh: '本地 CSM 模块配置已存在：{configPath}。',
 	},
 	configInitializedFromSubmodules: {
-		en: 'Initialized local CSM module config from existing submodules at {configPath}.',
-		zh: '已根据现有子模块初始化本地 CSM 模块配置：{configPath}。',
+		en: 'Initialized local CSM module config from existing git module folders at {configPath}.',
+		zh: '已根据现有 Git 模块目录初始化本地 CSM 模块配置：{configPath}。',
 	},
 	signInCancelled: {
 		en: 'GitHub sign-in was cancelled.',
@@ -523,12 +523,12 @@ const messages = {
 		zh: '选择一个仓库来接收所选的 CSM 模块。',
 	},
 	configRecoveredFromSubmodules: {
-		en: 'Recovered local CSM module config from existing submodules at {configPath}.',
-		zh: '已从现有子模块恢复本地 CSM 模块配置：{configPath}。',
+		en: 'Recovered local CSM module config from existing git module folders at {configPath}.',
+		zh: '已从现有 Git 模块目录恢复本地 CSM 模块配置：{configPath}。',
 	},
 	submodulesAutoSyncedToConfig: {
-		en: 'Auto-added {count} git submodule(s) to CSM module config: {configPath}.',
-		zh: '已自动将 {count} 个 git 子模块添加到 CSM 模块配置：{configPath}。',
+		en: 'Auto-added {count} existing git module folder(s) to CSM module config: {configPath}.',
+		zh: '已自动将 {count} 个现有 Git 模块目录添加到 CSM 模块配置：{configPath}。',
 	},
 	selectConfigToUpdatePlaceholder: {
 		en: 'Multiple CSM module configs were found. Select one to update.',

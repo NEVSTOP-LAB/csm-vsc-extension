@@ -288,11 +288,8 @@ export class WorkspaceModuleService {
 		rootRelativePath = DEFAULT_LOCAL_MODULE_ROOT,
 	): Promise<LocalModuleConfig | undefined> {
 		const root = this.normalizeRootPath(rootRelativePath);
-		const submodules = await this.readGitSubmodules(repoRoot);
-		const relevantSubmodules = submodules
-			.filter((submodule) => submodule.path === root || submodule.path.startsWith(`${root}/`))
-			.sort((left, right) => left.path.localeCompare(right.path));
-		if (relevantSubmodules.length === 0) {
+		const existingEntries = await this.findExistingGitModuleEntries(repoRoot, root);
+		if (existingEntries.length === 0) {
 			return undefined;
 		}
 
@@ -303,8 +300,7 @@ export class WorkspaceModuleService {
 			modules: {},
 		};
 
-		for (const submodule of relevantSubmodules) {
-			const entry = await this.buildExistingSubmoduleEntry(repoRoot, submodule);
+		for (const entry of existingEntries) {
 			await this.applyEntryLockState(repoRoot, entry);
 			config.modules[entry.key] = entry;
 		}
@@ -314,41 +310,49 @@ export class WorkspaceModuleService {
 	}
 
 	/**
-	 * Scan `.gitmodules` for submodule entries under `config.root` that are not yet recorded
-	 * in the yaml config. For each newly discovered submodule, build a config entry and
-	 * persist the updated yaml. Returns the (possibly updated) config together with the
-	 * number of entries that were added.
+	 * Scan the module root for existing git-managed module directories that are not yet
+	 * recorded in the yaml config. This includes real git submodules as well as nested
+	 * git repositories copied into the module root. For each newly discovered entry,
+	 * build a config entry and persist the updated yaml.
 	 */
 	public async syncSubmoduleEntriesToConfig(
 		repoRoot: string,
 		config: LocalModuleConfig,
 	): Promise<{ config: LocalModuleConfig; addedCount: number }> {
 		const root = config.root;
-		const submodules = await this.readGitSubmodules(repoRoot);
+		const existingEntries = await this.findExistingGitModuleEntries(repoRoot, root);
 		const managedPaths = new Set(
 			Object.values(config.modules).map((entry) => entry.path.replace(/\\/g, '/').toLowerCase()),
 		);
-		const untracked = submodules
-			.filter(
-				(submodule) =>
-					(submodule.path === root || submodule.path.startsWith(`${root}/`)) &&
-					!managedPaths.has(submodule.path.toLowerCase()),
-			)
-			.sort((left, right) => left.path.localeCompare(right.path));
+		const untracked = existingEntries.filter((entry) => !managedPaths.has(entry.path.toLowerCase()));
 
 		if (untracked.length === 0) {
 			return { config, addedCount: 0 };
 		}
 
 		let updatedConfig = config;
-		for (const submodule of untracked) {
-			const entry = await this.buildExistingSubmoduleEntry(repoRoot, submodule);
+		for (const entry of untracked) {
 			await this.applyEntryLockState(repoRoot, entry);
 			updatedConfig = this.withAppliedModule(updatedConfig, entry);
 		}
 
 		await this.writeConfig(updatedConfig);
 		return { config: updatedConfig, addedCount: untracked.length };
+	}
+
+	public async getExistingSubmoduleConfigEntry(
+		repoRoot: string,
+		targetRelativePath: string,
+	): Promise<LocalModuleConfigEntry | undefined> {
+		const normalizedTargetPath = this.normalizeRootPath(targetRelativePath);
+		const submodule = (await this.readGitSubmodules(repoRoot)).find(
+			(candidate) => this.normalizeRootPath(candidate.path) === normalizedTargetPath,
+		);
+		if (!submodule) {
+			return this.buildExistingNestedGitRepositoryEntry(repoRoot, normalizedTargetPath);
+		}
+
+		return this.buildExistingSubmoduleEntry(repoRoot, submodule);
 	}
 
 	public withAppliedModule(config: LocalModuleConfig, entry: LocalModuleConfigEntry): LocalModuleConfig {
@@ -608,6 +612,70 @@ export class WorkspaceModuleService {
 			branch,
 			locked: true,
 		};
+	}
+
+	private async buildExistingNestedGitRepositoryEntry(
+		repoRoot: string,
+		targetRelativePath: string,
+	): Promise<LocalModuleConfigEntry | undefined> {
+		const normalizedTargetPath = this.normalizeRootPath(targetRelativePath);
+		const targetPath = this.toAbsoluteTargetPath(repoRoot, normalizedTargetPath);
+		const nestedRepoRoot = await this.resolveGitRepositoryRoot(targetPath);
+		if (!nestedRepoRoot || path.resolve(nestedRepoRoot) !== path.resolve(targetPath)) {
+			return undefined;
+		}
+
+		const remoteUrl = await this.getRemoteUrl(targetPath, 'origin');
+		if (!remoteUrl) {
+			return undefined;
+		}
+
+		const repoInfo = this.parseRepositoryCoordinates(remoteUrl, path.posix.basename(normalizedTargetPath));
+		const ref = (await this.runGit(targetPath, ['rev-parse', 'HEAD'])).trim();
+		const branch = await this.resolveExistingSubmoduleBranch(targetPath) ?? 'main';
+		return {
+			key: `${sanitizeModuleKeyPart(repoInfo.owner || 'local')}__${sanitizeModuleKeyPart(repoInfo.name)}`,
+			name: repoInfo.name,
+			owner: repoInfo.owner,
+			source: remoteUrl,
+			method: 'copy',
+			path: normalizedTargetPath,
+			ref,
+			branch,
+			locked: true,
+		};
+	}
+
+	private async findExistingGitModuleEntries(
+		repoRoot: string,
+		rootRelativePath: string,
+	): Promise<LocalModuleConfigEntry[]> {
+		const root = this.normalizeRootPath(rootRelativePath);
+		const entriesByPath = new Map<string, LocalModuleConfigEntry>();
+		const submodules = (await this.readGitSubmodules(repoRoot))
+			.filter((submodule) => submodule.path === root || submodule.path.startsWith(`${root}/`))
+			.sort((left, right) => left.path.localeCompare(right.path));
+
+		for (const submodule of submodules) {
+			const entry = await this.buildExistingSubmoduleEntry(repoRoot, submodule);
+			entriesByPath.set(entry.path.toLowerCase(), entry);
+		}
+
+		const directoryNames = await this.listModuleDirectories(repoRoot, root);
+		for (const directoryName of directoryNames) {
+			const targetRelativePath = path.posix.join(root, directoryName);
+			const normalizedTargetPath = this.normalizeRootPath(targetRelativePath);
+			if (entriesByPath.has(normalizedTargetPath.toLowerCase())) {
+				continue;
+			}
+
+			const entry = await this.buildExistingNestedGitRepositoryEntry(repoRoot, normalizedTargetPath);
+			if (entry) {
+				entriesByPath.set(entry.path.toLowerCase(), entry);
+			}
+		}
+
+		return [...entriesByPath.values()].sort((left, right) => left.path.localeCompare(right.path));
 	}
 
 	private async applyModuleAsSubmodule(

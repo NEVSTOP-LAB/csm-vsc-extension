@@ -912,6 +912,9 @@ export class ModuleManagerController {
 			let config = await this.tryLoadSidebarLocalModuleConfig(workspaceFolder, workspaceRoot)
 				?? await this.initializePublishedFolderConfig(workspaceRoot, folder);
 			const targetPath = this.workspaceModuleService.normalizeRootPath(folder.path);
+			const existingEntryAtPath = Object.values(config.modules).find(
+				(entry) => this.workspaceModuleService.normalizeRootPath(entry.path) === targetPath,
+			);
 			const moduleKey = this.workspaceModuleService.getModuleKey(selection);
 			const existing = config.modules[moduleKey];
 			if (existing && this.workspaceModuleService.normalizeRootPath(existing.path) !== targetPath) {
@@ -931,18 +934,28 @@ export class ModuleManagerController {
 					cancellable: false,
 				},
 				async () => {
-					const ref = await this.workspaceModuleService.resolveRemoteBranchRef(workspaceRoot, selection.repoUrl, branch, authToken);
+					const existingGitModule = repoRoot
+						? await this.workspaceModuleService.getExistingSubmoduleConfigEntry(repoRoot, targetPath)
+						: undefined;
+					const resolvedBranch = existingGitModule?.branch || branch;
+					const ref = existingGitModule?.ref
+						?? await this.workspaceModuleService.resolveRemoteBranchRef(workspaceRoot, selection.repoUrl, resolvedBranch, authToken);
+					const linkedMethod: ModuleApplyMethod = existingGitModule?.method ?? 'copy';
+					const locked = existingEntryAtPath ? this.isLocalModuleLocked(existingEntryAtPath) : true;
+					if (existingEntryAtPath && existingEntryAtPath.key !== moduleKey) {
+						config = this.workspaceModuleService.withoutModule(config, existingEntryAtPath.key);
+					}
 					linkedEntry = await this.setLocalModuleLockState(workspaceRoot, {
 						key: moduleKey,
 						name: selection.name,
 						owner: selection.owner,
-						source: selection.repoUrl,
-						method: 'copy',
+						source: existingGitModule?.source ?? selection.repoUrl,
+						method: linkedMethod,
 						path: targetPath,
 						ref,
-						branch,
-						locked: true,
-					}, true);
+						branch: resolvedBranch,
+						locked,
+					}, locked);
 					config = this.workspaceModuleService.withAppliedModule(config, linkedEntry);
 					await this.workspaceModuleService.writeConfig(config);
 				},
