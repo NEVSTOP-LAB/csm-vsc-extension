@@ -2,72 +2,46 @@
 
 > 为 CSM 相关文件提供 Visual Studio Code 编辑器支持的插件。
 
-## 项目简介
+## 功能概览
 
-当前版本主要提供三类能力：
+当前版本主要提供以下能力：
 
 - `.csmlog` 日志查看与辅助阅读
 - `.lvcsm` 配置文件编辑支持
 - `CSM Modules` 侧边栏模块管理
-
-## 安装要求
-
-- Visual Studio Code 1.60.0 或更高版本
-
-## 功能特性
-
-- ✅ 本地化：支持根据 VS Code 显示语言在中文 / English 间切换
+- `CSM File Icons` 文件图标主题
+- 中英文界面本地化
 
 ### `.csmlog` 文件支持
 
 - ✅ 日志事件、时间戳、模块名和关键参数高亮
 - ✅ Hover 悬停提示，便于快速查看常见字段含义
 - ✅ Outline 大纲，便于定位关键配置和系统消息
-- ✅ 默认开启 `files.autoGuessEncoding`，降低常见中文日志乱码风险
+- ✅ 自动编码识别，降低常见中文日志乱码风险
 
 ### `.lvcsm` 文件支持
 
 - ✅ 配置文件语法高亮
 - ✅ Outline 大纲，便于快速浏览配置节
-- ✅ 默认开启 `files.autoGuessEncoding`，降低常见中文配置文件乱码风险
+- ✅ 自动编码识别，降低常见中文配置文件乱码风险
 
 ### CSM 模块管理
 
 侧边栏 `CSM Modules` 视图，用于浏览、搜索和管理 CSM 模块仓库：
 
-- ✅ 浏览可用的 CSM 模块仓库
-- ✅ 支持 GitHub 登录后查看更多可访问模块
-- ✅ 支持搜索、筛选、排序和批量选择
-- ✅ 支持 README 预览与图片显示
-- ✅ 支持仓库 `Star` / `Unstar`
-- ✅ 标题栏 `Refresh` 除了同步 GitHub 模块目录，也会重算当前工作区的本地模块与未管理文件夹状态
-- ✅ 支持将模块引入当前工作区，Git 仓库可选 `submodule` 或 `copy`，非 Git 工作区自动限制为 `copy`，且后续可直接移除或更新 `copy` 模式模块
-- ✅ 支持按当前多选状态批量应用未安装模块，并批量移除已安装模块
-- ✅ 支持更新模块；`copy` 模式会先比较远端最新提交，确认后备份当前目录为 zip 再整体替换
-- ✅ 对已管理的本地模块，可在 Git 工作区内把 `copy` 与 `submodule` 模式互相切换；非 Git 工作区会禁用这项操作
-- ✅ `CSM Modules` 现合并为单一侧边栏视图：当前工作区中的已管理模块、未管理文件夹与远端 GitHub 模块目录会显示在同一列表中，本地项固定优先展示，并通过轻量分组标题保持层次清晰
-- ✅ 过滤菜单与顶部快捷工具条都提供同步的 `All / Workspace / Catalog` 范围切换，用来快速在统一视图中查看原先两类内容
-- ✅ 对当前模块根目录下的未管理文件夹，可直接关联到当前已加载的在线模块仓库，把现有目录登记为受跟踪的 `copy` 模块；如果当前目录列表还没刷新出目标仓库，可先点 `Refresh`
-- ✅ 对当前模块根目录下的未管理文件夹，已登录 GitHub 时可通过向导一键创建并发布 GitHub 仓库，默认使用 private 可见性并附带 `labview-csm`、`csm-modsets` topics；若本机缺少 Git 作者信息，会在首次发布前补充询问。Git 工作区会在发布成功后直接把该目录接管为 `submodule` 并写回本地 YAML，非 Git 工作区则保持 `copy` 模式
+- ✅ 在统一侧边栏中同时查看工作区模块、未管理文件夹和 GitHub 模块目录
+- ✅ 支持 GitHub 登录、搜索、筛选、排序和多选批量操作
+- ✅ 支持 README 预览、图片显示，以及仓库 `Star` / `Unstar`
+- ✅ 支持将模块引入、更新、移除，并在 `copy` / `submodule` 模式间切换
+- ✅ 支持将本地未管理文件夹关联到已有模块仓库，或直接发布为新的 GitHub 仓库
 
-> 详细功能说明参见 [docs/module-management.md](docs/module-management.md)
+### 文件图标主题
 
-### 扩展设置
+- ✅ 为 `.csmlog` 与 `.lvcsm` 提供专用文件图标
 
-- `csmModules.defaultModuleRoot`：用于首次引入模块时的默认目录名
+## 更多信息
 
-## 文件图标主题
-
-扩展内置文件图标主题 **CSM File Icons**，为 `.csmlog` 与 `.lvcsm` 提供专用图标。可在 VS Code 中通过 `首选项 → 文件图标主题`（或命令面板执行 `Preferences: File Icon Theme`）选择 **CSM File Icons** 启用。
-
-## 开发贡献
-
-请参阅 [CONTRIBUTING.md](CONTRIBUTING.md)。
-
-## 问题反馈
-
-如遇到问题请到 [GitHub Issues](https://github.com/nevstop/csm-vsc-extension/issues) 反馈。
-
-## 许可证
-
-本项目遵循 GNU Affero General Public License v3 (AGPL-3.0) 许可证。详见 [LICENSE](LICENSE) 文件。
+- 使用说明与常见入口：[`docs/user-guide.md`](docs/user-guide.md)
+- 模块管理详解：[`docs/module-management.md`](docs/module-management.md)
+- 开发与调试：[`docs/quickstart.md`](docs/quickstart.md)
+- 参与贡献：[`CONTRIBUTING.md`](CONTRIBUTING.md)
