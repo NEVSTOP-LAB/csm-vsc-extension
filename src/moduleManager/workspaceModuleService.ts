@@ -18,6 +18,7 @@ interface ParsedConfigShape {
 	version?: string;
 	root?: string;
 	modules: Record<string, LocalModuleConfigEntry>;
+	needsLockedMigration?: boolean;
 }
 
 interface GitSubmoduleDefinition {
@@ -222,22 +223,33 @@ export class WorkspaceModuleService {
 		authToken?: string,
 		repoRoot?: string,
 	): Promise<LocalModuleConfigEntry> {
-		if (entry.method === nextMethod) {
-			return entry;
+		const normalizedEntry = this.normalizeConfigEntry(entry);
+		if (normalizedEntry.method === nextMethod) {
+			return normalizedEntry;
 		}
 
 		if (nextMethod === 'copy') {
 			if (!repoRoot) {
 				throw new Error('Git repository root is required to convert a submodule to copy mode.');
 			}
-			return this.convertSubmoduleToCopy(workspaceRoot, entry, repoRoot);
+			const switchedEntry = await this.convertSubmoduleToCopy(workspaceRoot, normalizedEntry, repoRoot);
+			if (this.isEntryLocked(normalizedEntry)) {
+				await this.ensureSwitchTargetExists(workspaceRoot, switchedEntry);
+				await this.applyEntryLockState(workspaceRoot, switchedEntry);
+			}
+			return switchedEntry;
 		}
 
 		if (!repoRoot) {
 			throw new Error('Git repository root is required to convert a copied module to submodule mode.');
 		}
 
-		return this.convertCopyToSubmodule(repoRoot, entry, authToken);
+		const switchedEntry = await this.convertCopyToSubmodule(repoRoot, normalizedEntry, authToken);
+		if (this.isEntryLocked(normalizedEntry)) {
+			await this.ensureSwitchTargetExists(workspaceRoot, switchedEntry);
+			await this.applyEntryLockState(workspaceRoot, switchedEntry);
+		}
+		return switchedEntry;
 	}
 
 	public async initializeConfig(repoRoot: string, rootRelativePath: string): Promise<LocalModuleConfig> {
@@ -259,12 +271,16 @@ export class WorkspaceModuleService {
 		const parsed = this.isLegacyConfigPath(configPath) ? this.parseLegacyConfig(raw) : this.parseYamlConfig(raw);
 		const derivedRoot = toPosixPath(path.relative(repoRoot, path.dirname(configPath)));
 		const root = parsed.root ? this.normalizeRootPath(parsed.root) : this.normalizeRootPath(derivedRoot || DEFAULT_LOCAL_MODULE_ROOT);
-		return {
+		const config: LocalModuleConfig = {
 			version: CONFIG_VERSION,
 			root,
 			configPath: this.getConfigPath(repoRoot, root),
 			modules: parsed.modules,
 		};
+		if (parsed.needsLockedMigration) {
+			await this.writeConfig(config);
+		}
+		return config;
 	}
 
 	public async recoverConfigFromExistingSubmodules(
@@ -289,6 +305,7 @@ export class WorkspaceModuleService {
 
 		for (const submodule of relevantSubmodules) {
 			const entry = await this.buildExistingSubmoduleEntry(repoRoot, submodule);
+			await this.applyEntryLockState(repoRoot, entry);
 			config.modules[entry.key] = entry;
 		}
 
@@ -326,6 +343,7 @@ export class WorkspaceModuleService {
 		let updatedConfig = config;
 		for (const submodule of untracked) {
 			const entry = await this.buildExistingSubmoduleEntry(repoRoot, submodule);
+			await this.applyEntryLockState(repoRoot, entry);
 			updatedConfig = this.withAppliedModule(updatedConfig, entry);
 		}
 
@@ -334,13 +352,33 @@ export class WorkspaceModuleService {
 	}
 
 	public withAppliedModule(config: LocalModuleConfig, entry: LocalModuleConfigEntry): LocalModuleConfig {
+		const normalizedEntry = this.normalizeConfigEntry(entry);
 		return {
 			...config,
 			modules: {
 				...config.modules,
-				[entry.key]: entry,
+				[normalizedEntry.key]: normalizedEntry,
 			},
 		};
+	}
+
+	public async setModuleLocked(
+		workspaceRoot: string,
+		entry: LocalModuleConfigEntry,
+		locked: boolean,
+	): Promise<LocalModuleConfigEntry> {
+		const nextEntry = this.normalizeConfigEntry({
+			...entry,
+			locked,
+		});
+		await this.applyEntryLockState(workspaceRoot, nextEntry);
+		return nextEntry;
+	}
+
+	public async syncModuleLockStates(workspaceRoot: string, entries: LocalModuleConfigEntry[]): Promise<void> {
+		for (const entry of entries) {
+			await this.applyEntryLockState(workspaceRoot, this.normalizeConfigEntry(entry));
+		}
 	}
 
 	/** Drop a module from the in-memory config (review item 7.1). */
@@ -359,6 +397,9 @@ export class WorkspaceModuleService {
 	public async removeModule(workspaceRoot: string, entry: LocalModuleConfigEntry, repoRoot?: string): Promise<void> {
 		const targetRelativePath = this.normalizeRootPath(entry.path);
 		const targetAbsolute = this.toAbsoluteTargetPath(workspaceRoot, targetRelativePath);
+		if (await this.pathExists(targetAbsolute)) {
+			await this.updatePathLockState(targetAbsolute, false);
+		}
 		if (entry.method === 'submodule') {
 			const gitRoot = repoRoot ?? workspaceRoot;
 			try {
@@ -421,36 +462,46 @@ export class WorkspaceModuleService {
 		repoRoot?: string,
 		latestRefHint?: string,
 	): Promise<ModuleUpdateResult> {
-		const targetRelativePath = this.normalizeRootPath(entry.path);
+		const normalizedEntry = this.normalizeConfigEntry(entry);
+		const targetRelativePath = this.normalizeRootPath(normalizedEntry.path);
 		const targetAbsolute = this.toAbsoluteTargetPath(workspaceRoot, targetRelativePath);
-
-		if (entry.method === 'submodule') {
-			const gitRoot = repoRoot ?? workspaceRoot;
-			await this.runGit(gitRoot, ['submodule', 'update', '--remote', '--', targetRelativePath], authToken, entry.source);
-			const head = await this.runGit(targetAbsolute, ['rev-parse', 'HEAD']);
-			return {
-				entry: { ...entry, ref: head },
-			};
+		const wasLocked = this.isEntryLocked(normalizedEntry);
+		if (wasLocked && await this.pathExists(targetAbsolute)) {
+			await this.updatePathLockState(targetAbsolute, false);
 		}
 
-		// copy mode: clone the latest branch tip, back up the existing folder, then rewrite it.
-		const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'csm-update-'));
 		try {
-			const branch = entry.branch || moduleEntry.defaultBranch || 'main';
-			await this.runGit(tmpDir, ['clone', '--depth', '1', '--branch', branch, entry.source, 'src'], authToken, entry.source);
-			const cloneRoot = path.join(tmpDir, 'src');
-			const head = (await this.runGit(cloneRoot, ['rev-parse', 'HEAD'])) || latestRefHint || this.normalizeRef(entry.ref);
-			const backupPath = await this.backupModuleDirectoryAsZip(workspaceRoot, entry);
-			await fs.rm(targetAbsolute, { recursive: true, force: true });
-			await fs.mkdir(path.dirname(targetAbsolute), { recursive: true });
-			await fs.cp(cloneRoot, targetAbsolute, { recursive: true });
-			await fs.rm(path.join(targetAbsolute, '.git'), { recursive: true, force: true });
-			return {
-				entry: { ...entry, ref: head, branch },
-				backupPath,
-			};
+			if (normalizedEntry.method === 'submodule') {
+				const gitRoot = repoRoot ?? workspaceRoot;
+				await this.runGit(gitRoot, ['submodule', 'update', '--remote', '--', targetRelativePath], authToken, normalizedEntry.source);
+				const head = await this.runGit(targetAbsolute, ['rev-parse', 'HEAD']);
+				return {
+					entry: this.normalizeConfigEntry({ ...normalizedEntry, ref: head }),
+				};
+			}
+
+			const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'csm-update-'));
+			try {
+				const branch = normalizedEntry.branch || moduleEntry.defaultBranch || 'main';
+				await this.runGit(tmpDir, ['clone', '--depth', '1', '--branch', branch, normalizedEntry.source, 'src'], authToken, normalizedEntry.source);
+				const cloneRoot = path.join(tmpDir, 'src');
+				const head = (await this.runGit(cloneRoot, ['rev-parse', 'HEAD'])) || latestRefHint || this.normalizeRef(normalizedEntry.ref);
+				const backupPath = await this.backupModuleDirectoryAsZip(workspaceRoot, normalizedEntry);
+				await fs.rm(targetAbsolute, { recursive: true, force: true });
+				await fs.mkdir(path.dirname(targetAbsolute), { recursive: true });
+				await fs.cp(cloneRoot, targetAbsolute, { recursive: true });
+				await fs.rm(path.join(targetAbsolute, '.git'), { recursive: true, force: true });
+				return {
+					entry: this.normalizeConfigEntry({ ...normalizedEntry, ref: head, branch }),
+					backupPath,
+				};
+			} finally {
+				await fs.rm(tmpDir, { recursive: true, force: true });
+			}
 		} finally {
-			await fs.rm(tmpDir, { recursive: true, force: true });
+			if (wasLocked && await this.pathExists(targetAbsolute)) {
+				await this.updatePathLockState(targetAbsolute, true);
+			}
 		}
 	}
 
@@ -497,9 +548,12 @@ export class WorkspaceModuleService {
 			throw new Error(`Target path already exists: ${targetRelativePath}`);
 		}
 
-		return method === 'submodule'
+		const appliedEntry = method === 'submodule'
 			? this.applyModuleAsSubmodule(repoRoot, entry, targetRelativePath, targetPath, authToken)
 			: this.applyModuleAsCopy(repoRoot, entry, targetRelativePath, targetPath, authToken);
+		const lockedEntry = this.normalizeConfigEntry(await appliedEntry);
+		await this.applyEntryLockState(repoRoot, lockedEntry);
+		return lockedEntry;
 	}
 
 	public async writeConfig(config: LocalModuleConfig): Promise<void> {
@@ -552,6 +606,7 @@ export class WorkspaceModuleService {
 			path: targetRelativePath,
 			ref,
 			branch,
+			locked: true,
 		};
 	}
 
@@ -613,19 +668,20 @@ export class WorkspaceModuleService {
 		entry: LocalModuleConfigEntry,
 		repoRoot: string,
 	): Promise<LocalModuleConfigEntry> {
+		const normalizedEntry = this.normalizeConfigEntry(entry);
 		const targetRelativePath = this.normalizeRootPath(entry.path);
 		const targetPath = this.toAbsoluteTargetPath(workspaceRoot, targetRelativePath);
 		const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'csm-switch-copy-'));
 		const snapshotPath = path.join(tempRoot, 'snapshot');
 		try {
 			await this.copyDirectory(targetPath, snapshotPath);
-			await this.removeModule(workspaceRoot, entry, repoRoot);
+			await this.removeModule(workspaceRoot, normalizedEntry, repoRoot);
 			await fs.mkdir(path.dirname(targetPath), { recursive: true });
 			await this.copyDirectory(snapshotPath, targetPath);
-			return {
-				...entry,
+			return this.normalizeConfigEntry({
+				...normalizedEntry,
 				method: 'copy',
-			};
+			});
 		} finally {
 			await fs.rm(tempRoot, { recursive: true, force: true });
 		}
@@ -636,14 +692,15 @@ export class WorkspaceModuleService {
 		entry: LocalModuleConfigEntry,
 		authToken?: string,
 	): Promise<LocalModuleConfigEntry> {
+		const normalizedEntry = this.normalizeConfigEntry(entry);
 		if (!await this.gitRunner.isAvailable()) {
 			throw new Error('git unavailable');
 		}
 
 		const targetRelativePath = this.normalizeRootPath(entry.path);
 		const targetPath = this.toAbsoluteTargetPath(repoRoot, targetRelativePath);
-		const branch = entry.branch?.trim() || 'main';
-		const expectedRef = this.normalizeRef(entry.ref);
+		const branch = normalizedEntry.branch?.trim() || 'main';
+		const expectedRef = this.normalizeRef(normalizedEntry.ref);
 		const tempRoot = await fs.mkdtemp(path.join(path.dirname(targetPath), '.csm-switch-submodule-'));
 		const checkoutPath = path.join(tempRoot, 'checkout');
 		const backupPath = path.join(
@@ -652,7 +709,7 @@ export class WorkspaceModuleService {
 		);
 		let cleanupBackup = false;
 		try {
-			await this.runGit(tempRoot, ['clone', '--branch', branch, entry.source, checkoutPath], authToken, entry.source);
+			await this.runGit(tempRoot, ['clone', '--branch', branch, normalizedEntry.source, checkoutPath], authToken, normalizedEntry.source);
 			if (expectedRef) {
 				await this.runGit(checkoutPath, ['checkout', expectedRef]);
 			}
@@ -662,18 +719,18 @@ export class WorkspaceModuleService {
 			await this.runGit(repoRoot, ['rm', '-r', '--cached', '--ignore-unmatch', '--', targetRelativePath]);
 			await this.runGit(
 				repoRoot,
-				['submodule', 'add', '-f', '-b', branch, entry.source, targetRelativePath],
+				['submodule', 'add', '-f', '-b', branch, normalizedEntry.source, targetRelativePath],
 				authToken,
-				entry.source,
+				normalizedEntry.source,
 			);
 			await this.runGit(repoRoot, ['submodule', 'absorbgitdirs', '--', targetRelativePath]);
 			const ref = (await this.runGit(targetPath, ['rev-parse', 'HEAD'])).trim();
-			return {
-				...entry,
+			return this.normalizeConfigEntry({
+				...normalizedEntry,
 				method: 'submodule',
 				ref,
 				branch,
-			};
+			});
 		} catch (error) {
 			if (cleanupBackup) {
 				try {
@@ -694,6 +751,20 @@ export class WorkspaceModuleService {
 				await fs.rm(backupPath, { recursive: true, force: true });
 			}
 			await fs.rm(tempRoot, { recursive: true, force: true });
+		}
+	}
+
+	private async ensureSwitchTargetExists(workspaceRoot: string, entry: LocalModuleConfigEntry): Promise<void> {
+		const targetRelativePath = this.normalizeRootPath(entry.path);
+		const targetPath = this.toAbsoluteTargetPath(workspaceRoot, targetRelativePath);
+		let stat;
+		try {
+			stat = await fs.stat(targetPath);
+		} catch {
+			throw new Error(`Converted module target is missing after switching to ${entry.method} mode: ${entry.path}`);
+		}
+		if (!stat.isDirectory()) {
+			throw new Error(`Converted module target is not a directory after switching to ${entry.method} mode: ${entry.path}`);
 		}
 	}
 
@@ -752,7 +823,95 @@ export class WorkspaceModuleService {
 			path: targetRelativePath,
 			ref,
 			branch,
+			locked: true,
 		};
+	}
+
+	private isEntryLocked(entry: Pick<LocalModuleConfigEntry, 'locked'>): boolean {
+		return entry.locked !== false;
+	}
+
+	private normalizeConfigEntry(entry: LocalModuleConfigEntry): LocalModuleConfigEntry {
+		return {
+			...entry,
+			locked: this.isEntryLocked(entry),
+		};
+	}
+
+	private async applyEntryLockState(workspaceRoot: string, entry: LocalModuleConfigEntry): Promise<void> {
+		const targetRelativePath = this.normalizeRootPath(entry.path);
+		const targetAbsolute = this.toAbsoluteTargetPath(workspaceRoot, targetRelativePath);
+		if (!await this.pathExists(targetAbsolute)) {
+			return;
+		}
+		const failures = await this.updatePathLockState(targetAbsolute, this.isEntryLocked(entry));
+		if (failures.length > 0) {
+			const preview = failures.slice(0, 3).join('; ');
+			const remainder = failures.length > 3 ? `; ... (+${failures.length - 3} more)` : '';
+			throw new Error(`Failed to update lock state for ${failures.length} path(s): ${preview}${remainder}`);
+		}
+	}
+
+	private async updatePathLockState(targetPath: string, locked: boolean): Promise<string[]> {
+		let stat;
+		try {
+			stat = await fs.lstat(targetPath);
+		} catch (error) {
+			return this.isPathMissingError(error) ? [] : [this.formatPathLockError(targetPath, error)];
+		}
+		if (stat.isSymbolicLink()) {
+			return [];
+		}
+		const failures: string[] = [];
+		if (stat.isDirectory()) {
+			let childNames: string[] = [];
+			try {
+				childNames = await fs.readdir(targetPath);
+			} catch (error) {
+				if (!this.isPathMissingError(error)) {
+					failures.push(this.formatPathLockError(targetPath, error));
+				}
+			}
+			for (const childName of childNames) {
+				failures.push(...await this.updatePathLockState(path.join(targetPath, childName), locked));
+			}
+		}
+		const currentMode = stat.mode & 0o777;
+		const nextMode = this.getLockMode(currentMode, stat.isDirectory(), locked);
+		if (currentMode === nextMode) {
+			return failures;
+		}
+		try {
+			await fs.chmod(targetPath, nextMode);
+		} catch (error) {
+			if (!this.isPathMissingError(error)) {
+				failures.push(this.formatPathLockError(targetPath, error));
+			}
+		}
+		return failures;
+	}
+
+	private isPathMissingError(error: unknown): boolean {
+		return typeof error === 'object'
+			&& error !== null
+			&& 'code' in error
+			&& (error as NodeJS.ErrnoException).code === 'ENOENT';
+	}
+
+	private formatPathLockError(targetPath: string, error: unknown): string {
+		return `${targetPath}: ${error instanceof Error ? error.message : String(error)}`;
+	}
+
+	private getLockMode(currentMode: number, isDirectory: boolean, locked: boolean): number {
+		const permissionBits = currentMode & 0o777;
+		if (process.platform === 'win32') {
+			return locked ? (permissionBits & ~0o222) : (permissionBits | 0o200);
+		}
+		const executeBits = isDirectory ? 0o111 : (permissionBits & 0o111);
+		if (locked) {
+			return (isDirectory ? 0o555 : 0o444) | executeBits;
+		}
+		return (isDirectory ? 0o755 : 0o644) | executeBits;
 	}
 
 	private async runGit(cwd: string, args: string[], authToken?: string, repoUrl?: string): Promise<string> {
@@ -1055,6 +1214,7 @@ export class WorkspaceModuleService {
 		const version = typeof obj.version === 'string' ? obj.version : (obj.version !== undefined && obj.version !== null ? String(obj.version) : undefined);
 		const root = typeof obj.root === 'string' ? obj.root : undefined;
 		const modules: Record<string, LocalModuleConfigEntry> = {};
+		let needsLockedMigration = false;
 
 		const modulesRaw = obj.modules;
 		if (modulesRaw && typeof modulesRaw === 'object' && !Array.isArray(modulesRaw)) {
@@ -1063,6 +1223,9 @@ export class WorkspaceModuleService {
 					continue;
 				}
 				const entry = value as Record<string, unknown>;
+				if (typeof entry.locked !== 'boolean') {
+					needsLockedMigration = true;
+				}
 				modules[key] = this.finalizeModuleSection({
 					key,
 					name: typeof entry.name === 'string' ? entry.name : undefined,
@@ -1072,11 +1235,12 @@ export class WorkspaceModuleService {
 					path: typeof entry.path === 'string' ? entry.path : undefined,
 					ref: typeof entry.ref === 'string' ? entry.ref : undefined,
 					branch: typeof entry.branch === 'string' ? entry.branch : undefined,
+					locked: typeof entry.locked === 'boolean' ? entry.locked : undefined,
 				});
 			}
 		}
 
-		return { version, root, modules };
+		return { version, root, modules, needsLockedMigration };
 	}
 
 	private finalizeModuleSection(module: Partial<LocalModuleConfigEntry>): LocalModuleConfigEntry {
@@ -1089,6 +1253,7 @@ export class WorkspaceModuleService {
 			path: module.path ?? '',
 			ref: module.ref ?? '',
 			branch: module.branch ?? '',
+			locked: this.isEntryLocked(module),
 		};
 	}
 
@@ -1104,6 +1269,7 @@ export class WorkspaceModuleService {
 				path: module.path,
 				ref: module.ref,
 				branch: module.branch,
+				locked: this.isEntryLocked(module),
 			};
 		}
 		const document = {

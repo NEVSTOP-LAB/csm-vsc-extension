@@ -65,6 +65,33 @@ class RecordingGitRunner implements IGitRunner {
 	}
 }
 
+async function makeTreeWritable(targetPath: string): Promise<void> {
+	let stat;
+	try {
+		stat = await fs.lstat(targetPath);
+	} catch {
+		return;
+	}
+
+	if (stat.isSymbolicLink()) {
+		return;
+	}
+
+	if (stat.isDirectory()) {
+		const entries = await fs.readdir(targetPath, { withFileTypes: true });
+		for (const entry of entries) {
+			await makeTreeWritable(path.join(targetPath, entry.name));
+		}
+	}
+
+	await fs.chmod(targetPath, stat.isDirectory() ? 0o700 : 0o600).catch(() => undefined);
+}
+
+async function removeWritableTree(targetPath: string): Promise<void> {
+	await makeTreeWritable(targetPath);
+	await fs.rm(targetPath, { recursive: true, force: true });
+}
+
 suite('Module Manager Tests', () => {
 	const mocked = vscode as VscodeMock;
 
@@ -193,7 +220,7 @@ suite('Module Manager Tests', () => {
 			assert.ok(!html.includes('&lt;img'));
 		} finally {
 			globalThis.fetch = originalFetch;
-			await fs.rm(storageRoot.fsPath, { recursive: true, force: true });
+			await removeWritableTree(storageRoot.fsPath);
 		}
 	});
 
@@ -347,6 +374,7 @@ suite('Module Manager Tests', () => {
 		assert.ok(rendered?.html.includes('automation'));
 		assert.ok(!rendered?.html.includes('csm-modsets'));
 		assert.ok(!rendered?.html.includes('labview-csm'));
+		assert.ok(rendered?.html.includes('data-action="toggleLocalModuleLock"'));
 		assert.ok(rendered?.html.includes('placeholder="Search modules"'));
 		assert.ok(rendered?.html.includes('data-role="search-box"'));
 		assert.ok(rendered?.html.includes('data-role="filter-button"'));
@@ -703,6 +731,7 @@ suite('Module Manager Tests', () => {
 		let openedReadmeName = '';
 		let removedModuleName = '';
 		let updatedModuleName = '';
+		let toggledLockName = '';
 		let switchedModuleName = '';
 		let createdRepositoryPath = '';
 		let linkedRepositoryPath = '';
@@ -722,6 +751,9 @@ suite('Module Manager Tests', () => {
 			},
 			onUpdateModule: (entry) => {
 				updatedModuleName = entry.name;
+			},
+			onToggleLocalModuleLock: (entry) => {
+				toggledLockName = entry.name;
 			},
 			onSwitchLocalModuleMethod: (entry) => {
 				switchedModuleName = entry.name;
@@ -783,6 +815,7 @@ suite('Module Manager Tests', () => {
 
 		resolved?.fireMessage({ type: 'openLocalReadme', localItemId: 'local__module_local' });
 		resolved?.fireMessage({ type: 'updateLocalModule', localItemId: 'local__module_local' });
+		resolved?.fireMessage({ type: 'toggleLocalModuleLock', localItemId: 'local__module_local' });
 		resolved?.fireMessage({ type: 'switchLocalModuleMethod', localItemId: 'local__module_local' });
 		resolved?.fireMessage({ type: 'removeLocalModule', localItemId: 'local__module_local' });
 		resolved?.fireMessage({ type: 'createLocalRepository', localItemId: 'csm/custom-module' });
@@ -791,6 +824,7 @@ suite('Module Manager Tests', () => {
 
 		assert.strictEqual(openedReadmeName, 'module-local');
 		assert.strictEqual(updatedModuleName, 'module-local');
+		assert.strictEqual(toggledLockName, 'module-local');
 		assert.strictEqual(switchedModuleName, 'module-local');
 		assert.strictEqual(removedModuleName, 'module-local');
 		assert.strictEqual(createdRepositoryPath, 'csm/custom-module');
@@ -973,9 +1007,133 @@ suite('Module Manager Tests', () => {
 			assert.strictEqual(path.basename(initialConfig.configPath), LOCAL_MODULE_CONFIG_FILE);
 			assert.strictEqual(reloadedConfig.root, 'csm');
 			assert.strictEqual(reloadedConfig.version, '2');
+			assert.strictEqual(reloadedConfig.modules.org__module_a?.locked, true);
 			assert.deepStrictEqual(reloadedConfig.modules.org__module_a, updatedConfig.modules.org__module_a);
 		} finally {
-			await fs.rm(repoRoot, { recursive: true, force: true });
+			await removeWritableTree(repoRoot);
+		}
+	});
+
+	test('WorkspaceModuleService toggles local module files between readonly and writable', async () => {
+		const workspaceRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'csm-lock-toggle-'));
+		const service = new WorkspaceModuleService();
+		try {
+			const targetPath = path.join(workspaceRoot, 'csm', 'module-a');
+			await fs.mkdir(targetPath, { recursive: true });
+			const readmePath = path.join(targetPath, 'README.md');
+			await fs.writeFile(readmePath, 'demo', 'utf8');
+
+			const lockedEntry = await service.setModuleLocked(workspaceRoot, {
+				key: 'org__module_a',
+				name: 'module-a',
+				owner: 'org',
+				source: 'https://github.com/org/module-a',
+				method: 'copy',
+				path: 'csm/module-a',
+				ref: 'abc123',
+				branch: 'main',
+			}, true);
+			assert.strictEqual(lockedEntry.locked, true);
+			assert.strictEqual((await fs.stat(readmePath)).mode & 0o222, 0);
+
+			const unlockedEntry = await service.setModuleLocked(workspaceRoot, lockedEntry, false);
+			assert.strictEqual(unlockedEntry.locked, false);
+			assert.notStrictEqual((await fs.stat(readmePath)).mode & 0o200, 0);
+		} finally {
+			await removeWritableTree(workspaceRoot);
+		}
+	});
+
+	test('WorkspaceModuleService computes platform-aware lock modes', () => {
+		const service = new WorkspaceModuleService() as any;
+		if (process.platform === 'win32') {
+			assert.strictEqual(service.getLockMode(0o777, true, true), 0o555);
+			assert.strictEqual(service.getLockMode(0o555, true, false), 0o755);
+			assert.strictEqual(service.getLockMode(0o711, false, true), 0o511);
+			assert.strictEqual(service.getLockMode(0o444, false, false), 0o644);
+			return;
+		}
+
+		assert.strictEqual(service.getLockMode(0o755, true, true), 0o555);
+		assert.strictEqual(service.getLockMode(0o555, true, false), 0o755);
+		assert.strictEqual(service.getLockMode(0o744, false, true), 0o544);
+		assert.strictEqual(service.getLockMode(0o544, false, false), 0o744);
+	});
+
+	test('WorkspaceModuleService continues locking remaining files when one chmod fails', async () => {
+		const workspaceRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'csm-lock-partial-failure-'));
+		const service = new WorkspaceModuleService();
+		const fsModule = require('fs/promises') as typeof fs & { chmod: typeof fs.chmod };
+		const originalChmod = fsModule.chmod;
+		try {
+			const targetPath = path.join(workspaceRoot, 'csm', 'module-a');
+			const failingFile = path.join(targetPath, 'a.txt');
+			const healthyFile = path.join(targetPath, 'b.txt');
+			await fs.mkdir(targetPath, { recursive: true });
+			await fs.writeFile(failingFile, 'fail', 'utf8');
+			await fs.writeFile(healthyFile, 'ok', 'utf8');
+
+			fsModule.chmod = (async (pathLike, mode) => {
+				const normalizedPath = pathLike.toString();
+				if (normalizedPath === failingFile) {
+					const error = new Error('mock chmod denied') as NodeJS.ErrnoException;
+					error.code = 'EPERM';
+					throw error;
+				}
+				return originalChmod(pathLike, mode);
+			}) as typeof fs.chmod;
+
+			await assert.rejects(() => service.setModuleLocked(workspaceRoot, {
+				key: 'org__module_a',
+				name: 'module-a',
+				owner: 'org',
+				source: 'https://github.com/org/module-a',
+				method: 'copy',
+				path: 'csm/module-a',
+				ref: 'abc123',
+				branch: 'main',
+			}, true), /a\.txt: mock chmod denied/);
+			assert.strictEqual((await fs.stat(healthyFile)).mode & 0o222, 0);
+		} finally {
+			fsModule.chmod = originalChmod;
+			await removeWritableTree(workspaceRoot);
+		}
+	});
+
+	test('WorkspaceModuleService skips redundant chmod calls when lock state already matches', async () => {
+		const workspaceRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'csm-lock-noop-sync-'));
+		const service = new WorkspaceModuleService();
+		const fsModule = require('fs/promises') as typeof fs & { chmod: typeof fs.chmod };
+		const originalChmod = fsModule.chmod;
+		let chmodCalls = 0;
+		try {
+			const targetPath = path.join(workspaceRoot, 'csm', 'module-a');
+			const readmePath = path.join(targetPath, 'README.md');
+			await fs.mkdir(targetPath, { recursive: true });
+			await fs.writeFile(readmePath, 'demo', 'utf8');
+
+			const lockedEntry = await service.setModuleLocked(workspaceRoot, {
+				key: 'org__module_a',
+				name: 'module-a',
+				owner: 'org',
+				source: 'https://github.com/org/module-a',
+				method: 'copy',
+				path: 'csm/module-a',
+				ref: 'abc123',
+				branch: 'main',
+			}, true);
+
+			fsModule.chmod = (async (pathLike, mode) => {
+				chmodCalls += 1;
+				return originalChmod(pathLike, mode);
+			}) as typeof fs.chmod;
+
+			await service.syncModuleLockStates(workspaceRoot, [lockedEntry]);
+
+			assert.strictEqual(chmodCalls, 0);
+		} finally {
+			fsModule.chmod = originalChmod;
+			await removeWritableTree(workspaceRoot);
 		}
 	});
 
@@ -1004,8 +1162,40 @@ suite('Module Manager Tests', () => {
 			const config = await service.loadConfig(repoRoot, legacyConfigPath);
 			assert.strictEqual(path.basename(config.configPath), LOCAL_MODULE_CONFIG_FILE);
 			assert.strictEqual(config.modules.org__module_a?.method, 'submodule');
+			assert.strictEqual(config.modules.org__module_a?.locked, true);
 		} finally {
-			await fs.rm(repoRoot, { recursive: true, force: true });
+			await removeWritableTree(repoRoot);
+		}
+	});
+
+	test('WorkspaceModuleService backfills missing locked flags when loading yaml config', async () => {
+		const repoRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'csm-modules-locked-migrate-'));
+		const service = new WorkspaceModuleService();
+		try {
+			const configDir = path.join(repoRoot, 'csm');
+			const configPath = path.join(configDir, LOCAL_MODULE_CONFIG_FILE);
+			await fs.mkdir(configDir, { recursive: true });
+			await fs.writeFile(configPath, [
+				'version: "2"',
+				'root: "csm"',
+				'modules:',
+				'  org__module_a:',
+				'    name: "module-a"',
+				'    owner: "org"',
+				'    source: "https://github.com/org/module-a"',
+				'    method: "copy"',
+				'    path: "csm/module-a"',
+				'    ref: "abc123"',
+				'    branch: "main"',
+			].join('\n'), 'utf8');
+
+			const config = await service.loadConfig(repoRoot, configPath);
+			const migratedYaml = await fs.readFile(configPath, 'utf8');
+
+			assert.strictEqual(config.modules.org__module_a?.locked, true);
+			assert.ok(migratedYaml.includes('locked: true'));
+		} finally {
+			await removeWritableTree(repoRoot);
 		}
 	});
 
@@ -1079,7 +1269,7 @@ suite('Module Manager Tests', () => {
 				createdCommit: true,
 			});
 		} finally {
-			await fs.rm(folderPath, { recursive: true, force: true });
+			await removeWritableTree(folderPath);
 		}
 	});
 
@@ -1128,7 +1318,7 @@ suite('Module Manager Tests', () => {
 				headRef: 'abc123',
 			});
 		} finally {
-			await fs.rm(repoRoot, { recursive: true, force: true });
+			await removeWritableTree(repoRoot);
 		}
 	});
 
@@ -1176,7 +1366,59 @@ suite('Module Manager Tests', () => {
 				'rm -rf -- csm/module-a',
 			]);
 		} finally {
-			await fs.rm(workspaceRoot, { recursive: true, force: true });
+			await removeWritableTree(workspaceRoot);
+		}
+	});
+
+	test('WorkspaceModuleService fails submodule-to-copy switch when the recreated target disappears before relocking', async () => {
+		const workspaceRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'csm-switch-to-copy-missing-'));
+		const targetPath = path.join(workspaceRoot, 'csm', 'module-a');
+		const fsModule = require('fs/promises') as typeof fs & { copyFile: typeof fs.copyFile };
+		const originalCopyFile = fsModule.copyFile;
+		await fs.mkdir(targetPath, { recursive: true });
+		await fs.writeFile(path.join(targetPath, 'README.md'), 'demo', 'utf8');
+
+		const gitRunner = new RecordingGitRunner(async (options) => {
+			const command = options.args.join(' ');
+			switch (command) {
+				case 'submodule deinit -f -- csm/module-a':
+				case 'rm -rf -- csm/module-a':
+					return '';
+				default:
+					throw new Error(`Unexpected git command: ${command}`);
+			}
+		});
+		const service = new WorkspaceModuleService(gitRunner);
+
+		try {
+			fsModule.copyFile = (async (sourcePath, destinationPath, mode) => {
+				const result = await originalCopyFile(sourcePath, destinationPath, mode);
+				if (String(destinationPath) === path.join(targetPath, 'README.md')) {
+					await fs.rm(targetPath, { recursive: true, force: true });
+				}
+				return result;
+			}) as typeof fs.copyFile;
+
+			await assert.rejects(() => service.switchModuleMethod(
+				workspaceRoot,
+				{
+					key: 'org__module_a',
+					name: 'module-a',
+					owner: 'org',
+					source: 'https://github.com/org/module-a',
+					method: 'submodule',
+					path: 'csm/module-a',
+					ref: 'abc123',
+					branch: 'main',
+					locked: true,
+				},
+				'copy',
+				undefined,
+				workspaceRoot,
+			), /Converted module target is missing after switching to copy mode: csm\/module-a/);
+		} finally {
+			fsModule.copyFile = originalCopyFile;
+			await removeWritableTree(workspaceRoot);
 		}
 	});
 
@@ -1233,7 +1475,7 @@ suite('Module Manager Tests', () => {
 			assert.ok(gitRunner.calls.some((call) => call.args.join(' ') === 'checkout abc123'));
 			assert.ok(gitRunner.calls.some((call) => call.args.join(' ') === 'submodule add -f -b main https://github.com/org/module-a csm/module-a'));
 		} finally {
-			await fs.rm(repoRoot, { recursive: true, force: true });
+			await removeWritableTree(repoRoot);
 		}
 	});
 
@@ -1265,11 +1507,14 @@ suite('Module Manager Tests', () => {
 			assert.ok(config?.modules['local__module-a']);
 			assert.strictEqual(config?.modules['local__module-a'].method, 'submodule');
 			assert.strictEqual(config?.modules['local__module-a'].path, 'csm/module-a');
+			assert.strictEqual(config?.modules['local__module-a'].locked, true);
+			assert.strictEqual((await fs.stat(path.join(repoRoot, 'csm', 'module-a', 'README.md'))).mode & 0o222, 0);
 			const yamlText = await fs.readFile(config?.configPath ?? '', 'utf8');
 			assert.ok(yamlText.includes('modules:'));
 			assert.ok(yamlText.includes('local__module-a:'));
+			assert.ok(yamlText.includes('locked: true'));
 		} finally {
-			await fs.rm(tempRoot, { recursive: true, force: true });
+			await removeWritableTree(tempRoot);
 		}
 	});
 
@@ -1301,6 +1546,8 @@ suite('Module Manager Tests', () => {
 				repoUrl: moduleRepo,
 			};
 			const applied = await service.applyModule(workspaceRoot, config, moduleEntry, 'copy');
+			assert.strictEqual(applied.locked, true);
+			assert.strictEqual((await fs.stat(path.join(workspaceRoot, 'csm', 'module-copy', 'README.md'))).mode & 0o222, 0);
 			assert.ok((await fs.readFile(path.join(workspaceRoot, 'csm', 'module-copy', 'README.md'), 'utf8')).includes('# v1'));
 
 			await fs.writeFile(path.join(moduleRepo, 'README.md'), '# v2\n', 'utf8');
@@ -1315,7 +1562,9 @@ suite('Module Manager Tests', () => {
 
 			const result = await service.updateModule(workspaceRoot, applied, moduleEntry, undefined, undefined, preview.latestRef);
 			assert.strictEqual(result.entry.ref, latestRef);
+			assert.strictEqual(result.entry.locked, true);
 			assert.ok(result.backupPath);
+			assert.strictEqual((await fs.stat(path.join(workspaceRoot, 'csm', 'module-copy', 'README.md'))).mode & 0o222, 0);
 			assert.ok((await fs.readFile(path.join(workspaceRoot, 'csm', 'module-copy', 'README.md'), 'utf8')).includes('# v2'));
 
 			const backupZip = await JSZip.loadAsync(await fs.readFile(result.backupPath!));
@@ -1325,7 +1574,7 @@ suite('Module Manager Tests', () => {
 			const secondPreview = await service.previewCopyModuleUpdate(workspaceRoot, result.entry, moduleEntry);
 			assert.strictEqual(secondPreview.needsUpdate, false);
 		} finally {
-			await fs.rm(tempRoot, { recursive: true, force: true });
+			await removeWritableTree(tempRoot);
 		}
 	});
 
@@ -1360,11 +1609,14 @@ suite('Module Manager Tests', () => {
 			assert.ok(synced.modules['local__module-b']);
 			assert.strictEqual(synced.modules['local__module-b'].method, 'submodule');
 			assert.strictEqual(synced.modules['local__module-b'].path, 'csm/module-b');
+			assert.strictEqual(synced.modules['local__module-b'].locked, true);
+			assert.strictEqual((await fs.stat(path.join(repoRoot, 'csm', 'module-b', 'README.md'))).mode & 0o222, 0);
 
 			const yamlText = await fs.readFile(synced.configPath, 'utf8');
 			assert.ok(yamlText.includes('local__module-b:'));
+			assert.ok(yamlText.includes('locked: true'));
 		} finally {
-			await fs.rm(tempRoot, { recursive: true, force: true });
+			await removeWritableTree(tempRoot);
 		}
 	});
 
@@ -1399,7 +1651,7 @@ suite('Module Manager Tests', () => {
 
 			assert.strictEqual(addedCount, 0);
 		} finally {
-			await fs.rm(tempRoot, { recursive: true, force: true });
+			await removeWritableTree(tempRoot);
 		}
 	});
 });

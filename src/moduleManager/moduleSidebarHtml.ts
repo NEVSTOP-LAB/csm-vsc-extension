@@ -391,6 +391,7 @@ function renderModuleCardShell(options: ModuleCardShellOptions): string {
 function renderLocalManagedCard(entry: LocalManagedModuleEntry, state: LocalWorkspaceRenderState): string {
 	const topics = getVisibleModuleTopics(entry.topics).slice(0, 3);
 	const topicBadges = topics.map((topic) => renderBadge(topic));
+	const locked = entry.locked !== false;
 	const nextMethod = entry.method === 'copy' ? 'submodule' : 'copy';
 	const summary = entry.description.trim().length > 0
 		? entry.description.trim()
@@ -410,6 +411,12 @@ function renderLocalManagedCard(entry: LocalManagedModuleEntry, state: LocalWork
 			icon: 'update',
 		}),
 		renderIconActionButton({
+			action: 'toggleLocalModuleLock',
+			localItemId: entry.id,
+			title: locked ? t('unlockLocalFiles') : t('lockLocalFiles'),
+			icon: locked ? 'lock' : 'unlock',
+		}),
+		renderIconActionButton({
 			action: 'switchLocalModuleMethod',
 			localItemId: entry.id,
 			title: state.gitAvailable
@@ -427,6 +434,7 @@ function renderLocalManagedCard(entry: LocalManagedModuleEntry, state: LocalWork
 	]);
 	const metaBadges = [
 		renderBadge(t('managedBadge'), 'applied'),
+		renderBadge(locked ? t('lockedBadge') : t('unlockedBadge')),
 		renderBadge(getApplyMethodLabel(entry.method), entry.method),
 		...(entry.stale ? [renderBadge(t('staleDirectoryMissing'), 'stale')] : []),
 		renderBadge(getVisibilityLabel(entry.visibility), entry.visibility === 'private' ? 'private' : undefined),
@@ -473,7 +481,7 @@ function renderLocalUnmanagedCard(entry: LocalUnmanagedFolderEntry, state: Local
 	});
 }
 
-type IconName = 'close' | 'filter' | 'readme' | 'search' | 'update' | 'remove' | 'switch';
+type IconName = 'close' | 'filter' | 'readme' | 'search' | 'update' | 'remove' | 'switch' | 'lock' | 'unlock';
 
 function renderIconActionButton(options: { action: string; title: string; icon: IconName; moduleKey?: string; localItemId?: string; disabled?: boolean }): string {
 	const moduleKeyAttribute = options.moduleKey ? ` data-module-key="${escapeHtml(options.moduleKey)}"` : '';
@@ -498,6 +506,10 @@ function renderIcon(name: IconName): string {
 			return '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 4.5h9"></path><path d="M6 4.5v-1a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v1"></path><path d="M5 6.5v5"></path><path d="M8 6.5v5"></path><path d="M11 6.5v5"></path><path d="M4.5 4.5V13a1 1 0 0 0 1 1h5a1 1 0 0 0 1-1V4.5"></path></svg>';
 		case 'switch':
 			return '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 5h8"></path><path d="M9.5 2.5 12 5 9.5 7.5"></path><path d="M13 11H5"></path><path d="M6.5 8.5 4 11l2.5 2.5"></path></svg>';
+		case 'lock':
+			return '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="7" width="9" height="6.5" rx="1.5"></rect><path d="M5.5 7V5.5a2.5 2.5 0 0 1 5 0V7"></path></svg>';
+		case 'unlock':
+			return '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="7" width="9" height="6.5" rx="1.5"></rect><path d="M10.5 7V5.5a2.5 2.5 0 0 0-4.88-.88"></path></svg>';
 	}
 }
 
