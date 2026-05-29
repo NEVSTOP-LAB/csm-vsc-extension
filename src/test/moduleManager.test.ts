@@ -65,6 +65,33 @@ class RecordingGitRunner implements IGitRunner {
 	}
 }
 
+async function makeTreeWritable(targetPath: string): Promise<void> {
+	let stat;
+	try {
+		stat = await fs.lstat(targetPath);
+	} catch {
+		return;
+	}
+
+	if (stat.isSymbolicLink()) {
+		return;
+	}
+
+	if (stat.isDirectory()) {
+		const entries = await fs.readdir(targetPath, { withFileTypes: true });
+		for (const entry of entries) {
+			await makeTreeWritable(path.join(targetPath, entry.name));
+		}
+	}
+
+	await fs.chmod(targetPath, stat.isDirectory() ? 0o700 : 0o600).catch(() => undefined);
+}
+
+async function removeWritableTree(targetPath: string): Promise<void> {
+	await makeTreeWritable(targetPath);
+	await fs.rm(targetPath, { recursive: true, force: true });
+}
+
 suite('Module Manager Tests', () => {
 	const mocked = vscode as VscodeMock;
 
@@ -193,7 +220,7 @@ suite('Module Manager Tests', () => {
 			assert.ok(!html.includes('&lt;img'));
 		} finally {
 			globalThis.fetch = originalFetch;
-			await fs.rm(storageRoot.fsPath, { recursive: true, force: true });
+			await removeWritableTree(storageRoot.fsPath);
 		}
 	});
 
@@ -983,7 +1010,7 @@ suite('Module Manager Tests', () => {
 			assert.strictEqual(reloadedConfig.modules.org__module_a?.locked, true);
 			assert.deepStrictEqual(reloadedConfig.modules.org__module_a, updatedConfig.modules.org__module_a);
 		} finally {
-			await fs.rm(repoRoot, { recursive: true, force: true });
+			await removeWritableTree(repoRoot);
 		}
 	});
 
@@ -1013,7 +1040,7 @@ suite('Module Manager Tests', () => {
 			assert.strictEqual(unlockedEntry.locked, false);
 			assert.notStrictEqual((await fs.stat(readmePath)).mode & 0o200, 0);
 		} finally {
-			await fs.rm(workspaceRoot, { recursive: true, force: true });
+			await removeWritableTree(workspaceRoot);
 		}
 	});
 
@@ -1069,7 +1096,7 @@ suite('Module Manager Tests', () => {
 			assert.strictEqual((await fs.stat(healthyFile)).mode & 0o222, 0);
 		} finally {
 			fsModule.chmod = originalChmod;
-			await fs.rm(workspaceRoot, { recursive: true, force: true });
+			await removeWritableTree(workspaceRoot);
 		}
 	});
 
@@ -1106,7 +1133,7 @@ suite('Module Manager Tests', () => {
 			assert.strictEqual(chmodCalls, 0);
 		} finally {
 			fsModule.chmod = originalChmod;
-			await fs.rm(workspaceRoot, { recursive: true, force: true });
+			await removeWritableTree(workspaceRoot);
 		}
 	});
 
@@ -1137,7 +1164,7 @@ suite('Module Manager Tests', () => {
 			assert.strictEqual(config.modules.org__module_a?.method, 'submodule');
 			assert.strictEqual(config.modules.org__module_a?.locked, true);
 		} finally {
-			await fs.rm(repoRoot, { recursive: true, force: true });
+			await removeWritableTree(repoRoot);
 		}
 	});
 
@@ -1168,7 +1195,7 @@ suite('Module Manager Tests', () => {
 			assert.strictEqual(config.modules.org__module_a?.locked, true);
 			assert.ok(migratedYaml.includes('locked: true'));
 		} finally {
-			await fs.rm(repoRoot, { recursive: true, force: true });
+			await removeWritableTree(repoRoot);
 		}
 	});
 
@@ -1242,7 +1269,7 @@ suite('Module Manager Tests', () => {
 				createdCommit: true,
 			});
 		} finally {
-			await fs.rm(folderPath, { recursive: true, force: true });
+			await removeWritableTree(folderPath);
 		}
 	});
 
@@ -1291,7 +1318,7 @@ suite('Module Manager Tests', () => {
 				headRef: 'abc123',
 			});
 		} finally {
-			await fs.rm(repoRoot, { recursive: true, force: true });
+			await removeWritableTree(repoRoot);
 		}
 	});
 
@@ -1339,7 +1366,7 @@ suite('Module Manager Tests', () => {
 				'rm -rf -- csm/module-a',
 			]);
 		} finally {
-			await fs.rm(workspaceRoot, { recursive: true, force: true });
+			await removeWritableTree(workspaceRoot);
 		}
 	});
 
@@ -1391,7 +1418,7 @@ suite('Module Manager Tests', () => {
 			), /Converted module target is missing after switching to copy mode: csm\/module-a/);
 		} finally {
 			fsModule.copyFile = originalCopyFile;
-			await fs.rm(workspaceRoot, { recursive: true, force: true });
+			await removeWritableTree(workspaceRoot);
 		}
 	});
 
@@ -1448,7 +1475,7 @@ suite('Module Manager Tests', () => {
 			assert.ok(gitRunner.calls.some((call) => call.args.join(' ') === 'checkout abc123'));
 			assert.ok(gitRunner.calls.some((call) => call.args.join(' ') === 'submodule add -f -b main https://github.com/org/module-a csm/module-a'));
 		} finally {
-			await fs.rm(repoRoot, { recursive: true, force: true });
+			await removeWritableTree(repoRoot);
 		}
 	});
 
@@ -1487,7 +1514,7 @@ suite('Module Manager Tests', () => {
 			assert.ok(yamlText.includes('local__module-a:'));
 			assert.ok(yamlText.includes('locked: true'));
 		} finally {
-			await fs.rm(tempRoot, { recursive: true, force: true });
+			await removeWritableTree(tempRoot);
 		}
 	});
 
@@ -1547,7 +1574,7 @@ suite('Module Manager Tests', () => {
 			const secondPreview = await service.previewCopyModuleUpdate(workspaceRoot, result.entry, moduleEntry);
 			assert.strictEqual(secondPreview.needsUpdate, false);
 		} finally {
-			await fs.rm(tempRoot, { recursive: true, force: true });
+			await removeWritableTree(tempRoot);
 		}
 	});
 
@@ -1589,7 +1616,7 @@ suite('Module Manager Tests', () => {
 			assert.ok(yamlText.includes('local__module-b:'));
 			assert.ok(yamlText.includes('locked: true'));
 		} finally {
-			await fs.rm(tempRoot, { recursive: true, force: true });
+			await removeWritableTree(tempRoot);
 		}
 	});
 
@@ -1624,7 +1651,7 @@ suite('Module Manager Tests', () => {
 
 			assert.strictEqual(addedCount, 0);
 		} finally {
-			await fs.rm(tempRoot, { recursive: true, force: true });
+			await removeWritableTree(tempRoot);
 		}
 	});
 });
