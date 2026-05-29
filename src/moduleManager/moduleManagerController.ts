@@ -1059,25 +1059,14 @@ export class ModuleManagerController {
 		entry: LocalModuleConfigEntry,
 		locked: boolean,
 	): Promise<LocalModuleConfigEntry> {
-		const maybeWorkspaceModuleService = this.workspaceModuleService as Partial<WorkspaceModuleService>;
-		if (typeof maybeWorkspaceModuleService.setModuleLocked === 'function') {
-			return maybeWorkspaceModuleService.setModuleLocked.call(this.workspaceModuleService, workspaceRoot, entry, locked);
-		}
-		return {
-			...entry,
-			locked,
-		};
+		return this.workspaceModuleService.setModuleLocked(workspaceRoot, entry, locked);
 	}
 
 	private async syncWorkspaceModuleLockStates(workspaceRoot: string, config: LocalModuleConfig | undefined): Promise<void> {
 		if (!config) {
 			return;
 		}
-		const maybeWorkspaceModuleService = this.workspaceModuleService as Partial<WorkspaceModuleService>;
-		if (typeof maybeWorkspaceModuleService.syncModuleLockStates !== 'function') {
-			return;
-		}
-		await maybeWorkspaceModuleService.syncModuleLockStates.call(this.workspaceModuleService, workspaceRoot, Object.values(config.modules));
+		await this.workspaceModuleService.syncModuleLockStates(workspaceRoot, Object.values(config.modules));
 	}
 
 	private getRemovalTargets(config: LocalModuleConfig, entry?: CsmModuleEntry): LocalModuleConfigEntry[] {

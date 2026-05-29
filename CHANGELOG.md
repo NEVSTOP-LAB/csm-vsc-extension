@@ -8,7 +8,16 @@
 
 ### 新增
 
-- 错误处理：侧边栏刷新时若本地模块 lock 状态同步失败，现改为记录 warning 并继续刷新工作区状态，避免 `Apply`、`Remove`、`Update` 等后续命令被附带中断
+- 阶段二：`CSM Modules` 视图支持多选模块，并新增 `Apply to Current Repository` 入口
+- 阶段二：首次应用模块时可初始化本地模块目录，默认生成 `csm/csm-modules.yaml`，也支持仓库内自定义相对目录
+- 阶段二：支持 `submodule` / `copy` 两种模块引入方式，并将模块名、源仓库地址、锁定版本、默认分支与本地路径写入本地 YAML 配置文件
+- 阶段二：当仓库已存在 `csm/` 目录及其中的 submodule，但缺少配置文件时，可自动反向生成 `csm/csm-modules.yaml`
+- 阶段四：新增设置项 `csmModules.defaultModuleRoot`，用于为首次初始化 / 首次应用预设默认模块根目录
+- 本地化：扩展全部用户可见字符串现已支持中英文切换，覆盖 package 清单文案、模块管理 UI/提示与 `.csmlog` / `.lvcsm` Hover 内容
+- 阶段四：`CSM Modules` 现收敛为单一原生视图，本地模块状态与 GitHub 模块目录合并到同一 Webview 列表中，并新增 `All / Workspace / Catalog` 范围切换来承接原先的双视图浏览方式
+- 阶段四：已登录 GitHub 时，未管理本地模块文件夹可通过向导一键创建并发布 GitHub 仓库，默认使用 private 可见性并附带 `labview-csm`、`csm-modsets` topics；若本机缺少 Git 作者信息，会在首次发布前补充询问
+
+### 变更
 
 - 构建：`.github/hooks/local-finish-stop.json` 现同时注册 `PostToolUse` 与 `Stop` hook，只有当当前 Copilot 会话成功执行过编辑类工具后，结束对话时才会触发编译、VSIX 打包、安装与本地校验；纯问答会话会直接跳过，自动 hook 仍复用 `scripts/local-finish-hook.mjs --stop-hook`，不会像手动 `hook:finish` 那样递增版本或改写文档
 - 交互：从统一侧边栏中的本地未管理文件夹创建并发布 GitHub 仓库后，Git 工作区会继续把该目录接管为 Git submodule 并立即写回本地 `csm-modules.yaml`；非 Git 工作区则保持 `copy` 模式，侧边栏也会立刻刷新为已管理状态
@@ -16,6 +25,8 @@
 - 交互：从未管理文件夹创建并发布 GitHub 仓库后，命令现在会等待在线模块目录刷新完成，确保新仓库在后续关联/浏览流程中可立即看到
 - 交互：已管理的本地模块现在可在 Git 工作区内直接在 `copy` 与 `submodule` 模式之间切换；非 Git 工作区会禁用该切换入口
 - 交互：本地已管理模块现在默认进入 lock 状态，下载或接管后的模块文件会递归设为只读；侧边栏新增锁定/解锁按钮，解锁前会要求确认，锁状态也会写回本地 `csm-modules.yaml`
+- 错误处理：侧边栏刷新时若本地模块 lock 状态同步失败，现改为记录 warning 并继续刷新工作区状态，避免 `Apply`、`Remove`、`Update` 等后续命令被附带中断
+- 维护：`ModuleManagerController` 现直接调用 `WorkspaceModuleService` 的锁定接口，移除运行时 `Partial` / `typeof` 兜底，避免方法重命名后静默退化为仅更新内存状态
 - 交互：标题栏 `Refresh` 在完成远端刷新流程后，也会重新评估当前工作区的本地模块 / 未管理文件夹状态；即使本次远端刷新失败，仍会更新本地显示
 - 阶段一：模块发现继续基于 GitHub 全局 `topic:csm-modsets` 搜索；侧边栏启动时改为只显示本地缓存，登录成功后会自动执行一次网络刷新，之后仍通过手动刷新同步当前账号可访问的 public / private 模块
 - 阶段四：public 模块 README 支持未登录时匿名加载，避免公共模块浏览流程被 GitHub 登录前置阻断

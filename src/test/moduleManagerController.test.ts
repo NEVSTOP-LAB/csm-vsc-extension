@@ -2353,6 +2353,10 @@ suite('ModuleManagerController Regression Tests', () => {
 			},
 			normalizeRootPath: (value: string) => value.replace(/\\/g, '/'),
 			getModuleKey: (entry: CsmModuleEntry) => `${entry.owner}__${entry.name}`,
+			setModuleLocked: async (_workspaceRoot: string, entry: LocalModuleConfig['modules'][string], locked: boolean) => ({
+				...entry,
+				locked,
+			}),
 			withAppliedModule: (config: LocalModuleConfig, entry: LocalModuleConfig['modules'][string]) => ({
 				...config,
 				modules: {
@@ -2479,6 +2483,10 @@ suite('ModuleManagerController Regression Tests', () => {
 			}),
 			normalizeRootPath: (value: string) => value.replace(/\\/g, '/'),
 			getModuleKey: (entry: CsmModuleEntry) => `${entry.owner}__${entry.name}`,
+			setModuleLocked: async (_workspaceRoot: string, entry: LocalModuleConfig['modules'][string], locked: boolean) => ({
+				...entry,
+				locked,
+			}),
 			withAppliedModule: (config: LocalModuleConfig, entry: LocalModuleConfig['modules'][string]) => ({
 				...config,
 				modules: {
@@ -2572,6 +2580,10 @@ suite('ModuleManagerController Regression Tests', () => {
 			},
 			normalizeRootPath: (value: string) => value.replace(/\\/g, '/'),
 			getModuleKey: (entry: CsmModuleEntry) => `${entry.owner}__${entry.name}`,
+			setModuleLocked: async (_workspaceRoot: string, entry: LocalModuleConfig['modules'][string], locked: boolean) => ({
+				...entry,
+				locked,
+			}),
 			withAppliedModule: (config: LocalModuleConfig, entry: LocalModuleConfig['modules'][string]) => ({
 				...config,
 				modules: {
@@ -2747,6 +2759,10 @@ suite('ModuleManagerController Regression Tests', () => {
 			},
 			normalizeRootPath: (value: string) => value.replace(/\\/g, '/'),
 			getModuleKey: (entry: CsmModuleEntry) => `${entry.owner}__${entry.name}`,
+			setModuleLocked: async (_workspaceRoot: string, entry: LocalModuleConfig['modules'][string], locked: boolean) => ({
+				...entry,
+				locked,
+			}),
 			withAppliedModule: (currentConfig: LocalModuleConfig, entry: LocalModuleConfig['modules'][string]) => {
 				config = {
 					...currentConfig,
