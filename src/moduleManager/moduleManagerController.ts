@@ -1712,7 +1712,23 @@ export class ModuleManagerController {
 		const repoRoot = await this.workspaceModuleService.resolveGitRepositoryRoot(workspaceFolder.uri.fsPath);
 		const workspaceRoot = repoRoot ?? workspaceFolder.uri.fsPath;
 
-		const config = await this.tryLoadSidebarLocalModuleConfig(workspaceFolder, workspaceRoot);
+		let config = await this.tryLoadSidebarLocalModuleConfig(workspaceFolder, workspaceRoot);
+		if (config && repoRoot) {
+			try {
+				const { config: syncedConfig, addedCount } = await this.workspaceModuleService.syncSubmoduleEntriesToConfig(repoRoot, config);
+				if (addedCount > 0) {
+					config = syncedConfig;
+					void vscode.window.showInformationMessage(
+						t('submodulesAutoSyncedToConfig', {
+							count: String(addedCount),
+							configPath: path.relative(repoRoot, syncedConfig.configPath).replace(/\\/g, '/'),
+						}),
+					);
+				}
+			} catch (error) {
+				this.logger.warn(`Failed to auto-sync submodule entries to config: ${error instanceof Error ? error.message : String(error)}`);
+			}
+		}
 		const moduleRoot = await this.resolveSidebarModuleRoot(workspaceRoot, config);
 		const staleModuleKeys = await this.computeStaleModuleKeys(workspaceRoot, config);
 		setContext({

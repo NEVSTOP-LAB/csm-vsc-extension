@@ -296,6 +296,43 @@ export class WorkspaceModuleService {
 		return config;
 	}
 
+	/**
+	 * Scan `.gitmodules` for submodule entries under `config.root` that are not yet recorded
+	 * in the yaml config. For each newly discovered submodule, build a config entry and
+	 * persist the updated yaml. Returns the (possibly updated) config together with the
+	 * number of entries that were added.
+	 */
+	public async syncSubmoduleEntriesToConfig(
+		repoRoot: string,
+		config: LocalModuleConfig,
+	): Promise<{ config: LocalModuleConfig; addedCount: number }> {
+		const root = config.root;
+		const submodules = await this.readGitSubmodules(repoRoot);
+		const managedPaths = new Set(
+			Object.values(config.modules).map((entry) => entry.path.replace(/\\/g, '/').toLowerCase()),
+		);
+		const untracked = submodules
+			.filter(
+				(submodule) =>
+					(submodule.path === root || submodule.path.startsWith(`${root}/`)) &&
+					!managedPaths.has(submodule.path.toLowerCase()),
+			)
+			.sort((left, right) => left.path.localeCompare(right.path));
+
+		if (untracked.length === 0) {
+			return { config, addedCount: 0 };
+		}
+
+		let updatedConfig = config;
+		for (const submodule of untracked) {
+			const entry = await this.buildExistingSubmoduleEntry(repoRoot, submodule);
+			updatedConfig = this.withAppliedModule(updatedConfig, entry);
+		}
+
+		await this.writeConfig(updatedConfig);
+		return { config: updatedConfig, addedCount: untracked.length };
+	}
+
 	public withAppliedModule(config: LocalModuleConfig, entry: LocalModuleConfigEntry): LocalModuleConfig {
 		return {
 			...config,

@@ -1597,6 +1597,7 @@ suite('ModuleManagerController Regression Tests', () => {
 				},
 			}),
 			listModuleDirectories: async () => ['custom-module', 'module-a'],
+			syncSubmoduleEntriesToConfig: async (repoRoot: string, cfg: LocalModuleConfig) => ({ config: cfg, addedCount: 0 }),
 		};
 		controller.computeStaleModuleKeys = async () => [];
 		mocked.__setWorkspaceFolders([{ name: 'repo', uri: vscode.Uri.file('d:/repo') }]);
@@ -1609,6 +1610,69 @@ suite('ModuleManagerController Regression Tests', () => {
 		assert.deepStrictEqual((capturedContext?.managedModules as Array<{ path: string }>)?.map((entry) => entry.path), ['csm/module-a']);
 		assert.deepStrictEqual((capturedContext?.unmanagedFolders as Array<{ path: string }>)?.map((entry) => entry.path), ['csm/custom-module']);
 		assert.strictEqual((capturedContext?.managedModules as Array<{ moduleEntry: { name: string } }>)[0]?.moduleEntry.name, 'module-a');
+	});
+
+	test('refreshSidebarWorkspaceState auto-syncs untracked git submodules into the yaml config', async () => {
+		const controller = createController(undefined, {
+			viewProvider: createViewProvider(),
+		}) as any;
+		let capturedContext: Record<string, unknown> | undefined;
+		let syncCalled = false;
+		let writtenConfig: LocalModuleConfig | undefined;
+
+		const baseConfig: LocalModuleConfig = {
+			version: '2',
+			root: 'csm',
+			configPath: 'd:/repo/csm/csm-modules.yaml',
+			modules: {},
+		};
+		const syncedConfig: LocalModuleConfig = {
+			...baseConfig,
+			modules: {
+				local__module_sub: {
+					key: 'local__module_sub',
+					name: 'module-sub',
+					owner: '',
+					source: 'https://github.com/org/module-sub',
+					method: 'submodule',
+					path: 'csm/module-sub',
+					ref: 'abc123',
+					branch: 'main',
+				},
+			},
+		};
+
+		controller.treeDataProvider = createViewProvider({
+			setWorkspaceContext: (context) => {
+				capturedContext = context as unknown as Record<string, unknown>;
+			},
+		});
+		controller.workspaceModuleService = {
+			resolveGitRepositoryRoot: async () => 'd:/repo',
+			loadConfig: async () => baseConfig,
+			listModuleDirectories: async () => ['module-sub'],
+			syncSubmoduleEntriesToConfig: async (_repoRoot: string, _cfg: LocalModuleConfig) => {
+				syncCalled = true;
+				writtenConfig = syncedConfig;
+				return { config: syncedConfig, addedCount: 1 };
+			},
+		};
+		controller.computeStaleModuleKeys = async () => [];
+		mocked.__setWorkspaceFolders([{ name: 'repo', uri: vscode.Uri.file('d:/repo') }]);
+		mocked.__setFindFilesResultForPattern(configSearchPattern, [vscode.Uri.file('d:/repo/csm/csm-modules.yaml')]);
+
+		await controller.refreshSidebarWorkspaceState();
+
+		assert.strictEqual(syncCalled, true);
+		assert.ok(writtenConfig);
+		// After auto-sync, module-sub appears as managed, not unmanaged
+		assert.deepStrictEqual(
+			(capturedContext?.managedModules as Array<{ path: string }>)?.map((entry) => entry.path),
+			['csm/module-sub'],
+		);
+		assert.deepStrictEqual(capturedContext?.unmanagedFolders, []);
+		const infos = mocked.__getMessageLog().filter((m) => m.level === 'info').map((m) => m.text);
+		assert.ok(infos.some((text) => text.includes('Auto-added 1 git submodule')));
 	});
 
 	test('register marks copy modules as applied in a non-git workspace from config file', async () => {
