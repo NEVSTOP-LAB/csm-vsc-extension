@@ -1017,6 +1017,46 @@ suite('Module Manager Tests', () => {
 		}
 	});
 
+	test('WorkspaceModuleService continues locking remaining files when one chmod fails', async () => {
+		const workspaceRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'csm-lock-partial-failure-'));
+		const service = new WorkspaceModuleService();
+		const fsModule = require('fs/promises') as typeof fs & { chmod: typeof fs.chmod };
+		const originalChmod = fsModule.chmod;
+		try {
+			const targetPath = path.join(workspaceRoot, 'csm', 'module-a');
+			const failingFile = path.join(targetPath, 'a.txt');
+			const healthyFile = path.join(targetPath, 'b.txt');
+			await fs.mkdir(targetPath, { recursive: true });
+			await fs.writeFile(failingFile, 'fail', 'utf8');
+			await fs.writeFile(healthyFile, 'ok', 'utf8');
+
+			fsModule.chmod = (async (pathLike, mode) => {
+				const normalizedPath = pathLike.toString();
+				if (normalizedPath === failingFile) {
+					const error = new Error('mock chmod denied') as NodeJS.ErrnoException;
+					error.code = 'EPERM';
+					throw error;
+				}
+				return originalChmod(pathLike, mode);
+			}) as typeof fs.chmod;
+
+			await assert.rejects(() => service.setModuleLocked(workspaceRoot, {
+				key: 'org__module_a',
+				name: 'module-a',
+				owner: 'org',
+				source: 'https://github.com/org/module-a',
+				method: 'copy',
+				path: 'csm/module-a',
+				ref: 'abc123',
+				branch: 'main',
+			}, true), /a\.txt: mock chmod denied/);
+			assert.strictEqual((await fs.stat(healthyFile)).mode & 0o222, 0);
+		} finally {
+			fsModule.chmod = originalChmod;
+			await fs.rm(workspaceRoot, { recursive: true, force: true });
+		}
+	});
+
 	test('WorkspaceModuleService migrates legacy lvcsm config paths to yaml', async () => {
 		const repoRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'csm-modules-legacy-'));
 		const service = new WorkspaceModuleService();

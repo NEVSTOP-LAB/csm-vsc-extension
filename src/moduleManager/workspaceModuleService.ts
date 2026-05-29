@@ -828,21 +828,57 @@ export class WorkspaceModuleService {
 		if (!await this.pathExists(targetAbsolute)) {
 			return;
 		}
-		await this.updatePathLockState(targetAbsolute, this.isEntryLocked(entry));
+		const failures = await this.updatePathLockState(targetAbsolute, this.isEntryLocked(entry));
+		if (failures.length > 0) {
+			const preview = failures.slice(0, 3).join('; ');
+			const remainder = failures.length > 3 ? `; ... (+${failures.length - 3} more)` : '';
+			throw new Error(`Failed to update lock state for ${failures.length} path(s): ${preview}${remainder}`);
+		}
 	}
 
-	private async updatePathLockState(targetPath: string, locked: boolean): Promise<void> {
-		const stat = await fs.lstat(targetPath);
-		if (stat.isSymbolicLink()) {
-			return;
+	private async updatePathLockState(targetPath: string, locked: boolean): Promise<string[]> {
+		let stat;
+		try {
+			stat = await fs.lstat(targetPath);
+		} catch (error) {
+			return this.isPathMissingError(error) ? [] : [this.formatPathLockError(targetPath, error)];
 		}
+		if (stat.isSymbolicLink()) {
+			return [];
+		}
+		const failures: string[] = [];
 		if (stat.isDirectory()) {
-			const childNames = await fs.readdir(targetPath);
+			let childNames: string[] = [];
+			try {
+				childNames = await fs.readdir(targetPath);
+			} catch (error) {
+				if (!this.isPathMissingError(error)) {
+					failures.push(this.formatPathLockError(targetPath, error));
+				}
+			}
 			for (const childName of childNames) {
-				await this.updatePathLockState(path.join(targetPath, childName), locked);
+				failures.push(...await this.updatePathLockState(path.join(targetPath, childName), locked));
 			}
 		}
-		await fs.chmod(targetPath, this.getLockMode(stat.mode, stat.isDirectory(), locked));
+		try {
+			await fs.chmod(targetPath, this.getLockMode(stat.mode, stat.isDirectory(), locked));
+		} catch (error) {
+			if (!this.isPathMissingError(error)) {
+				failures.push(this.formatPathLockError(targetPath, error));
+			}
+		}
+		return failures;
+	}
+
+	private isPathMissingError(error: unknown): boolean {
+		return typeof error === 'object'
+			&& error !== null
+			&& 'code' in error
+			&& (error as NodeJS.ErrnoException).code === 'ENOENT';
+	}
+
+	private formatPathLockError(targetPath: string, error: unknown): string {
+		return `${targetPath}: ${error instanceof Error ? error.message : String(error)}`;
 	}
 
 	private getLockMode(currentMode: number, isDirectory: boolean, locked: boolean): number {
