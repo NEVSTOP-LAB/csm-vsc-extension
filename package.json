@@ -230,17 +230,17 @@
         },
         {
           "command": "csmModules.contextOpenReadme",
-          "when": "webviewId == csmModules.view && webviewSection == workspaceCard && workspaceCardKind == managed",
+          "when": "webviewId == csmModules.view && webviewSection == workspaceCard && workspaceCardKind == managed && moduleKey",
           "group": "1_actions@2"
         },
         {
           "command": "csmModules.contextUpdateModule",
-          "when": "webviewId == csmModules.view && webviewSection == workspaceCard && workspaceCardKind == managed",
+          "when": "webviewId == csmModules.view && webviewSection == workspaceCard && workspaceCardKind == managed && moduleKey",
           "group": "2_actions@1"
         },
         {
           "command": "csmModules.contextRemoveModule",
-          "when": "webviewId == csmModules.view && webviewSection == workspaceCard && workspaceCardKind == managed",
+          "when": "webviewId == csmModules.view && webviewSection == workspaceCard && workspaceCardKind == managed && moduleKey",
           "group": "2_actions@2"
         }
       ],

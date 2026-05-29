@@ -400,7 +400,9 @@ function renderLocalManagedCard(entry: LocalManagedModuleEntry, state: LocalWork
 	const vscodeContext = escapeHtml(JSON.stringify({
 		webviewSection: 'workspaceCard',
 		workspaceCardKind: 'managed',
+		moduleApplied: true,
 		localItemId: entry.id,
+		localItemPath: entry.path,
 		moduleKey: entry.moduleKey,
 		preventDefaultContextMenuItems: true,
 	}));
@@ -492,6 +494,7 @@ function renderLocalUnmanagedCard(entry: LocalUnmanagedFolderEntry, state: Local
 		webviewSection: 'workspaceCard',
 		workspaceCardKind: 'unmanaged',
 		localItemId: entry.id,
+		localItemPath: entry.path,
 		preventDefaultContextMenuItems: true,
 	}));
 	return renderModuleCardShell({

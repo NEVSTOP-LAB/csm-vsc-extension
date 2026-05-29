@@ -42,6 +42,7 @@ type WebviewModuleContext = {
 	webviewSection?: string;
 	workspaceCardKind?: string;
 	localItemId?: string;
+	localItemPath?: string;
 	preventDefaultContextMenuItems?: boolean;
 };
 
@@ -1563,24 +1564,24 @@ export class ModuleManagerController {
 	}
 
 	public async contextOpenFolderCommand(context?: WebviewModuleContext): Promise<void> {
-		if (!context?.localItemId) {
+		if (!context?.localItemPath && !context?.localItemId) {
 			return;
 		}
-		await this.openLocalFolderByItemId(context.localItemId);
+		await this.openLocalFolderByPath(context.localItemPath ?? context.localItemId!);
 	}
 
 	public async openLocalFolderCommand(entry: LocalManagedModuleEntry | LocalUnmanagedFolderEntry): Promise<void> {
-		await this.openLocalFolderByItemId(entry.id);
+		await this.openLocalFolderByPath(entry.path);
 	}
 
-	private async openLocalFolderByItemId(localItemId: string): Promise<void> {
+	private async openLocalFolderByPath(relativePath: string): Promise<void> {
 		const workspaceFolder = await this.resolveWorkspaceFolder();
 		if (!workspaceFolder) {
 			return;
 		}
 		const repoRoot = await this.workspaceModuleService.resolveGitRepositoryRoot(workspaceFolder.uri.fsPath);
 		const workspaceRoot = repoRoot ?? workspaceFolder.uri.fsPath;
-		const folderPath = path.join(workspaceRoot, localItemId);
+		const folderPath = path.join(workspaceRoot, relativePath);
 		const folderUri = vscode.Uri.file(folderPath);
 		await vscode.commands.executeCommand('revealFileInOS', folderUri);
 	}
