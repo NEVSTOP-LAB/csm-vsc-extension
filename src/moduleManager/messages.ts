@@ -1022,6 +1022,10 @@ const messages = {
 		en: 'Open README',
 		zh: '打开 README',
 	},
+	openFolder: {
+		en: 'Open Folder',
+		zh: '打开目录',
+	},
 	starRepository: {
 		en: 'Star repository',
 		zh: 'Star 仓库',

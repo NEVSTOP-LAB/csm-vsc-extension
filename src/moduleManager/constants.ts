@@ -26,6 +26,7 @@ export const COMMAND_IDS = {
 	contextUpdateModule: 'csmModules.contextUpdateModule',
 	contextSelectModule: 'csmModules.contextSelectModule',
 	contextClearModuleSelection: 'csmModules.contextClearModuleSelection',
+	contextOpenFolder: 'csmModules.contextOpenFolder',
 	setSortOrder: 'csmModules.setSortOrder',
 } as const;
 

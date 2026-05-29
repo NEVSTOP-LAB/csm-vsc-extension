@@ -119,6 +119,11 @@
         "icon": "$(close)"
       },
       {
+        "command": "csmModules.contextOpenFolder",
+        "title": "%commands.contextOpenFolder.title%",
+        "icon": "$(folder-opened)"
+      },
+      {
         "command": "csmModules.setSortOrder",
         "title": "%commands.setSortOrder.title%",
         "icon": "$(list-ordered)"
@@ -217,6 +222,26 @@
           "command": "csmModules.contextClearModuleSelection",
           "when": "webviewId == csmModules.view && webviewSection == moduleCard && moduleSelected",
           "group": "3_selection@2"
+        },
+        {
+          "command": "csmModules.contextOpenFolder",
+          "when": "webviewId == csmModules.view && webviewSection == workspaceCard",
+          "group": "1_actions@1"
+        },
+        {
+          "command": "csmModules.contextOpenReadme",
+          "when": "webviewId == csmModules.view && webviewSection == workspaceCard && workspaceCardKind == managed",
+          "group": "1_actions@2"
+        },
+        {
+          "command": "csmModules.contextUpdateModule",
+          "when": "webviewId == csmModules.view && webviewSection == workspaceCard && workspaceCardKind == managed",
+          "group": "2_actions@1"
+        },
+        {
+          "command": "csmModules.contextRemoveModule",
+          "when": "webviewId == csmModules.view && webviewSection == workspaceCard && workspaceCardKind == managed",
+          "group": "2_actions@2"
         }
       ],
       "commandPalette": [
@@ -242,6 +267,10 @@
         },
         {
           "command": "csmModules.contextClearModuleSelection",
+          "when": "false"
+        },
+        {
+          "command": "csmModules.contextOpenFolder",
           "when": "false"
         }
       ]

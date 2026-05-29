@@ -397,7 +397,20 @@ function renderLocalManagedCard(entry: LocalManagedModuleEntry, state: LocalWork
 		? entry.description.trim()
 		: t('localManagedFallbackSummary', { source: entry.source });
 	const searchText = escapeHtml(getLocalManagedSearchText(entry));
+	const vscodeContext = escapeHtml(JSON.stringify({
+		webviewSection: 'workspaceCard',
+		workspaceCardKind: 'managed',
+		localItemId: entry.id,
+		moduleKey: entry.moduleKey,
+		preventDefaultContextMenuItems: true,
+	}));
 	const actionButtons = renderActionToolbar([
+		renderIconActionButton({
+			action: 'openLocalFolder',
+			localItemId: entry.id,
+			title: t('openFolder'),
+			icon: 'folder',
+		}),
 		renderIconActionButton({
 			action: 'openLocalReadme',
 			localItemId: entry.id,
@@ -444,7 +457,7 @@ function renderLocalManagedCard(entry: LocalManagedModuleEntry, state: LocalWork
 	return renderModuleCardShell({
 		articleClasses: ['local-module-card', 'managed'],
 		dataRole: 'local-module-card',
-		articleAttributes: `data-search-text="${searchText}" data-card-scope="workspace"`,
+		articleAttributes: `data-search-text="${searchText}" data-card-scope="workspace" data-vscode-context="${vscodeContext}"`,
 		title: entry.name,
 		titleDisplay: truncate(entry.name, 44),
 		owner: `@${entry.owner}`,
@@ -462,26 +475,40 @@ function renderLocalUnmanagedCard(entry: LocalUnmanagedFolderEntry, state: Local
 		? `<button class="chip-button callout" data-action="createLocalRepository" data-local-item-id="${escapeHtml(entry.id)}">${escapeHtml(t('createGithubRepository'))}</button>`
 		: '';
 	const actions = `<div class="local-card-actions">${linkButton}${createButton}</div>`;
+	const openFolderButton = renderActionToolbar([
+		renderIconActionButton({
+			action: 'openLocalFolder',
+			localItemId: entry.id,
+			title: t('openFolder'),
+			icon: 'folder',
+		}),
+	]);
 	const hint = [
 		!state.signedIn ? `<div class="local-card-hint">${escapeHtml(t('signInToCreateRepositoryHint'))}</div>` : '',
 		!canLinkRepository ? `<div class="local-card-hint">${escapeHtml(t('refreshCatalogToLinkRepositoryHint'))}</div>` : '',
 	].filter(Boolean).join('');
 	const searchText = escapeHtml(getLocalUnmanagedSearchText(entry));
+	const vscodeContext = escapeHtml(JSON.stringify({
+		webviewSection: 'workspaceCard',
+		workspaceCardKind: 'unmanaged',
+		localItemId: entry.id,
+		preventDefaultContextMenuItems: true,
+	}));
 	return renderModuleCardShell({
 		articleClasses: ['local-module-card', 'unmanaged'],
 		dataRole: 'local-module-card',
-		articleAttributes: `data-search-text="${searchText}" data-card-scope="workspace"`,
+		articleAttributes: `data-search-text="${searchText}" data-card-scope="workspace" data-vscode-context="${vscodeContext}"`,
 		title: entry.name,
 		titleDisplay: truncate(entry.name, 44),
 		owner: entry.path,
-		headerToolsHtml: renderModuleHeaderTools([actions]),
+		headerToolsHtml: renderModuleHeaderTools([openFolderButton, actions]),
 		summary: t('localUnmanagedSummary'),
 		bodyExtrasHtml: hint,
 		metaBadges: [renderBadge(t('unmanagedBadge'))],
 	});
 }
 
-type IconName = 'close' | 'filter' | 'readme' | 'search' | 'update' | 'remove' | 'switch' | 'lock' | 'unlock';
+type IconName = 'close' | 'filter' | 'folder' | 'readme' | 'search' | 'update' | 'remove' | 'switch' | 'lock' | 'unlock';
 
 function renderIconActionButton(options: { action: string; title: string; icon: IconName; moduleKey?: string; localItemId?: string; disabled?: boolean }): string {
 	const moduleKeyAttribute = options.moduleKey ? ` data-module-key="${escapeHtml(options.moduleKey)}"` : '';
@@ -496,6 +523,8 @@ function renderIcon(name: IconName): string {
 			return '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" aria-hidden="true"><path d="M4 4l8 8"></path><path d="M12 4l-8 8"></path></svg>';
 		case 'filter':
 			return '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 4h11"></path><path d="M4.75 8h6.5"></path><path d="M6.75 12h2.5"></path></svg>';
+		case 'folder':
+			return '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 4.5V12a1.5 1.5 0 0 0 1.5 1.5h9A1.5 1.5 0 0 0 14 12V6a1.5 1.5 0 0 0-1.5-1.5H8L6.5 3H3.5A1.5 1.5 0 0 0 2 4.5z"></path></svg>';
 		case 'readme':
 			return '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 2.5h4.5a2 2 0 0 1 2 2V13a2 2 0 0 0-2-2H3z"></path><path d="M13 2.5H8.5a2 2 0 0 0-2 2V13a2 2 0 0 1 2-2H13z"></path></svg>';
 		case 'search':
