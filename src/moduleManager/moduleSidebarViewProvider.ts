@@ -16,6 +16,7 @@ interface ModuleSidebarActions {
 	onApplySelection: (entry?: CsmModuleEntry) => void;
 	onRemoveModule: (entry: CsmModuleEntry) => void;
 	onUpdateModule: (entry: CsmModuleEntry) => void;
+	onToggleLocalModuleLock?: (entry: LocalManagedModuleEntry) => void;
 	onSwitchLocalModuleMethod?: (entry: LocalManagedModuleEntry) => void;
 	onCreateLocalRepository?: (entry: LocalUnmanagedFolderEntry) => void;
 	onLinkLocalRepository?: (entry: LocalUnmanagedFolderEntry) => void;
@@ -28,7 +29,7 @@ interface ModuleSidebarViewProviderOptions {
 }
 
 type WebviewMessage = {
-	type: 'login' | 'refresh' | 'initializeWorkspace' | 'applySelected' | 'toggleStar' | 'openReadme' | 'togglePreview' | 'applyOne' | 'toggleSelection' | 'setFilterQuery' | 'clearFilter' | 'setIncludeApplied' | 'setScope' | 'dismissIntroTip' | 'removeModule' | 'updateModule' | 'setSortField' | 'setSortDirection' | 'showMore' | 'openLocalReadme' | 'removeLocalModule' | 'updateLocalModule' | 'switchLocalModuleMethod' | 'createLocalRepository' | 'linkLocalRepository';
+	type: 'login' | 'refresh' | 'initializeWorkspace' | 'applySelected' | 'toggleStar' | 'openReadme' | 'togglePreview' | 'applyOne' | 'toggleSelection' | 'setFilterQuery' | 'clearFilter' | 'setIncludeApplied' | 'setScope' | 'dismissIntroTip' | 'removeModule' | 'updateModule' | 'setSortField' | 'setSortDirection' | 'showMore' | 'openLocalReadme' | 'removeLocalModule' | 'updateLocalModule' | 'toggleLocalModuleLock' | 'switchLocalModuleMethod' | 'createLocalRepository' | 'linkLocalRepository';
 	moduleKey?: string;
 	localItemId?: string;
 	selected?: boolean;
@@ -354,6 +355,13 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IM
 				const entry = message.localItemId ? this.localManagedModulesById.get(message.localItemId) : undefined;
 				if (entry) {
 					this.actions.onUpdateModule(entry.moduleEntry);
+				}
+				return;
+			}
+			case 'toggleLocalModuleLock': {
+				const entry = message.localItemId ? this.localManagedModulesById.get(message.localItemId) : undefined;
+				if (entry) {
+					this.actions.onToggleLocalModuleLock?.(entry);
 				}
 				return;
 			}

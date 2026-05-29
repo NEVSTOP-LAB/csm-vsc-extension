@@ -1072,6 +1072,98 @@ suite('ModuleManagerController Regression Tests', () => {
 		assert.ok(warnings.some((text) => text.includes('only available when the current workspace folder is a Git repository')));
 	});
 
+	test('toggleLocalModuleLockCommand unlocks a managed local module after confirmation', async () => {
+		const controller = createController() as any;
+		let config: LocalModuleConfig = {
+			version: '2',
+			root: 'csm',
+			configPath: 'd:/repo/csm/csm-modules.yaml',
+			modules: {
+				org__module_copy: {
+					key: 'org__module_copy',
+					name: 'module-copy',
+					owner: 'org',
+					source: 'https://github.com/org/module-copy',
+					method: 'copy',
+					path: 'csm/module-copy',
+					ref: 'abc123',
+					branch: 'main',
+					locked: true,
+				},
+			},
+		};
+		let lockCall:
+			| { workspaceRoot: string; entryKey: string; locked: boolean }
+			| undefined;
+		let sidebarRefreshed = false;
+
+		controller.workspaceModuleService = {
+			resolveGitRepositoryRoot: async () => 'd:/repo',
+			setModuleLocked: async (workspaceRoot: string, entry: LocalModuleConfig['modules'][string], locked: boolean) => {
+				lockCall = { workspaceRoot, entryKey: entry.key, locked };
+				return {
+					...entry,
+					locked,
+				};
+			},
+			withAppliedModule: (currentConfig: LocalModuleConfig, entry: LocalModuleConfig['modules'][string]) => {
+				config = {
+					...currentConfig,
+					modules: {
+						...currentConfig.modules,
+						[entry.key]: entry,
+					},
+				};
+				return config;
+			},
+			writeConfig: async () => undefined,
+		};
+		controller.resolveWorkspaceFolder = async () => ({ name: 'repo', uri: vscode.Uri.file('d:/repo') });
+		controller.tryLoadSidebarLocalModuleConfig = async () => config;
+		controller.refreshSidebarWorkspaceState = async () => {
+			sidebarRefreshed = true;
+		};
+		mocked.__setWarningMessageResponse('Unlock');
+
+		await controller.toggleLocalModuleLockCommand({
+			id: 'org__module_copy',
+			kind: 'managed',
+			owner: 'org',
+			name: 'module-copy',
+			path: 'csm/module-copy',
+			source: 'https://github.com/org/module-copy',
+			method: 'copy',
+			branch: 'main',
+			ref: 'abc123',
+			locked: true,
+			repoUrl: 'https://github.com/org/module-copy',
+			description: 'demo',
+			visibility: 'public',
+			topics: ['csm-modsets'],
+			moduleEntry: {
+				id: 1,
+				owner: 'org',
+				name: 'module-copy',
+				description: 'demo',
+				topics: ['csm-modsets'],
+				visibility: 'public',
+				defaultBranch: 'main',
+				repoUrl: 'https://github.com/org/module-copy',
+			},
+			stale: false,
+		});
+
+		assert.deepStrictEqual(lockCall, {
+			workspaceRoot: 'd:/repo',
+			entryKey: 'org__module_copy',
+			locked: false,
+		});
+		assert.strictEqual(config.modules.org__module_copy?.locked, false);
+		assert.strictEqual(sidebarRefreshed, true);
+		const infos = mocked.__getMessageLog().filter((message) => message.level === 'info').map((message) => message.text);
+		assert.ok(infos.some((text) => text.includes('Unlocked local files for org/module-copy.')));
+	});
+
 	test('remove command allows copy modules in a non-git workspace', async () => {
 		const controller = createController() as any;
 		let config: LocalModuleConfig = {
@@ -1536,6 +1628,7 @@ suite('ModuleManagerController Regression Tests', () => {
 						path: 'csm/module-a',
 						ref: 'abc123',
 						branch: 'main',
+						locked: false,
 					},
 				},
 			}),
@@ -1593,6 +1686,7 @@ suite('ModuleManagerController Regression Tests', () => {
 						path: 'csm/module-a',
 						ref: 'abc123',
 						branch: 'main',
+						locked: false,
 					},
 				},
 			}),
@@ -1609,6 +1703,7 @@ suite('ModuleManagerController Regression Tests', () => {
 		assert.strictEqual(capturedContext?.gitAvailable, true);
 		assert.deepStrictEqual((capturedContext?.managedModules as Array<{ path: string }>)?.map((entry) => entry.path), ['csm/module-a']);
 		assert.deepStrictEqual((capturedContext?.unmanagedFolders as Array<{ path: string }>)?.map((entry) => entry.path), ['csm/custom-module']);
+		assert.strictEqual((capturedContext?.managedModules as Array<{ locked: boolean }>)[0]?.locked, false);
 		assert.strictEqual((capturedContext?.managedModules as Array<{ moduleEntry: { name: string } }>)[0]?.moduleEntry.name, 'module-a');
 	});
 
@@ -2248,6 +2343,7 @@ suite('ModuleManagerController Regression Tests', () => {
 					path: 'csm/custom-module',
 					ref: 'def456',
 					branch: 'main',
+					locked: true,
 				},
 			},
 		});
@@ -2440,6 +2536,7 @@ suite('ModuleManagerController Regression Tests', () => {
 					path: 'csm/custom-module',
 					ref: 'abc123',
 					branch: 'main',
+					locked: true,
 				},
 			},
 		});
@@ -2527,7 +2624,7 @@ suite('ModuleManagerController Regression Tests', () => {
 			completed = true;
 		});
 
-		for (let attempt = 0; attempt < 10 && !loadStarted && !completed; attempt += 1) {
+		for (let attempt = 0; attempt < 40 && !loadStarted && !completed; attempt += 1) {
 			await new Promise<void>((resolve) => setImmediate(resolve));
 		}
 
@@ -2628,6 +2725,7 @@ suite('ModuleManagerController Regression Tests', () => {
 				path: 'csm/custom-module',
 				ref: 'abc123',
 				branch: 'main',
+				locked: true,
 			},
 		});
 		assert.strictEqual(sidebarRefreshed, true);

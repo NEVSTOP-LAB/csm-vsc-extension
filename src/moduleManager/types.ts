@@ -23,6 +23,7 @@ export interface LocalModuleConfigEntry {
 	path: string;
 	ref: string;
 	branch: string;
+	locked?: boolean;
 }
 
 export interface LocalModuleConfig {
@@ -42,6 +43,7 @@ export interface LocalManagedModuleEntry {
 	method: ModuleApplyMethod;
 	branch: string;
 	ref: string;
+	locked?: boolean;
 	repoUrl: string;
 	description: string;
 	visibility: 'public' | 'private';

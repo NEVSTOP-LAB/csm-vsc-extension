@@ -347,6 +347,7 @@ suite('Module Manager Tests', () => {
 		assert.ok(rendered?.html.includes('automation'));
 		assert.ok(!rendered?.html.includes('csm-modsets'));
 		assert.ok(!rendered?.html.includes('labview-csm'));
+		assert.ok(rendered?.html.includes('data-action="toggleLocalModuleLock"'));
 		assert.ok(rendered?.html.includes('placeholder="Search modules"'));
 		assert.ok(rendered?.html.includes('data-role="search-box"'));
 		assert.ok(rendered?.html.includes('data-role="filter-button"'));
@@ -703,6 +704,7 @@ suite('Module Manager Tests', () => {
 		let openedReadmeName = '';
 		let removedModuleName = '';
 		let updatedModuleName = '';
+		let toggledLockName = '';
 		let switchedModuleName = '';
 		let createdRepositoryPath = '';
 		let linkedRepositoryPath = '';
@@ -722,6 +724,9 @@ suite('Module Manager Tests', () => {
 			},
 			onUpdateModule: (entry) => {
 				updatedModuleName = entry.name;
+			},
+			onToggleLocalModuleLock: (entry) => {
+				toggledLockName = entry.name;
 			},
 			onSwitchLocalModuleMethod: (entry) => {
 				switchedModuleName = entry.name;
@@ -783,6 +788,7 @@ suite('Module Manager Tests', () => {
 
 		resolved?.fireMessage({ type: 'openLocalReadme', localItemId: 'local__module_local' });
 		resolved?.fireMessage({ type: 'updateLocalModule', localItemId: 'local__module_local' });
+		resolved?.fireMessage({ type: 'toggleLocalModuleLock', localItemId: 'local__module_local' });
 		resolved?.fireMessage({ type: 'switchLocalModuleMethod', localItemId: 'local__module_local' });
 		resolved?.fireMessage({ type: 'removeLocalModule', localItemId: 'local__module_local' });
 		resolved?.fireMessage({ type: 'createLocalRepository', localItemId: 'csm/custom-module' });
@@ -791,6 +797,7 @@ suite('Module Manager Tests', () => {
 
 		assert.strictEqual(openedReadmeName, 'module-local');
 		assert.strictEqual(updatedModuleName, 'module-local');
+		assert.strictEqual(toggledLockName, 'module-local');
 		assert.strictEqual(switchedModuleName, 'module-local');
 		assert.strictEqual(removedModuleName, 'module-local');
 		assert.strictEqual(createdRepositoryPath, 'csm/custom-module');
@@ -973,9 +980,40 @@ suite('Module Manager Tests', () => {
 			assert.strictEqual(path.basename(initialConfig.configPath), LOCAL_MODULE_CONFIG_FILE);
 			assert.strictEqual(reloadedConfig.root, 'csm');
 			assert.strictEqual(reloadedConfig.version, '2');
+			assert.strictEqual(reloadedConfig.modules.org__module_a?.locked, true);
 			assert.deepStrictEqual(reloadedConfig.modules.org__module_a, updatedConfig.modules.org__module_a);
 		} finally {
 			await fs.rm(repoRoot, { recursive: true, force: true });
+		}
+	});
+
+	test('WorkspaceModuleService toggles local module files between readonly and writable', async () => {
+		const workspaceRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'csm-lock-toggle-'));
+		const service = new WorkspaceModuleService();
+		try {
+			const targetPath = path.join(workspaceRoot, 'csm', 'module-a');
+			await fs.mkdir(targetPath, { recursive: true });
+			const readmePath = path.join(targetPath, 'README.md');
+			await fs.writeFile(readmePath, 'demo', 'utf8');
+
+			const lockedEntry = await service.setModuleLocked(workspaceRoot, {
+				key: 'org__module_a',
+				name: 'module-a',
+				owner: 'org',
+				source: 'https://github.com/org/module-a',
+				method: 'copy',
+				path: 'csm/module-a',
+				ref: 'abc123',
+				branch: 'main',
+			}, true);
+			assert.strictEqual(lockedEntry.locked, true);
+			assert.strictEqual((await fs.stat(readmePath)).mode & 0o222, 0);
+
+			const unlockedEntry = await service.setModuleLocked(workspaceRoot, lockedEntry, false);
+			assert.strictEqual(unlockedEntry.locked, false);
+			assert.notStrictEqual((await fs.stat(readmePath)).mode & 0o200, 0);
+		} finally {
+			await fs.rm(workspaceRoot, { recursive: true, force: true });
 		}
 	});
 
@@ -1004,6 +1042,7 @@ suite('Module Manager Tests', () => {
 			const config = await service.loadConfig(repoRoot, legacyConfigPath);
 			assert.strictEqual(path.basename(config.configPath), LOCAL_MODULE_CONFIG_FILE);
 			assert.strictEqual(config.modules.org__module_a?.method, 'submodule');
+			assert.strictEqual(config.modules.org__module_a?.locked, true);
 		} finally {
 			await fs.rm(repoRoot, { recursive: true, force: true });
 		}
@@ -1265,9 +1304,11 @@ suite('Module Manager Tests', () => {
 			assert.ok(config?.modules['local__module-a']);
 			assert.strictEqual(config?.modules['local__module-a'].method, 'submodule');
 			assert.strictEqual(config?.modules['local__module-a'].path, 'csm/module-a');
+			assert.strictEqual(config?.modules['local__module-a'].locked, true);
 			const yamlText = await fs.readFile(config?.configPath ?? '', 'utf8');
 			assert.ok(yamlText.includes('modules:'));
 			assert.ok(yamlText.includes('local__module-a:'));
+			assert.ok(yamlText.includes('locked: true'));
 		} finally {
 			await fs.rm(tempRoot, { recursive: true, force: true });
 		}
@@ -1301,6 +1342,8 @@ suite('Module Manager Tests', () => {
 				repoUrl: moduleRepo,
 			};
 			const applied = await service.applyModule(workspaceRoot, config, moduleEntry, 'copy');
+			assert.strictEqual(applied.locked, true);
+			assert.strictEqual((await fs.stat(path.join(workspaceRoot, 'csm', 'module-copy', 'README.md'))).mode & 0o222, 0);
 			assert.ok((await fs.readFile(path.join(workspaceRoot, 'csm', 'module-copy', 'README.md'), 'utf8')).includes('# v1'));
 
 			await fs.writeFile(path.join(moduleRepo, 'README.md'), '# v2\n', 'utf8');
@@ -1315,7 +1358,9 @@ suite('Module Manager Tests', () => {
 
 			const result = await service.updateModule(workspaceRoot, applied, moduleEntry, undefined, undefined, preview.latestRef);
 			assert.strictEqual(result.entry.ref, latestRef);
+			assert.strictEqual(result.entry.locked, true);
 			assert.ok(result.backupPath);
+			assert.strictEqual((await fs.stat(path.join(workspaceRoot, 'csm', 'module-copy', 'README.md'))).mode & 0o222, 0);
 			assert.ok((await fs.readFile(path.join(workspaceRoot, 'csm', 'module-copy', 'README.md'), 'utf8')).includes('# v2'));
 
 			const backupZip = await JSZip.loadAsync(await fs.readFile(result.backupPath!));
@@ -1360,9 +1405,11 @@ suite('Module Manager Tests', () => {
 			assert.ok(synced.modules['local__module-b']);
 			assert.strictEqual(synced.modules['local__module-b'].method, 'submodule');
 			assert.strictEqual(synced.modules['local__module-b'].path, 'csm/module-b');
+			assert.strictEqual(synced.modules['local__module-b'].locked, true);
 
 			const yamlText = await fs.readFile(synced.configPath, 'utf8');
 			assert.ok(yamlText.includes('local__module-b:'));
+			assert.ok(yamlText.includes('locked: true'));
 		} finally {
 			await fs.rm(tempRoot, { recursive: true, force: true });
 		}

@@ -105,6 +105,9 @@ export class ModuleManagerController {
 		onUpdateModule: (entry) => {
 			void this.updateModuleCommand(entry);
 		},
+		onToggleLocalModuleLock: (entry) => {
+			void this.toggleLocalModuleLockCommand(entry);
+		},
 		onSwitchLocalModuleMethod: (entry) => {
 			void this.switchLocalModuleMethodCommand(entry);
 		},
@@ -644,6 +647,72 @@ export class ModuleManagerController {
 		await this.refreshSidebarWorkspaceState();
 	}
 
+	public async toggleLocalModuleLockCommand(entry: LocalManagedModuleEntry): Promise<void> {
+		const workspaceFolder = await this.resolveWorkspaceFolder();
+		if (!workspaceFolder) {
+			void vscode.window.showWarningMessage(t('openWorkspaceBeforeToggleLock'));
+			return;
+		}
+
+		const repoRoot = await this.workspaceModuleService.resolveGitRepositoryRoot(workspaceFolder.uri.fsPath);
+		const workspaceRoot = repoRoot ?? workspaceFolder.uri.fsPath;
+		let config = await this.tryLoadSidebarLocalModuleConfig(workspaceFolder, workspaceRoot);
+		if (!config) {
+			void vscode.window.showWarningMessage(t('noWorkspaceConfig'));
+			return;
+		}
+
+		const target = this.findAppliedLocalManagedEntry(config, entry);
+		if (!target) {
+			void vscode.window.showWarningMessage(t('selectedModuleNotApplied'));
+			return;
+		}
+
+		const nextLocked = !this.isLocalModuleLocked(target);
+		const moduleLabel = `${target.owner}/${target.name}`;
+		if (!nextLocked) {
+			const repository = path.basename(workspaceRoot) || workspaceFolder.name;
+			const confirmation = await vscode.window.showWarningMessage(
+				t('unlockConfirmation', {
+					module: moduleLabel,
+					repository,
+					targetPath: target.path,
+				}),
+				{ modal: true },
+				t('unlockAction'),
+			);
+			if (confirmation !== t('unlockAction')) {
+				return;
+			}
+		}
+
+		try {
+			let updatedEntry: LocalModuleConfigEntry | undefined;
+			await vscode.window.withProgress(
+				{
+					location: vscode.ProgressLocation.Notification,
+					title: t('progressChangingLock', { module: moduleLabel }),
+					cancellable: false,
+				},
+				async () => {
+					updatedEntry = await this.setLocalModuleLockState(workspaceRoot, target, nextLocked);
+					config = this.workspaceModuleService.withAppliedModule(config!, updatedEntry);
+					await this.workspaceModuleService.writeConfig(config);
+				},
+			);
+			void vscode.window.showInformationMessage(nextLocked
+				? t('lockSuccess', { module: moduleLabel })
+				: t('unlockSuccess', { module: moduleLabel }));
+		} catch (error) {
+			const message = getUserFacingErrorMessage(error, 'config');
+			this.logger.error(`Failed to change lock state for ${target.owner}/${target.name}: ${message}`);
+			void vscode.window.showErrorMessage(t('toggleLockFailed', { message }));
+			return;
+		}
+
+		await this.refreshSidebarWorkspaceState();
+	}
+
 	public async createLocalFolderRepositoryCommand(folder: LocalUnmanagedFolderEntry): Promise<void> {
 		const workspaceFolder = await this.resolveWorkspaceFolder();
 		if (!workspaceFolder) {
@@ -852,7 +921,7 @@ export class ModuleManagerController {
 				},
 				async () => {
 					const ref = await this.workspaceModuleService.resolveRemoteBranchRef(workspaceRoot, selection.repoUrl, branch, authToken);
-					linkedEntry = {
+					linkedEntry = await this.setLocalModuleLockState(workspaceRoot, {
 						key: moduleKey,
 						name: selection.name,
 						owner: selection.owner,
@@ -861,7 +930,8 @@ export class ModuleManagerController {
 						path: targetPath,
 						ref,
 						branch,
-					};
+						locked: true,
+					}, true);
 					config = this.workspaceModuleService.withAppliedModule(config, linkedEntry);
 					await this.workspaceModuleService.writeConfig(config);
 				},
@@ -915,8 +985,10 @@ export class ModuleManagerController {
 			path: targetPath,
 			ref: nextRef,
 			branch: nextBranch,
+			locked: true,
 		};
-		const nextConfig = this.workspaceModuleService.withAppliedModule(config, nextEntry);
+		const lockedEntry = await this.setLocalModuleLockState(workspaceRoot, nextEntry, true);
+		const nextConfig = this.workspaceModuleService.withAppliedModule(config, lockedEntry);
 		await this.workspaceModuleService.writeConfig(nextConfig);
 	}
 
@@ -972,6 +1044,36 @@ export class ModuleManagerController {
 		return config.modules[entry.id]
 			?? Object.values(config.modules).find((module) => module.key === entry.id)
 			?? Object.values(config.modules).find((module) => module.owner === entry.owner && module.name === entry.name && module.path === entry.path);
+	}
+
+	private isLocalModuleLocked(entry: Pick<LocalManagedModuleEntry | LocalModuleConfigEntry, 'locked'>): boolean {
+		return entry.locked !== false;
+	}
+
+	private async setLocalModuleLockState(
+		workspaceRoot: string,
+		entry: LocalModuleConfigEntry,
+		locked: boolean,
+	): Promise<LocalModuleConfigEntry> {
+		const maybeWorkspaceModuleService = this.workspaceModuleService as Partial<WorkspaceModuleService>;
+		if (typeof maybeWorkspaceModuleService.setModuleLocked === 'function') {
+			return maybeWorkspaceModuleService.setModuleLocked.call(this.workspaceModuleService, workspaceRoot, entry, locked);
+		}
+		return {
+			...entry,
+			locked,
+		};
+	}
+
+	private async syncWorkspaceModuleLockStates(workspaceRoot: string, config: LocalModuleConfig | undefined): Promise<void> {
+		if (!config) {
+			return;
+		}
+		const maybeWorkspaceModuleService = this.workspaceModuleService as Partial<WorkspaceModuleService>;
+		if (typeof maybeWorkspaceModuleService.syncModuleLockStates !== 'function') {
+			return;
+		}
+		await maybeWorkspaceModuleService.syncModuleLockStates.call(this.workspaceModuleService, workspaceRoot, Object.values(config.modules));
 	}
 
 	private getRemovalTargets(config: LocalModuleConfig, entry?: CsmModuleEntry): LocalModuleConfigEntry[] {
@@ -1729,6 +1831,13 @@ export class ModuleManagerController {
 				this.logger.warn(`Failed to auto-sync submodule entries to config: ${error instanceof Error ? error.message : String(error)}`);
 			}
 		}
+		if (config) {
+			try {
+				await this.syncWorkspaceModuleLockStates(workspaceRoot, config);
+			} catch (error) {
+				this.logger.warn(`Failed to sync local module lock state: ${error instanceof Error ? error.message : String(error)}`);
+			}
+		}
 		const moduleRoot = await this.resolveSidebarModuleRoot(workspaceRoot, config);
 		const staleModuleKeys = await this.computeStaleModuleKeys(workspaceRoot, config);
 		setContext({
@@ -1777,6 +1886,7 @@ export class ModuleManagerController {
 					method: configEntry.method,
 					branch: configEntry.branch,
 					ref: configEntry.ref,
+					locked: this.isLocalModuleLocked(configEntry),
 					repoUrl: moduleEntry.repoUrl,
 					description: moduleEntry.description,
 					visibility: moduleEntry.visibility,

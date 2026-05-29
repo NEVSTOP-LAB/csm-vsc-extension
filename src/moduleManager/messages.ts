@@ -130,6 +130,10 @@ const messages = {
 		en: 'Open the target repository as a workspace folder before switching a local module between copy and submodule mode.',
 		zh: '在 copy 和 submodule 模式之间切换本地模块前，请先将目标仓库作为工作区文件夹打开。',
 	},
+	openWorkspaceBeforeToggleLock: {
+		en: 'Open the target repository as a workspace folder before changing a local module lock state.',
+		zh: '修改本地模块锁定状态前，请先将目标仓库作为工作区文件夹打开。',
+	},
 	progressUpdating: {
 		en: 'Updating {module}...',
 		zh: '正在更新 {module}...',
@@ -137,6 +141,38 @@ const messages = {
 	updateAction: {
 		en: 'Update',
 		zh: '更新',
+	},
+	lockLocalFiles: {
+		en: 'Lock local files',
+		zh: '锁定本地文件',
+	},
+	unlockLocalFiles: {
+		en: 'Unlock local files',
+		zh: '解锁本地文件',
+	},
+	unlockAction: {
+		en: 'Unlock',
+		zh: '解锁',
+	},
+	unlockConfirmation: {
+		en: 'Unlock local files for {module} in {repository}? The files under {targetPath} will become writable.',
+		zh: '要在 {repository} 中解锁模块 {module} 的本地文件吗？{targetPath} 下的文件将恢复为可写。',
+	},
+	progressChangingLock: {
+		en: 'Updating local lock state for {module}...',
+		zh: '正在更新 {module} 的本地锁定状态...',
+	},
+	lockSuccess: {
+		en: 'Locked local files for {module}.',
+		zh: '已锁定 {module} 的本地文件。',
+	},
+	unlockSuccess: {
+		en: 'Unlocked local files for {module}.',
+		zh: '已解锁 {module} 的本地文件。',
+	},
+	toggleLockFailed: {
+		en: 'Failed to change local lock state: {message}',
+		zh: '修改本地锁定状态失败：{message}',
 	},
 	copyUpdateConfirmation: {
 		en: 'Update copied module {module} on branch {branch} from {currentRef} to {latestRef}? The current folder will be replaced, and a zip backup will be saved to {backupDirectory}.',
@@ -737,6 +773,14 @@ const messages = {
 	managedBadge: {
 		en: 'Managed',
 		zh: '已管理',
+	},
+	lockedBadge: {
+		en: 'Locked',
+		zh: '已锁定',
+	},
+	unlockedBadge: {
+		en: 'Unlocked',
+		zh: '已解锁',
 	},
 	unmanagedBadge: {
 		en: 'Unmanaged',
