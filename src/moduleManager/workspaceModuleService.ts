@@ -860,8 +860,13 @@ export class WorkspaceModuleService {
 				failures.push(...await this.updatePathLockState(path.join(targetPath, childName), locked));
 			}
 		}
+		const currentMode = stat.mode & 0o777;
+		const nextMode = this.getLockMode(currentMode, stat.isDirectory(), locked);
+		if (currentMode === nextMode) {
+			return failures;
+		}
 		try {
-			await fs.chmod(targetPath, this.getLockMode(stat.mode, stat.isDirectory(), locked));
+			await fs.chmod(targetPath, nextMode);
 		} catch (error) {
 			if (!this.isPathMissingError(error)) {
 				failures.push(this.formatPathLockError(targetPath, error));
@@ -882,10 +887,11 @@ export class WorkspaceModuleService {
 	}
 
 	private getLockMode(currentMode: number, isDirectory: boolean, locked: boolean): number {
+		const permissionBits = currentMode & 0o777;
 		if (process.platform === 'win32') {
-			return locked ? (currentMode & ~0o222) : (currentMode | 0o200);
+			return locked ? (permissionBits & ~0o222) : (permissionBits | 0o200);
 		}
-		const executeBits = isDirectory ? 0o111 : (currentMode & 0o111);
+		const executeBits = isDirectory ? 0o111 : (permissionBits & 0o111);
 		if (locked) {
 			return (isDirectory ? 0o555 : 0o444) | executeBits;
 		}

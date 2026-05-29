@@ -1073,6 +1073,43 @@ suite('Module Manager Tests', () => {
 		}
 	});
 
+	test('WorkspaceModuleService skips redundant chmod calls when lock state already matches', async () => {
+		const workspaceRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'csm-lock-noop-sync-'));
+		const service = new WorkspaceModuleService();
+		const fsModule = require('fs/promises') as typeof fs & { chmod: typeof fs.chmod };
+		const originalChmod = fsModule.chmod;
+		let chmodCalls = 0;
+		try {
+			const targetPath = path.join(workspaceRoot, 'csm', 'module-a');
+			const readmePath = path.join(targetPath, 'README.md');
+			await fs.mkdir(targetPath, { recursive: true });
+			await fs.writeFile(readmePath, 'demo', 'utf8');
+
+			const lockedEntry = await service.setModuleLocked(workspaceRoot, {
+				key: 'org__module_a',
+				name: 'module-a',
+				owner: 'org',
+				source: 'https://github.com/org/module-a',
+				method: 'copy',
+				path: 'csm/module-a',
+				ref: 'abc123',
+				branch: 'main',
+			}, true);
+
+			fsModule.chmod = (async (pathLike, mode) => {
+				chmodCalls += 1;
+				return originalChmod(pathLike, mode);
+			}) as typeof fs.chmod;
+
+			await service.syncModuleLockStates(workspaceRoot, [lockedEntry]);
+
+			assert.strictEqual(chmodCalls, 0);
+		} finally {
+			fsModule.chmod = originalChmod;
+			await fs.rm(workspaceRoot, { recursive: true, force: true });
+		}
+	});
+
 	test('WorkspaceModuleService migrates legacy lvcsm config paths to yaml', async () => {
 		const repoRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'csm-modules-legacy-'));
 		const service = new WorkspaceModuleService();
