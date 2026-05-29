@@ -1343,6 +1343,58 @@ suite('Module Manager Tests', () => {
 		}
 	});
 
+	test('WorkspaceModuleService fails submodule-to-copy switch when the recreated target disappears before relocking', async () => {
+		const workspaceRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'csm-switch-to-copy-missing-'));
+		const targetPath = path.join(workspaceRoot, 'csm', 'module-a');
+		const fsModule = require('fs/promises') as typeof fs & { copyFile: typeof fs.copyFile };
+		const originalCopyFile = fsModule.copyFile;
+		await fs.mkdir(targetPath, { recursive: true });
+		await fs.writeFile(path.join(targetPath, 'README.md'), 'demo', 'utf8');
+
+		const gitRunner = new RecordingGitRunner(async (options) => {
+			const command = options.args.join(' ');
+			switch (command) {
+				case 'submodule deinit -f -- csm/module-a':
+				case 'rm -rf -- csm/module-a':
+					return '';
+				default:
+					throw new Error(`Unexpected git command: ${command}`);
+			}
+		});
+		const service = new WorkspaceModuleService(gitRunner);
+
+		try {
+			fsModule.copyFile = (async (sourcePath, destinationPath, mode) => {
+				const result = await originalCopyFile(sourcePath, destinationPath, mode);
+				if (String(destinationPath) === path.join(targetPath, 'README.md')) {
+					await fs.rm(targetPath, { recursive: true, force: true });
+				}
+				return result;
+			}) as typeof fs.copyFile;
+
+			await assert.rejects(() => service.switchModuleMethod(
+				workspaceRoot,
+				{
+					key: 'org__module_a',
+					name: 'module-a',
+					owner: 'org',
+					source: 'https://github.com/org/module-a',
+					method: 'submodule',
+					path: 'csm/module-a',
+					ref: 'abc123',
+					branch: 'main',
+					locked: true,
+				},
+				'copy',
+				undefined,
+				workspaceRoot,
+			), /Converted module target is missing after switching to copy mode: csm\/module-a/);
+		} finally {
+			fsModule.copyFile = originalCopyFile;
+			await fs.rm(workspaceRoot, { recursive: true, force: true });
+		}
+	});
+
 	test('WorkspaceModuleService switches a copied module to submodule mode', async () => {
 		const repoRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'csm-switch-to-submodule-'));
 		const targetPath = path.join(repoRoot, 'csm', 'module-a');

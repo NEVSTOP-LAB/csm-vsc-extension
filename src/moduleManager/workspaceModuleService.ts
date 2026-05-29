@@ -234,6 +234,7 @@ export class WorkspaceModuleService {
 			}
 			const switchedEntry = await this.convertSubmoduleToCopy(workspaceRoot, normalizedEntry, repoRoot);
 			if (this.isEntryLocked(normalizedEntry)) {
+				await this.ensureSwitchTargetExists(workspaceRoot, switchedEntry);
 				await this.applyEntryLockState(workspaceRoot, switchedEntry);
 			}
 			return switchedEntry;
@@ -245,6 +246,7 @@ export class WorkspaceModuleService {
 
 		const switchedEntry = await this.convertCopyToSubmodule(repoRoot, normalizedEntry, authToken);
 		if (this.isEntryLocked(normalizedEntry)) {
+			await this.ensureSwitchTargetExists(workspaceRoot, switchedEntry);
 			await this.applyEntryLockState(workspaceRoot, switchedEntry);
 		}
 		return switchedEntry;
@@ -749,6 +751,20 @@ export class WorkspaceModuleService {
 				await fs.rm(backupPath, { recursive: true, force: true });
 			}
 			await fs.rm(tempRoot, { recursive: true, force: true });
+		}
+	}
+
+	private async ensureSwitchTargetExists(workspaceRoot: string, entry: LocalModuleConfigEntry): Promise<void> {
+		const targetRelativePath = this.normalizeRootPath(entry.path);
+		const targetPath = this.toAbsoluteTargetPath(workspaceRoot, targetRelativePath);
+		let stat;
+		try {
+			stat = await fs.stat(targetPath);
+		} catch {
+			throw new Error(`Converted module target is missing after switching to ${entry.method} mode: ${entry.path}`);
+		}
+		if (!stat.isDirectory()) {
+			throw new Error(`Converted module target is not a directory after switching to ${entry.method} mode: ${entry.path}`);
 		}
 	}
 
