@@ -1022,6 +1022,10 @@ const messages = {
 		en: 'Open README',
 		zh: '打开 README',
 	},
+	openOnGitHub: {
+		en: 'Open on GitHub',
+		zh: '在 GitHub 中打开',
+	},
 	openFolder: {
 		en: 'Open Folder',
 		zh: '打开目录',

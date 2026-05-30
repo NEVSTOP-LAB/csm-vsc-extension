@@ -31,7 +31,7 @@
 
 - ✅ 在统一侧边栏中同时查看工作区模块、未管理文件夹和 GitHub 模块目录
 - ✅ 支持 GitHub 登录、搜索、筛选、排序和多选批量操作
-- ✅ 支持 README 预览、图片显示，以及仓库 `Star` / `Unstar`
+- ✅ 支持 README 预览、图片显示、直接跳转 GitHub 仓库页面，以及仓库 `Star` / `Unstar`
 - ✅ 支持将模块引入、更新、移除，并在 `copy` / `submodule` 模式间切换
 - ✅ 本地已管理模块默认以只读 lock 状态保存，可在侧边栏中解锁或重新锁定，状态会写回 `csm-modules.yaml`
 - ✅ 工作区模块卡片支持右键上下文菜单，已管理模块提供 Open Folder、Open README、Update 和 Remove 操作，未管理文件夹提供 Open Folder 操作

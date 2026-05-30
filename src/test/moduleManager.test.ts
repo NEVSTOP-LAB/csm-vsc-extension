@@ -397,6 +397,7 @@ suite('Module Manager Tests', () => {
 		assert.ok(rendered?.html.includes('opacity: 0;'));
 		assert.ok(rendered?.html.includes('pointer-events: none;'));
 		assert.ok(rendered?.html.includes('data-action="toggleStar" data-module-key="org&#47;module-a" title="Unstar repository" aria-label="Unstar repository" aria-pressed="true"'));
+		assert.ok(rendered?.html.includes('data-action="openRepository" data-module-key="org&#47;module-a" title="Open on GitHub" aria-label="Open on GitHub"'));
 		assert.ok(rendered?.html.includes('data-action="openReadme" data-module-key="org&#47;module-a" title="Open README" aria-label="Open README"'));
 		assert.ok(!rendered?.html.includes('data-module-key="org&#47;module-b"'));
 		assert.ok(!rendered?.html.includes('Workspace: repo'));
@@ -465,6 +466,7 @@ suite('Module Manager Tests', () => {
 		const selectionUpdates: string[][] = [];
 		let appliedModuleName = '';
 		let toggledStarName = '';
+		let openedRepositoryName = '';
 		let openedReadmeName = '';
 		let removedModuleName = '';
 		let updatedModuleName = '';
@@ -474,6 +476,9 @@ suite('Module Manager Tests', () => {
 			onInitializeWorkspace: () => undefined,
 			onToggleStar: (entry) => {
 				toggledStarName = entry.name;
+			},
+			onOpenRepository: (entry) => {
+				openedRepositoryName = entry.name;
 			},
 			onOpenReadme: (entry) => {
 				openedReadmeName = entry.name;
@@ -548,6 +553,7 @@ suite('Module Manager Tests', () => {
 		]);
 		resolved?.fireMessage({ type: 'toggleSelection', moduleKey: 'org/module-a', selected: true });
 		resolved?.fireMessage({ type: 'toggleStar', moduleKey: 'org/module-a' });
+		resolved?.fireMessage({ type: 'openRepository', moduleKey: 'org/module-a' });
 		resolved?.fireMessage({ type: 'openReadme', moduleKey: 'org/module-a' });
 		resolved?.fireMessage({ type: 'applyOne', moduleKey: 'org/module-a' });
 		resolved?.fireMessage({ type: 'removeModule', moduleKey: 'org/module-a' });
@@ -559,6 +565,7 @@ suite('Module Manager Tests', () => {
 		assert.ok(!rerendered?.html.includes('data-role="apply-selected"'));
 		assert.deepStrictEqual(selectionUpdates[selectionUpdates.length - 1], ['org/module-a']);
 		assert.strictEqual(toggledStarName, 'module-a');
+		assert.strictEqual(openedRepositoryName, 'module-a');
 		assert.strictEqual(openedReadmeName, 'module-a');
 		assert.strictEqual(appliedModuleName, 'module-a');
 		assert.strictEqual(removedModuleName, 'module-a');

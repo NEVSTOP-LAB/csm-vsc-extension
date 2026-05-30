@@ -98,6 +98,9 @@ export class ModuleManagerController {
 		onOpenReadme: (entry) => {
 			void this.openReadmeCommand(entry);
 		},
+		onOpenRepository: (entry) => {
+			void this.openRepositoryCommand(entry);
+		},
 		onPreviewReadme: (entry, webview) => buildReadmePreviewHtml(entry, webview, this.getReadmeServiceDeps()),
 		onApplySelection: (entry) => {
 			void this.applyToWorkspaceCommand(entry);
@@ -1534,6 +1537,15 @@ export class ModuleManagerController {
 			},
 		);
 		panel.webview.html = await this.readmeAssetCache.renderMarkdown(resolvedEntry, markdownContent, panel.webview);
+	}
+
+	public async openRepositoryCommand(entry?: CsmModuleEntry | ModuleTreeItem): Promise<void> {
+		const resolvedEntry = this.resolveModuleEntry(entry);
+		if (!resolvedEntry?.repoUrl) {
+			return;
+		}
+
+		await vscode.env.openExternal(vscode.Uri.parse(resolvedEntry.repoUrl));
 	}
 
 	public async contextApplyModuleCommand(context?: WebviewModuleContext): Promise<void> {

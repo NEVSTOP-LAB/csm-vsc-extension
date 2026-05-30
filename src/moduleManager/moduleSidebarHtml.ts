@@ -511,7 +511,7 @@ function renderLocalUnmanagedCard(entry: LocalUnmanagedFolderEntry, state: Local
 	});
 }
 
-type IconName = 'close' | 'filter' | 'folder' | 'readme' | 'search' | 'update' | 'remove' | 'switch' | 'lock' | 'unlock';
+type IconName = 'close' | 'external' | 'filter' | 'folder' | 'readme' | 'search' | 'update' | 'remove' | 'switch' | 'lock' | 'unlock';
 
 function renderIconActionButton(options: { action: string; title: string; icon: IconName; moduleKey?: string; localItemId?: string; disabled?: boolean }): string {
 	const moduleKeyAttribute = options.moduleKey ? ` data-module-key="${escapeHtml(options.moduleKey)}"` : '';
@@ -524,6 +524,8 @@ function renderIcon(name: IconName): string {
 	switch (name) {
 		case 'close':
 			return '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" aria-hidden="true"><path d="M4 4l8 8"></path><path d="M12 4l-8 8"></path></svg>';
+		case 'external':
+			return '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9.5 3.5H12.5V6.5"></path><path d="M12.5 3.5 7.75 8.25"></path><path d="M6.5 4.5H4.75A1.75 1.75 0 0 0 3 6.25v5A1.75 1.75 0 0 0 4.75 13h5A1.75 1.75 0 0 0 11.5 11.25V9.5"></path></svg>';
 		case 'filter':
 			return '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 4h11"></path><path d="M4.75 8h6.5"></path><path d="M6.75 12h2.5"></path></svg>';
 		case 'folder':
@@ -2134,6 +2136,12 @@ function renderModuleCard(entry: CsmModuleEntry, state: ModuleSidebarRenderState
 			`<label class="select-toolbar-item" title="${escapeHtml(t('selectModule'))}" aria-label="${escapeHtml(t('selectModule'))}"><input class="module-select" type="checkbox" data-role="select-toggle" data-action="toggleSelection" data-module-key="${escapeHtml(moduleKey)}" ${selected ? 'checked' : ''} aria-label="${escapeHtml(t('selectNamedModule', { name: entry.name }))}"></label>`,
 			renderActionToolbar([
 				renderStarButton(entry, moduleKey, state.signedIn),
+				renderIconActionButton({
+					action: 'openRepository',
+					moduleKey,
+					title: t('openOnGitHub'),
+					icon: 'external',
+				}),
 				renderIconActionButton({
 					action: 'openReadme',
 					moduleKey,

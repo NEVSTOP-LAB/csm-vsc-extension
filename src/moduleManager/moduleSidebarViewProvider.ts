@@ -12,6 +12,7 @@ interface ModuleSidebarActions {
 	onInitializeWorkspace: () => void;
 	onToggleStar: (entry: CsmModuleEntry) => void;
 	onOpenReadme: (entry: CsmModuleEntry) => void;
+	onOpenRepository?: (entry: CsmModuleEntry) => void;
 	onPreviewReadme: (entry: CsmModuleEntry, webview: vscode.Webview) => Promise<string>;
 	onApplySelection: (entry?: CsmModuleEntry) => void;
 	onRemoveModule: (entry: CsmModuleEntry) => void;
@@ -30,7 +31,7 @@ interface ModuleSidebarViewProviderOptions {
 }
 
 type WebviewMessage = {
-	type: 'login' | 'refresh' | 'initializeWorkspace' | 'applySelected' | 'toggleStar' | 'openReadme' | 'togglePreview' | 'applyOne' | 'toggleSelection' | 'setFilterQuery' | 'clearFilter' | 'setIncludeApplied' | 'setScope' | 'dismissIntroTip' | 'removeModule' | 'updateModule' | 'setSortField' | 'setSortDirection' | 'showMore' | 'openLocalReadme' | 'openLocalFolder' | 'removeLocalModule' | 'updateLocalModule' | 'toggleLocalModuleLock' | 'switchLocalModuleMethod' | 'createLocalRepository' | 'linkLocalRepository';
+	type: 'login' | 'refresh' | 'initializeWorkspace' | 'applySelected' | 'toggleStar' | 'openReadme' | 'openRepository' | 'togglePreview' | 'applyOne' | 'toggleSelection' | 'setFilterQuery' | 'clearFilter' | 'setIncludeApplied' | 'setScope' | 'dismissIntroTip' | 'removeModule' | 'updateModule' | 'setSortField' | 'setSortDirection' | 'showMore' | 'openLocalReadme' | 'openLocalFolder' | 'removeLocalModule' | 'updateLocalModule' | 'toggleLocalModuleLock' | 'switchLocalModuleMethod' | 'createLocalRepository' | 'linkLocalRepository';
 	moduleKey?: string;
 	localItemId?: string;
 	selected?: boolean;
@@ -272,6 +273,13 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IM
 				const entry = message.moduleKey ? this.findEntry(message.moduleKey) : undefined;
 				if (entry) {
 					this.actions.onOpenReadme(entry);
+				}
+				return;
+			}
+			case 'openRepository': {
+				const entry = message.moduleKey ? this.findEntry(message.moduleKey) : undefined;
+				if (entry) {
+					this.actions.onOpenRepository?.(entry);
 				}
 				return;
 			}
