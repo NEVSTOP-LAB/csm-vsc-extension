@@ -35,7 +35,7 @@
 - ✅ 支持将模块引入、更新、移除，并在 `copy` / `submodule` 模式间切换
 - ✅ 本地已管理模块默认以只读 lock 状态保存，可在侧边栏中解锁或重新锁定，状态会写回 `csm-modules.yaml`
 - ✅ 工作区模块卡片支持右键上下文菜单，已管理模块提供 Open Folder、Open README、Update 和 Remove 操作，未管理文件夹提供 Open Folder 操作
-- ✅ 支持将本地未管理文件夹关联到已有模块仓库，或直接发布为新的 GitHub 仓库；若目标目录本身已是 Git submodule，会保留 `submodule` 模式，若是外部拷入且自带 `.git` 的嵌套仓库，则会按现有本地 Git 元数据登记为 `copy`
+- ✅ 支持将本地未管理文件夹关联到已有模块仓库，或直接发布为新的 GitHub 仓库；若目标目录本身已是 Git submodule，会保留 `submodule` 模式，若是外部拷入且自带 `.git` 的嵌套仓库，则会接管并补登记为 `submodule`
 
 ### 文件图标主题
 

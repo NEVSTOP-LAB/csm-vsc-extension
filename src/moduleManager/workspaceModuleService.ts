@@ -349,7 +349,7 @@ export class WorkspaceModuleService {
 			(candidate) => this.normalizeRootPath(candidate.path) === normalizedTargetPath,
 		);
 		if (!submodule) {
-			return this.buildExistingNestedGitRepositoryEntry(repoRoot, normalizedTargetPath);
+			return this.adoptExistingNestedGitRepositoryAsSubmodule(repoRoot, normalizedTargetPath);
 		}
 
 		return this.buildExistingSubmoduleEntry(repoRoot, submodule);
@@ -614,7 +614,7 @@ export class WorkspaceModuleService {
 		};
 	}
 
-	private async buildExistingNestedGitRepositoryEntry(
+	private async adoptExistingNestedGitRepositoryAsSubmodule(
 		repoRoot: string,
 		targetRelativePath: string,
 	): Promise<LocalModuleConfigEntry | undefined> {
@@ -630,20 +630,21 @@ export class WorkspaceModuleService {
 			return undefined;
 		}
 
-		const repoInfo = this.parseRepositoryCoordinates(remoteUrl, path.posix.basename(normalizedTargetPath));
-		const ref = (await this.runGit(targetPath, ['rev-parse', 'HEAD'])).trim();
-		const branch = await this.resolveExistingSubmoduleBranch(targetPath) ?? 'main';
-		return {
-			key: `${sanitizeModuleKeyPart(repoInfo.owner || 'local')}__${sanitizeModuleKeyPart(repoInfo.name)}`,
-			name: repoInfo.name,
-			owner: repoInfo.owner,
-			source: remoteUrl,
-			method: 'copy',
+		const expectedRef = (await this.runGit(targetPath, ['rev-parse', 'HEAD'])).trim();
+		const branch = (await this.resolveExistingSubmoduleBranch(targetPath) ?? 'main').trim() || 'main';
+		await this.runGit(repoRoot, ['rm', '-r', '--cached', '--ignore-unmatch', '--', normalizedTargetPath]);
+		await this.runGit(repoRoot, ['submodule', 'add', '-f', '-b', branch, remoteUrl, normalizedTargetPath], undefined, remoteUrl);
+		await this.runGit(repoRoot, ['submodule', 'absorbgitdirs', '--', normalizedTargetPath]);
+		const currentRef = (await this.runGit(targetPath, ['rev-parse', 'HEAD'])).trim();
+		if (expectedRef && currentRef !== expectedRef) {
+			await this.runGit(targetPath, ['checkout', expectedRef]);
+		}
+		return this.buildExistingSubmoduleEntry(repoRoot, {
+			name: path.posix.basename(normalizedTargetPath),
 			path: normalizedTargetPath,
-			ref,
+			url: remoteUrl,
 			branch,
-			locked: true,
-		};
+		});
 	}
 
 	private async findExistingGitModuleEntries(
@@ -669,7 +670,7 @@ export class WorkspaceModuleService {
 				continue;
 			}
 
-			const entry = await this.buildExistingNestedGitRepositoryEntry(repoRoot, normalizedTargetPath);
+			const entry = await this.adoptExistingNestedGitRepositoryAsSubmodule(repoRoot, normalizedTargetPath);
 			if (entry) {
 				entriesByPath.set(entry.path.toLowerCase(), entry);
 			}

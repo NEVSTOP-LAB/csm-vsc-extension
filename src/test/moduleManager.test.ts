@@ -1544,12 +1544,14 @@ suite('Module Manager Tests', () => {
 			const config = await service.recoverConfigFromExistingSubmodules(repoRoot);
 			assert.ok(config);
 			assert.ok(config?.modules['local__nested-module']);
-			assert.strictEqual(config?.modules['local__nested-module'].method, 'copy');
+			assert.strictEqual(config?.modules['local__nested-module'].method, 'submodule');
 			assert.strictEqual(config?.modules['local__nested-module'].path, 'csm/nested-module');
 			assert.strictEqual(config?.modules['local__nested-module'].source, moduleRepo);
 			assert.strictEqual(config?.modules['local__nested-module'].ref, nestedRef);
 			assert.strictEqual(config?.modules['local__nested-module'].branch, 'main');
 			assert.strictEqual(config?.modules['local__nested-module'].locked, true);
+			const gitmodulesText = await fs.readFile(path.join(repoRoot, '.gitmodules'), 'utf8');
+			assert.ok(gitmodulesText.includes('csm/nested-module'));
 		} finally {
 			await removeWritableTree(tempRoot);
 		}
@@ -1720,10 +1722,12 @@ suite('Module Manager Tests', () => {
 
 			assert.strictEqual(addedCount, 1);
 			assert.ok(synced.modules['local__module-d']);
-			assert.strictEqual(synced.modules['local__module-d'].method, 'copy');
+			assert.strictEqual(synced.modules['local__module-d'].method, 'submodule');
 			assert.strictEqual(synced.modules['local__module-d'].source, moduleRepo);
 			assert.strictEqual(synced.modules['local__module-d'].ref, nestedRef);
 			assert.strictEqual(synced.modules['local__module-d'].branch, 'main');
+			const gitmodulesText = await fs.readFile(path.join(repoRoot, '.gitmodules'), 'utf8');
+			assert.ok(gitmodulesText.includes('csm/module-d'));
 		} finally {
 			await removeWritableTree(tempRoot);
 		}
