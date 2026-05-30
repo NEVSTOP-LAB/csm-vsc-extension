@@ -326,6 +326,17 @@ suite('Language Definition Tests', () => {
         assert.strictEqual(defaultRoot.default, 'csm', 'csmModules.defaultModuleRoot should default to csm');
     });
 
+    test('package.json contributes module manager hidden topics setting', () => {
+        const pkgPath = path.resolve(__dirname, '../../package.json');
+        const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));
+        const configuration = pkg.contributes?.configuration ?? {};
+        const properties = configuration.properties ?? {};
+        const hiddenTopics = properties['csmModules.hiddenTopics'];
+        assert.ok(hiddenTopics, 'csmModules.hiddenTopics should be declared in package.json');
+        assert.strictEqual(hiddenTopics.type, 'array', 'csmModules.hiddenTopics should be an array setting');
+        assert.deepStrictEqual(hiddenTopics.default, ['csm-modsets', 'lv-csm-app', 'labview-csm', 'labview'], 'csmModules.hiddenTopics should default to the internal discovery topics');
+    });
+
     test('package.json declares module manager commands and views', () => {
         const pkgPath = path.resolve(__dirname, '../../package.json');
         const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));

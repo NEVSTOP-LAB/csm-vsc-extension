@@ -37,6 +37,11 @@
 - ✅ 工作区模块卡片支持右键上下文菜单，已管理模块提供 Open Folder、Open README、Update 和 Remove 操作，未管理文件夹提供 Open Folder 操作
 - ✅ 支持将本地未管理文件夹关联到已有模块仓库，或直接发布为新的 GitHub 仓库；若目标目录本身已是 Git submodule，会保留 `submodule` 模式，若是外部拷入且自带 `.git` 的嵌套仓库，则会接管并补登记为 `submodule`
 
+常用设置：
+
+- `csmModules.defaultModuleRoot`：设置首次初始化本地模块管理时默认使用的相对目录
+- `csmModules.hiddenTopics`：设置在侧边栏 topic 徽标、树视图提示和本地搜索中默认隐藏的 topic；默认值为 `csm-modsets`、`lv-csm-app`、`labview-csm`、`labview`
+
 ### 文件图标主题
 
 - ✅ 为 `.csmlog` 与 `.lvcsm` 提供专用文件图标

@@ -283,6 +283,20 @@
           "default": "csm",
           "scope": "resource",
           "description": "%configuration.csmModules.defaultModuleRoot.description%"
+        },
+        "csmModules.hiddenTopics": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "csm-modsets",
+            "lv-csm-app",
+            "labview-csm",
+            "labview"
+          ],
+          "scope": "window",
+          "description": "%configuration.csmModules.hiddenTopics.description%"
         }
       }
     },

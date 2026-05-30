@@ -20,5 +20,6 @@
   "csmModules.title": "CSM Modules",
   "views.csmModules.view.name": "Available Modules",
   "configuration.csmModules.defaultModuleRoot.description": "Default relative directory used when initializing local CSM module management for a repository that does not already have a csm-modules.yaml file.",
+  "configuration.csmModules.hiddenTopics.description": "Module repository topics to hide from the CSM Modules sidebar badges, tree tooltips, and local search text.",
   "iconThemes.csmFileIcons.label": "CSM File Icons"
 }

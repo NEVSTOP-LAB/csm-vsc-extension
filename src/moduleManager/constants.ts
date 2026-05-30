@@ -36,6 +36,7 @@ export const CONFIG_SECTIONS = {
 
 export const CONFIG_KEYS = {
 	defaultModuleRoot: 'defaultModuleRoot',
+	hiddenTopics: 'hiddenTopics',
 } as const;
 
 export const STORAGE_KEYS = {

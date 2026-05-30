@@ -10,6 +10,7 @@ import { ReadmeAssetCache } from '../moduleManager/readmeAssetCache';
 import { ModuleSidebarViewProvider } from '../moduleManager/moduleSidebarViewProvider';
 import { ModuleTreeDataProvider, ModuleTreeItem } from '../moduleManager/moduleTreeDataProvider';
 import { GitHubRepoSummary } from '../moduleManager';
+import { getVisibleModuleTopics } from '../moduleManager/topics';
 import { CsmModuleEntry } from '../moduleManager/types';
 import { LEGACY_LOCAL_MODULE_CONFIG_FILE, LOCAL_MODULE_CONFIG_FILE, WorkspaceModuleService } from '../moduleManager/workspaceModuleService';
 import * as vscode from 'vscode';
@@ -18,6 +19,7 @@ type VscodeMock = typeof vscode & {
 	__resolveWebviewView: (viewId: string) => { html: string; fireMessage: (message: unknown) => void } | undefined;
 	__getLastWebviewView: () => { viewId: string; html: string; title?: string; description?: string; options?: { enableScripts?: boolean; localResourceRoots?: vscode.Uri[] } } | undefined;
 	__resetUiState: () => void;
+	__setConfigurationValue: (key: string, value: unknown) => void;
 };
 
 function runGit(cwd: string, args: string[]): string {
@@ -117,6 +119,20 @@ suite('Module Manager Tests', () => {
 		assert.strictEqual(entry.defaultBranch, 'main');
 		assert.strictEqual(entry.repoUrl, repo.html_url);
 		assert.deepStrictEqual(entry.topics, ['csm-modsets']);
+	});
+
+	test('getVisibleModuleTopics hides the default internal topics', () => {
+		const topics = getVisibleModuleTopics(['csm-modsets', 'lv-csm-app', 'labview-csm', 'labview', 'automation']);
+
+		assert.deepStrictEqual(topics, ['automation']);
+	});
+
+	test('getVisibleModuleTopics respects configured hidden topics', () => {
+		mocked.__setConfigurationValue('csmModules.hiddenTopics', ['custom-hidden', 'automation']);
+
+		const topics = getVisibleModuleTopics(['csm-modsets', 'custom-hidden', 'automation', 'manual']);
+
+		assert.deepStrictEqual(topics, ['csm-modsets', 'manual']);
 	});
 
 	test('ModuleCacheStore stores and clears module snapshot', async () => {
@@ -230,7 +246,7 @@ suite('Module Manager Tests', () => {
 			owner: 'org',
 			name: 'module-a',
 			description: 'A demo module',
-			topics: ['csm-modsets', 'labview-csm', 'automation'],
+			topics: ['csm-modsets', 'lv-csm-app', 'labview-csm', 'labview', 'automation'],
 			visibility: 'private' as const,
 			defaultBranch: 'main',
 			repoUrl: 'https://github.com/org/module-a',
@@ -249,7 +265,9 @@ suite('Module Manager Tests', () => {
 		assert.strictEqual(item.collapsibleState, 2);
 		assert.ok(tooltip.includes('Topics: automation'));
 		assert.ok(!tooltip.includes('csm-modsets'));
+		assert.ok(!tooltip.includes('lv-csm-app'));
 		assert.ok(!tooltip.includes('labview-csm'));
+		assert.ok(!tooltip.includes('labview'));
 		assert.strictEqual(item.command, undefined);
 	});
 
@@ -299,7 +317,7 @@ suite('Module Manager Tests', () => {
 				owner: 'org',
 				name: 'module-a',
 				description: 'A demo module',
-				topics: ['csm-modsets', 'labview-csm', 'automation'],
+				topics: ['csm-modsets', 'lv-csm-app', 'labview-csm', 'labview', 'automation'],
 				visibility: 'private',
 				defaultBranch: 'main',
 				repoUrl: 'https://github.com/org/module-a',
@@ -334,13 +352,13 @@ suite('Module Manager Tests', () => {
 				repoUrl: 'https://github.com/org/module-a',
 				description: 'A demo module',
 				visibility: 'private',
-				topics: ['csm-modsets', 'labview-csm', 'automation'],
+				topics: ['csm-modsets', 'lv-csm-app', 'labview-csm', 'labview', 'automation'],
 				moduleEntry: {
 					id: 1,
 					owner: 'org',
 					name: 'module-a',
 					description: 'A demo module',
-					topics: ['csm-modsets', 'labview-csm', 'automation'],
+					topics: ['csm-modsets', 'lv-csm-app', 'labview-csm', 'labview', 'automation'],
 					visibility: 'private',
 					defaultBranch: 'main',
 					repoUrl: 'https://github.com/org/module-a',
@@ -373,7 +391,9 @@ suite('Module Manager Tests', () => {
 		assert.ok(rendered?.html.includes('@org'));
 		assert.ok(rendered?.html.includes('automation'));
 		assert.ok(!rendered?.html.includes('csm-modsets'));
+		assert.ok(!rendered?.html.includes('lv-csm-app'));
 		assert.ok(!rendered?.html.includes('labview-csm'));
+		assert.ok(!rendered?.html.includes('labview'));
 		assert.ok(rendered?.html.includes('data-action="toggleLocalModuleLock"'));
 		assert.ok(rendered?.html.includes('placeholder="Search modules"'));
 		assert.ok(rendered?.html.includes('data-role="search-box"'));
