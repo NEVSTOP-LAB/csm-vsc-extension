@@ -336,7 +336,7 @@
       {
         "id": "csm-file-icons",
         "label": "%iconThemes.csmFileIcons.label%",
-        "path": "./fileicons/csm-icon-theme.json"
+        "path": "./images/fileicons/csm-icon-theme.json"
       }
     ],
     "configurationDefaults": {

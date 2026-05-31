@@ -1,0 +1,18 @@
+{
+    "iconDefinitions": {
+        "csmlog": {
+            "iconPath": "./csmlog-icon.svg"
+        },
+        "lvcsm": {
+            "iconPath": "./lvcsm-icon.svg"
+        }
+    },
+    "fileExtensions": {
+        "csmlog": "csmlog",
+        "lvcsm": "lvcsm"
+    },
+    "languageIds": {
+        "csmlog": "csmlog",
+        "lvcsm": "lvcsm"
+    }
+}
