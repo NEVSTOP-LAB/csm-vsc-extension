@@ -7,7 +7,7 @@
  *
  * 使用 String.raw 确保反斜杠在正则和字符串拼接中一致。
  */
-export const CSMLOG_DATETIME_PATTERN = String.raw`\d{4}\/\d{2}\/\d{2}\s+\d{2}:\d{2}:\d{2}\.\d{3}`;
+export const CSMLOG_DATETIME_PATTERN = String.raw`\d{4}[/-]\d{2}[/-]\d{2}\s+\d{2}:\d{2}:\d{2}\.\d{3}`;
 
 /**
  * 完整日期时间戳 RegExp（锚定行首）。

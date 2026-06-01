@@ -168,6 +168,11 @@ suite('CSMLogHoverProvider – timestamps', () => {
         assertContains(hover(LINE_STATE_CHANGE, 5), '处理时间');
     });
 
+    test('hyphen date timestamp hover contains "处理时间"', () => {
+        const line = '2026-03-20 17:32:59.426 [17:32:59.425] [State Change] AI | Macro: Initialize';
+        assertContains(hover(line, 5), '处理时间');
+    });
+
     test('relative timestamp hover contains "源时间"', () => {
         // Cursor inside "[17:32:59.425]"
         const col = LINE_STATE_CHANGE.indexOf('[17:32:59.425]') + 3;
