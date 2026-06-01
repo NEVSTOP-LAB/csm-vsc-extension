@@ -541,9 +541,9 @@ function renderIcon(name: IconName): string {
 		case 'switch':
 			return '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 5h8"></path><path d="M9.5 2.5 12 5 9.5 7.5"></path><path d="M13 11H5"></path><path d="M6.5 8.5 4 11l2.5 2.5"></path></svg>';
 		case 'lock':
-			return '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="7" width="9" height="6.5" rx="1.5"></rect><path d="M5.5 7V5.5a2.5 2.5 0 0 1 5 0V7"></path></svg>';
+			return '<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="3.5" y="7" width="9" height="6.5" rx="1.2" fill="currentColor" opacity="0.15" stroke="currentColor" stroke-width="1.35" stroke-linejoin="round"></rect><path d="M5.5 7V5a2.5 2.5 0 0 1 5 0V7" fill="none" stroke="currentColor" stroke-width="1.35" stroke-linecap="round"></path></svg>';
 		case 'unlock':
-			return '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="7" width="9" height="6.5" rx="1.5"></rect><path d="M10.5 7V5.5a2.5 2.5 0 0 0-4.88-.88"></path></svg>';
+			return '<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="3.5" y="7" width="9" height="6.5" rx="1.2" fill="none" stroke="currentColor" stroke-width="1.35" stroke-linejoin="round"></rect><path d="M10.5 7V5a2.5 2.5 0 0 0-2.5-2.5" fill="none" stroke="currentColor" stroke-width="1.35" stroke-linecap="round"></path></svg>';
 	}
 }
 
