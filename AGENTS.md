@@ -1,74 +1,86 @@
 # CLAUDE.md
 
-Behavioral guidelines to reduce common LLM coding mistakes. Merge with project-specific instructions as needed.
+减少常见 LLM 编码错误的协作指南。可与项目特定指令合并使用。
 
-**Tradeoff:** These guidelines bias toward caution over speed. For trivial tasks, use judgment.
+**权衡：** 本指南偏谨慎而非求快。对于不涉及架构变更且代码修改少于20行的无歧义任务，可以自行判断并直接实现。
 
-## 1. Think Before Coding
+## 1. 先思考，再编码
 
-**Don't assume. Don't hide confusion. Surface tradeoffs.**
+**不要假设。不要隐藏困惑。把权衡摆到台面上。**
 
-Before implementing:
-- State your assumptions explicitly. If uncertain, ask.
-- If multiple interpretations exist, present them - don't pick silently.
-- If a simpler approach exists, say so. Push back when warranted.
-- If something is unclear, stop. Name what's confusing. Ask.
+在实现之前：
+- 明确陈述你的假设。如果不确定，就问。
+- 如果存在多种解读，全部列出来——不要默默选一个。
+- 如果有更简单的方案，就说出来。在必要时提出反对意见。
+- 如果某件事不清楚，停下来。说明哪里让人困惑。然后提问。
 
-## 2. Simplicity First
+## 2. 简洁优先
 
-**Minimum code that solves the problem. Nothing speculative.**
+**用最少的代码解决问题。不做无根据的猜测。**
 
-- No features beyond what was asked.
-- No abstractions for single-use code.
-- No "flexibility" or "configurability" that wasn't requested.
-- No error handling for impossible scenarios.
-- If you write 200 lines and it could be 50, rewrite it.
+- 不要超出需求范围添加功能。
+- 不要为只用一次的代码做抽象。
+- 不要添加未被要求的"灵活性"或"可配置性"。
+- 不要为不可能发生的场景做错误处理。
+- 如果你写了 200 行但实际只需 50 行，重写它。
 
-Ask yourself: "Would a senior engineer say this is overcomplicated?" If yes, simplify.
+问问自己："高级工程师会觉得这过于复杂吗？"如果答案是肯定的，就简化。
 
-## 3. Surgical Changes
+## 3. 外科手术式修改
 
-**Touch only what you must. Clean up only your own mess.**
+**只动你必须动的。只清理你自己造成的混乱。**
 
-When editing existing code:
-- Don't "improve" adjacent code, comments, or formatting.
-- Don't refactor things that aren't broken.
-- Match existing style, even if you'd do it differently.
-- If you notice unrelated dead code, mention it - don't delete it.
+编辑现有代码时：
+- 不要"改进"相邻的代码、注释或格式。
+- 不要重构没有问题的东西。
+- 遵循现有风格，即使你会用不同的方式写。
+- 如果发现无关的死代码，提一句——不要删除它。
 
-When your changes create orphans:
-- Remove imports/variables/functions that YOUR changes made unused.
-- Don't remove pre-existing dead code unless asked.
+当你的修改产生"孤儿"时：
+- 删除因你的修改而不再使用的 import/变量/函数。
+- 不要删除已有的死代码，除非被要求。
 
-The test: Every changed line should trace directly to the user's request.
+检验标准：每一处修改都应能直接追溯回用户的需求。
 
-## 4. Goal-Driven Execution
+## 4. 目标驱动执行
 
-**Define success criteria. Loop until verified.**
+**定义成功标准。循环验证直至通过。**
 
-Transform tasks into verifiable goals:
-- "Add validation" → "Write tests for invalid inputs, then make them pass"
-- "Fix the bug" → "Write a test that reproduces it, then make it pass"
-- "Refactor X" → "Ensure tests pass before and after"
+将任务转化为可验证的目标：
+- "添加校验" → "为无效输入编写测试，然后让测试通过"
+- "修复 Bug" → "编写可复现 Bug 的测试，然后让测试通过"
+- "重构 X" → "确保重构前后测试均通过"
 
-For multi-step tasks, state a brief plan:
+对于多步骤任务，列出简要计划：
 ```
-1. [Step] → verify: [check]
-2. [Step] → verify: [check]
-3. [Step] → verify: [check]
+1. [步骤] → 验证：[检查项]
+2. [步骤] → 验证：[检查项]
+3. [步骤] → 验证：[检查项]
 ```
 
-Strong success criteria let you loop independently. Weak criteria ("make it work") require constant clarification.
+强成功标准让你能独立循环推进。弱成功标准（"让它能工作"）则需要不断澄清。
 
-## 5. README Boundaries
+如果没有直接运行代码的环境能力，请输出测试代码或验证步骤，并要求用户运行后反馈结果，再继续推进任务。
 
-**README is user-facing. Keep it short, product-level, and actionable.**
+## 5. README 边界
 
-- README should contain brief feature overviews, installation requirements, settings, entry points, and user-facing usage information only.
-- Do not put implementation details in README: no internal architecture, cache strategy, rendering mechanics, test/mocks, internal file formats, or engineering rationale unless the user must act on it.
-- If a detail mainly serves developers or maintainers, move it to `docs/`, design notes, changelog, or other engineering documentation instead of README.
-- When editing README, prefer the shortest wording that still helps an end user understand what the extension does and how to use it.
+**README 是面向用户的。保持简短、产品级、可操作。**
+
+- README 应仅包含简要功能概述、安装要求、设置、入口点和面向用户的使用信息。
+- 不要在 README 中放入实现细节：不写内部架构、缓存策略、渲染机制、测试/模拟、内部文件格式或工程原理，除非用户必须据此操作。
+- 如果某细节主要服务于开发者或维护者，应将其放到 `docs/`、设计笔记、更新日志或其他工程文档中，而不是 README。
+- 编辑 README 时，优先使用最短的措辞，只要能帮助最终用户理解扩展的功能和使用方法即可。
+- 如果用户明确要求将内部详细信息添加到 README 中，请温和地提醒本指南的边界规定，并建议/主动将这些内容生成到 `docs/` 目录下的新文件中。
+
+## 6. 使用中文
+
+**所有注释、回复和总结均使用中文。**
+
+- 代码注释：默认使用中文编写，帮助团队成员理解意图。如果正在编辑的代码库注释均为英文，则遵循现有风格使用英文注释。
+- AI 回复：对用户的问题和讨论使用中文回复。
+- 总结与文档：版本总结、变更说明、设计讨论等均使用中文。
+- 此规则适用于所有面向团队内部和中文使用者的交流场景。
 
 ---
 
-**These guidelines are working if:** fewer unnecessary changes in diffs, fewer rewrites due to overcomplication, and clarifying questions come before implementation rather than after mistakes.
+**这些指南生效的标志是：** diff 中不必要的变更减少、因过度复杂化而导致的重写减少、以及澄清性问题出现在实现之前而非纠错之后。
