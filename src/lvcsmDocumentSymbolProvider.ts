@@ -1,14 +1,12 @@
 import * as vscode from 'vscode';
 import { INI_SECTION_REGEX } from './common/constants';
+import { SymbolEntry, buildDocumentSymbols } from './common/symbols';
 
 /**
  * Provides document symbols (outline) for LVCSM files.
  *
  * The outline contains one entry per INI section header (`[SectionName]`),
- * shown as SymbolKind.Module. Each symbol's full range extends from its own
- * line to the line immediately before the next section header (or the end of
- * the document), so that the outline entries are collapsible in the Explorer
- * panel.
+ * shown as SymbolKind.Module.
  */
 export class LvcsmDocumentSymbolProvider implements vscode.DocumentSymbolProvider {
 
@@ -17,31 +15,16 @@ export class LvcsmDocumentSymbolProvider implements vscode.DocumentSymbolProvide
         _token: vscode.CancellationToken,
     ): vscode.DocumentSymbol[] {
 
-        interface Entry {
-            lineIndex: number;
-            name: string;
-        }
-
-        const entries: Entry[] = [];
+        const entries: SymbolEntry[] = [];
 
         for (let i = 0; i < document.lineCount; i++) {
             const text = document.lineAt(i).text;
             const match = text.match(INI_SECTION_REGEX);
             if (match) {
-                entries.push({ lineIndex: i, name: match[1].trim() });
+                entries.push({ lineIndex: i, name: match[1].trim(), kind: vscode.SymbolKind.Module });
             }
         }
 
-        const lastLine = document.lineCount - 1;
-        return entries.map((entry, idx): vscode.DocumentSymbol => {
-            const startLine = entry.lineIndex;
-            const endLine = idx + 1 < entries.length
-                ? entries[idx + 1].lineIndex - 1
-                : lastLine;
-            const endLineText = document.lineAt(endLine).text;
-            const fullRange = new vscode.Range(startLine, 0, endLine, endLineText.length);
-            const selectionRange = document.lineAt(startLine).range;
-            return new vscode.DocumentSymbol(entry.name, '', vscode.SymbolKind.Module, fullRange, selectionRange);
-        });
+        return buildDocumentSymbols(document, entries);
     }
 }

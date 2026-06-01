@@ -5,6 +5,7 @@ import {
     MODULE_LIFECYCLE_REGEX,
     LOGGER_MESSAGE_REGEX,
 } from './common/constants';
+import { SymbolEntry, buildDocumentSymbols } from './common/symbols';
 
 const symbolMessages = {
     moduleCreated: {
@@ -41,13 +42,7 @@ export class CSMLogDocumentSymbolProvider implements vscode.DocumentSymbolProvid
         _token: vscode.CancellationToken,
     ): vscode.DocumentSymbol[] {
 
-        interface Entry {
-            lineIndex: number;
-            name: string;
-            kind: vscode.SymbolKind;
-        }
-
-        const entries: Entry[] = [];
+        const entries: SymbolEntry[] = [];
 
         for (let i = 0; i < document.lineCount; i++) {
             const text = document.lineAt(i).text;
@@ -81,16 +76,6 @@ export class CSMLogDocumentSymbolProvider implements vscode.DocumentSymbolProvid
             }
         }
 
-        const lastLine = document.lineCount - 1;
-        return entries.map((entry, idx): vscode.DocumentSymbol => {
-            const startLine = entry.lineIndex;
-            const endLine = idx + 1 < entries.length
-                ? entries[idx + 1].lineIndex - 1
-                : lastLine;
-            const endLineText = document.lineAt(endLine).text;
-            const fullRange = new vscode.Range(startLine, 0, endLine, endLineText.length);
-            const selectionRange = document.lineAt(startLine).range;
-            return new vscode.DocumentSymbol(entry.name, '', entry.kind, fullRange, selectionRange);
-        });
+        return buildDocumentSymbols(document, entries);
     }
 }
