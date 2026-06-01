@@ -3,6 +3,7 @@ import { HoverEntry, buildHover, provideContentHover } from './hoverData';
 import { localizeHoverEntries } from './hoverData/localize';
 import { isChineseLanguage } from './i18n';
 import { csmlogHoverTranslations } from './csmlogHoverTranslations';
+import { RE_DATE_TS, CONFIG_LINE_REGEX, RE_FILE_LOGGER } from './common/constants';
 
 /** Lookup key → hover entry (upper-case keys for case-insensitive matching). */
 const zhCsmlogHoverDb: Record<string, HoverEntry> = {
@@ -297,19 +298,6 @@ function getCsmlogHoverDb(): Record<string, HoverEntry> {
 }
 
 // ---------------------------------------------------------------------------
-// Regex patterns for log line structure
-// ---------------------------------------------------------------------------
-
-/** Full date timestamp: YYYY/MM/DD HH:MM:SS.mmm */
-const RE_DATE_TS = /^\d{4}\/\d{2}\/\d{2}\s+\d{2}:\d{2}:\d{2}\.\d{3}/;
-
-/** Config line: - Key | Value */
-const RE_CONFIG_LINE = /^-\s+([^|]+?)\s+\|\s+(.+)$/;
-
-/** File logger line: timestamp followed by 2+ spaces (no [relative ts] or [event]) */
-const RE_FILE_LOGGER = /^\d{4}\/\d{2}\/\d{2}\s+\d{2}:\d{2}:\d{2}\.\d{3}\s{2,}(?!\[)/;
-
-// ---------------------------------------------------------------------------
 // Line zone detection
 // ---------------------------------------------------------------------------
 
@@ -388,7 +376,7 @@ export class CSMLogHoverProvider implements vscode.HoverProvider {
         const db = getCsmlogHoverDb();
 
         // 1. Config line: "- Key | Value"
-        const configMatch = line.match(RE_CONFIG_LINE);
+        const configMatch = line.match(CONFIG_LINE_REGEX);
         if (configMatch && line.startsWith('-')) {
             const keyStart = line.indexOf(configMatch[1]);
             const keyEnd = keyStart + configMatch[1].length;

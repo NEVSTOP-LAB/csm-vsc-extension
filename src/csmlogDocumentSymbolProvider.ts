@@ -1,13 +1,10 @@
 import * as vscode from 'vscode';
 import { localizeBundle } from './i18n';
-
-/** Matches a configuration line: `- Key | Value` */
-const CONFIG_REGEX = /^-\s+([^|]+?)\s+\|\s+.+$/;
-
-const CSMLOG_DATETIME_PATTERN = String.raw`\d{4}\/\d{2}\/\d{2}\s+\d{2}:\d{2}:\d{2}\.\d{3}`;
-const CSMLOG_OPTIONAL_RELATIVE_TIMESTAMP_PATTERN = String.raw`(?:\s+\[[\d:.]+\])?`;
-const CSMLOG_LIFECYCLE_EVENT_PATTERN = String.raw`\[(Module Created|Module Destroyed)\]`;
-const CSMLOG_OPTIONAL_MODULE_NAME_PATTERN = String.raw`(?:\s+([^|]+?)(?:\s+\||$))?`;
+import {
+    CONFIG_KEY_REGEX,
+    MODULE_LIFECYCLE_REGEX,
+    LOGGER_MESSAGE_REGEX,
+} from './common/constants';
 
 const symbolMessages = {
     moduleCreated: {
@@ -23,14 +20,6 @@ const symbolMessages = {
         zh: '<未知模块>',
     },
 } as const;
-
-/** Matches a Module Created/Destroyed log line and captures the event type and module name. */
-const MODULE_LIFECYCLE_REGEX = new RegExp(
-    `^${CSMLOG_DATETIME_PATTERN}${CSMLOG_OPTIONAL_RELATIVE_TIMESTAMP_PATTERN}\\s+${CSMLOG_LIFECYCLE_EVENT_PATTERN}${CSMLOG_OPTIONAL_MODULE_NAME_PATTERN}`
-);
-
-/** Matches a Logger system message: timestamp followed by `<label>`. */
-const LOGGER_MESSAGE_REGEX = /^\d{4}\/\d{2}\/\d{2}\s+\d{2}:\d{2}:\d{2}\.\d{3}\s+<([^>]+)>/;
 
 /**
  * Provides document symbols (outline) for CSMLog files.
@@ -64,7 +53,7 @@ export class CSMLogDocumentSymbolProvider implements vscode.DocumentSymbolProvid
             const text = document.lineAt(i).text;
 
             // Configuration line: - Key | Value
-            const configMatch = text.match(CONFIG_REGEX);
+            const configMatch = text.match(CONFIG_KEY_REGEX);
             if (configMatch) {
                 entries.push({ lineIndex: i, name: configMatch[1].trim(), kind: vscode.SymbolKind.Property });
                 continue;

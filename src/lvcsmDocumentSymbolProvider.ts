@@ -1,7 +1,5 @@
 import * as vscode from 'vscode';
-
-/** Matches an INI section header: `[SectionName]` (optional leading whitespace) */
-const INI_SECTION_REGEX = /^\s*\[([^\]]+)\]/;
+import { INI_SECTION_REGEX } from './common/constants';
 
 /**
  * Provides document symbols (outline) for LVCSM files.
