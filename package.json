@@ -2,7 +2,7 @@
   "name": "csm-vsc-support",
   "displayName": "%extension.displayName%",
   "description": "%extension.description%",
-  "version": "0.0.25",
+  "version": "0.0.26",
   "license": "AGPL-3.0-only",
   "publisher": "NEVSTOP-LAB",
   "icon": "images/icon.png",
