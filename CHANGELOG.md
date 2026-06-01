@@ -6,6 +6,15 @@
 
 ## [未发布] / [Unreleased]
 
+### 重构
+
+- 提取共享 CSM 正则常量到 `src/common/constants.ts`，消除 `csmlogHoverProvider`、`csmlogDocumentSymbolProvider`、`lvcsmDocumentSymbolProvider` 之间的正则重复
+- 抽象 `src/common/symbols.ts` 通用 DocumentSymbol 构建工具（`SymbolEntry` 接口 + `buildDocumentSymbols()`），统一两个 Provider 的 Range 计算逻辑，消除 ~30 行重复代码
+- 统一 Hover 数据系统：将 `csmlogHoverProvider` 中 ~280 行硬编码 DB（事件类型、时间戳、配置项、日志标记）迁移到 `hoverData/` 模块化目录（新增 `events.ts`、`timestamps.ts`、`config.ts`、`markers.ts`），消除与 `hoverData/` 系统的数据重复
+- 清理废弃代码：删除已废弃的 `moduleTreeDataProvider.ts`（提取 `ViewState` 和 `ModuleTreeItem` 到 `moduleTreeTypes.ts`）和死代码 `csmlogHoverTranslations.ts`
+- 测试：新增 `i18n.test.ts`（13 个测试）、`hoverDataModules.test.ts`（12 个测试）、`sort.test.ts`（16 个测试），测试总数从 76 增至 119
+- CI：将新增测试文件纳入 CI 流程
+
 ### 新增
 
 - 阶段二：`CSM Modules` 视图支持多选模块，并新增 `Apply to Current Repository` 入口

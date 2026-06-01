@@ -133,6 +133,7 @@ suite('Language Definition Tests', () => {
         assert.ok(entry, 'log-entry-filtered-state should exist');
         const re = new RegExp(entry.match);
         assert.ok(re.test('2026/03/11 18:07:53.052 <Start Filter>[State Change]App | '), 'should match filter-marker compact state line');
+        assert.ok(re.test('2026-03-11 18:07:53.052 <Start Filter>[State Change]App | '), 'should match filter-marker compact state line with hyphen date separator');
         assert.ok(re.test('2026/03/11 18:07:53.052 [18:07:53.050] <Start Filter>[State Change]App | '), 'should match filter-marker line with relative timestamp');
         assert.ok(!re.test('2026/03/20 17:32:59.426 [State Change] AI | Macro: Initialize'), 'should not match standard state line without filter marker');
     });
@@ -144,6 +145,7 @@ suite('Language Definition Tests', () => {
         assert.ok(entry, 'log-entry-filelogger should exist');
         const re = new RegExp(entry.match);
         assert.ok(re.test('2026/03/11 18:09:47.330  System started successfully'), 'should match file logger with double space');
+        assert.ok(re.test('2026-03-11 18:09:47.330  System started successfully'), 'should match file logger with hyphen date separator');
         assert.ok(re.test('2026/03/11 18:09:47.330  信息内容'), 'should match file logger with Chinese content');
         assert.ok(!re.test('2026/03/20 17:32:59.425 [17:32:59.425] [State Change] AI | content'), 'should not match normal log line with single space');
         assert.ok(!re.test('2026/03/06 08:45:48.554  [08:45:48.554] [State Change] AI | content'), 'should not match normal log line even when two spaces precede [relative timestamp]');
@@ -173,6 +175,7 @@ suite('Language Definition Tests', () => {
             ['log-entry-status', '2026/03/11 18:09:40.589 [Status] Measure |'],
             ['log-entry-userlog', '2026/03/11 18:09:40.589 [User Log] Runner |'],
             ['log-entry-state', '2026/03/11 18:09:40.589 [State Change] AI |'],
+            ['log-entry-error', '2026-03-11 18:09:40.589 [Error] AI |'],
         ];
         for (const [rule, line] of noRelTs) {
             const re = new RegExp(grammar.repository[rule].match);

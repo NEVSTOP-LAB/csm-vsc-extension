@@ -5,6 +5,10 @@ import { operatorEntries } from './operators';
 import { commandEntries } from './commands';
 import { controlFlowEntries } from './controlFlow';
 import { systemStateEntries } from './systemStates';
+import { eventTypeEntries } from './events';
+import { timestampEntries } from './timestamps';
+import { markerEntries } from './markers';
+import { configKeyEntries } from './config';
 import { hoverTranslations } from './translations';
 
 // ---------------------------------------------------------------------------
@@ -16,6 +20,10 @@ const zhHoverEntries: Record<string, HoverEntry> = {
     ...commandEntries,
     ...controlFlowEntries,
     ...systemStateEntries,
+    ...eventTypeEntries,
+    ...timestampEntries,
+    ...markerEntries,
+    ...configKeyEntries,
 };
 
 let _hoverDbCache: { isChinese: boolean; db: Record<string, HoverEntry> } | undefined;
