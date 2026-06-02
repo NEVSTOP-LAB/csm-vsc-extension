@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { CsmModuleEntry, LocalManagedModuleEntry, LocalUnmanagedFolderEntry } from './types';
-import { ViewState } from './moduleTreeDataProvider';
+import { ViewState } from './moduleTreeTypes';
 import { IModuleViewProvider, ModuleListScope, ModuleSortDirection, ModuleSortField, ModuleSortState, SidebarWorkspaceContext } from './interfaces';
 import { DEFAULT_MODULE_SORT_STATE, isModuleSortDirection, isModuleSortField, normalizeModuleSortState } from './sort';
 import { t } from './messages';

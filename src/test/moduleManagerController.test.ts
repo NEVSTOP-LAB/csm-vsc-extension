@@ -5,7 +5,7 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import { DEFAULT_LOCAL_MODULE_ROOT, IModuleViewProvider, LEGACY_LOCAL_MODULE_CONFIG_FILE, LOCAL_MODULE_CONFIG_FILE } from '../moduleManager';
 import { ModuleManagerController, ModuleManagerControllerDeps } from '../moduleManager/moduleManagerController';
-import { ModuleTreeItem } from '../moduleManager/moduleTreeDataProvider';
+import { ModuleTreeItem } from '../moduleManager/moduleTreeTypes';
 import { CsmModuleEntry, LocalModuleConfig, ModuleApplyMethod, ModuleCacheSnapshot } from '../moduleManager/types';
 
 type VscodeMock = typeof vscode & {

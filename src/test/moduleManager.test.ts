@@ -8,7 +8,7 @@ import { ModuleCacheStore, mapRepoToModuleEntry } from '../moduleManager';
 import { GitExecOptions, IGitRunner } from '../moduleManager/gitService';
 import { ReadmeAssetCache } from '../moduleManager/readmeAssetCache';
 import { ModuleSidebarViewProvider } from '../moduleManager/moduleSidebarViewProvider';
-import { ModuleTreeDataProvider, ModuleTreeItem } from '../moduleManager/moduleTreeDataProvider';
+import { ModuleTreeItem } from '../moduleManager/moduleTreeTypes';
 import { GitHubRepoSummary } from '../moduleManager';
 import { getVisibleModuleTopics } from '../moduleManager/topics';
 import { CsmModuleEntry } from '../moduleManager/types';
@@ -269,27 +269,6 @@ suite('Module Manager Tests', () => {
 		assert.ok(!tooltip.includes('labview-csm'));
 		assert.ok(!tooltip.includes('labview'));
 		assert.strictEqual(item.command, undefined);
-	});
-
-	test('ModuleTreeDataProvider keeps refresh only in the title bar when signed in', () => {
-		const provider = new ModuleTreeDataProvider();
-		provider.setAuthenticated(true);
-		provider.setModules([
-			{
-				id: 1,
-				owner: 'org',
-				name: 'module-a',
-				description: 'A demo module',
-				topics: ['csm-modsets'],
-				visibility: 'public',
-				defaultBranch: 'main',
-				repoUrl: 'https://github.com/org/module-a',
-			},
-		]);
-
-		const children = provider.getChildren();
-		assert.strictEqual(children.length, 1);
-		assert.strictEqual(children[0]?.contextValue, 'csmModuleEntry');
 	});
 
 	test('ModuleSidebarViewProvider renders extension-style module cards', () => {

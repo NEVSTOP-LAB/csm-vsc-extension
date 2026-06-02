@@ -2,7 +2,7 @@
   "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
   "name": "CSMLog",
   "scopeName": "source.csmlog",
-  "comment": "NOTE: The timestamp pattern '(\\d{4}/\\d{2}/\\d{2}\\s+\\d{2}:\\d{2}:\\d{2}\\.\\d{3})' and the optional relative timestamp '(?:\\s+(\\[\\d{2}:\\d{2}:\\d{2}\\.\\d{3}\\]))?' appear in every log-entry-* rule. TextMate grammar JSON does not support reusable pattern fragments, so this duplication is intentional. If you update the timestamp format, update it in all log-entry-* rules consistently.",
+  "comment": "NOTE: The timestamp pattern '\\[?(\\d{4}[/-]\\d{2}[/-]\\d{2}\\s+\\d{2}:\\d{2}:\\d{2}\\.\\d{3})\\]?' and the optional relative timestamp '(?:\\s+(\\[\\d{2}:\\d{2}:\\d{2}\\.\\d{3}\\]))?' appear in every log-entry-* rule. The brackets around the timestamp are optional to support both '[YYYY/MM/DD HH:MM:SS.mmm]' and 'YYYY/MM/DD HH:MM:SS.mmm' formats. TextMate grammar JSON does not support reusable pattern fragments, so this duplication is intentional. If you update the timestamp format, update it in all log-entry-* rules consistently.",
   "patterns": [
     {
       "include": "#config-line"
@@ -102,7 +102,7 @@
     },
     "log-entry-error": {
       "comment": "Priority 1: Error events",
-      "match": "^(\\d{4}/\\d{2}/\\d{2}\\s+\\d{2}:\\d{2}:\\d{2}\\.\\d{3})(?:\\s+(\\[\\d{2}:\\d{2}:\\d{2}\\.\\d{3}\\]))?\\s+(\\[Error\\])\\s+([^|]+?)\\s+\\|",
+      "match": "^\\[?(\\d{4}[/-]\\d{2}[/-]\\d{2}\\s+\\d{2}:\\d{2}:\\d{2}\\.\\d{3})\\]?(?:\\s+(\\[\\d{2}:\\d{2}:\\d{2}\\.\\d{3}\\]))?\\s+(\\[Error\\])\\s+([^|]+?)\\s+\\|",
       "captures": {
         "1": {
           "name": "comment.line.timestamp.date.error.csmlog"
@@ -120,7 +120,7 @@
     },
     "log-entry-filelogger": {
       "comment": "Priority 1.5: File logger entries — YYYY/MM/DD HH:MM:SS.mmm  message (two or more spaces after timestamp, no [event type]). Negative lookahead (?![) prevents matching normal log lines where [HH:MM:SS.mmm] or [EventType] follows the timestamp.",
-      "match": "^(\\d{4}/\\d{2}/\\d{2}\\s+\\d{2}:\\d{2}:\\d{2}\\.\\d{3})\\s{2,}(?!\\[)(.+)$",
+      "match": "^\\[?(\\d{4}[/-]\\d{2}[/-]\\d{2}\\s+\\d{2}:\\d{2}:\\d{2}\\.\\d{3})\\]?\\s{2,}(?!\\[)(.+)$",
       "captures": {
         "1": {
           "name": "comment.line.timestamp.date.csmlog"
@@ -132,7 +132,7 @@
     },
     "log-entry-userlog": {
       "comment": "Priority 2: User Log events. Relative timestamp [HH:MM:SS.mmm] is optional.",
-      "match": "^(\\d{4}/\\d{2}/\\d{2}\\s+\\d{2}:\\d{2}:\\d{2}\\.\\d{3})(?:\\s+(\\[\\d{2}:\\d{2}:\\d{2}\\.\\d{3}\\]))?\\s+(\\[User Log\\])\\s+([^|]+?)\\s+\\|",
+      "match": "^\\[?(\\d{4}[/-]\\d{2}[/-]\\d{2}\\s+\\d{2}:\\d{2}:\\d{2}\\.\\d{3})\\]?(?:\\s+(\\[\\d{2}:\\d{2}:\\d{2}\\.\\d{3}\\]))?\\s+(\\[User Log\\])\\s+([^|]+?)\\s+\\|",
       "captures": {
         "1": {
           "name": "comment.line.timestamp.date.userlog.csmlog"
@@ -150,7 +150,7 @@
     },
     "log-entry-lifecycle": {
       "comment": "Priority 3: Module Created/Destroyed events. Relative timestamp [HH:MM:SS.mmm] and module | content are optional (Module Destroyed may omit them)",
-      "match": "^(\\d{4}/\\d{2}/\\d{2}\\s+\\d{2}:\\d{2}:\\d{2}\\.\\d{3})(?:\\s+(\\[\\d{2}:\\d{2}:\\d{2}\\.\\d{3}\\]))?\\s+(\\[(?:Module Created|Module Destroyed)\\])(?:\\s+([^|]+?)(?:\\s+\\||$))?",
+      "match": "^\\[?(\\d{4}[/-]\\d{2}[/-]\\d{2}\\s+\\d{2}:\\d{2}:\\d{2}\\.\\d{3})\\]?(?:\\s+(\\[\\d{2}:\\d{2}:\\d{2}\\.\\d{3}\\]))?\\s+(\\[(?:Module Created|Module Destroyed)\\])(?:\\s+([^|]+?)(?:\\s+\\||$))?",
       "captures": {
         "1": {
           "name": "comment.line.timestamp.date.lifecycle.csmlog"
@@ -168,7 +168,7 @@
     },
     "log-entry-register": {
       "comment": "Priority 4: Register/Unregister events",
-      "match": "^(\\d{4}/\\d{2}/\\d{2}\\s+\\d{2}:\\d{2}:\\d{2}\\.\\d{3})(?:\\s+(\\[\\d{2}:\\d{2}:\\d{2}\\.\\d{3}\\]))?\\s+(\\[(?:Register|Unregister)\\])\\s+([^|]+?)\\s+\\|",
+      "match": "^\\[?(\\d{4}[/-]\\d{2}[/-]\\d{2}\\s+\\d{2}:\\d{2}:\\d{2}\\.\\d{3})\\]?(?:\\s+(\\[\\d{2}:\\d{2}:\\d{2}\\.\\d{3}\\]))?\\s+(\\[(?:Register|Unregister)\\])\\s+([^|]+?)\\s+\\|",
       "captures": {
         "1": {
           "name": "comment.line.timestamp.date.register.csmlog"
@@ -186,7 +186,7 @@
     },
     "log-entry-interrupt": {
       "comment": "Priority 5: Interrupt events",
-      "match": "^(\\d{4}/\\d{2}/\\d{2}\\s+\\d{2}:\\d{2}:\\d{2}\\.\\d{3})(?:\\s+(\\[\\d{2}:\\d{2}:\\d{2}\\.\\d{3}\\]))?\\s+(\\[Interrupt\\])\\s+([^|]+?)\\s+\\|",
+      "match": "^\\[?(\\d{4}[/-]\\d{2}[/-]\\d{2}\\s+\\d{2}:\\d{2}:\\d{2}\\.\\d{3})\\]?(?:\\s+(\\[\\d{2}:\\d{2}:\\d{2}\\.\\d{3}\\]))?\\s+(\\[Interrupt\\])\\s+([^|]+?)\\s+\\|",
       "captures": {
         "1": {
           "name": "comment.line.timestamp.date.interrupt.csmlog"
@@ -204,7 +204,7 @@
     },
     "log-entry-message": {
       "comment": "Priority 6: Sync/Async/No-Rep Async Message events",
-      "match": "^(\\d{4}/\\d{2}/\\d{2}\\s+\\d{2}:\\d{2}:\\d{2}\\.\\d{3})(?:\\s+(\\[\\d{2}:\\d{2}:\\d{2}\\.\\d{3}\\]))?\\s+(\\[(?:Sync Message|Async Message|No-Rep Async Message)\\])\\s+([^|]+?)\\s+\\|",
+      "match": "^\\[?(\\d{4}[/-]\\d{2}[/-]\\d{2}\\s+\\d{2}:\\d{2}:\\d{2}\\.\\d{3})\\]?(?:\\s+(\\[\\d{2}:\\d{2}:\\d{2}\\.\\d{3}\\]))?\\s+(\\[(?:Sync Message|Async Message|No-Rep Async Message)\\])\\s+([^|]+?)\\s+\\|",
       "captures": {
         "1": {
           "name": "comment.line.timestamp.date.message.csmlog"
@@ -222,7 +222,7 @@
     },
     "log-entry-status": {
       "comment": "Priority 7: Status events",
-      "match": "^(\\d{4}/\\d{2}/\\d{2}\\s+\\d{2}:\\d{2}:\\d{2}\\.\\d{3})(?:\\s+(\\[\\d{2}:\\d{2}:\\d{2}\\.\\d{3}\\]))?\\s+(\\[Status\\])\\s+([^|]+?)\\s+\\|",
+      "match": "^\\[?(\\d{4}[/-]\\d{2}[/-]\\d{2}\\s+\\d{2}:\\d{2}:\\d{2}\\.\\d{3})\\]?(?:\\s+(\\[\\d{2}:\\d{2}:\\d{2}\\.\\d{3}\\]))?\\s+(\\[Status\\])\\s+([^|]+?)\\s+\\|",
       "captures": {
         "1": {
           "name": "comment.line.timestamp.date.status.csmlog"
@@ -240,7 +240,7 @@
     },
     "log-entry-filtered-state": {
       "comment": "Priority 7.5: Filter-marker State Change events. Match <...> first as a special marker, then apply dedicated State Change highlighting.",
-      "match": "^(\\d{4}/\\d{2}/\\d{2}\\s+\\d{2}:\\d{2}:\\d{2}\\.\\d{3})(?:\\s+(\\[\\d{2}:\\d{2}:\\d{2}\\.\\d{3}\\]))?\\s*(<[^>]+>)\\s*(\\[State Change\\])\\s*([^|]+?)\\s*\\|",
+      "match": "^\\[?(\\d{4}[/-]\\d{2}[/-]\\d{2}\\s+\\d{2}:\\d{2}:\\d{2}\\.\\d{3})\\]?(?:\\s+(\\[\\d{2}:\\d{2}:\\d{2}\\.\\d{3}\\]))?\\s*(<[^>]+>)\\s*(\\[State Change\\])\\s*([^|]+?)\\s*\\|",
       "captures": {
         "1": {
           "name": "meta.log.event-type.state.csmlog"
@@ -261,7 +261,7 @@
     },
     "log-entry-state": {
       "comment": "Priority 8: State Change events (standard format). Relative timestamp is optional; compact '[State Change]Module' format is supported.",
-      "match": "^(\\d{4}/\\d{2}/\\d{2}\\s+\\d{2}:\\d{2}:\\d{2}\\.\\d{3})(?:\\s+(\\[\\d{2}:\\d{2}:\\d{2}\\.\\d{3}\\]))?\\s*(\\[State Change\\])\\s*([^|]+?)\\s*\\|",
+      "match": "^\\[?(\\d{4}[/-]\\d{2}[/-]\\d{2}\\s+\\d{2}:\\d{2}:\\d{2}\\.\\d{3})\\]?(?:\\s+(\\[\\d{2}:\\d{2}:\\d{2}\\.\\d{3}\\]))?\\s*(\\[State Change\\])\\s*([^|]+?)\\s*\\|",
       "captures": {
         "1": {
           "name": "meta.log.event-type.state.csmlog"
@@ -284,7 +284,7 @@
     },
     "log-entry-other": {
       "comment": "Fallback: Other unknown event types (relative timestamp and pipe/content optional)",
-      "match": "^(\\d{4}/\\d{2}/\\d{2}\\s+\\d{2}:\\d{2}:\\d{2}\\.\\d{3})(?:\\s+(\\[\\d{2}:\\d{2}:\\d{2}\\.\\d{3}\\]))?\\s+(\\[[^\\]]+\\])(?:\\s+([^|]+?)(?:\\s+\\||$))?",
+      "match": "^\\[?(\\d{4}[/-]\\d{2}[/-]\\d{2}\\s+\\d{2}:\\d{2}:\\d{2}\\.\\d{3})\\]?(?:\\s+(\\[\\d{2}:\\d{2}:\\d{2}\\.\\d{3}\\]))?\\s+(\\[[^\\]]+\\])(?:\\s+([^|]+?)(?:\\s+\\||$))?",
       "captures": {
         "1": {
           "name": "comment.line.timestamp.date.other.csmlog"
@@ -300,7 +300,6 @@
         }
       }
     },
-
     "log-variable-reference": {
       "comment": "Variable reference in log content: ${varname} or ${varname:default} — self-contained copy, no reference to csmlog grammar",
       "patterns": [
@@ -308,25 +307,40 @@
           "comment": "Variable with default value: ${varname:default}",
           "match": "(\\$\\{)([^}:]+)(:)([^}]*)(\\})",
           "captures": {
-            "1": { "name": "punctuation.definition.variable.csmlog" },
-            "2": { "name": "variable.other.csmlog" },
-            "3": { "name": "punctuation.separator.default.csmlog" },
-            "4": { "name": "markup.italic markup.underline string.unquoted.variable-default.csmlog" },
-            "5": { "name": "punctuation.definition.variable.csmlog" }
+            "1": {
+              "name": "punctuation.definition.variable.csmlog"
+            },
+            "2": {
+              "name": "variable.other.csmlog"
+            },
+            "3": {
+              "name": "punctuation.separator.default.csmlog"
+            },
+            "4": {
+              "name": "markup.italic markup.underline string.unquoted.variable-default.csmlog"
+            },
+            "5": {
+              "name": "punctuation.definition.variable.csmlog"
+            }
           }
         },
         {
           "comment": "Simple variable reference: ${varname}",
           "match": "(\\$\\{)([^}]+)(\\})",
           "captures": {
-            "1": { "name": "punctuation.definition.variable.csmlog" },
-            "2": { "name": "variable.other.csmlog" },
-            "3": { "name": "punctuation.definition.variable.csmlog" }
+            "1": {
+              "name": "punctuation.definition.variable.csmlog"
+            },
+            "2": {
+              "name": "variable.other.csmlog"
+            },
+            "3": {
+              "name": "punctuation.definition.variable.csmlog"
+            }
           }
         }
       ]
     },
-
     "log-subscription-op": {
       "comment": "Subscription operations in log content: -><register>, -><unregister>, -><register as interrupt/status> — self-contained copy",
       "patterns": [
@@ -334,23 +348,34 @@
           "comment": "Register with priority change: -><register as interrupt> or -><register as status>",
           "match": "(-><)(register\\s+as\\s+(?:interrupt|status|Interrupt|Status))(>)",
           "captures": {
-            "1": { "name": "keyword.operator.subscription.csmlog" },
-            "2": { "name": "keyword.control.subscription-type.csmlog" },
-            "3": { "name": "keyword.operator.subscription.csmlog" }
+            "1": {
+              "name": "keyword.operator.subscription.csmlog"
+            },
+            "2": {
+              "name": "keyword.control.subscription-type.csmlog"
+            },
+            "3": {
+              "name": "keyword.operator.subscription.csmlog"
+            }
           }
         },
         {
           "comment": "Register or unregister subscription: -><register> or -><unregister>",
           "match": "(-><)(register|unregister)(>)",
           "captures": {
-            "1": { "name": "keyword.operator.subscription.csmlog" },
-            "2": { "name": "keyword.control.subscription.csmlog" },
-            "3": { "name": "keyword.operator.subscription.csmlog" }
+            "1": {
+              "name": "keyword.operator.subscription.csmlog"
+            },
+            "2": {
+              "name": "keyword.control.subscription.csmlog"
+            },
+            "3": {
+              "name": "keyword.operator.subscription.csmlog"
+            }
           }
         }
       ]
     },
-
     "log-broadcast-target-with-op": {
       "comment": "Send operators with targets in log content: broadcast targets and module names — self-contained copy",
       "patterns": [
@@ -358,45 +383,64 @@
           "comment": "Interrupt broadcast target: -> <interrupt>",
           "match": "(->)\\s*(<interrupt>)",
           "captures": {
-            "1": { "name": "keyword.operator.async-call.csmlog" },
-            "2": { "name": "constant.language.interrupt-target.csmlog" }
+            "1": {
+              "name": "keyword.operator.async-call.csmlog"
+            },
+            "2": {
+              "name": "constant.language.interrupt-target.csmlog"
+            }
           }
         },
         {
           "comment": "Normal broadcast targets: -> <status>, -> <broadcast>, -> <all>",
           "match": "(->)\\s*(<(?:status|broadcast|all)>)",
           "captures": {
-            "1": { "name": "keyword.operator.async-call.csmlog" },
-            "2": { "name": "constant.language.broadcast-target.csmlog" }
+            "1": {
+              "name": "keyword.operator.async-call.csmlog"
+            },
+            "2": {
+              "name": "constant.language.broadcast-target.csmlog"
+            }
           }
         },
         {
           "comment": "Synchronous call with target module: -@ ModuleName",
           "match": "(-@)\\s+([\\w][\\w\\-]*)",
           "captures": {
-            "1": { "name": "keyword.operator.sync-call.csmlog" },
-            "2": { "name": "entity.name.namespace.module.csmlog" }
+            "1": {
+              "name": "keyword.operator.sync-call.csmlog"
+            },
+            "2": {
+              "name": "entity.name.namespace.module.csmlog"
+            }
           }
         },
         {
           "comment": "Async no-reply with target module: ->| ModuleName",
           "match": "(->\\|)\\s+([\\w][\\w\\-]*)",
           "captures": {
-            "1": { "name": "keyword.operator.async-no-reply.csmlog" },
-            "2": { "name": "entity.name.namespace.module.csmlog" }
+            "1": {
+              "name": "keyword.operator.async-no-reply.csmlog"
+            },
+            "2": {
+              "name": "entity.name.namespace.module.csmlog"
+            }
           }
         },
         {
           "comment": "Async call with target module: -> ModuleName",
           "match": "(->)\\s+([\\w][\\w\\-]*)",
           "captures": {
-            "1": { "name": "keyword.operator.async-call.csmlog" },
-            "2": { "name": "entity.name.namespace.module.csmlog" }
+            "1": {
+              "name": "keyword.operator.async-call.csmlog"
+            },
+            "2": {
+              "name": "entity.name.namespace.module.csmlog"
+            }
           }
         }
       ]
     },
-
     "log-communication-operator": {
       "comment": "Inter-module communication operators in log content — self-contained copy, no reference to csmlog grammar",
       "patterns": [
@@ -417,40 +461,52 @@
         }
       ]
     },
-
     "log-argument-text": {
       "comment": "Arguments after >> separator in log content — self-contained, internal patterns reference csmlog repository only",
       "begin": ">>\\s*",
       "beginCaptures": {
-        "0": { "name": "keyword.operator.argument-separator.csmlog" }
+        "0": {
+          "name": "keyword.operator.argument-separator.csmlog"
+        }
       },
       "end": "(?=\\s*(?:-@|->\\|?|-><|=>|<-|$))",
       "contentName": "markup.italic markup.underline string.unquoted.argument.csmlog",
       "patterns": [
-        { "include": "#log-argument-key-pair" },
-        { "include": "#log-variable-reference" },
-        { "include": "#log-module-address" }
+        {
+          "include": "#log-argument-key-pair"
+        },
+        {
+          "include": "#log-variable-reference"
+        },
+        {
+          "include": "#log-module-address"
+        }
       ]
     },
-
     "log-argument-key-pair": {
       "comment": "Parameter key/value prefix inside argument text: key: or key2: in key:value;key2:value2;... (with or without surrounding braces)",
       "match": "(?<![\\w.\\-])([A-Za-z_][A-Za-z0-9_.\\-]*)(:)",
       "captures": {
-        "1": { "name": "variable.other.argument-key.csmlog" },
-        "2": { "name": "punctuation.separator.argument-key.csmlog" }
+        "1": {
+          "name": "variable.other.argument-key.csmlog"
+        },
+        "2": {
+          "name": "punctuation.separator.argument-key.csmlog"
+        }
       }
     },
-
     "log-module-address": {
       "comment": "Module reference in log content: @ModuleName — self-contained copy",
       "match": "(@)([\\w][\\w\\-]*)?",
       "captures": {
-        "1": { "name": "punctuation.separator.module.csmlog" },
-        "2": { "name": "entity.name.label.module-address.csmlog" }
+        "1": {
+          "name": "punctuation.separator.module.csmlog"
+        },
+        "2": {
+          "name": "entity.name.label.module-address.csmlog"
+        }
       }
     },
-
     "log-system-state": {
       "comment": "CSM framework built-in state names in log content — self-contained copy, no reference to csmlog grammar",
       "patterns": [

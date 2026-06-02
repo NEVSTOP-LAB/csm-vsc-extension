@@ -1,7 +1,7 @@
 import * as crypto from 'crypto';
 import { ModuleListScope, ModuleSortDirection, ModuleSortField, ModuleSortState } from './interfaces';
 import { getApplyMethodLabel, getHtmlLang, getVisibilityLabel, t } from './messages';
-import { ViewState } from './moduleTreeDataProvider';
+import { ViewState } from './moduleTreeTypes';
 import { sortModules } from './sort';
 import { getVisibleModuleTopics } from './topics';
 import { CsmModuleEntry, LocalManagedModuleEntry, LocalUnmanagedFolderEntry } from './types';

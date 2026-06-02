@@ -104,7 +104,7 @@ jobs:
         run: npm run compile-tests
 
       - name: 运行无 VS Code 单元测试
-        run: npx mocha --ui tdd --timeout 10000 --require out/test/setup.js out/test/csmlogDocumentSymbolProvider.test.js out/test/csmlogHoverProvider.test.js out/test/hoverData.test.js out/test/lvcsmDocumentSymbolProvider.test.js out/test/moduleManagerController.test.js out/test/moduleManager.test.js out/test/authService.test.js out/test/moduleManagerBoundary.test.js out/test/githubModuleService.test.js
+        run: npx mocha --ui tdd --timeout 10000 --require out/test/setup.js out/test/csmlogDocumentSymbolProvider.test.js out/test/csmlogHoverProvider.test.js out/test/hoverData.test.js out/test/hoverDataModules.test.js out/test/lvcsmDocumentSymbolProvider.test.js out/test/moduleManagerController.test.js out/test/moduleManager.test.js out/test/authService.test.js out/test/moduleManagerBoundary.test.js out/test/githubModuleService.test.js out/test/i18n.test.js out/test/sort.test.js
 
   extension-tests:
     name: 扩展集成测试
