@@ -161,28 +161,19 @@ jobs:
         run: |
           YEAR=$(date -u +%Y)
           MONTH=$(date -u +%-m)
+          BUILD_VERSION="${YEAR}.${MONTH}.${{ github.run_number }}"
           if [[ "${{ github.ref }}" == refs/tags/* ]]; then
-            # Tag 发布：正式 release 版本，minor（月份）必须为偶数
-            if (( MONTH % 2 != 0 )); then
-              MONTH=$((MONTH + 1))
-            fi
             echo "is_prerelease=false" >> "$GITHUB_OUTPUT"
           else
-            # Main 分支发布：beta 预发布版本，minor（月份）必须为奇数
-            if (( MONTH % 2 == 0 )); then
-              MONTH=$((MONTH + 1))
-            fi
             echo "is_prerelease=true" >> "$GITHUB_OUTPUT"
           fi
-          BUILD_VERSION="${YEAR}.${MONTH}.${{ github.run_number }}"
           echo "build_version=${BUILD_VERSION}" >> "$GITHUB_OUTPUT"
 
       - name: 打包 VSIX（vsce package）
         # --no-dependencies：所有依赖均为 devDependencies，esbuild 已将运行时代码
         # 打包至 dist/extension.js，无需在 VSIX 中内嵌 node_modules
-        # 版本号格式（遵循 VS Marketplace pre-release 奇偶约定）：
-        #   - Tag 发布：minor（月份）为偶数，例如 2026.6.42
-        #   - Main 分支：minor（月份）为奇数，例如 2026.7.42
+        # 版本号格式：年.月.build（三段式 semver），例如 2026.6.42
+        # Main 分支以 --pre-release 发布为 Beta 版本，Tag 发布为正式 Release
         # --no-update-package-json：仅将版本号注入 VSIX 包，不修改 package.json
         run: |
           if [[ "${{ steps.version.outputs.is_prerelease }}" == "true" ]]; then
