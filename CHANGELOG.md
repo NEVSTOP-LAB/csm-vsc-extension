@@ -6,6 +6,10 @@
 
 ## [未发布] / [Unreleased]
 
+### 变更
+
+- 升级 `engines.vscode` 最低版本要求从 `^1.60.0` 至 `^1.63.0`，以支持 pre-release 版本发布
+
 ### 重构
 
 - 提取共享 CSM 正则常量到 `src/common/constants.ts`，消除 `csmlogHoverProvider`、`csmlogDocumentSymbolProvider`、`lvcsmDocumentSymbolProvider` 之间的正则重复

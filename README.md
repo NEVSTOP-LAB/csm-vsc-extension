@@ -4,7 +4,7 @@
 
 ## 安装要求
 
-- Visual Studio Code 1.60.0 或更高版本
+- Visual Studio Code 1.63.0 或更高版本
 
 ## 功能概览
 

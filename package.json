@@ -23,7 +23,7 @@
     "syntax highlighting"
   ],
   "engines": {
-    "vscode": "^1.60.0"
+    "vscode": "^1.63.0"
   },
   "categories": [
     "Programming Languages"
