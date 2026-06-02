@@ -376,8 +376,7 @@ suite('Module Manager Tests', () => {
 		assert.ok(rendered?.html.includes('data-role="filter-menu"'));
 		assert.ok(rendered?.html.includes('Filter and sort modules. Current: Name, Ascending.'));
 		assert.ok(rendered?.html.includes('--module-font-md: 13px;'));
-		assert.ok(rendered?.html.includes('--module-icon-size: 16px;'));
-		assert.ok(rendered?.html.includes('data-action="togglePreview"'));
+		assert.ok(rendered?.html.includes('--module-icon-size: 18px;'));
 		assert.ok(rendered?.html.includes('type="text"'));
 		assert.ok(rendered?.html.includes('Include applied modules'));
 		assert.ok(!rendered?.html.includes('data-role="include-applied-toggle"'));
@@ -876,17 +875,15 @@ suite('Module Manager Tests', () => {
 		disposable.dispose();
 	});
 
-	test('ModuleSidebarViewProvider toggles inline README preview from module clicks', async () => {
-		let previewRequests = 0;
+	test('ModuleSidebarViewProvider opens README via built-in preview on module toggle', async () => {
+		let openReadmeCalls = 0;
 		const provider = new ModuleSidebarViewProvider({
 			onLogin: () => undefined,
 			onRefresh: () => undefined,
 			onInitializeWorkspace: () => undefined,
 			onToggleStar: () => undefined,
-			onOpenReadme: () => undefined,
-			onPreviewReadme: async (entry) => {
-				previewRequests += 1;
-				return `<h1>${entry.name}</h1><p>Rendered README preview</p>`;
+			onOpenReadme: () => {
+				openReadmeCalls += 1;
 			},
 			onApplySelection: () => undefined,
 			onRemoveModule: () => undefined,
@@ -912,21 +909,17 @@ suite('Module Manager Tests', () => {
 		const disposable = vscode.window.registerWebviewViewProvider('csmModules.view', provider);
 		const resolved = mocked.__resolveWebviewView('csmModules.view');
 
-		resolved?.fireMessage({ type: 'togglePreview', moduleKey: 'org/module-a' });
-		await Promise.resolve();
-		await Promise.resolve();
-
-		const previewRender = mocked.__getLastWebviewView();
-		assert.strictEqual(previewRequests, 1);
-		assert.ok(previewRender?.html.includes('data-role="readme-preview"'));
-		assert.ok(previewRender?.html.includes('Rendered README preview'));
-
+		// togglePreview 现在触发 onOpenReadme（VS Code 内置 Markdown 预览）
 		resolved?.fireMessage({ type: 'togglePreview', moduleKey: 'org/module-a' });
 		await Promise.resolve();
 
-		const collapsedRender = mocked.__getLastWebviewView();
-		assert.strictEqual(previewRequests, 1);
-		assert.ok(!collapsedRender?.html.includes('data-role="readme-preview"'));
+		assert.strictEqual(openReadmeCalls, 1);
+
+		// 再次 toggle 也触发 onOpenReadme
+		resolved?.fireMessage({ type: 'togglePreview', moduleKey: 'org/module-a' });
+		await Promise.resolve();
+
+		assert.strictEqual(openReadmeCalls, 2);
 		disposable.dispose();
 	});
 

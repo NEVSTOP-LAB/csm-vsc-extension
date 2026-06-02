@@ -343,6 +343,7 @@ const webviewViewProviders = new Map<string, { resolveWebviewView: (webviewView:
 const webviewViews = new Map<string, MockWebviewView>();
 
 const commandMap = new Map<string, (...args: unknown[]) => unknown>();
+const executedCommands: Array<{ command: string; args: unknown[] }> = [];
 
 export const commands = {
     registerCommand(command: string, callback: (...args: unknown[]) => unknown): Disposable {
@@ -350,6 +351,7 @@ export const commands = {
         return new Disposable(() => commandMap.delete(command));
     },
     async executeCommand(command: string, ...args: unknown[]): Promise<unknown> {
+        executedCommands.push({ command, args });
         if (command === 'setContext') {
             const [key, value] = args;
             if (typeof key === 'string') {
@@ -617,6 +619,10 @@ export function __getLastQuickPick(): { items: unknown[]; options?: unknown } | 
         : undefined;
 }
 
+export function __getExecutedCommands(): Array<{ command: string; args: unknown[] }> {
+    return [...executedCommands];
+}
+
 export function __resetUiState(): void {
     warningResponse = undefined;
     informationResponse = undefined;
@@ -632,6 +638,7 @@ export function __resetUiState(): void {
     lastWebviewView = undefined;
     lastWarningPrompt = undefined;
     lastQuickPick = undefined;
+    executedCommands.length = 0;
     webviewViewProviders.clear();
     webviewViews.clear();
     workspace.workspaceFolders = undefined;

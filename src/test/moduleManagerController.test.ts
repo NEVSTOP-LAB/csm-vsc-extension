@@ -26,6 +26,7 @@ type VscodeMock = typeof vscode & {
 	__getLastWebviewPanel: () => { title: string; html: string } | undefined;
 	__resolveWebviewView: (viewId: string) => { html: string; fireMessage: (message: unknown) => void } | undefined;
 	__getLastWebviewView: () => { viewId: string; html: string } | undefined;
+	__getExecutedCommands: () => Array<{ command: string; args: unknown[] }>;
 };
 
 class FakeMemento {
@@ -413,9 +414,10 @@ suite('ModuleManagerController Regression Tests', () => {
 		await controller.openReadmeCommand(entry);
 
 		assert.strictEqual(receivedToken, 'undefined');
-		const panel = mocked.__getLastWebviewPanel();
-		assert.ok(panel);
-		assert.strictEqual(panel?.title, 'README: module-a');
+		const cmds = mocked.__getExecutedCommands();
+		const previewCmd = cmds.find((c) => c.command === 'markdown.showPreview');
+		assert.ok(previewCmd, 'markdown.showPreview should be called');
+		assert.ok(String(previewCmd?.args[0]).includes('README.md'));
 		const warnings = mocked.__getMessageLog().filter((m) => m.level === 'warn').map((m) => m.text);
 		assert.ok(!warnings.some((text) => text.includes('No cached README and no GitHub session available.')));
 	});
@@ -466,10 +468,10 @@ suite('ModuleManagerController Regression Tests', () => {
 
 		await controller.openReadmeCommand(new ModuleTreeItem(entry));
 
-		const panel = mocked.__getLastWebviewPanel();
-		assert.ok(panel);
-		assert.strictEqual(panel?.title, 'README: module-a');
-		assert.ok(panel?.html.includes('demo'));
+		const cmds = mocked.__getExecutedCommands();
+		const previewCmd = cmds.find((c) => c.command === 'markdown.showPreview');
+		assert.ok(previewCmd, 'markdown.showPreview should be called');
+		assert.ok(String(previewCmd?.args[0]).includes('README.md'));
 	});
 
 	test('login reveals cached private modules immediately and then refreshes from GitHub', async () => {
