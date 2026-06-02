@@ -13,7 +13,7 @@ import { DEFAULT_LOCAL_MODULE_ROOT, GitIdentity, LEGACY_LOCAL_MODULE_CONFIG_FILE
 import { COMMAND_IDS, CONFIG_KEYS, CONFIG_SECTIONS, CONTEXT_KEYS, VIEW_IDS } from './constants';
 import { Logger, getLogger, wrapCommand } from './logger';
 import { getApplyMethodLabel, t } from './messages';
-import { buildReadmePreviewHtml, getUnavailableReadmeMarkdown, loadReadmeMarkdown, type ReadmePreviewServiceDeps } from './readmePreviewService';
+import { openBuiltinReadmePreview, type ReadmePreviewServiceDeps } from './readmePreviewService';
 import { DEFAULT_MODULE_SORT_STATE, isModuleSortField, normalizeModuleSortState, sortModules } from './sort';
 import { getUserFacingErrorMessage } from './userFacingErrors';
 
@@ -101,7 +101,9 @@ export class ModuleManagerController {
 		onOpenRepository: (entry) => {
 			void this.openRepositoryCommand(entry);
 		},
-		onPreviewReadme: (entry, webview) => buildReadmePreviewHtml(entry, webview, this.getReadmeServiceDeps()),
+		onPreviewReadme: (entry) => {
+			void openBuiltinReadmePreview(entry, this.getReadmeServiceDeps());
+		},
 		onApplySelection: (entry) => {
 			void this.applyToWorkspaceCommand(entry);
 		},
@@ -1520,23 +1522,7 @@ export class ModuleManagerController {
 		if (!resolvedEntry) {
 			return;
 		}
-		const readme = await loadReadmeMarkdown(resolvedEntry, { warnOnMissingSession: true }, this.getReadmeServiceDeps());
-		if (typeof readme === 'undefined') {
-			return;
-		}
-
-		const markdownContent = readme || getUnavailableReadmeMarkdown();
-		const panel = vscode.window.createWebviewPanel(
-			'csmModulesReadme',
-			t('readmePanelTitle', { name: resolvedEntry.name }),
-			vscode.ViewColumn.Active,
-			{
-				enableFindWidget: true,
-				retainContextWhenHidden: true,
-				localResourceRoots: [this.readmeAssetCache.rootUri],
-			},
-		);
-		panel.webview.html = await this.readmeAssetCache.renderMarkdown(resolvedEntry, markdownContent, panel.webview);
+		await openBuiltinReadmePreview(resolvedEntry, this.getReadmeServiceDeps());
 	}
 
 	public async openRepositoryCommand(entry?: CsmModuleEntry | ModuleTreeItem): Promise<void> {

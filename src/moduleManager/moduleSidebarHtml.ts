@@ -6,14 +6,6 @@ import { sortModules } from './sort';
 import { getVisibleModuleTopics } from './topics';
 import { CsmModuleEntry, LocalManagedModuleEntry, LocalUnmanagedFolderEntry } from './types';
 
-export type ReadmePreviewState = {
-	moduleKey: string;
-	title: string;
-	status: 'loading' | 'ready' | 'error';
-	html?: string;
-	message?: string;
-};
-
 export interface LocalWorkspaceRenderState {
 	signedIn: boolean;
 	canInitializeWorkspace: boolean;
@@ -38,7 +30,6 @@ export interface ModuleSidebarRenderState extends LocalWorkspaceRenderState {
 	offlineMode: boolean;
 	sortState: ModuleSortState;
 	staleModuleKeys: ReadonlySet<string>;
-	previewState?: ReadmePreviewState;
 	renderLimit: number;
 	initialRenderLimit: number;
 	webviewCspSource?: string;
@@ -976,14 +967,6 @@ export function renderModuleSidebarHtml(state: ModuleSidebarRenderState): string
 			display: grid;
 			gap: 1px;
 		}
-		.module-preview-trigger {
-			cursor: pointer;
-			border-radius: 4px;
-		}
-		.module-preview-trigger:focus-visible {
-			outline: 1px solid var(--vscode-focusBorder, var(--vscode-textLink-foreground));
-			outline-offset: 2px;
-		}
 		.module-select {
 			margin: 0;
 			width: 16px;
@@ -1018,10 +1001,6 @@ export function renderModuleSidebarHtml(state: ModuleSidebarRenderState): string
 			font-size: var(--module-font-sm);
 			line-height: 1.4;
 			color: var(--vscode-descriptionForeground);
-		}
-		.summary.module-preview-trigger:hover,
-		.module-main.module-preview-trigger:hover .module-name {
-			color: var(--vscode-foreground);
 		}
 		.meta-row {
 			display: flex;
@@ -1074,88 +1053,6 @@ export function renderModuleSidebarHtml(state: ModuleSidebarRenderState): string
 		}
 		.card-footer-spacer {
 			flex: 1 1 auto;
-		}
-		.readme-preview {
-			margin-top: 8px;
-			padding-top: 8px;
-			border-top: 1px solid var(--vscode-panel-border);
-			display: grid;
-			gap: 8px;
-		}
-		.readme-preview-header {
-			display: flex;
-			align-items: center;
-			justify-content: space-between;
-			gap: 8px;
-			font-size: var(--module-font-xs);
-			letter-spacing: 0.04em;
-			text-transform: uppercase;
-			color: var(--vscode-descriptionForeground);
-		}
-		.readme-preview-body {
-			max-height: 280px;
-			overflow: auto;
-			padding-right: 4px;
-			font-size: var(--module-font-sm);
-			line-height: 1.55;
-			color: var(--vscode-foreground);
-		}
-		.readme-preview-body > :first-child {
-			margin-top: 0;
-		}
-		.readme-preview-body > :last-child {
-			margin-bottom: 0;
-		}
-		.readme-preview-body h1,
-		.readme-preview-body h2,
-		.readme-preview-body h3,
-		.readme-preview-body h4,
-		.readme-preview-body h5,
-		.readme-preview-body h6 {
-			margin: 1.1em 0 0.5em;
-			font-size: var(--module-font-md);
-		}
-		.readme-preview-body p,
-		.readme-preview-body ul,
-		.readme-preview-body ol,
-		.readme-preview-body pre,
-		.readme-preview-body blockquote {
-			margin: 0 0 8px;
-		}
-		.readme-preview-body ul,
-		.readme-preview-body ol {
-			padding-left: 1.25em;
-		}
-		.readme-preview-body a {
-			color: var(--vscode-textLink-foreground);
-		}
-		.readme-preview-body code,
-		.readme-preview-body pre {
-			background: var(--vscode-textCodeBlock-background, rgba(110, 118, 129, 0.18));
-			border-radius: 6px;
-		}
-		.readme-preview-body code {
-			padding: 0.1rem 0.3rem;
-		}
-		.readme-preview-body pre {
-			padding: 10px;
-			overflow: auto;
-		}
-		.readme-preview-body img {
-			max-width: 100%;
-			height: auto;
-			border-radius: 6px;
-		}
-		.readme-preview-status {
-			font-size: var(--module-font-sm);
-			color: var(--vscode-descriptionForeground);
-		}
-		.readme-preview-error {
-			color: var(--vscode-errorForeground, var(--vscode-foreground));
-		}
-		.readme-preview-loading {
-			display: grid;
-			gap: 8px;
 		}
 		.action-toolbar {
 			display: flex;
@@ -1548,15 +1445,6 @@ export function renderModuleSidebarHtml(state: ModuleSidebarRenderState): string
 			});
 		}
 		document.addEventListener('keydown', (event) => {
-			const previewTarget = event.target instanceof HTMLElement ? event.target.closest('[data-action="togglePreview"]') : null;
-			if ((event.key === 'Enter' || event.key === ' ') && previewTarget instanceof HTMLElement) {
-				event.preventDefault();
-				vscode.postMessage({
-					type: 'togglePreview',
-					moduleKey: previewTarget.getAttribute('data-module-key') || undefined,
-				});
-				return;
-			}
 			if (event.key === 'Escape') {
 				closeFilterMenu();
 			}
@@ -2103,7 +1991,6 @@ function renderModuleCard(entry: CsmModuleEntry, state: ModuleSidebarRenderState
 	const moduleKey = getModuleKey(entry);
 	const selected = state.selectedModuleKeys.has(moduleKey);
 	const applied = isModuleApplied(moduleKey, state);
-	const previewOpen = state.previewState?.moduleKey === moduleKey;
 	const stale = state.staleModuleKeys.has(moduleKey);
 	const topics = getVisibleModuleTopics(entry.topics).slice(0, 3);
 	const summary = entry.description.trim().length > 0 ? entry.description.trim() : t('noRepositoryDescription');
@@ -2120,7 +2007,6 @@ function renderModuleCard(entry: CsmModuleEntry, state: ModuleSidebarRenderState
 		moduleSelected: selected,
 		preventDefaultContextMenuItems: true,
 	}));
-	const preview = previewOpen ? renderReadmePreview(moduleKey, state.previewState) : '';
 
 	return renderModuleCardShell({
 		articleClasses: [selected ? 'selected' : '', applied ? 'applied' : ''],
@@ -2130,8 +2016,6 @@ function renderModuleCard(entry: CsmModuleEntry, state: ModuleSidebarRenderState
 		titleDisplay: truncate(entry.name, 44),
 		titleBadges: applied ? [renderBadge(t('appliedBadge'), 'applied')] : [],
 		owner: `@${entry.owner}`,
-		mainClasses: ['module-preview-trigger'],
-		mainAttributes: `data-action="togglePreview" data-module-key="${escapeHtml(moduleKey)}" tabindex="0" role="button" aria-expanded="${previewOpen ? 'true' : 'false'}" aria-label="${escapeHtml(t('toggleReadmePreviewAria', { name: entry.name }))}"`,
 		headerToolsHtml: renderModuleHeaderTools([
 			`<label class="select-toolbar-item" title="${escapeHtml(t('selectModule'))}" aria-label="${escapeHtml(t('selectModule'))}"><input class="module-select" type="checkbox" data-role="select-toggle" data-action="toggleSelection" data-module-key="${escapeHtml(moduleKey)}" ${selected ? 'checked' : ''} aria-label="${escapeHtml(t('selectNamedModule', { name: entry.name }))}"></label>`,
 			renderActionToolbar([
@@ -2151,32 +2035,13 @@ function renderModuleCard(entry: CsmModuleEntry, state: ModuleSidebarRenderState
 			]),
 		]),
 		summary: truncate(summary, 132),
-		summaryClasses: ['module-preview-trigger'],
-		summaryAttributes: `data-action="togglePreview" data-module-key="${escapeHtml(moduleKey)}"`,
 		footerHtml: footerNote,
-		footerClasses: ['module-preview-trigger'],
-		footerAttributes: `data-action="togglePreview" data-module-key="${escapeHtml(moduleKey)}"`,
-		bodyExtrasHtml: preview,
 		metaBadges: [
 			renderBadge(getVisibilityLabel(entry.visibility), entry.visibility === 'private' ? 'private' : undefined),
 			renderBadge(t('branchBadge', { branch: entry.defaultBranch })),
 			...topics.map((topic) => renderBadge(topic)),
 		],
 	});
-}
-
-function renderReadmePreview(moduleKey: string, previewState: ReadmePreviewState | undefined): string {
-	if (!previewState || previewState.moduleKey !== moduleKey) {
-		return '';
-	}
-	const title = escapeHtml(previewState.title);
-	if (previewState.status === 'loading') {
-		return `<section class="readme-preview" data-role="readme-preview"><div class="readme-preview-header"><span>${escapeHtml(t('readmePreviewTitle'))}</span><span>${title}</span></div><div class="readme-preview-loading"><div class="skeleton-line medium"></div><div class="skeleton-line"></div><div class="skeleton-line short"></div></div></section>`;
-	}
-	if (previewState.status === 'error') {
-		return `<section class="readme-preview" data-role="readme-preview"><div class="readme-preview-header"><span>${escapeHtml(t('readmePreviewTitle'))}</span><span>${title}</span></div><div class="readme-preview-status readme-preview-error">${escapeHtml(previewState.message ?? t('unableToLoadReadmePreview'))}</div></section>`;
-	}
-	return `<section class="readme-preview" data-role="readme-preview"><div class="readme-preview-header"><span>${escapeHtml(t('readmePreviewTitle'))}</span><span>${title}</span></div><div class="readme-preview-body">${previewState.html ?? ''}</div></section>`;
 }
 
 function renderEmptyState(title: string, message: string, actionHtml = ''): string {

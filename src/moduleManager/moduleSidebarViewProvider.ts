@@ -4,7 +4,7 @@ import { ViewState } from './moduleTreeTypes';
 import { IModuleViewProvider, ModuleListScope, ModuleSortDirection, ModuleSortField, ModuleSortState, SidebarWorkspaceContext } from './interfaces';
 import { DEFAULT_MODULE_SORT_STATE, isModuleSortDirection, isModuleSortField, normalizeModuleSortState } from './sort';
 import { t } from './messages';
-import { ReadmePreviewState, renderModuleSidebarHtml } from './moduleSidebarHtml';
+import { renderModuleSidebarHtml } from './moduleSidebarHtml';
 
 interface ModuleSidebarActions {
 	onLogin: () => void;
@@ -13,7 +13,7 @@ interface ModuleSidebarActions {
 	onToggleStar: (entry: CsmModuleEntry) => void;
 	onOpenReadme: (entry: CsmModuleEntry) => void;
 	onOpenRepository?: (entry: CsmModuleEntry) => void;
-	onPreviewReadme: (entry: CsmModuleEntry, webview: vscode.Webview) => Promise<string>;
+	onPreviewReadme?: (entry: CsmModuleEntry) => void;
 	onApplySelection: (entry?: CsmModuleEntry) => void;
 	onRemoveModule: (entry: CsmModuleEntry) => void;
 	onUpdateModule: (entry: CsmModuleEntry) => void;
@@ -68,7 +68,6 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IM
 	private offlineMode = false;
 	private sortState: ModuleSortState = DEFAULT_MODULE_SORT_STATE;
 	private readonly staleModuleKeys = new Set<string>();
-	private previewState: ReadmePreviewState | undefined;
 	private static readonly INITIAL_RENDER_LIMIT = 100;
 	private renderLimit = ModuleSidebarViewProvider.INITIAL_RENDER_LIMIT;
 
@@ -128,7 +127,6 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IM
 			this.state = 'ready';
 		}
 		this.pruneSelection();
-		this.prunePreview();
 		this.render();
 	}
 
@@ -285,44 +283,9 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IM
 			}
 			case 'togglePreview': {
 				const entry = message.moduleKey ? this.findEntry(message.moduleKey) : undefined;
-				if (!entry || !this.view) {
-					return;
+				if (entry) {
+					this.actions.onOpenReadme(entry);
 				}
-				const moduleKey = ModuleSidebarViewProvider.getModuleKey(entry);
-				if (this.previewState?.moduleKey === moduleKey && this.previewState.status !== 'loading') {
-					this.previewState = undefined;
-					this.render();
-					return;
-				}
-				this.previewState = {
-					moduleKey,
-					title: entry.name,
-					status: 'loading',
-				};
-				this.render();
-				try {
-					const html = await this.actions.onPreviewReadme(entry, this.view.webview);
-					if (this.previewState?.moduleKey !== moduleKey) {
-						return;
-					}
-					this.previewState = {
-						moduleKey,
-						title: entry.name,
-						status: 'ready',
-						html,
-					};
-				} catch (error) {
-					if (this.previewState?.moduleKey !== moduleKey) {
-						return;
-					}
-					this.previewState = {
-						moduleKey,
-						title: entry.name,
-						status: 'error',
-						message: error instanceof Error ? error.message : t('unableToLoadReadmePreview'),
-					};
-				}
-				this.render();
 				return;
 			}
 			case 'applyOne': {
@@ -429,12 +392,6 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IM
 		}
 	}
 
-	private prunePreview(): void {
-		if (this.previewState && !this.findEntry(this.previewState.moduleKey)) {
-			this.previewState = undefined;
-		}
-	}
-
 	private render(): void {
 		if (!this.view) {
 			return;
@@ -465,7 +422,6 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IM
 			offlineMode: this.offlineMode,
 			sortState: this.sortState,
 			staleModuleKeys: this.staleModuleKeys,
-			previewState: this.previewState,
 			renderLimit: this.renderLimit,
 			initialRenderLimit: ModuleSidebarViewProvider.INITIAL_RENDER_LIMIT,
 			webviewCspSource: this.view?.webview.cspSource,

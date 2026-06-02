@@ -201,7 +201,7 @@ suite('Module Manager Tests', () => {
 		assert.strictEqual(store.isModuleSnapshotExpired(snapshot, 1), true);
 	});
 
-	test('ReadmeAssetCache renders raw HTML img tags in README previews', async () => {
+	test('ReadmeAssetCache saves and reads markdown to/from cache', async () => {
 		const storageRoot = vscode.Uri.file(path.join(os.tmpdir(), `csm-readme-assets-${Date.now()}`));
 		const cache = new ReadmeAssetCache(storageRoot);
 		const entry: CsmModuleEntry = {
@@ -214,28 +214,24 @@ suite('Module Manager Tests', () => {
 			defaultBranch: 'main',
 			repoUrl: 'https://github.com/org/module-a',
 		};
-		const originalFetch = globalThis.fetch;
-		globalThis.fetch = (async () => ({
-			ok: true,
-			status: 200,
-			arrayBuffer: async () => new Uint8Array([1, 2, 3, 4]).buffer,
-		}) as Response) as typeof fetch;
 
 		try {
-			const panel = vscode.window.createWebviewPanel('csmModulesReadmeTest', 'README', vscode.ViewColumn.One, {});
-			const html = await cache.renderMarkdownFragment(
-				entry,
-				'<img width="385" height="322" alt="image" src="https://github.com/user-attachments/assets/ff122167-f2f9-4ab4-8905-d0d5b468217e" />',
-				panel.webview,
-			);
+			const sampleMarkdown = '# Hello\n\nThis is a README with an image:\n\n<img width="385" height="322" alt="image" src="https://example.com/image.png" />\n\nEnd.';
 
-			assert.ok(html.includes('<img alt="image"'));
-			assert.ok(html.includes('width="385"'));
-			assert.ok(html.includes('height="322"'));
-			assert.ok(html.includes('<p><img'));
-			assert.ok(!html.includes('&lt;img'));
+			// Save markdown to cache
+			await cache.saveMarkdown(entry, sampleMarkdown);
+
+			// Read it back
+			const readme = await cache.readMarkdown(entry);
+			assert.ok(readme);
+			assert.ok(readme!.includes('# Hello'));
+			assert.ok(readme!.includes('<img width="385"'));
+			assert.ok(readme!.includes('End.'));
+
+			// Verify URI
+			const markdownUri = cache.getMarkdownUri(entry);
+			assert.ok(markdownUri.path.endsWith('README.md'));
 		} finally {
-			globalThis.fetch = originalFetch;
 			await removeWritableTree(storageRoot.fsPath);
 		}
 	});

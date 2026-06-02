@@ -58,14 +58,27 @@ export async function loadReadmeMarkdown(
     }
 }
 
-export async function buildReadmePreviewHtml(
+/**
+ * 使用 VS Code 内置 Markdown 预览打开模块 README。
+ * 确保 README 已缓存到磁盘后，调用 markdown.showPreview 命令。
+ */
+export async function openBuiltinReadmePreview(
     entry: CsmModuleEntry,
-    webview: vscode.Webview,
     deps: ReadmePreviewServiceDeps,
-): Promise<string> {
-    const readme = await loadReadmeMarkdown(entry, { warnOnMissingSession: false }, deps);
+): Promise<void> {
+    const readme = await loadReadmeMarkdown(entry, { warnOnMissingSession: true }, deps);
+    if (typeof readme === 'undefined') {
+        return;
+    }
+
     const markdownContent = readme || getUnavailableReadmeMarkdown();
-    return deps.readmeAssetCache.renderMarkdownFragment(entry, markdownContent, webview);
+
+    // 确保 markdown 已缓存到磁盘
+    await deps.readmeAssetCache.saveMarkdown(entry, markdownContent);
+    const markdownUri = deps.readmeAssetCache.getMarkdownUri(entry);
+
+    // 打开 VS Code 内置 Markdown 预览
+    await vscode.commands.executeCommand('markdown.showPreview', markdownUri);
 }
 
 function getReadmeCacheKey(entry: CsmModuleEntry): string {
