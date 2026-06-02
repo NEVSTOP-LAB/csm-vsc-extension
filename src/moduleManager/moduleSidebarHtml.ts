@@ -647,7 +647,7 @@ export function renderModuleSidebarHtml(state: ModuleSidebarRenderState): string
 			--module-font-sm: 12px;
 			--module-font-md: 13px;
 			--module-font-lg: 15px;
-			--module-icon-size: 16px;
+			--module-icon-size: 18px;
 		}
 		[hidden] {
 			display: none !important;
@@ -1494,7 +1494,7 @@ export function renderLocalWorkspaceViewHtml(state: LocalWorkspaceRenderState): 
 			--module-font-sm: 12px;
 			--module-font-md: 13px;
 			--module-font-lg: 15px;
-			--module-icon-size: 16px;
+			--module-icon-size: 18px;
 		}
 		body {
 			margin: 0;
@@ -1718,8 +1718,8 @@ export function renderLocalWorkspaceViewHtml(state: LocalWorkspaceRenderState): 
 			color: var(--vscode-descriptionForeground);
 		}
 		.icon-button svg {
-			width: var(--module-icon-size, 16px);
-			height: var(--module-icon-size, 16px);
+			width: var(--module-icon-size, 18px);
+			height: var(--module-icon-size, 18px);
 		}
 		.icon-button[disabled] {
 			opacity: 0.5;
