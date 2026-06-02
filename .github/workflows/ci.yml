@@ -179,7 +179,12 @@ jobs:
         #   - Tag 发布：年.月.build（三段式 semver），例如 2026.6.42
         #   - Main 分支：年.月.build-beta（预发布 semver），例如 2026.6.42-beta
         # --no-update-package-json：仅将版本号注入 VSIX 包，不修改 package.json
-        run: npx @vscode/vsce@3.7.1 package ${{ steps.version.outputs.build_version }} --no-dependencies --no-update-package-json
+        run: |
+          if [[ "${{ steps.version.outputs.is_prerelease }}" == "true" ]]; then
+            npx @vscode/vsce@3.7.1 package ${{ steps.version.outputs.build_version }} --no-dependencies --no-update-package-json --pre-release
+          else
+            npx @vscode/vsce@3.7.1 package ${{ steps.version.outputs.build_version }} --no-dependencies --no-update-package-json
+          fi
 
       - name: 上传 VSIX Artifact
         uses: actions/upload-artifact@v4
