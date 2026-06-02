@@ -222,10 +222,10 @@ export class WorkspaceModuleService {
 		nextMethod: ModuleApplyMethod,
 		authToken?: string,
 		repoRoot?: string,
-	): Promise<LocalModuleConfigEntry> {
+	): Promise<ModuleUpdateResult> {
 		const normalizedEntry = this.normalizeConfigEntry(entry);
 		if (normalizedEntry.method === nextMethod) {
-			return normalizedEntry;
+			return { entry: normalizedEntry };
 		}
 
 		if (nextMethod === 'copy') {
@@ -237,19 +237,19 @@ export class WorkspaceModuleService {
 				await this.ensureSwitchTargetExists(workspaceRoot, switchedEntry);
 				await this.applyEntryLockState(workspaceRoot, switchedEntry);
 			}
-			return switchedEntry;
+			return { entry: switchedEntry };
 		}
 
 		if (!repoRoot) {
 			throw new Error('Git repository root is required to convert a copied module to submodule mode.');
 		}
 
-		const switchedEntry = await this.convertCopyToSubmodule(repoRoot, normalizedEntry, authToken);
+		const result = await this.convertCopyToSubmodule(repoRoot, normalizedEntry, authToken);
 		if (this.isEntryLocked(normalizedEntry)) {
-			await this.ensureSwitchTargetExists(workspaceRoot, switchedEntry);
-			await this.applyEntryLockState(workspaceRoot, switchedEntry);
+			await this.ensureSwitchTargetExists(workspaceRoot, result.entry);
+			await this.applyEntryLockState(workspaceRoot, result.entry);
 		}
-		return switchedEntry;
+		return result;
 	}
 
 	public async initializeConfig(repoRoot: string, rootRelativePath: string): Promise<LocalModuleConfig> {
@@ -760,7 +760,7 @@ export class WorkspaceModuleService {
 		repoRoot: string,
 		entry: LocalModuleConfigEntry,
 		authToken?: string,
-	): Promise<LocalModuleConfigEntry> {
+	): Promise<ModuleUpdateResult> {
 		const normalizedEntry = this.normalizeConfigEntry(entry);
 		if (!await this.gitRunner.isAvailable()) {
 			throw new Error('git unavailable');
@@ -777,6 +777,10 @@ export class WorkspaceModuleService {
 			`.csm-switch-backup-${path.basename(targetPath)}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
 		);
 		let cleanupBackup = false;
+
+		// Create a zip backup before destructively replacing the local copy directory.
+		const zipBackupPath = await this.backupModuleDirectoryAsZip(repoRoot, normalizedEntry);
+
 		try {
 			await this.runGit(tempRoot, ['clone', '--branch', branch, normalizedEntry.source, checkoutPath], authToken, normalizedEntry.source);
 			if (expectedRef) {
@@ -794,12 +798,15 @@ export class WorkspaceModuleService {
 			);
 			await this.runGit(repoRoot, ['submodule', 'absorbgitdirs', '--', targetRelativePath]);
 			const ref = (await this.runGit(targetPath, ['rev-parse', 'HEAD'])).trim();
-			return this.normalizeConfigEntry({
-				...normalizedEntry,
-				method: 'submodule',
-				ref,
-				branch,
-			});
+			return {
+				entry: this.normalizeConfigEntry({
+					...normalizedEntry,
+					method: 'submodule',
+					ref,
+					branch,
+				}),
+				backupPath: zipBackupPath,
+			};
 		} catch (error) {
 			if (cleanupBackup) {
 				try {

@@ -965,9 +965,11 @@ suite('ModuleManagerController Regression Tests', () => {
 			) => {
 				switchCall = { workspaceRoot, nextMethod, repoRoot, authToken };
 				return {
-					...entry,
-					method: 'submodule',
-					ref: 'def456',
+					entry: {
+						...entry,
+						method: 'submodule',
+						ref: 'def456',
+					},
 				};
 			},
 			withAppliedModule: (currentConfig: LocalModuleConfig, entry: LocalModuleConfig['modules'][string]) => {

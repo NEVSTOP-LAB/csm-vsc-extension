@@ -623,14 +623,29 @@ export class ModuleManagerController {
 		const moduleLabel = `${target.owner}/${target.name}`;
 		const currentMethodLabel = getApplyMethodLabel(target.method);
 		const nextMethodLabel = getApplyMethodLabel(nextMethod);
-		const confirmation = await vscode.window.showWarningMessage(
-			t('switchMethodConfirmation', {
+
+		// When switching from copy to submodule, warn about data loss and mention the zip backup.
+		const isCopyToSubmodule = target.method === 'copy';
+		const backupDir = isCopyToSubmodule ? path.join(repoRoot, '.csm-module-backups') : '';
+		const confirmationMessage = isCopyToSubmodule
+			? t('switchMethodConfirmationWithBackup', {
 				module: moduleLabel,
 				repository,
 				currentMethod: currentMethodLabel,
 				targetMethod: nextMethodLabel,
 				targetPath: target.path,
-			}),
+				backupDirectory: backupDir,
+			})
+			: t('switchMethodConfirmation', {
+				module: moduleLabel,
+				repository,
+				currentMethod: currentMethodLabel,
+				targetMethod: nextMethodLabel,
+				targetPath: target.path,
+			});
+
+		const confirmation = await vscode.window.showWarningMessage(
+			confirmationMessage,
 			{ modal: true },
 			t('switchMethodAction'),
 		);
@@ -639,7 +654,7 @@ export class ModuleManagerController {
 		}
 
 		try {
-			let switchedEntry: LocalModuleConfigEntry | undefined;
+			let switchResult: ModuleUpdateResult | undefined;
 			await vscode.window.withProgress(
 				{
 					location: vscode.ProgressLocation.Notification,
@@ -647,12 +662,21 @@ export class ModuleManagerController {
 					cancellable: false,
 				},
 				async () => {
-					switchedEntry = await this.workspaceModuleService.switchModuleMethod(repoRoot, target, nextMethod, authToken, repoRoot);
-					config = this.workspaceModuleService.withAppliedModule(config!, switchedEntry);
+					switchResult = await this.workspaceModuleService.switchModuleMethod(repoRoot, target, nextMethod, authToken, repoRoot);
+					config = this.workspaceModuleService.withAppliedModule(config!, switchResult.entry);
 					await this.workspaceModuleService.writeConfig(config);
 				},
 			);
-			void vscode.window.showInformationMessage(t('switchMethodSuccess', { module: moduleLabel, method: nextMethodLabel }));
+
+			if (switchResult?.backupPath) {
+				void vscode.window.showInformationMessage(t('switchMethodSuccessWithBackup', {
+					module: moduleLabel,
+					method: nextMethodLabel,
+					backupPath: switchResult.backupPath,
+				}));
+			} else {
+				void vscode.window.showInformationMessage(t('switchMethodSuccess', { module: moduleLabel, method: nextMethodLabel }));
+			}
 		} catch (error) {
 			const message = getUserFacingErrorMessage(error, 'update');
 			this.logger.error(`Failed to switch module ${target.owner}/${target.name} to ${nextMethod}: ${message}`);

@@ -1353,8 +1353,8 @@ suite('Module Manager Tests', () => {
 				workspaceRoot,
 			);
 
-			assert.strictEqual(result.method, 'copy');
-			assert.strictEqual(result.ref, 'abc123');
+			assert.strictEqual(result.entry.method, 'copy');
+			assert.strictEqual(result.entry.ref, 'abc123');
 			assert.strictEqual(await fs.readFile(path.join(targetPath, 'README.md'), 'utf8'), 'demo');
 			assert.deepStrictEqual(gitRunner.calls.map((call) => call.args.join(' ')), [
 				'submodule deinit -f -- csm/module-a',
@@ -1464,8 +1464,8 @@ suite('Module Manager Tests', () => {
 				repoRoot,
 			);
 
-			assert.strictEqual(result.method, 'submodule');
-			assert.strictEqual(result.ref, 'abc123');
+			assert.strictEqual(result.entry.method, 'submodule');
+			assert.strictEqual(result.entry.ref, 'abc123');
 			assert.ok(gitRunner.calls.some((call) => call.args[0] === 'clone'));
 			assert.ok(gitRunner.calls.some((call) => call.args.join(' ') === 'checkout abc123'));
 			assert.ok(gitRunner.calls.some((call) => call.args.join(' ') === 'submodule add -f -b main https://github.com/org/module-a csm/module-a'));

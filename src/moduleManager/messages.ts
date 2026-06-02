@@ -222,6 +222,10 @@ const messages = {
 		en: 'Switch module {module} in {repository} from {currentMethod} to {targetMethod}? This recreates {targetPath} from the configured source repository.',
 		zh: '要在 {repository} 中将模块 {module} 从 {currentMethod} 切换为 {targetMethod} 吗？这会根据已配置的源仓库重新创建 {targetPath}。',
 	},
+	switchMethodConfirmationWithBackup: {
+		en: 'Switch module {module} in {repository} from {currentMethod} to {targetMethod}? This replaces {targetPath} with a fresh clone from the source repository. Any local changes in the current copy directory will be lost. A zip backup will be saved to {backupDirectory} before the switch.',
+		zh: '要在 {repository} 中将模块 {module} 从 {currentMethod} 切换为 {targetMethod} 吗？这会用源仓库的全新克隆替换 {targetPath}，当前 copy 目录中的所有本地修改将会丢失。切换前会在 {backupDirectory} 中保存一个 zip 备份。',
+	},
 	progressSwitchingMethod: {
 		en: 'Switching {module} to {method}...',
 		zh: '正在将 {module} 切换为 {method}...',
@@ -229,6 +233,10 @@ const messages = {
 	switchMethodSuccess: {
 		en: 'Switched {module} to {method}.',
 		zh: '已将 {module} 切换为 {method}。',
+	},
+	switchMethodSuccessWithBackup: {
+		en: 'Switched {module} to {method}. Backup saved to {backupPath}.',
+		zh: '已将 {module} 切换为 {method}。备份已保存到 {backupPath}。',
 	},
 	switchMethodFailed: {
 		en: 'Failed to switch module method: {message}',
