@@ -139,6 +139,15 @@ suite('CSMLogDocumentSymbolProvider — module lifecycle', () => {
         assert.strictEqual(syms[0].kind, KIND_CONSTRUCTOR);
     });
 
+    test('Module Created with hyphen date is detected', () => {
+        const syms = getSymbols([
+            '2026-03-20 17:32:59.425 [17:32:59.425] [Module Created] AI |  > HAL-AI.vi:5990002',
+        ]);
+        assert.strictEqual(syms.length, 1);
+        assert.strictEqual(syms[0].name, 'Module Created: AI');
+        assert.strictEqual(syms[0].kind, KIND_CONSTRUCTOR);
+    });
+
     test('Module Destroyed is detected', () => {
         const syms = getSymbols([
             '2026/03/20 17:33:05.250 [17:33:05.250] [Module Destroyed] AI',
