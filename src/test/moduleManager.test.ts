@@ -230,7 +230,7 @@ suite('Module Manager Tests', () => {
 
 			// Verify URI
 			const markdownUri = cache.getMarkdownUri(entry);
-			assert.ok(markdownUri.path.endsWith('README.md'));
+			assert.ok(markdownUri.fsPath.endsWith('README.md'));
 		} finally {
 			await removeWritableTree(storageRoot.fsPath);
 		}
