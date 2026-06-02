@@ -6,8 +6,6 @@ import { clearAnchorCache } from './hoverData';
 import { ModuleManagerController } from './moduleManager';
 
 export function activate(context: vscode.ExtensionContext) {
-	console.log('[CSM] activate() START');
-
 	// 语言功能（高亮、Hover、Outline）必须在模块管理器之前注册，
 	// 确保即使模块管理器初始化失败，csmlog/lvcsm 的基本语言特性仍可用。
 	try {
@@ -20,7 +18,6 @@ export function activate(context: vscode.ExtensionContext) {
 				clearAnchorCache(document.uri.toString());
 			}),
 		);
-		console.log('[CSM] Language providers registered (csmlog hover + csmlog symbols + lvcsm symbols)');
 	} catch (err) {
 		console.error('[CSM] Failed to register language providers:', err);
 	}
@@ -30,12 +27,9 @@ export function activate(context: vscode.ExtensionContext) {
 	try {
 		const moduleManagerController = new ModuleManagerController(context);
 		moduleManagerController.register(context.subscriptions);
-		console.log('[CSM] Module manager initialized');
 	} catch (err) {
 		console.error('[CSM] Failed to initialize module manager (language features remain available):', err);
 	}
-
-	console.log('[CSM] activate() END');
 }
 
 export function deactivate() { }
