@@ -5,9 +5,13 @@
 /**
  * 完整日期时间戳：YYYY/MM/DD HH:MM:SS.mmm
  *
+ * 支持两种格式：
+ *   2025/05/12 20:18:17.597           (裸格式)
+ *   [2025/05/12 20:18:17.597]         (方括号包裹 — 部分 CSM 日志源采用)
+ *
  * 使用 String.raw 确保反斜杠在正则和字符串拼接中一致。
  */
-export const CSMLOG_DATETIME_PATTERN = String.raw`\d{4}[/-]\d{2}[/-]\d{2}\s+\d{2}:\d{2}:\d{2}\.\d{3}`;
+export const CSMLOG_DATETIME_PATTERN = String.raw`\[?\d{4}[/-]\d{2}[/-]\d{2}\s+\d{2}:\d{2}:\d{2}\.\d{3}\]?`;
 
 /**
  * 完整日期时间戳 RegExp（锚定行首）。
