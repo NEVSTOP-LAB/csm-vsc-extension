@@ -1647,7 +1647,7 @@ suite('ModuleManagerController Regression Tests', () => {
 
 		const rendered = mocked.__getLastWebviewView();
 		assert.ok(!rendered?.html.includes('Workspace: repo'));
-		assert.ok(rendered?.html.includes('Root: csm/'));
+		assert.ok(rendered?.html.includes('csm/'));
 		assert.ok(rendered?.html.includes('1 applied'));
 		assert.ok(rendered?.html.includes('module-a'));
 		assert.ok(rendered?.html.includes('module-b'));
@@ -1968,7 +1968,7 @@ suite('ModuleManagerController Regression Tests', () => {
 
 		const rendered = mocked.__getLastWebviewView();
 		assert.ok(!rendered?.html.includes('Workspace: plain-workspace'));
-		assert.ok(rendered?.html.includes('Root: csm/'));
+		assert.ok(rendered?.html.includes('csm/'));
 		assert.ok(rendered?.html.includes('1 applied'));
 		assert.ok(rendered?.html.includes('module-a'));
 		assert.ok(rendered?.html.includes('module-b'));

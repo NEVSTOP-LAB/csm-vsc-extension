@@ -17,6 +17,8 @@ export interface SidebarWorkspaceContext {
 	staleModuleKeys?: string[];
 	managedModules?: LocalManagedModuleEntry[];
 	unmanagedFolders?: LocalUnmanagedFolderEntry[];
+	/** 工作区根目录检测到的 LabVIEW 版本显示名（如 "lv2020"） */
+	workspaceLabviewVersion?: string;
 }
 
 /**

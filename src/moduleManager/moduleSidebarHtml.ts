@@ -14,6 +14,8 @@ export interface LocalWorkspaceRenderState {
 	workspaceLabel?: string;
 	moduleRoot?: string;
 	gitAvailable: boolean;
+	/** 工作区根目录检测到的 LabVIEW 版本显示名 */
+	workspaceLabviewVersion?: string;
 }
 
 export interface ModuleSidebarRenderState extends LocalWorkspaceRenderState {
@@ -1206,8 +1208,8 @@ export function renderModuleSidebarHtml(state: ModuleSidebarRenderState): string
 			<span class="toolbar-meta" data-role="toolbar-meta" data-scope="${escapeHtml(state.scope)}" data-applied-count="${visibleEntries.toolbarCounts.appliedCount}" data-total-count="${visibleEntries.toolbarCounts.totalCount}" data-filtered-count="${visibleEntries.toolbarCounts.filteredCount}" data-workspace-count="${visibleEntries.toolbarCounts.workspaceCount}" data-catalog-count="${visibleEntries.toolbarCounts.catalogCount}" data-public-count="${visibleEntries.toolbarCounts.publicCount}" data-private-count="${visibleEntries.toolbarCounts.privateCount}" data-signed-in="${state.signedIn ? 'true' : 'false'}">${toolbarMetaText}</span>
 			<div class="scope-switch" role="toolbar" aria-label="${escapeHtml(t('scopeToolbarLabel'))}">${scopeOptions.map((option) => renderScopeToolbarButton(option.value, option.label, state.scope === option.value)).join('')}</div>
 		</div>
-			${catalogScopeSummaryText || (state.workspaceLabel && state.moduleRoot)
-			? `<div class="workspace-summary">${catalogScopeSummaryText ? `<span>${escapeHtml(catalogScopeSummaryText)}</span>` : ''}${state.workspaceLabel && state.moduleRoot ? `<span>${escapeHtml(t('rootLabel'))}: ${escapeHtml(state.moduleRoot)}/</span>` : ''}</div>`
+			${catalogScopeSummaryText || (state.workspaceLabel && state.moduleRoot) || state.workspaceLabviewVersion
+			? `<div class="workspace-summary">${catalogScopeSummaryText ? `<span>${escapeHtml(catalogScopeSummaryText)}</span>` : ''}${state.workspaceLabel && state.moduleRoot ? `<span>${escapeHtml(state.workspaceLabel)} &mdash; ${escapeHtml(state.moduleRoot)}/</span>` : ''}${state.workspaceLabviewVersion ? renderBadge(state.workspaceLabviewVersion, 'lv-version') : ''}</div>`
 			: ''}
 		${state.introTipVisible ? `<section class="notice" data-role="intro-tip"><div><strong>${escapeHtml(t('tipTitle'))}</strong><span>${escapeHtml(t('tipBody'))}</span></div><div class="notice-actions"><button class="icon-button" data-action="dismissIntroTip" title="${escapeHtml(t('dismissTip'))}" aria-label="${escapeHtml(t('dismissTip'))}">${renderIcon('close')}</button></div></section>` : ''}
 		${state.canInitializeWorkspace ? `<section class="notice"><div><strong>${escapeHtml(t('workspaceHintTitle'))}</strong><span>${escapeHtml(t('workspaceHintBody'))}</span></div><div class="notice-actions"><button class="toolbar-button callout" data-action="initializeWorkspace">${escapeHtml(t('initializeAction'))}</button></div></section>` : ''}

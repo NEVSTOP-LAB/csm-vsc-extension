@@ -1901,6 +1901,9 @@ export class ModuleManagerController {
 		const staleModuleKeys = await this.computeStaleModuleKeys(workspaceRoot, config);
 		const { entries: managedModules, configChanged } = await this.mapManagedModules(config, staleModuleKeys, workspaceRoot);
 
+		// 检测工作区根目录的 LabVIEW 版本
+		const workspaceVersionResult = await detectLabviewVersion(workspaceRoot);
+
 		// 如果版本检测有变化，写回配置持久化
 		if (configChanged && config) {
 			try {
@@ -1918,6 +1921,7 @@ export class ModuleManagerController {
 			staleModuleKeys,
 			managedModules,
 			unmanagedFolders: moduleRoot ? await this.mapUnmanagedFolders(workspaceRoot, moduleRoot, config) : [],
+			workspaceLabviewVersion: workspaceVersionResult?.display,
 		});
 	}
 
