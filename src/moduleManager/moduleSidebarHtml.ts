@@ -230,6 +230,7 @@ function getLocalManagedSearchText(entry: LocalManagedModuleEntry): string {
 		entry.branch,
 		entry.visibility,
 		getApplyMethodLabel(entry.method),
+		entry.labviewVersion ?? '',
 		...getVisibleModuleTopics(entry.topics),
 	].join(' ').toLowerCase();
 }
@@ -238,6 +239,7 @@ function getLocalUnmanagedSearchText(entry: LocalUnmanagedFolderEntry): string {
 	return [
 		entry.name,
 		entry.path,
+		entry.labviewVersion ?? '',
 		t('unmanagedBadge'),
 		t('localUnmanagedSummary'),
 	].join(' ').toLowerCase();
@@ -439,6 +441,7 @@ function renderLocalManagedCard(entry: LocalManagedModuleEntry, state: LocalWork
 		}),
 	]);
 	const metaBadges = [
+		...(entry.labviewVersion ? [renderBadge(entry.labviewVersion, 'lv-version')] : []),
 		renderBadge(t('managedBadge'), 'applied'),
 		renderBadge(locked ? t('lockedBadge') : t('unlockedBadge')),
 		renderBadge(getApplyMethodLabel(entry.method), entry.method),
@@ -498,7 +501,10 @@ function renderLocalUnmanagedCard(entry: LocalUnmanagedFolderEntry, state: Local
 		headerToolsHtml: renderModuleHeaderTools([openFolderButton, actions]),
 		summary: t('localUnmanagedSummary'),
 		bodyExtrasHtml: hint,
-		metaBadges: [renderBadge(t('unmanagedBadge'))],
+		metaBadges: [
+			...(entry.labviewVersion ? [renderBadge(entry.labviewVersion, 'lv-version')] : []),
+			renderBadge(t('unmanagedBadge')),
+		],
 	});
 }
 
@@ -1037,6 +1043,15 @@ export function renderModuleSidebarHtml(state: ModuleSidebarRenderState): string
 		.badge.submodule {
 			border-color: rgba(188, 63, 188, 0.4);
 			color: var(--vscode-terminal-ansiMagenta, #bc3fbc);
+		}
+		.badge.lv-version {
+			background: var(--vscode-button-background, #0078d4);
+			color: var(--vscode-button-foreground, #ffffff);
+			border-color: transparent;
+			font-weight: 600;
+			font-size: calc(var(--module-font-xs) * 1.05);
+			padding: 1px 7px;
+			letter-spacing: 0.3px;
 		}
 		.card-footer {
 			display: flex;
@@ -1689,6 +1704,15 @@ export function renderLocalWorkspaceViewHtml(state: LocalWorkspaceRenderState): 
 		.badge.submodule {
 			border-color: rgba(188, 63, 188, 0.4);
 			color: var(--vscode-terminal-ansiMagenta, #bc3fbc);
+		}
+		.badge.lv-version {
+			background: var(--vscode-button-background, #0078d4);
+			color: var(--vscode-button-foreground, #ffffff);
+			border-color: transparent;
+			font-weight: 600;
+			font-size: calc(var(--module-font-xs) * 1.05);
+			padding: 1px 7px;
+			letter-spacing: 0.3px;
 		}
 		.action-toolbar {
 			display: flex;
