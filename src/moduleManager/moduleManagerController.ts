@@ -16,7 +16,7 @@ import { getApplyMethodLabel, t } from './messages';
 import { openBuiltinReadmePreview, type ReadmePreviewServiceDeps } from './readmePreviewService';
 import { DEFAULT_MODULE_SORT_STATE, isModuleSortField, normalizeModuleSortState, sortModules } from './sort';
 import { getUserFacingErrorMessage } from './userFacingErrors';
-import { detectLabviewVersion } from './labviewVersionDetector';
+import { detectLabviewVersion, extractVersionFromTopics } from './labviewVersionDetector';
 
 const LOCAL_MODULE_CONFIG_GLOB = `**/{${LOCAL_MODULE_CONFIG_FILE},${LEGACY_LOCAL_MODULE_CONFIG_FILE}}`;
 const WORKSPACE_INIT_CONTEXT_KEY = CONTEXT_KEYS.canInitializeWorkspace;
@@ -1704,12 +1704,18 @@ export class ModuleManagerController {
 
 	private getVisibleModulesFromSnapshot(snapshot: ModuleCacheSnapshot | undefined): CsmModuleEntry[] {
 		const modules = snapshot?.modules ?? [];
-		if (!modules.some((module) => module.visibility === 'private')) {
-			return modules;
-		}
-		return this.shouldRevealPrivateCache(snapshot)
+		const result = !modules.some((module) => module.visibility === 'private')
 			? modules
-			: modules.filter((module) => module.visibility === 'public');
+			: this.shouldRevealPrivateCache(snapshot)
+				? modules
+				: modules.filter((module) => module.visibility === 'public');
+		// 为旧缓存中没有 labviewVersion 的模块补全版本信息
+		return result.map((m) => {
+			if (m.labviewVersion === undefined && m.topics?.length > 0) {
+				return { ...m, labviewVersion: extractVersionFromTopics(m.topics) };
+			}
+			return m;
+		});
 	}
 
 	private applyCachedModules(snapshot: ModuleCacheSnapshot | undefined): void {
