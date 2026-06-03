@@ -14,6 +14,8 @@ export interface LocalWorkspaceRenderState {
 	workspaceLabel?: string;
 	moduleRoot?: string;
 	gitAvailable: boolean;
+	/** 工作区根目录检测到的 LabVIEW 版本显示名 */
+	workspaceLabviewVersion?: string;
 }
 
 export interface ModuleSidebarRenderState extends LocalWorkspaceRenderState {
@@ -230,6 +232,7 @@ function getLocalManagedSearchText(entry: LocalManagedModuleEntry): string {
 		entry.branch,
 		entry.visibility,
 		getApplyMethodLabel(entry.method),
+		entry.labviewVersion ?? '',
 		...getVisibleModuleTopics(entry.topics),
 	].join(' ').toLowerCase();
 }
@@ -238,6 +241,7 @@ function getLocalUnmanagedSearchText(entry: LocalUnmanagedFolderEntry): string {
 	return [
 		entry.name,
 		entry.path,
+		entry.labviewVersion ?? '',
 		t('unmanagedBadge'),
 		t('localUnmanagedSummary'),
 	].join(' ').toLowerCase();
@@ -274,7 +278,11 @@ function getCatalogContent(state: ModuleSidebarRenderState): CatalogContent {
 	const filteredModules = query.length === 0
 		? getSortedModules(baseModules, state)
 		: getSortedModules(
-			baseModules.filter((entry) => matchesFilterQuery(getSearchText(entry), query)),
+			baseModules.filter((entry) => {
+				const moduleKey = getModuleKey(entry);
+				const localVersion = getLocalLabviewVersion(moduleKey, state);
+				return matchesFilterQuery(getSearchText(entry, localVersion), query);
+			}),
 			state,
 		);
 	const publicCount = baseModules.filter((entry) => entry.visibility === 'public').length;
@@ -439,6 +447,7 @@ function renderLocalManagedCard(entry: LocalManagedModuleEntry, state: LocalWork
 		}),
 	]);
 	const metaBadges = [
+		...(entry.labviewVersion ? [renderBadge(entry.labviewVersion, 'lv-version')] : []),
 		renderBadge(t('managedBadge'), 'applied'),
 		renderBadge(locked ? t('lockedBadge') : t('unlockedBadge')),
 		renderBadge(getApplyMethodLabel(entry.method), entry.method),
@@ -498,7 +507,10 @@ function renderLocalUnmanagedCard(entry: LocalUnmanagedFolderEntry, state: Local
 		headerToolsHtml: renderModuleHeaderTools([openFolderButton, actions]),
 		summary: t('localUnmanagedSummary'),
 		bodyExtrasHtml: hint,
-		metaBadges: [renderBadge(t('unmanagedBadge'))],
+		metaBadges: [
+			...(entry.labviewVersion ? [renderBadge(entry.labviewVersion, 'lv-version')] : []),
+			renderBadge(t('unmanagedBadge')),
+		],
 	});
 }
 
@@ -572,13 +584,14 @@ function getVisibleSidebarEntries(state: ModuleSidebarRenderState): {
 	};
 }
 
-function getSearchText(entry: CsmModuleEntry): string {
+function getSearchText(entry: CsmModuleEntry, localLabviewVersion?: string): string {
 	return [
 		entry.name,
 		entry.owner,
 		entry.description,
 		entry.defaultBranch,
 		entry.visibility,
+		entry.labviewVersion ?? localLabviewVersion ?? '',
 		...getVisibleModuleTopics(entry.topics),
 	].join(' ').toLowerCase();
 }
@@ -1012,11 +1025,14 @@ export function renderModuleSidebarHtml(state: ModuleSidebarRenderState): string
 			display: inline-flex;
 			align-items: center;
 			padding: 0 6px;
+			height: 18px;
+			line-height: 1;
 			border-radius: 10px;
 			font-size: var(--module-font-xs);
 			border: 1px solid var(--vscode-panel-border);
 			color: var(--vscode-descriptionForeground);
 			background: transparent;
+			white-space: nowrap;
 		}
 		.badge.private {
 			border-color: var(--vscode-inputValidation-warningBorder, var(--vscode-panel-border));
@@ -1037,6 +1053,12 @@ export function renderModuleSidebarHtml(state: ModuleSidebarRenderState): string
 		.badge.submodule {
 			border-color: rgba(188, 63, 188, 0.4);
 			color: var(--vscode-terminal-ansiMagenta, #bc3fbc);
+		}
+		.badge.lv-version {
+			background: transparent;
+			border-color: var(--vscode-button-background, #0078d4);
+			color: var(--vscode-button-background, #0078d4);
+			font-weight: 600;
 		}
 		.card-footer {
 			display: flex;
@@ -1141,11 +1163,31 @@ export function renderModuleSidebarHtml(state: ModuleSidebarRenderState): string
 		.skeleton {
 			padding-top: 12px;
 			padding-bottom: 12px;
+			border-radius: 6px;
+			animation: skeleton-pulse 1.8s ease-in-out infinite;
+		}
+		.skeleton-label {
+			font-size: var(--module-font-sm);
+			color: var(--vscode-descriptionForeground);
+			padding: 0 8px 8px;
+			animation: skeleton-pulse 1.8s ease-in-out infinite;
 		}
 		.skeleton-line {
 			height: 10px;
 			border-radius: 999px;
-			background: rgba(127, 127, 127, 0.28);
+			background: rgba(127, 127, 127, 0.18);
+			position: relative;
+			overflow: hidden;
+		}
+		.skeleton-line::after {
+			content: '';
+			position: absolute;
+			top: 0;
+			left: -100%;
+			width: 100%;
+			height: 100%;
+			background: linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.12) 40%, rgba(255, 255, 255, 0.18) 50%, rgba(255, 255, 255, 0.12) 60%, transparent 100%);
+			animation: shimmer 1.6s ease-in-out infinite;
 		}
 		.skeleton-line + .skeleton-line {
 			margin-top: 8px;
@@ -1155,6 +1197,14 @@ export function renderModuleSidebarHtml(state: ModuleSidebarRenderState): string
 		}
 		.skeleton-line.medium {
 			width: 68%;
+		}
+		@keyframes shimmer {
+			0% { left: -100%; }
+			100% { left: 100%; }
+		}
+		@keyframes skeleton-pulse {
+			0%, 100% { opacity: 0.6; }
+			50% { opacity: 1; }
 		}
 	</style>
 </head>
@@ -1190,8 +1240,8 @@ export function renderModuleSidebarHtml(state: ModuleSidebarRenderState): string
 			<span class="toolbar-meta" data-role="toolbar-meta" data-scope="${escapeHtml(state.scope)}" data-applied-count="${visibleEntries.toolbarCounts.appliedCount}" data-total-count="${visibleEntries.toolbarCounts.totalCount}" data-filtered-count="${visibleEntries.toolbarCounts.filteredCount}" data-workspace-count="${visibleEntries.toolbarCounts.workspaceCount}" data-catalog-count="${visibleEntries.toolbarCounts.catalogCount}" data-public-count="${visibleEntries.toolbarCounts.publicCount}" data-private-count="${visibleEntries.toolbarCounts.privateCount}" data-signed-in="${state.signedIn ? 'true' : 'false'}">${toolbarMetaText}</span>
 			<div class="scope-switch" role="toolbar" aria-label="${escapeHtml(t('scopeToolbarLabel'))}">${scopeOptions.map((option) => renderScopeToolbarButton(option.value, option.label, state.scope === option.value)).join('')}</div>
 		</div>
-			${catalogScopeSummaryText || (state.workspaceLabel && state.moduleRoot)
-			? `<div class="workspace-summary">${catalogScopeSummaryText ? `<span>${escapeHtml(catalogScopeSummaryText)}</span>` : ''}${state.workspaceLabel && state.moduleRoot ? `<span>${escapeHtml(t('rootLabel'))}: ${escapeHtml(state.moduleRoot)}/</span>` : ''}</div>`
+			${catalogScopeSummaryText || (state.workspaceLabel && state.moduleRoot) || state.workspaceLabviewVersion
+			? `<div class="workspace-summary">${catalogScopeSummaryText ? `<span>${escapeHtml(catalogScopeSummaryText)}</span>` : ''}${state.workspaceLabel && state.moduleRoot ? `<span>${escapeHtml(state.workspaceLabel)} &mdash; ${escapeHtml(state.moduleRoot)}/</span>` : ''}${state.workspaceLabviewVersion ? `<span>${escapeHtml(state.workspaceLabviewVersion)}</span>` : ''}</div>`
 			: ''}
 		${state.introTipVisible ? `<section class="notice" data-role="intro-tip"><div><strong>${escapeHtml(t('tipTitle'))}</strong><span>${escapeHtml(t('tipBody'))}</span></div><div class="notice-actions"><button class="icon-button" data-action="dismissIntroTip" title="${escapeHtml(t('dismissTip'))}" aria-label="${escapeHtml(t('dismissTip'))}">${renderIcon('close')}</button></div></section>` : ''}
 		${state.canInitializeWorkspace ? `<section class="notice"><div><strong>${escapeHtml(t('workspaceHintTitle'))}</strong><span>${escapeHtml(t('workspaceHintBody'))}</span></div><div class="notice-actions"><button class="toolbar-button callout" data-action="initializeWorkspace">${escapeHtml(t('initializeAction'))}</button></div></section>` : ''}
@@ -1664,11 +1714,14 @@ export function renderLocalWorkspaceViewHtml(state: LocalWorkspaceRenderState): 
 			display: inline-flex;
 			align-items: center;
 			padding: 0 6px;
+			height: 18px;
+			line-height: 1;
 			border-radius: 10px;
 			font-size: var(--module-font-xs);
 			border: 1px solid var(--vscode-panel-border);
 			color: var(--vscode-descriptionForeground);
 			background: transparent;
+			white-space: nowrap;
 		}
 		.badge.private {
 			border-color: var(--vscode-inputValidation-warningBorder, var(--vscode-panel-border));
@@ -1689,6 +1742,12 @@ export function renderLocalWorkspaceViewHtml(state: LocalWorkspaceRenderState): 
 		.badge.submodule {
 			border-color: rgba(188, 63, 188, 0.4);
 			color: var(--vscode-terminal-ansiMagenta, #bc3fbc);
+		}
+		.badge.lv-version {
+			background: transparent;
+			border-color: var(--vscode-button-background, #0078d4);
+			color: var(--vscode-button-background, #0078d4);
+			font-weight: 600;
 		}
 		.action-toolbar {
 			display: flex;
@@ -1865,7 +1924,7 @@ function renderCatalogEmptyState(state: ModuleSidebarRenderState): string {
 	}
 
 	if (state.state === 'loading' && state.modules.length === 0) {
-		return `<section class="list">${[1, 2, 3].map(() => renderSkeletonCard()).join('')}</section>`;
+		return `<section class="list"><div class="skeleton-label">${escapeHtml(state.message || t('loadingModules'))}</div>${[1, 2, 3].map(() => renderSkeletonCard()).join('')}</section>`;
 	}
 
 	if (state.state === 'error' && state.modules.length === 0) {
@@ -1987,6 +2046,11 @@ function renderContent(
 	return `${statusBanner}<section class="list">${workspaceSection}${catalogSection}</section>${showMoreButton}${renderFilterEmptyState()}`;
 }
 
+function getLocalLabviewVersion(moduleKey: string, state: ModuleSidebarRenderState): string | undefined {
+	const localEntry = state.managedModules.find((m) => m.moduleKey === moduleKey);
+	return localEntry?.labviewVersion;
+}
+
 function renderModuleCard(entry: CsmModuleEntry, state: ModuleSidebarRenderState): string {
 	const moduleKey = getModuleKey(entry);
 	const selected = state.selectedModuleKeys.has(moduleKey);
@@ -1999,7 +2063,7 @@ function renderModuleCard(entry: CsmModuleEntry, state: ModuleSidebarRenderState
 			? t('recordedUnderRoot', { workspace: state.workspaceLabel, root: state.moduleRoot })
 			: t('recordedForWorkspace', { workspace: state.workspaceLabel }))}${stale ? ` <span class="badge stale">${escapeHtml(t('staleDirectoryMissing'))}</span>` : ''}</div>`
 		: '<span class="card-footer-spacer"></span>';
-	const searchText = escapeHtml(getSearchText(entry));
+	const searchText = escapeHtml(getSearchText(entry, getLocalLabviewVersion(moduleKey, state)));
 	const vscodeContext = escapeHtml(JSON.stringify({
 		webviewSection: 'moduleCard',
 		moduleKey,
@@ -2007,6 +2071,9 @@ function renderModuleCard(entry: CsmModuleEntry, state: ModuleSidebarRenderState
 		moduleSelected: selected,
 		preventDefaultContextMenuItems: true,
 	}));
+
+	// 优先使用 GitHub topics 中的版本；若已应用到本地，则回退到本地检测的版本
+	const labviewVersion = entry.labviewVersion ?? getLocalLabviewVersion(moduleKey, state);
 
 	return renderModuleCardShell({
 		articleClasses: [selected ? 'selected' : '', applied ? 'applied' : ''],
@@ -2037,6 +2104,7 @@ function renderModuleCard(entry: CsmModuleEntry, state: ModuleSidebarRenderState
 		summary: truncate(summary, 132),
 		footerHtml: footerNote,
 		metaBadges: [
+			...(labviewVersion ? [renderBadge(labviewVersion, 'lv-version')] : []),
 			renderBadge(getVisibilityLabel(entry.visibility), entry.visibility === 'private' ? 'private' : undefined),
 			renderBadge(t('branchBadge', { branch: entry.defaultBranch })),
 			...topics.map((topic) => renderBadge(topic)),

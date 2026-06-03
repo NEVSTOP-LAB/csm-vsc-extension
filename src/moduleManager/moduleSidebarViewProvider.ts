@@ -61,6 +61,7 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IM
 	private readonly localUnmanagedFoldersById = new Map<string, LocalUnmanagedFolderEntry>();
 	private workspaceLabel: string | undefined;
 	private moduleRoot: string | undefined;
+	private workspaceLabviewVersion: string | undefined;
 	private filterQuery = '';
 	private includeAppliedModules = false;
 	private scope: ModuleListScope = 'all';
@@ -105,9 +106,13 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IM
 		this.render();
 	}
 
-	public setLoading(message = t('loadingModules')): void {
+	public setLoading(message = t('loadingModules'), forceSkeleton = false): void {
 		this.state = 'loading';
 		this.message = message;
+		if (forceSkeleton) {
+			this.modules = [];
+			this.renderLimit = ModuleSidebarViewProvider.INITIAL_RENDER_LIMIT;
+		}
 		this.render();
 	}
 
@@ -126,6 +131,17 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IM
 		} else {
 			this.state = 'ready';
 		}
+		this.pruneSelection();
+		this.render();
+	}
+
+	/**
+	 * 预览渲染模块卡片，但不改变 loading 状态——用于后台数据仍在加载时
+	 * 提前展示已获取到的模块列表，让用户感知到进度。
+	 */
+	public setModulesPreview(modules: CsmModuleEntry[]): void {
+		this.modules = modules;
+		this.renderLimit = ModuleSidebarViewProvider.INITIAL_RENDER_LIMIT;
 		this.pruneSelection();
 		this.render();
 	}
@@ -164,6 +180,7 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IM
 	public setWorkspaceContext(context: SidebarWorkspaceContext): void {
 		this.workspaceLabel = context.workspaceLabel;
 		this.moduleRoot = context.moduleRoot;
+		this.workspaceLabviewVersion = context.workspaceLabviewVersion;
 		this.gitAvailable = context.gitAvailable === true;
 		this.localManagedModules = context.managedModules ?? [];
 		this.localUnmanagedFolders = context.unmanagedFolders ?? [];
@@ -415,6 +432,7 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IM
 			unmanagedFolders: this.localUnmanagedFolders,
 			workspaceLabel: this.workspaceLabel,
 			moduleRoot: this.moduleRoot,
+			workspaceLabviewVersion: this.workspaceLabviewVersion,
 			gitAvailable: this.gitAvailable,
 			introTipVisible: this.introTipVisible,
 			includeAppliedModules: this.includeAppliedModules,

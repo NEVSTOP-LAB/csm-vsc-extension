@@ -310,6 +310,18 @@ const messages = {
 		en: 'Refreshing modules from GitHub...',
 		zh: '正在从 GitHub 刷新模块...',
 	},
+	fetchingCatalog: {
+		en: 'Fetching module catalog...',
+		zh: '正在获取模块目录...',
+	},
+	checkingUpdates: {
+		en: 'Checking for updates...',
+		zh: '正在检查更新...',
+	},
+	preloadingReadme: {
+		en: 'Preloading README files...',
+		zh: '正在预加载 README 文件...',
+	},
 	modulesUpToDate: {
 		en: 'CSM modules are up to date.',
 		zh: 'CSM 模块已是最新。',

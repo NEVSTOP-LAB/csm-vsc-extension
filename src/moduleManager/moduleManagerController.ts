@@ -16,6 +16,7 @@ import { getApplyMethodLabel, t } from './messages';
 import { openBuiltinReadmePreview, type ReadmePreviewServiceDeps } from './readmePreviewService';
 import { DEFAULT_MODULE_SORT_STATE, isModuleSortField, normalizeModuleSortState, sortModules } from './sort';
 import { getUserFacingErrorMessage } from './userFacingErrors';
+import { detectLabviewVersion, extractVersionFromTopics } from './labviewVersionDetector';
 
 const LOCAL_MODULE_CONFIG_GLOB = `**/{${LOCAL_MODULE_CONFIG_FILE},${LEGACY_LOCAL_MODULE_CONFIG_FILE}}`;
 const WORKSPACE_INIT_CONTEXT_KEY = CONTEXT_KEYS.canInitializeWorkspace;
@@ -60,7 +61,7 @@ type ModuleManagerAuthService = Pick<AuthService, 'getSessionSilently' | 'getSes
 	& Partial<Pick<AuthService, 'signOut' | 'verifyScopes'>>;
 
 type ModuleManagerGithubService = Pick<GitHubModuleService, 'fetchModules' | 'fetchReadme'>
-	& Partial<Pick<GitHubModuleService, 'isRepositoryStarred' | 'setRepositoryStarred' | 'createRepository'>>;
+	& Partial<Pick<GitHubModuleService, 'isRepositoryStarred' | 'setRepositoryStarred' | 'createRepository' | 'detectRemoteLabviewVersion'>>;
 
 /**
  * Optional dependencies for {@link ModuleManagerController}.
@@ -202,23 +203,31 @@ export class ModuleManagerController {
 			vscode.commands.registerCommand(COMMAND_IDS.setSortOrder, wrapCommand(COMMAND_IDS.setSortOrder, (field?: ModuleSortField) => this.setSortOrderCommand(field), this.logger)),
 		);
 
-		const cached = this.cacheStore.getModuleSnapshot();
-		this.restoreCachedAuthentication(this.cacheStore.getAuthSnapshot());
-		if (typeof this.treeDataProvider.setOfflineMode === 'function') {
-			this.treeDataProvider.setOfflineMode(true);
-		}
-		this.updateLastRefreshDescription(cached);
-		if (cached) {
-			this.applyCachedModules(cached);
-		} else {
-			this.availableModules = [];
-			this.setSelectedModuleKeys([]);
-			this.treeDataProvider.setError(t('noCachedModulesBody'));
-		}
-		if (typeof this.treeDataProvider.setSortOrder === 'function') {
-			this.treeDataProvider.setSortOrder(this.currentSortState);
-		}
+		// 延迟读取缓存快照，让 Webview 先渲染骨架屏，提升启动感知速度
+		// 使用微任务而非 setTimeout，确保测试中 await Promise.resolve() 能 flush
+		void Promise.resolve().then(() => {
+			const cached = this.cacheStore.getModuleSnapshot();
+			this.restoreCachedAuthentication(this.cacheStore.getAuthSnapshot());
+			if (typeof this.treeDataProvider.setOfflineMode === 'function') {
+				this.treeDataProvider.setOfflineMode(true);
+			}
+			this.updateLastRefreshDescription(cached);
+			if (cached) {
+				this.applyCachedModules(cached);
+			} else {
+				this.availableModules = [];
+				this.setSelectedModuleKeys([]);
+				this.treeDataProvider.setError(t('noCachedModulesBody'));
+			}
+			if (typeof this.treeDataProvider.setSortOrder === 'function') {
+				this.treeDataProvider.setSortOrder(this.currentSortState);
+			}
+		});
 		void this.setSelectionContexts();
+		// 后台刷新时在侧边栏标题显示同步状态
+		if (typeof this.treeDataProvider.setViewDescription === 'function') {
+			this.treeDataProvider.setViewDescription(t('loadingModules'));
+		}
 		const sidebarWorkspaceRefresh = this.refreshSidebarWorkspaceState();
 		void sidebarWorkspaceRefresh.catch((error) => {
 			const message = getUserFacingErrorMessage(error, 'config');
@@ -1301,20 +1310,26 @@ export class ModuleManagerController {
 	 * local workspace state and initialization prompt, even if the remote refresh fails.
 	 */
 	public async refreshCommand(): Promise<void> {
-		try {
-			await this.loadModules({ interactiveAuth: false, showSuccessMessage: true, showErrorMessage: true });
-		} finally {
-			try {
-				await this.refreshSidebarWorkspaceState();
-			} catch (error) {
-				this.logger.warn(`Failed to refresh sidebar workspace state after module refresh: ${error instanceof Error ? error.message : String(error)}`);
-			}
-			try {
-				await this.refreshWorkspaceInitializationState({ prompt: false });
-			} catch (error) {
-				this.logger.warn(`Failed to refresh workspace initialization state after module refresh: ${error instanceof Error ? error.message : String(error)}`);
-			}
-		}
+		await vscode.window.withProgress(
+			{ location: vscode.ProgressLocation.Notification, title: t('outputChannelName') },
+			async (progress) => {
+				progress.report({ message: t('fetchingCatalog') });
+				try {
+					await this.loadModules({ interactiveAuth: false, showSuccessMessage: true, showErrorMessage: true });
+				} finally {
+					try {
+						await this.refreshSidebarWorkspaceState();
+					} catch (error) {
+						this.logger.warn(`Failed to refresh sidebar workspace state after module refresh: ${error instanceof Error ? error.message : String(error)}`);
+					}
+					try {
+						await this.refreshWorkspaceInitializationState({ prompt: false });
+					} catch (error) {
+						this.logger.warn(`Failed to refresh workspace initialization state after module refresh: ${error instanceof Error ? error.message : String(error)}`);
+					}
+				}
+			},
+		);
 	}
 
 	private async toggleStarCommand(entry: CsmModuleEntry): Promise<void> {
@@ -1445,22 +1460,43 @@ export class ModuleManagerController {
 		showErrorMessage: boolean;
 		preserveVisibleModules?: boolean;
 	}): Promise<void> {
+		// 阶段 1：显示骨架屏，让用户立刻感知到刷新正在进行
+		if (!options.preserveVisibleModules) {
+			this.treeDataProvider.setLoading(t('fetchingCatalog'), true);
+		}
+
 		const token = await this.ensureToken(options.interactiveAuth);
 		if (typeof this.treeDataProvider.setOfflineMode === 'function') {
 			this.treeDataProvider.setOfflineMode(false);
 		}
 
+		// 阶段 2：检查 GitHub 更新
 		if (!options.preserveVisibleModules) {
-			this.treeDataProvider.setLoading(t('refreshingModules'));
+			this.treeDataProvider.setLoading(t('checkingUpdates'));
 		}
+
 		try {
 			const cachedSnapshot = this.cacheStore.getModuleSnapshot();
 			const previousEtag = this.cacheStore.getModuleEtag();
 			const fetchResult = await this.githubService.fetchModules(token, { etag: previousEtag });
+
 			if (fetchResult.notModified) {
+				// 304 Not Modified：使用缓存数据，仅在必要时补充 star 状态
 				this.logger.info('Module list unchanged since last fetch (304 Not Modified).');
 				const cachedModules = cachedSnapshot?.modules ?? this.availableModules;
-				const modulesWithStarState = await this.hydrateStarStates(cachedModules, token);
+
+				// 检查缓存中是否已有足够的 star 状态
+				const cachedStarCount = cachedModules.filter(m => typeof m.starred === 'boolean').length;
+				const needsStarHydration = !!token && cachedStarCount < cachedModules.length;
+
+				if (needsStarHydration && !options.preserveVisibleModules) {
+					this.treeDataProvider.setLoading(t('loadingStarStatus'));
+				}
+
+				const modulesWithStarState = needsStarHydration
+					? await this.hydrateStarStates(cachedModules, token)
+					: cachedModules;
+
 				const nextSnapshot = await this.cacheStore.setModuleSnapshot(modulesWithStarState, {
 					refreshAccountId: token ? this.currentAccountId : undefined,
 					refreshAccountLabel: token ? this.currentAccountLabel : undefined,
@@ -1475,7 +1511,18 @@ export class ModuleManagerController {
 				}
 				return;
 			}
+
+			// 新数据到达：立即预览渲染模块卡片，让用户看到内容
 			const modules = fetchResult.modules;
+			if (!options.preserveVisibleModules && typeof this.treeDataProvider.setModulesPreview === 'function') {
+				this.treeDataProvider.setModulesPreview(modules);
+			}
+
+			// 阶段 3：并行补充 star 状态和 README 预加载
+			if (!options.preserveVisibleModules) {
+				this.treeDataProvider.setLoading(t('loadingStarStatus'));
+			}
+
 			const [modulesWithStarState, refreshedReadme] = await Promise.all([
 				this.hydrateStarStates(modules, token),
 				this.fetchReadmesParallel(modules, token, 5),
@@ -1496,6 +1543,8 @@ export class ModuleManagerController {
 			if (options.showSuccessMessage) {
 				void vscode.window.showInformationMessage(t('modulesRefreshed', { count: modules.length }));
 			}
+			// 后台检测未应用到本地的模块的远程 LabVIEW 版本
+			void this.detectRemoteVersionsBackground(token);
 		} catch (error) {
 			const message = getUserFacingErrorMessage(error, 'refresh');
 			this.logger.error(`Failed to refresh modules: ${message}`);
@@ -1503,6 +1552,64 @@ export class ModuleManagerController {
 			if (options.showErrorMessage) {
 				void vscode.window.showErrorMessage(t('refreshFailed', { message }));
 			}
+		}
+	}
+
+	/**
+	 * 后台检测远程仓库的 LabVIEW 开发版本，优先处理未应用到本地的模块。
+	 * 检测结果缓存至 cacheStore，检测完成后刷新侧边栏。
+	 */
+	private async detectRemoteVersionsBackground(token: string | undefined): Promise<void> {
+		const lvCache = this.cacheStore.getLvVersionCache();
+		// 筛选需要检测的模块：不在本地已应用列表中，且缓存中尚无版本
+		const needsDetection = this.availableModules.filter((m) => {
+			const moduleKey = this.getModuleKey(m);
+			return !this.appliedModuleKeys.has(moduleKey) && !lvCache[moduleKey] && !m.labviewVersion;
+		});
+
+		if (needsDetection.length === 0) {
+			return;
+		}
+
+		// 限流：每次最多检测 10 个模块，避免大量 API 请求
+		const detectLimit = 10;
+		const toDetect = needsDetection.slice(0, detectLimit);
+
+		let cacheChanged = false;
+		const detectRemote = this.githubService.detectRemoteLabviewVersion?.bind(this.githubService);
+		if (!detectRemote) {
+			return;
+		}
+
+		await Promise.all(
+			toDetect.map(async (entry) => {
+				const version = await detectRemote(
+					entry.owner,
+					entry.name,
+					entry.defaultBranch,
+					token,
+				);
+				if (version) {
+					const moduleKey = this.getModuleKey(entry);
+					lvCache[moduleKey] = version;
+					cacheChanged = true;
+				}
+			}),
+		);
+
+		if (cacheChanged) {
+			await this.cacheStore.setLvVersionCache(lvCache);
+			// 重新合并远程版本到 availableModules 并刷新 UI
+			this.availableModules = this.availableModules.map((m) => {
+				const moduleKey = this.getModuleKey(m);
+				const cachedVersion = lvCache[moduleKey];
+				if (!m.labviewVersion && cachedVersion) {
+					return { ...m, labviewVersion: cachedVersion };
+				}
+				return m;
+			});
+			this.applyModuleSort();
+			this.treeDataProvider.setModules(this.availableModules);
 		}
 	}
 
@@ -1703,12 +1810,30 @@ export class ModuleManagerController {
 
 	private getVisibleModulesFromSnapshot(snapshot: ModuleCacheSnapshot | undefined): CsmModuleEntry[] {
 		const modules = snapshot?.modules ?? [];
-		if (!modules.some((module) => module.visibility === 'private')) {
-			return modules;
-		}
-		return this.shouldRevealPrivateCache(snapshot)
+		const result = !modules.some((module) => module.visibility === 'private')
 			? modules
-			: modules.filter((module) => module.visibility === 'public');
+			: this.shouldRevealPrivateCache(snapshot)
+				? modules
+				: modules.filter((module) => module.visibility === 'public');
+		// 合并远程 LV 版本缓存
+		const lvCache = this.cacheStore.getLvVersionCache();
+		return result.map((m) => {
+			const moduleKey = this.getModuleKey(m);
+			const cachedVersion = lvCache[moduleKey];
+			// 优先使用 GitHub topics 提取的版本，回退到远程缓存
+			let labviewVersion: string | undefined;
+			if (m.labviewVersion) {
+				labviewVersion = m.labviewVersion;
+			} else if (cachedVersion) {
+				labviewVersion = cachedVersion;
+			} else if (m.topics?.length > 0) {
+				labviewVersion = extractVersionFromTopics(m.topics);
+			}
+			if (labviewVersion === m.labviewVersion) {
+				return m;
+			}
+			return { ...m, labviewVersion };
+		});
 	}
 
 	private applyCachedModules(snapshot: ModuleCacheSnapshot | undefined): void {
@@ -1898,14 +2023,29 @@ export class ModuleManagerController {
 		}
 		const moduleRoot = await this.resolveSidebarModuleRoot(workspaceRoot, config);
 		const staleModuleKeys = await this.computeStaleModuleKeys(workspaceRoot, config);
+		const { entries: managedModules, configChanged } = await this.mapManagedModules(config, staleModuleKeys, workspaceRoot);
+
+		// 检测工作区根目录的 LabVIEW 版本
+		const workspaceVersionResult = await detectLabviewVersion(workspaceRoot);
+
+		// 如果版本检测有变化，写回配置持久化
+		if (configChanged && config) {
+			try {
+				await this.workspaceModuleService.writeConfig(config);
+			} catch (error) {
+				this.logger.warn(`Failed to persist LabVIEW version changes: ${error instanceof Error ? error.message : String(error)}`);
+			}
+		}
+
 		setContext({
 			workspaceLabel: path.basename(workspaceRoot) || workspaceFolder.name,
 			moduleRoot,
 			gitAvailable: !!repoRoot,
 			appliedModuleKeys: this.mapAppliedModuleKeys(config),
 			staleModuleKeys,
-			managedModules: this.mapManagedModules(config, staleModuleKeys),
+			managedModules,
 			unmanagedFolders: moduleRoot ? await this.mapUnmanagedFolders(workspaceRoot, moduleRoot, config) : [],
+			workspaceLabviewVersion: workspaceVersionResult?.display,
 		});
 	}
 
@@ -1917,9 +2057,9 @@ export class ModuleManagerController {
 		return await this.hasLocalModuleRoot(workspaceRoot, defaultRoot) ? defaultRoot : undefined;
 	}
 
-	private mapManagedModules(config: LocalModuleConfig | undefined, staleModuleKeys: string[]): LocalManagedModuleEntry[] {
+	private async mapManagedModules(config: LocalModuleConfig | undefined, staleModuleKeys: string[], workspaceRoot: string): Promise<{ entries: LocalManagedModuleEntry[]; configChanged: boolean }> {
 		if (!config) {
-			return [];
+			return { entries: [], configChanged: false };
 		}
 
 		const staleSet = new Set(staleModuleKeys);
@@ -1928,13 +2068,13 @@ export class ModuleManagerController {
 			availableModulesBySource.set(this.normalizeModuleSource(moduleEntry.repoUrl), moduleEntry);
 		}
 
-		return Object.values(config.modules)
+		const entries: LocalManagedModuleEntry[] = Object.values(config.modules)
 			.sort((left, right) => left.path.localeCompare(right.path))
 			.map((configEntry) => {
 				const availableModule = this.findAvailableModule(configEntry.owner, configEntry.name)
 					?? availableModulesBySource.get(this.normalizeModuleSource(configEntry.source));
 				const moduleEntry = availableModule ?? this.synthesizeModuleEntry(configEntry);
-				return {
+				const result: LocalManagedModuleEntry = {
 					id: configEntry.key,
 					kind: 'managed',
 					owner: configEntry.owner,
@@ -1952,8 +2092,31 @@ export class ModuleManagerController {
 					moduleEntry,
 					moduleKey: availableModule ? this.getModuleKey(availableModule) : undefined,
 					stale: staleSet.has(`${configEntry.owner}/${configEntry.name}`),
+					// 优先使用已保存的版本
+					labviewVersion: configEntry.labviewVersion,
 				};
+				return result;
 			});
+
+		// 刷新时重新检测所有模块的 LabVIEW 版本，并写回配置
+		let configChanged = false;
+		await Promise.all(
+			entries.map(async (entry) => {
+				const absPath = path.resolve(workspaceRoot, entry.path);
+				const versionResult = await detectLabviewVersion(absPath);
+				const newVersion = versionResult?.display;
+				if (newVersion !== entry.labviewVersion) {
+					entry.labviewVersion = newVersion;
+					const configEntry = config.modules[entry.id];
+					if (configEntry) {
+						configEntry.labviewVersion = newVersion;
+						configChanged = true;
+					}
+				}
+			}),
+		);
+
+		return { entries, configChanged };
 	}
 
 	private async mapUnmanagedFolders(
@@ -1965,17 +2128,31 @@ export class ModuleManagerController {
 			Object.values(config?.modules ?? {}).map((entry) => entry.path.replace(/\\/g, '/').toLowerCase()),
 		);
 		const directories = await this.workspaceModuleService.listModuleDirectories(workspaceRoot, moduleRoot);
-		return directories
+		const entries: LocalUnmanagedFolderEntry[] = directories
 			.map((directoryName) => {
 				const relativePath = path.posix.join(moduleRoot, directoryName);
-				return {
+				const result: LocalUnmanagedFolderEntry = {
 					id: relativePath,
-					kind: 'unmanaged' as const,
+					kind: 'unmanaged',
 					name: directoryName,
 					path: relativePath,
 				};
+				return result;
 			})
 			.filter((entry) => !managedPaths.has(entry.path.toLowerCase()));
+
+		// 并行检测各未管理文件夹的 LabVIEW 版本
+		await Promise.all(
+			entries.map(async (entry) => {
+				const absPath = path.resolve(workspaceRoot, entry.path);
+				const versionResult = await detectLabviewVersion(absPath);
+				if (versionResult) {
+					entry.labviewVersion = versionResult.display;
+				}
+			}),
+		);
+
+		return entries;
 	}
 
 	/**

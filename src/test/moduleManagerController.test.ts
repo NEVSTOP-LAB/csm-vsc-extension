@@ -624,7 +624,7 @@ suite('ModuleManagerController Regression Tests', () => {
 
 		await controller.refreshCommand();
 
-		assert.strictEqual(loadingCalls, 1);
+		assert.strictEqual(loadingCalls, 3);
 		assert.strictEqual(renderedModuleCount, 2);
 		assert.strictEqual(memento.get<ModuleCacheSnapshot>('csmModules.cache.modules')?.modules.length, 2);
 	});
@@ -1647,7 +1647,7 @@ suite('ModuleManagerController Regression Tests', () => {
 
 		const rendered = mocked.__getLastWebviewView();
 		assert.ok(!rendered?.html.includes('Workspace: repo'));
-		assert.ok(rendered?.html.includes('Root: csm/'));
+		assert.ok(rendered?.html.includes('csm/'));
 		assert.ok(rendered?.html.includes('1 applied'));
 		assert.ok(rendered?.html.includes('module-a'));
 		assert.ok(rendered?.html.includes('module-b'));
@@ -1968,7 +1968,7 @@ suite('ModuleManagerController Regression Tests', () => {
 
 		const rendered = mocked.__getLastWebviewView();
 		assert.ok(!rendered?.html.includes('Workspace: plain-workspace'));
-		assert.ok(rendered?.html.includes('Root: csm/'));
+		assert.ok(rendered?.html.includes('csm/'));
 		assert.ok(rendered?.html.includes('1 applied'));
 		assert.ok(rendered?.html.includes('module-a'));
 		assert.ok(rendered?.html.includes('module-b'));

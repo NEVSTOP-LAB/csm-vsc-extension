@@ -395,7 +395,7 @@ suite('Module Manager Tests', () => {
 		assert.ok(rendered?.html.includes('data-action="openReadme" data-module-key="org&#47;module-a" title="Open README" aria-label="Open README"'));
 		assert.ok(!rendered?.html.includes('data-module-key="org&#47;module-b"'));
 		assert.ok(!rendered?.html.includes('Workspace: repo'));
-		assert.ok(rendered?.html.includes('Root: csm/'));
+		assert.ok(rendered?.html.includes('csm/'));
 		assert.ok(!rendered?.html.includes('Signed in as tester.'));
 		assert.ok(!rendered?.html.includes('Loaded 2 module(s), including private.'));
 		assert.ok(rendered?.html.includes('1 applied | 2 workspace | 1 catalog | 0 selected'));
@@ -705,7 +705,7 @@ suite('Module Manager Tests', () => {
 		assert.ok(rendered?.html.includes('data-action="setScope" data-scope="catalog"'));
 		assert.ok(rendered?.html.includes('<div class="section-title">Workspace</div>'));
 		assert.ok(rendered?.html.includes('<div class="section-title">Catalog</div>'));
-		assert.ok(rendered?.html.includes('Root: csm/'));
+		assert.ok(rendered?.html.includes('csm/'));
 		assert.ok(rendered?.html.includes('module-local'));
 		assert.ok(rendered?.html.includes('custom-module'));
 		assert.ok(rendered?.html.includes('module-remote'));

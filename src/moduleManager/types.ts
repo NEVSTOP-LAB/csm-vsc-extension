@@ -10,6 +10,8 @@ export interface CsmModuleEntry {
 	starred?: boolean;
 	readme?: string;
 	updatedAt?: string;
+	/** 从 GitHub topics 中提取的 LabVIEW 开发版本显示名（如 "lv2020"） */
+	labviewVersion?: string;
 }
 
 export type ModuleApplyMethod = 'submodule' | 'copy';
@@ -24,6 +26,8 @@ export interface LocalModuleConfigEntry {
 	ref: string;
 	branch: string;
 	locked?: boolean;
+	/** LabVIEW 开发版本显示名（如 "lv2020"），持久化到 YAML 配置 */
+	labviewVersion?: string;
 }
 
 export interface LocalModuleConfig {
@@ -51,6 +55,8 @@ export interface LocalManagedModuleEntry {
 	moduleEntry: CsmModuleEntry;
 	moduleKey?: string;
 	stale: boolean;
+	/** LabVIEW 开发版本显示名（如 "lv2020", "lv2020(64bit)"），未检测到则为 undefined */
+	labviewVersion?: string;
 }
 
 export interface LocalUnmanagedFolderEntry {
@@ -58,6 +64,8 @@ export interface LocalUnmanagedFolderEntry {
 	kind: 'unmanaged';
 	name: string;
 	path: string;
+	/** LabVIEW 开发版本显示名（如 "lv2020", "lv2020(64bit)"），未检测到则为 undefined */
+	labviewVersion?: string;
 }
 
 export interface CopyModuleUpdatePreview {
