@@ -1049,9 +1049,9 @@ export function renderModuleSidebarHtml(state: ModuleSidebarRenderState): string
 			color: var(--vscode-terminal-ansiMagenta, #bc3fbc);
 		}
 		.badge.lv-version {
-			background: var(--vscode-button-background, #0078d4);
-			color: var(--vscode-button-foreground, #ffffff);
-			border-color: transparent;
+			background: transparent;
+			border-color: var(--vscode-button-background, #0078d4);
+			color: var(--vscode-button-background, #0078d4);
 			font-weight: 600;
 		}
 		.card-footer {
@@ -1710,9 +1710,9 @@ export function renderLocalWorkspaceViewHtml(state: LocalWorkspaceRenderState): 
 			color: var(--vscode-terminal-ansiMagenta, #bc3fbc);
 		}
 		.badge.lv-version {
-			background: var(--vscode-button-background, #0078d4);
-			color: var(--vscode-button-foreground, #ffffff);
-			border-color: transparent;
+			background: transparent;
+			border-color: var(--vscode-button-background, #0078d4);
+			color: var(--vscode-button-background, #0078d4);
 			font-weight: 600;
 		}
 		.action-toolbar {
