@@ -24,6 +24,8 @@ export interface LocalModuleConfigEntry {
 	ref: string;
 	branch: string;
 	locked?: boolean;
+	/** LabVIEW 开发版本显示名（如 "lv2020"），持久化到 YAML 配置 */
+	labviewVersion?: string;
 }
 
 export interface LocalModuleConfig {

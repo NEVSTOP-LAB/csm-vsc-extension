@@ -1312,6 +1312,7 @@ export class WorkspaceModuleService {
 					ref: typeof entry.ref === 'string' ? entry.ref : undefined,
 					branch: typeof entry.branch === 'string' ? entry.branch : undefined,
 					locked: typeof entry.locked === 'boolean' ? entry.locked : undefined,
+					labviewVersion: typeof entry.labviewVersion === 'string' ? entry.labviewVersion : undefined,
 				});
 			}
 		}
@@ -1320,7 +1321,7 @@ export class WorkspaceModuleService {
 	}
 
 	private finalizeModuleSection(module: Partial<LocalModuleConfigEntry>): LocalModuleConfigEntry {
-		return {
+		const entry: LocalModuleConfigEntry = {
 			key: module.key ?? '',
 			name: module.name ?? '',
 			owner: module.owner ?? '',
@@ -1331,13 +1332,17 @@ export class WorkspaceModuleService {
 			branch: module.branch ?? '',
 			locked: this.isEntryLocked(module),
 		};
+		if (module.labviewVersion) {
+			entry.labviewVersion = module.labviewVersion;
+		}
+		return entry;
 	}
 
 	private serializeConfig(config: LocalModuleConfig): string {
-		const moduleEntries: Record<string, Omit<LocalModuleConfigEntry, 'key'>> = {};
+		const moduleEntries: Record<string, Record<string, unknown>> = {};
 		for (const key of Object.keys(config.modules).sort((left, right) => left.localeCompare(right))) {
 			const module = config.modules[key];
-			moduleEntries[key] = {
+			const entry: Record<string, unknown> = {
 				name: module.name,
 				owner: module.owner,
 				source: module.source,
@@ -1347,6 +1352,11 @@ export class WorkspaceModuleService {
 				branch: module.branch,
 				locked: this.isEntryLocked(module),
 			};
+			// 仅在已检测到版本时才持久化，避免写入空值
+			if (module.labviewVersion) {
+				entry.labviewVersion = module.labviewVersion;
+			}
+			moduleEntries[key] = entry;
 		}
 		const document = {
 			version: config.version || CONFIG_VERSION,

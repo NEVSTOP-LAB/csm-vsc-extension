@@ -1899,13 +1899,24 @@ export class ModuleManagerController {
 		}
 		const moduleRoot = await this.resolveSidebarModuleRoot(workspaceRoot, config);
 		const staleModuleKeys = await this.computeStaleModuleKeys(workspaceRoot, config);
+		const { entries: managedModules, configChanged } = await this.mapManagedModules(config, staleModuleKeys, workspaceRoot);
+
+		// 如果版本检测有变化，写回配置持久化
+		if (configChanged && config) {
+			try {
+				await this.workspaceModuleService.writeConfig(config);
+			} catch (error) {
+				this.logger.warn(`Failed to persist LabVIEW version changes: ${error instanceof Error ? error.message : String(error)}`);
+			}
+		}
+
 		setContext({
 			workspaceLabel: path.basename(workspaceRoot) || workspaceFolder.name,
 			moduleRoot,
 			gitAvailable: !!repoRoot,
 			appliedModuleKeys: this.mapAppliedModuleKeys(config),
 			staleModuleKeys,
-			managedModules: await this.mapManagedModules(config, staleModuleKeys, workspaceRoot),
+			managedModules,
 			unmanagedFolders: moduleRoot ? await this.mapUnmanagedFolders(workspaceRoot, moduleRoot, config) : [],
 		});
 	}
@@ -1918,9 +1929,9 @@ export class ModuleManagerController {
 		return await this.hasLocalModuleRoot(workspaceRoot, defaultRoot) ? defaultRoot : undefined;
 	}
 
-	private async mapManagedModules(config: LocalModuleConfig | undefined, staleModuleKeys: string[], workspaceRoot: string): Promise<LocalManagedModuleEntry[]> {
+	private async mapManagedModules(config: LocalModuleConfig | undefined, staleModuleKeys: string[], workspaceRoot: string): Promise<{ entries: LocalManagedModuleEntry[]; configChanged: boolean }> {
 		if (!config) {
-			return [];
+			return { entries: [], configChanged: false };
 		}
 
 		const staleSet = new Set(staleModuleKeys);
@@ -1953,23 +1964,31 @@ export class ModuleManagerController {
 					moduleEntry,
 					moduleKey: availableModule ? this.getModuleKey(availableModule) : undefined,
 					stale: staleSet.has(`${configEntry.owner}/${configEntry.name}`),
+					// 优先使用已保存的版本
+					labviewVersion: configEntry.labviewVersion,
 				};
 				return result;
 			});
 
-		// 并行检测各模块的 LabVIEW 版本
-		const results = await Promise.all(
+		// 刷新时重新检测所有模块的 LabVIEW 版本，并写回配置
+		let configChanged = false;
+		await Promise.all(
 			entries.map(async (entry) => {
 				const absPath = path.resolve(workspaceRoot, entry.path);
 				const versionResult = await detectLabviewVersion(absPath);
-				if (versionResult) {
-					entry.labviewVersion = versionResult.display;
+				const newVersion = versionResult?.display;
+				if (newVersion !== entry.labviewVersion) {
+					entry.labviewVersion = newVersion;
+					const configEntry = config.modules[entry.id];
+					if (configEntry) {
+						configEntry.labviewVersion = newVersion;
+						configChanged = true;
+					}
 				}
 			}),
 		);
-		void results;
 
-		return entries;
+		return { entries, configChanged };
 	}
 
 	private async mapUnmanagedFolders(
