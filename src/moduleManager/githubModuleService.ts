@@ -1,6 +1,7 @@
 import { CsmModuleEntry, GitHubRepoSummary } from './types';
 import { GITHUB } from './constants';
 import { Logger, getLogger } from './logger';
+import { extractVersionFromTopics } from './labviewVersionDetector';
 
 const GITHUB_API_BASE = GITHUB.apiBase;
 const MODULE_TOPIC = GITHUB.moduleTopic;
@@ -37,16 +38,18 @@ function dedupeRepos(repos: GitHubRepoSummary[]): GitHubRepoSummary[] {
 
 export function mapRepoToModuleEntry(repo: GitHubRepoSummary): CsmModuleEntry {
 	const [owner] = repo.full_name.split('/');
+	const topics = repo.topics ?? [];
 	return {
 		id: repo.id,
 		owner: owner ?? '',
 		name: repo.name,
 		description: repo.description ?? '',
-		topics: repo.topics ?? [],
+		topics,
 		visibility: repo.private ? 'private' : 'public',
 		defaultBranch: repo.default_branch,
 		repoUrl: repo.html_url,
 		updatedAt: repo.updated_at,
+		labviewVersion: extractVersionFromTopics(topics),
 	};
 }
 

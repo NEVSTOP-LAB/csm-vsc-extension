@@ -10,6 +10,8 @@ export interface CsmModuleEntry {
 	starred?: boolean;
 	readme?: string;
 	updatedAt?: string;
+	/** 从 GitHub topics 中提取的 LabVIEW 开发版本显示名（如 "lv2020"） */
+	labviewVersion?: string;
 }
 
 export type ModuleApplyMethod = 'submodule' | 'copy';

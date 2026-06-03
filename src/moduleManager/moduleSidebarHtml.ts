@@ -585,6 +585,7 @@ function getSearchText(entry: CsmModuleEntry): string {
 		entry.description,
 		entry.defaultBranch,
 		entry.visibility,
+		entry.labviewVersion ?? '',
 		...getVisibleModuleTopics(entry.topics),
 	].join(' ').toLowerCase();
 }
@@ -1018,11 +1019,14 @@ export function renderModuleSidebarHtml(state: ModuleSidebarRenderState): string
 			display: inline-flex;
 			align-items: center;
 			padding: 0 6px;
+			height: 18px;
+			line-height: 1;
 			border-radius: 10px;
 			font-size: var(--module-font-xs);
 			border: 1px solid var(--vscode-panel-border);
 			color: var(--vscode-descriptionForeground);
 			background: transparent;
+			white-space: nowrap;
 		}
 		.badge.private {
 			border-color: var(--vscode-inputValidation-warningBorder, var(--vscode-panel-border));
@@ -1049,9 +1053,6 @@ export function renderModuleSidebarHtml(state: ModuleSidebarRenderState): string
 			color: var(--vscode-button-foreground, #ffffff);
 			border-color: transparent;
 			font-weight: 600;
-			font-size: calc(var(--module-font-xs) * 1.05);
-			padding: 1px 7px;
-			letter-spacing: 0.3px;
 		}
 		.card-footer {
 			display: flex;
@@ -1679,11 +1680,14 @@ export function renderLocalWorkspaceViewHtml(state: LocalWorkspaceRenderState): 
 			display: inline-flex;
 			align-items: center;
 			padding: 0 6px;
+			height: 18px;
+			line-height: 1;
 			border-radius: 10px;
 			font-size: var(--module-font-xs);
 			border: 1px solid var(--vscode-panel-border);
 			color: var(--vscode-descriptionForeground);
 			background: transparent;
+			white-space: nowrap;
 		}
 		.badge.private {
 			border-color: var(--vscode-inputValidation-warningBorder, var(--vscode-panel-border));
@@ -1710,9 +1714,6 @@ export function renderLocalWorkspaceViewHtml(state: LocalWorkspaceRenderState): 
 			color: var(--vscode-button-foreground, #ffffff);
 			border-color: transparent;
 			font-weight: 600;
-			font-size: calc(var(--module-font-xs) * 1.05);
-			padding: 1px 7px;
-			letter-spacing: 0.3px;
 		}
 		.action-toolbar {
 			display: flex;
@@ -2061,6 +2062,7 @@ function renderModuleCard(entry: CsmModuleEntry, state: ModuleSidebarRenderState
 		summary: truncate(summary, 132),
 		footerHtml: footerNote,
 		metaBadges: [
+			...(entry.labviewVersion ? [renderBadge(entry.labviewVersion, 'lv-version')] : []),
 			renderBadge(getVisibilityLabel(entry.visibility), entry.visibility === 'private' ? 'private' : undefined),
 			renderBadge(t('branchBadge', { branch: entry.defaultBranch })),
 			...topics.map((topic) => renderBadge(topic)),

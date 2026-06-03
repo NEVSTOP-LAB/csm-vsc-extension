@@ -477,3 +477,43 @@ export async function detectLabviewVersion(moduleDirAbsPath: string): Promise<La
 
     return undefined;
 }
+
+/**
+ * 从 GitHub topics 列表中提取 LabVIEW 版本显示名。
+ *
+ * 匹配模式：
+ *   "labview-2020" / "labview2020" → "lv2020"
+ *   "lv2020" / "lv-2020" → "lv2020"
+ *   "LabVIEW 2020" → "lv2020"
+ *
+ * @param topics GitHub 仓库的 topics 列表
+ * @returns 版本显示名（如 "lv2020"），未匹配则返回 undefined
+ */
+export function extractVersionFromTopics(topics: string[]): string | undefined {
+    if (!topics || topics.length === 0) {
+        return undefined;
+    }
+
+    for (const topic of topics) {
+        const normalized = topic.toLowerCase().replace(/[\s_-]+/g, '');
+
+        // 匹配 "lv2020", "lv2020(64bit)", "labview2020" 等
+        const match = normalized.match(/^(?:labview|lv)(\d{4})(?:\((\d+)bit\))?$/);
+        if (match) {
+            const year = match[1];
+            const bits = match[2];
+            if (bits === '64') {
+                return `lv${year}(64bit)`;
+            }
+            return `lv${year}`;
+        }
+
+        // 匹配 "lv8.0", "lv8.6" 等经典版本
+        const classicMatch = normalized.match(/^(?:labview|lv)(\d+\.\d+)$/);
+        if (classicMatch) {
+            return `lv${classicMatch[1]}`;
+        }
+    }
+
+    return undefined;
+}
