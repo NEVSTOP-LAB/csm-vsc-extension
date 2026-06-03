@@ -203,23 +203,30 @@ export class ModuleManagerController {
 			vscode.commands.registerCommand(COMMAND_IDS.setSortOrder, wrapCommand(COMMAND_IDS.setSortOrder, (field?: ModuleSortField) => this.setSortOrderCommand(field), this.logger)),
 		);
 
-		const cached = this.cacheStore.getModuleSnapshot();
-		this.restoreCachedAuthentication(this.cacheStore.getAuthSnapshot());
-		if (typeof this.treeDataProvider.setOfflineMode === 'function') {
-			this.treeDataProvider.setOfflineMode(true);
-		}
-		this.updateLastRefreshDescription(cached);
-		if (cached) {
-			this.applyCachedModules(cached);
-		} else {
-			this.availableModules = [];
-			this.setSelectedModuleKeys([]);
-			this.treeDataProvider.setError(t('noCachedModulesBody'));
-		}
-		if (typeof this.treeDataProvider.setSortOrder === 'function') {
-			this.treeDataProvider.setSortOrder(this.currentSortState);
-		}
+		// 延迟读取缓存快照，让 Webview 先渲染骨架屏，提升启动感知速度
+		setTimeout(() => {
+			const cached = this.cacheStore.getModuleSnapshot();
+			this.restoreCachedAuthentication(this.cacheStore.getAuthSnapshot());
+			if (typeof this.treeDataProvider.setOfflineMode === 'function') {
+				this.treeDataProvider.setOfflineMode(true);
+			}
+			this.updateLastRefreshDescription(cached);
+			if (cached) {
+				this.applyCachedModules(cached);
+			} else {
+				this.availableModules = [];
+				this.setSelectedModuleKeys([]);
+				this.treeDataProvider.setError(t('noCachedModulesBody'));
+			}
+			if (typeof this.treeDataProvider.setSortOrder === 'function') {
+				this.treeDataProvider.setSortOrder(this.currentSortState);
+			}
+		}, 0);
 		void this.setSelectionContexts();
+		// 后台刷新时在侧边栏标题显示同步状态
+		if (typeof this.treeDataProvider.setViewDescription === 'function') {
+			this.treeDataProvider.setViewDescription(t('loadingModules'));
+		}
 		const sidebarWorkspaceRefresh = this.refreshSidebarWorkspaceState();
 		void sidebarWorkspaceRefresh.catch((error) => {
 			const message = getUserFacingErrorMessage(error, 'config');
@@ -1302,20 +1309,26 @@ export class ModuleManagerController {
 	 * local workspace state and initialization prompt, even if the remote refresh fails.
 	 */
 	public async refreshCommand(): Promise<void> {
-		try {
-			await this.loadModules({ interactiveAuth: false, showSuccessMessage: true, showErrorMessage: true });
-		} finally {
-			try {
-				await this.refreshSidebarWorkspaceState();
-			} catch (error) {
-				this.logger.warn(`Failed to refresh sidebar workspace state after module refresh: ${error instanceof Error ? error.message : String(error)}`);
-			}
-			try {
-				await this.refreshWorkspaceInitializationState({ prompt: false });
-			} catch (error) {
-				this.logger.warn(`Failed to refresh workspace initialization state after module refresh: ${error instanceof Error ? error.message : String(error)}`);
-			}
-		}
+		await vscode.window.withProgress(
+			{ location: vscode.ProgressLocation.Notification, title: t('outputChannelName') },
+			async (progress) => {
+				progress.report({ message: t('fetchingCatalog') });
+				try {
+					await this.loadModules({ interactiveAuth: false, showSuccessMessage: true, showErrorMessage: true });
+				} finally {
+					try {
+						await this.refreshSidebarWorkspaceState();
+					} catch (error) {
+						this.logger.warn(`Failed to refresh sidebar workspace state after module refresh: ${error instanceof Error ? error.message : String(error)}`);
+					}
+					try {
+						await this.refreshWorkspaceInitializationState({ prompt: false });
+					} catch (error) {
+						this.logger.warn(`Failed to refresh workspace initialization state after module refresh: ${error instanceof Error ? error.message : String(error)}`);
+					}
+				}
+			},
+		);
 	}
 
 	private async toggleStarCommand(entry: CsmModuleEntry): Promise<void> {
@@ -1446,22 +1459,43 @@ export class ModuleManagerController {
 		showErrorMessage: boolean;
 		preserveVisibleModules?: boolean;
 	}): Promise<void> {
+		// 阶段 1：显示骨架屏，让用户立刻感知到刷新正在进行
+		if (!options.preserveVisibleModules) {
+			this.treeDataProvider.setLoading(t('fetchingCatalog'), true);
+		}
+
 		const token = await this.ensureToken(options.interactiveAuth);
 		if (typeof this.treeDataProvider.setOfflineMode === 'function') {
 			this.treeDataProvider.setOfflineMode(false);
 		}
 
+		// 阶段 2：检查 GitHub 更新
 		if (!options.preserveVisibleModules) {
-			this.treeDataProvider.setLoading(t('refreshingModules'));
+			this.treeDataProvider.setLoading(t('checkingUpdates'));
 		}
+
 		try {
 			const cachedSnapshot = this.cacheStore.getModuleSnapshot();
 			const previousEtag = this.cacheStore.getModuleEtag();
 			const fetchResult = await this.githubService.fetchModules(token, { etag: previousEtag });
+
 			if (fetchResult.notModified) {
+				// 304 Not Modified：使用缓存数据，仅在必要时补充 star 状态
 				this.logger.info('Module list unchanged since last fetch (304 Not Modified).');
 				const cachedModules = cachedSnapshot?.modules ?? this.availableModules;
-				const modulesWithStarState = await this.hydrateStarStates(cachedModules, token);
+
+				// 检查缓存中是否已有足够的 star 状态
+				const cachedStarCount = cachedModules.filter(m => typeof m.starred === 'boolean').length;
+				const needsStarHydration = !!token && cachedStarCount < cachedModules.length;
+
+				if (needsStarHydration && !options.preserveVisibleModules) {
+					this.treeDataProvider.setLoading(t('loadingStarStatus'));
+				}
+
+				const modulesWithStarState = needsStarHydration
+					? await this.hydrateStarStates(cachedModules, token)
+					: cachedModules;
+
 				const nextSnapshot = await this.cacheStore.setModuleSnapshot(modulesWithStarState, {
 					refreshAccountId: token ? this.currentAccountId : undefined,
 					refreshAccountLabel: token ? this.currentAccountLabel : undefined,
@@ -1476,7 +1510,18 @@ export class ModuleManagerController {
 				}
 				return;
 			}
+
+			// 新数据到达：立即预览渲染模块卡片，让用户看到内容
 			const modules = fetchResult.modules;
+			if (!options.preserveVisibleModules && typeof this.treeDataProvider.setModulesPreview === 'function') {
+				this.treeDataProvider.setModulesPreview(modules);
+			}
+
+			// 阶段 3：并行补充 star 状态和 README 预加载
+			if (!options.preserveVisibleModules) {
+				this.treeDataProvider.setLoading(t('loadingStarStatus'));
+			}
+
 			const [modulesWithStarState, refreshedReadme] = await Promise.all([
 				this.hydrateStarStates(modules, token),
 				this.fetchReadmesParallel(modules, token, 5),

@@ -28,9 +28,10 @@ export interface SidebarWorkspaceContext {
  */
 export interface IModuleViewProvider {
 	setAuthenticated(signedIn: boolean, accountLabel?: string): void;
-	setLoading(message?: string): void;
+	setLoading(message?: string, forceSkeleton?: boolean): void;
 	setError(message: string): void;
 	setModules(modules: CsmModuleEntry[]): void;
+	setModulesPreview?(modules: CsmModuleEntry[]): void;
 	setSelection(moduleKeys: string[]): void;
 	setWorkspaceContext(context: SidebarWorkspaceContext): void;
 	setCanInitializeWorkspace(canInitializeWorkspace: boolean): void;

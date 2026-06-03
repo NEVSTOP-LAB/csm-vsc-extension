@@ -106,9 +106,13 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IM
 		this.render();
 	}
 
-	public setLoading(message = t('loadingModules')): void {
+	public setLoading(message = t('loadingModules'), forceSkeleton = false): void {
 		this.state = 'loading';
 		this.message = message;
+		if (forceSkeleton) {
+			this.modules = [];
+			this.renderLimit = ModuleSidebarViewProvider.INITIAL_RENDER_LIMIT;
+		}
 		this.render();
 	}
 
@@ -127,6 +131,17 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IM
 		} else {
 			this.state = 'ready';
 		}
+		this.pruneSelection();
+		this.render();
+	}
+
+	/**
+	 * 预览渲染模块卡片，但不改变 loading 状态——用于后台数据仍在加载时
+	 * 提前展示已获取到的模块列表，让用户感知到进度。
+	 */
+	public setModulesPreview(modules: CsmModuleEntry[]): void {
+		this.modules = modules;
+		this.renderLimit = ModuleSidebarViewProvider.INITIAL_RENDER_LIMIT;
 		this.pruneSelection();
 		this.render();
 	}

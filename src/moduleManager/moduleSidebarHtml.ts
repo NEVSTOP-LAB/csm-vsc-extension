@@ -1163,11 +1163,31 @@ export function renderModuleSidebarHtml(state: ModuleSidebarRenderState): string
 		.skeleton {
 			padding-top: 12px;
 			padding-bottom: 12px;
+			border-radius: 6px;
+			animation: skeleton-pulse 1.8s ease-in-out infinite;
+		}
+		.skeleton-label {
+			font-size: var(--module-font-sm);
+			color: var(--vscode-descriptionForeground);
+			padding: 0 8px 8px;
+			animation: skeleton-pulse 1.8s ease-in-out infinite;
 		}
 		.skeleton-line {
 			height: 10px;
 			border-radius: 999px;
-			background: rgba(127, 127, 127, 0.28);
+			background: rgba(127, 127, 127, 0.18);
+			position: relative;
+			overflow: hidden;
+		}
+		.skeleton-line::after {
+			content: '';
+			position: absolute;
+			top: 0;
+			left: -100%;
+			width: 100%;
+			height: 100%;
+			background: linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.12) 40%, rgba(255, 255, 255, 0.18) 50%, rgba(255, 255, 255, 0.12) 60%, transparent 100%);
+			animation: shimmer 1.6s ease-in-out infinite;
 		}
 		.skeleton-line + .skeleton-line {
 			margin-top: 8px;
@@ -1177,6 +1197,14 @@ export function renderModuleSidebarHtml(state: ModuleSidebarRenderState): string
 		}
 		.skeleton-line.medium {
 			width: 68%;
+		}
+		@keyframes shimmer {
+			0% { left: -100%; }
+			100% { left: 100%; }
+		}
+		@keyframes skeleton-pulse {
+			0%, 100% { opacity: 0.6; }
+			50% { opacity: 1; }
 		}
 	</style>
 </head>
@@ -1896,7 +1924,7 @@ function renderCatalogEmptyState(state: ModuleSidebarRenderState): string {
 	}
 
 	if (state.state === 'loading' && state.modules.length === 0) {
-		return `<section class="list">${[1, 2, 3].map(() => renderSkeletonCard()).join('')}</section>`;
+		return `<section class="list"><div class="skeleton-label">${escapeHtml(state.message || t('loadingModules'))}</div>${[1, 2, 3].map(() => renderSkeletonCard()).join('')}</section>`;
 	}
 
 	if (state.state === 'error' && state.modules.length === 0) {
