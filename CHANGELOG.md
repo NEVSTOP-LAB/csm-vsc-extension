@@ -6,6 +6,12 @@
 
 ## [未发布] / [Unreleased]
 
+### 新增
+
+- 本地模块卡片新增 LabVIEW 开发版本徽章，自动检测模块的开发版本并以 `lv2020` / `lv2020(64bit)` 格式展示
+- 版本检测支持四种优先级来源：`DEV ENVIRONMENT` 目录标记文件、`.lvproj` 项目文件、`.lvlib` 库文件、`.vi` 二进制文件头（保底方案）
+- 新增 `src/moduleManager/labviewVersionDetector.ts` 版本检测模块，含完整 BCD 编码解码和版本映射表（8.0~2025）
+
 ### 变更
 
 - 升级 `engines.vscode` 最低版本要求从 `^1.60.0` 至 `^1.63.0`，以支持 pre-release 版本发布
