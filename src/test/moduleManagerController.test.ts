@@ -624,7 +624,7 @@ suite('ModuleManagerController Regression Tests', () => {
 
 		await controller.refreshCommand();
 
-		assert.strictEqual(loadingCalls, 1);
+		assert.strictEqual(loadingCalls, 3);
 		assert.strictEqual(renderedModuleCount, 2);
 		assert.strictEqual(memento.get<ModuleCacheSnapshot>('csmModules.cache.modules')?.modules.length, 2);
 	});

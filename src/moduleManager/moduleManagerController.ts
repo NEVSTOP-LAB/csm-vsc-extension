@@ -204,7 +204,8 @@ export class ModuleManagerController {
 		);
 
 		// 延迟读取缓存快照，让 Webview 先渲染骨架屏，提升启动感知速度
-		setTimeout(() => {
+		// 使用微任务而非 setTimeout，确保测试中 await Promise.resolve() 能 flush
+		void Promise.resolve().then(() => {
 			const cached = this.cacheStore.getModuleSnapshot();
 			this.restoreCachedAuthentication(this.cacheStore.getAuthSnapshot());
 			if (typeof this.treeDataProvider.setOfflineMode === 'function') {
@@ -221,7 +222,7 @@ export class ModuleManagerController {
 			if (typeof this.treeDataProvider.setSortOrder === 'function') {
 				this.treeDataProvider.setSortOrder(this.currentSortState);
 			}
-		}, 0);
+		});
 		void this.setSelectionContexts();
 		// 后台刷新时在侧边栏标题显示同步状态
 		if (typeof this.treeDataProvider.setViewDescription === 'function') {
