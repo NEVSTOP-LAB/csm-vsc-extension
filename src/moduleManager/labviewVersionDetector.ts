@@ -82,6 +82,14 @@ const DEV_ENV_PREFIX = 'DEV ENVIRONMENT';
 const LV_VERSION_PATTERN = /\b[0-9a-fA-F]{8}\b/;
 
 /**
+ * BCD（Binary-Coded Decimal）解码：将一个十六进制字节解码为十进制数。
+ * 例如 0x20 → 20, 0x14 → 14, 0x08 → 8。
+ */
+function bcdDecode(hexByte: number): number {
+	return ((hexByte >> 4) * 10) + (hexByte & 0x0F);
+}
+
+/**
  * 将 LVVersion 编码字符串解码为可读版本。
  * 优先查表，查不到则尝试根据编码规则推算。
  */
@@ -96,9 +104,8 @@ export function decodeLvVersion(lvVersionHex: string): string | undefined {
 		return undefined;
 	}
 
-	const yy = parseInt(key.substring(0, 2), 16);
-	const mm = parseInt(key.substring(2, 4), 16);
-	const pp = parseInt(key.substring(4, 6), 16);
+	const yy = bcdDecode(parseInt(key.substring(0, 2), 16));
+	const mm = bcdDecode(parseInt(key.substring(2, 4), 16));
 	const is64Bit = (parseInt(key.substring(6, 8), 16) & 0x40) !== 0;
 
 	if (yy < 8 || yy > 99) {
@@ -126,8 +133,8 @@ export function getLvVersionDisplay(lvVersionHex: string): string | undefined {
 		return undefined;
 	}
 
-	const yy = parseInt(key.substring(0, 2), 16);
-	const mm = parseInt(key.substring(2, 4), 16);
+	const yy = bcdDecode(parseInt(key.substring(0, 2), 16));
+	const mm = bcdDecode(parseInt(key.substring(2, 4), 16));
 	const is64Bit = (parseInt(key.substring(6, 8), 16) & 0x40) !== 0;
 
 	if (yy < 8 || yy > 99) {

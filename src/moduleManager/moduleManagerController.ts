@@ -1929,15 +1929,15 @@ export class ModuleManagerController {
 			availableModulesBySource.set(this.normalizeModuleSource(moduleEntry.repoUrl), moduleEntry);
 		}
 
-		const entries = Object.values(config.modules)
+		const entries: LocalManagedModuleEntry[] = Object.values(config.modules)
 			.sort((left, right) => left.path.localeCompare(right.path))
 			.map((configEntry) => {
 				const availableModule = this.findAvailableModule(configEntry.owner, configEntry.name)
 					?? availableModulesBySource.get(this.normalizeModuleSource(configEntry.source));
 				const moduleEntry = availableModule ?? this.synthesizeModuleEntry(configEntry);
-				return {
+				const result: LocalManagedModuleEntry = {
 					id: configEntry.key,
-					kind: 'managed' as const,
+					kind: 'managed',
 					owner: configEntry.owner,
 					name: configEntry.name,
 					path: configEntry.path,
@@ -1954,6 +1954,7 @@ export class ModuleManagerController {
 					moduleKey: availableModule ? this.getModuleKey(availableModule) : undefined,
 					stale: staleSet.has(`${configEntry.owner}/${configEntry.name}`),
 				};
+				return result;
 			});
 
 		// 并行检测各模块的 LabVIEW 版本
@@ -1980,15 +1981,16 @@ export class ModuleManagerController {
 			Object.values(config?.modules ?? {}).map((entry) => entry.path.replace(/\\/g, '/').toLowerCase()),
 		);
 		const directories = await this.workspaceModuleService.listModuleDirectories(workspaceRoot, moduleRoot);
-		const entries = directories
+		const entries: LocalUnmanagedFolderEntry[] = directories
 			.map((directoryName) => {
 				const relativePath = path.posix.join(moduleRoot, directoryName);
-				return {
+				const result: LocalUnmanagedFolderEntry = {
 					id: relativePath,
-					kind: 'unmanaged' as const,
+					kind: 'unmanaged',
 					name: directoryName,
 					path: relativePath,
 				};
+				return result;
 			})
 			.filter((entry) => !managedPaths.has(entry.path.toLowerCase()));
 
