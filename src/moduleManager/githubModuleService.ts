@@ -1,7 +1,7 @@
 import { CsmModuleEntry, GitHubRepoSummary } from './types';
 import { GITHUB } from './constants';
 import { Logger, getLogger } from './logger';
-import { extractVersionFromTopics } from './labviewVersionDetector';
+import { extractVersionFromTopics, parseDevEnvironmentFileName, extractLvVersionFromXml, getLvVersionDisplay } from './labviewVersionDetector';
 
 const GITHUB_API_BASE = GITHUB.apiBase;
 const MODULE_TOPIC = GITHUB.moduleTopic;
@@ -216,4 +216,139 @@ export class GitHubModuleService {
 			topics: topicPayload.names ?? options.topics,
 		};
 	}
+
+	/**
+	 * 通过 GitHub API 检测远程仓库中的 LabVIEW 开发版本。
+	 *
+	 * 检测优先级：
+	 * 1. 仓库根目录的 "DEV ENVIRONMENT*" 标记文件
+	 * 2. 仓库中的 .lvproj 文件（读取 LVVersion 属性）
+	 * 3. 仓库中的 .lvlib 文件（读取 LVVersion 属性）
+	 *
+	 * @returns 版本显示名（如 "lv2020"），未检测到则返回 undefined
+	 */
+	public async detectRemoteLabviewVersion(owner: string, repo: string, branch: string, token?: string): Promise<string | undefined> {
+		try {
+			// 步骤 1：尝试从根目录 DEV ENVIRONMENT 标记文件检测
+			const rootContents = await this.fetchRepoContents(owner, repo, '', token);
+			if (rootContents) {
+				for (const item of rootContents) {
+					if (item.type === 'file' && item.name.startsWith('DEV ENVIRONMENT')) {
+						const display = parseDevEnvironmentFileName(item.name);
+						if (display) {
+							this.logger.info(`Remote LV version detected from DEV ENVIRONMENT for ${owner}/${repo}: ${display}`);
+							return display;
+						}
+					}
+				}
+			}
+
+			// 步骤 2 & 3：通过 Git Trees API 查找 .lvproj 或 .lvlib 文件
+			const tree = await this.fetchRepoTree(owner, repo, branch, token);
+			if (!tree) {
+				return undefined;
+			}
+
+			// 优先查找 .lvproj（优先级高于 .lvlib）
+			const lvprojEntry = tree.find((item) =>
+				item.type === 'blob' && /\.lvproj$/i.test(item.path ?? '')
+			);
+			if (lvprojEntry && lvprojEntry.path) {
+				const content = await this.fetchFileContent(owner, repo, lvprojEntry.path, token);
+				if (content) {
+					const lvVersionHex = extractLvVersionFromXml(content);
+					if (lvVersionHex) {
+						const display = getLvVersionDisplay(lvVersionHex);
+						if (display) {
+							this.logger.info(`Remote LV version detected from .lvproj for ${owner}/${repo}: ${display}`);
+							return display;
+						}
+					}
+				}
+			}
+
+			// 回退到 .lvlib
+			const lvlibEntry = tree.find((item) =>
+				item.type === 'blob' && /\.lvlib$/i.test(item.path ?? '')
+			);
+			if (lvlibEntry && lvlibEntry.path) {
+				const content = await this.fetchFileContent(owner, repo, lvlibEntry.path, token);
+				if (content) {
+					const lvVersionHex = extractLvVersionFromXml(content);
+					if (lvVersionHex) {
+						const display = getLvVersionDisplay(lvVersionHex);
+						if (display) {
+							this.logger.info(`Remote LV version detected from .lvlib for ${owner}/${repo}: ${display}`);
+							return display;
+						}
+					}
+				}
+			}
+
+			return undefined;
+		} catch (error) {
+			this.logger.warn(`Failed to detect remote LV version for ${owner}/${repo}: ${error instanceof Error ? error.message : String(error)}`);
+			return undefined;
+		}
+	}
+
+	private async fetchRepoContents(owner: string, repo: string, pathPrefix: string, token?: string): Promise<GitHubContentItem[] | undefined> {
+		try {
+			const url = `${GITHUB_API_BASE}/repos/${owner}/${repo}/contents/${pathPrefix}`;
+			const headers = this.createHeaders(token);
+			const response = await fetch(url, { headers });
+			if (response.status === 404) {
+				return undefined;
+			}
+			if (!response.ok) {
+				this.logger.warn(`GitHub contents request for ${owner}/${repo}/${pathPrefix} failed with HTTP ${response.status}`);
+				return undefined;
+			}
+			const data = await response.json() as GitHubContentItem | GitHubContentItem[];
+			return Array.isArray(data) ? data : [data];
+		} catch {
+			return undefined;
+		}
+	}
+
+	private async fetchRepoTree(owner: string, repo: string, branch: string, token?: string): Promise<GitHubTreeItem[] | undefined> {
+		try {
+			const url = `${GITHUB_API_BASE}/repos/${owner}/${repo}/git/trees/${encodeURIComponent(branch)}?recursive=1`;
+			const headers = this.createHeaders(token);
+			const response = await fetch(url, { headers });
+			if (!response.ok) {
+				this.logger.warn(`GitHub tree request for ${owner}/${repo} failed with HTTP ${response.status}`);
+				return undefined;
+			}
+			const data = await response.json() as { tree?: GitHubTreeItem[] };
+			return data.tree;
+		} catch {
+			return undefined;
+		}
+	}
+
+	private async fetchFileContent(owner: string, repo: string, filePath: string, token?: string): Promise<string | undefined> {
+		try {
+			const url = `${GITHUB_API_BASE}/repos/${owner}/${repo}/contents/${encodeURIComponent(filePath)}`;
+			const headers = this.createHeaders(token, 'application/vnd.github.raw+json');
+			const response = await fetch(url, { headers });
+			if (!response.ok) {
+				return undefined;
+			}
+			return response.text();
+		} catch {
+			return undefined;
+		}
+	}
+}
+
+interface GitHubContentItem {
+	type: string;
+	name: string;
+	path?: string;
+}
+
+interface GitHubTreeItem {
+	type: string;
+	path?: string;
 }

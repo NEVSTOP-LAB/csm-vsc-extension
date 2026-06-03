@@ -61,7 +61,7 @@ type ModuleManagerAuthService = Pick<AuthService, 'getSessionSilently' | 'getSes
 	& Partial<Pick<AuthService, 'signOut' | 'verifyScopes'>>;
 
 type ModuleManagerGithubService = Pick<GitHubModuleService, 'fetchModules' | 'fetchReadme'>
-	& Partial<Pick<GitHubModuleService, 'isRepositoryStarred' | 'setRepositoryStarred' | 'createRepository'>>;
+	& Partial<Pick<GitHubModuleService, 'isRepositoryStarred' | 'setRepositoryStarred' | 'createRepository' | 'detectRemoteLabviewVersion'>>;
 
 /**
  * Optional dependencies for {@link ModuleManagerController}.
@@ -1497,6 +1497,8 @@ export class ModuleManagerController {
 			if (options.showSuccessMessage) {
 				void vscode.window.showInformationMessage(t('modulesRefreshed', { count: modules.length }));
 			}
+			// 后台检测未应用到本地的模块的远程 LabVIEW 版本
+			void this.detectRemoteVersionsBackground(token);
 		} catch (error) {
 			const message = getUserFacingErrorMessage(error, 'refresh');
 			this.logger.error(`Failed to refresh modules: ${message}`);
@@ -1504,6 +1506,64 @@ export class ModuleManagerController {
 			if (options.showErrorMessage) {
 				void vscode.window.showErrorMessage(t('refreshFailed', { message }));
 			}
+		}
+	}
+
+	/**
+	 * 后台检测远程仓库的 LabVIEW 开发版本，优先处理未应用到本地的模块。
+	 * 检测结果缓存至 cacheStore，检测完成后刷新侧边栏。
+	 */
+	private async detectRemoteVersionsBackground(token: string | undefined): Promise<void> {
+		const lvCache = this.cacheStore.getLvVersionCache();
+		// 筛选需要检测的模块：不在本地已应用列表中，且缓存中尚无版本
+		const needsDetection = this.availableModules.filter((m) => {
+			const moduleKey = this.getModuleKey(m);
+			return !this.appliedModuleKeys.has(moduleKey) && !lvCache[moduleKey] && !m.labviewVersion;
+		});
+
+		if (needsDetection.length === 0) {
+			return;
+		}
+
+		// 限流：每次最多检测 10 个模块，避免大量 API 请求
+		const detectLimit = 10;
+		const toDetect = needsDetection.slice(0, detectLimit);
+
+		let cacheChanged = false;
+		const detectRemote = this.githubService.detectRemoteLabviewVersion?.bind(this.githubService);
+		if (!detectRemote) {
+			return;
+		}
+
+		await Promise.all(
+			toDetect.map(async (entry) => {
+				const version = await detectRemote(
+					entry.owner,
+					entry.name,
+					entry.defaultBranch,
+					token,
+				);
+				if (version) {
+					const moduleKey = this.getModuleKey(entry);
+					lvCache[moduleKey] = version;
+					cacheChanged = true;
+				}
+			}),
+		);
+
+		if (cacheChanged) {
+			await this.cacheStore.setLvVersionCache(lvCache);
+			// 重新合并远程版本到 availableModules 并刷新 UI
+			this.availableModules = this.availableModules.map((m) => {
+				const moduleKey = this.getModuleKey(m);
+				const cachedVersion = lvCache[moduleKey];
+				if (!m.labviewVersion && cachedVersion) {
+					return { ...m, labviewVersion: cachedVersion };
+				}
+				return m;
+			});
+			this.applyModuleSort();
+			this.treeDataProvider.setModules(this.availableModules);
 		}
 	}
 
@@ -1709,12 +1769,24 @@ export class ModuleManagerController {
 			: this.shouldRevealPrivateCache(snapshot)
 				? modules
 				: modules.filter((module) => module.visibility === 'public');
-		// 为旧缓存中没有 labviewVersion 的模块补全版本信息
+		// 合并远程 LV 版本缓存
+		const lvCache = this.cacheStore.getLvVersionCache();
 		return result.map((m) => {
-			if (m.labviewVersion === undefined && m.topics?.length > 0) {
-				return { ...m, labviewVersion: extractVersionFromTopics(m.topics) };
+			const moduleKey = this.getModuleKey(m);
+			const cachedVersion = lvCache[moduleKey];
+			// 优先使用 GitHub topics 提取的版本，回退到远程缓存
+			let labviewVersion: string | undefined;
+			if (m.labviewVersion) {
+				labviewVersion = m.labviewVersion;
+			} else if (cachedVersion) {
+				labviewVersion = cachedVersion;
+			} else if (m.topics?.length > 0) {
+				labviewVersion = extractVersionFromTopics(m.topics);
 			}
-			return m;
+			if (labviewVersion === m.labviewVersion) {
+				return m;
+			}
+			return { ...m, labviewVersion };
 		});
 	}
 

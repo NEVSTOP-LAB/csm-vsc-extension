@@ -278,7 +278,11 @@ function getCatalogContent(state: ModuleSidebarRenderState): CatalogContent {
 	const filteredModules = query.length === 0
 		? getSortedModules(baseModules, state)
 		: getSortedModules(
-			baseModules.filter((entry) => matchesFilterQuery(getSearchText(entry), query)),
+			baseModules.filter((entry) => {
+				const moduleKey = getModuleKey(entry);
+				const localVersion = getLocalLabviewVersion(moduleKey, state);
+				return matchesFilterQuery(getSearchText(entry, localVersion), query);
+			}),
 			state,
 		);
 	const publicCount = baseModules.filter((entry) => entry.visibility === 'public').length;
@@ -580,14 +584,14 @@ function getVisibleSidebarEntries(state: ModuleSidebarRenderState): {
 	};
 }
 
-function getSearchText(entry: CsmModuleEntry): string {
+function getSearchText(entry: CsmModuleEntry, localLabviewVersion?: string): string {
 	return [
 		entry.name,
 		entry.owner,
 		entry.description,
 		entry.defaultBranch,
 		entry.visibility,
-		entry.labviewVersion ?? '',
+		entry.labviewVersion ?? localLabviewVersion ?? '',
 		...getVisibleModuleTopics(entry.topics),
 	].join(' ').toLowerCase();
 }
@@ -2014,6 +2018,11 @@ function renderContent(
 	return `${statusBanner}<section class="list">${workspaceSection}${catalogSection}</section>${showMoreButton}${renderFilterEmptyState()}`;
 }
 
+function getLocalLabviewVersion(moduleKey: string, state: ModuleSidebarRenderState): string | undefined {
+	const localEntry = state.managedModules.find((m) => m.moduleKey === moduleKey);
+	return localEntry?.labviewVersion;
+}
+
 function renderModuleCard(entry: CsmModuleEntry, state: ModuleSidebarRenderState): string {
 	const moduleKey = getModuleKey(entry);
 	const selected = state.selectedModuleKeys.has(moduleKey);
@@ -2026,7 +2035,7 @@ function renderModuleCard(entry: CsmModuleEntry, state: ModuleSidebarRenderState
 			? t('recordedUnderRoot', { workspace: state.workspaceLabel, root: state.moduleRoot })
 			: t('recordedForWorkspace', { workspace: state.workspaceLabel }))}${stale ? ` <span class="badge stale">${escapeHtml(t('staleDirectoryMissing'))}</span>` : ''}</div>`
 		: '<span class="card-footer-spacer"></span>';
-	const searchText = escapeHtml(getSearchText(entry));
+	const searchText = escapeHtml(getSearchText(entry, getLocalLabviewVersion(moduleKey, state)));
 	const vscodeContext = escapeHtml(JSON.stringify({
 		webviewSection: 'moduleCard',
 		moduleKey,
@@ -2034,6 +2043,9 @@ function renderModuleCard(entry: CsmModuleEntry, state: ModuleSidebarRenderState
 		moduleSelected: selected,
 		preventDefaultContextMenuItems: true,
 	}));
+
+	// 优先使用 GitHub topics 中的版本；若已应用到本地，则回退到本地检测的版本
+	const labviewVersion = entry.labviewVersion ?? getLocalLabviewVersion(moduleKey, state);
 
 	return renderModuleCardShell({
 		articleClasses: [selected ? 'selected' : '', applied ? 'applied' : ''],
@@ -2064,7 +2076,7 @@ function renderModuleCard(entry: CsmModuleEntry, state: ModuleSidebarRenderState
 		summary: truncate(summary, 132),
 		footerHtml: footerNote,
 		metaBadges: [
-			...(entry.labviewVersion ? [renderBadge(entry.labviewVersion, 'lv-version')] : []),
+			...(labviewVersion ? [renderBadge(labviewVersion, 'lv-version')] : []),
 			renderBadge(getVisibilityLabel(entry.visibility), entry.visibility === 'private' ? 'private' : undefined),
 			renderBadge(t('branchBadge', { branch: entry.defaultBranch })),
 			...topics.map((topic) => renderBadge(topic)),

@@ -198,7 +198,7 @@ export function parseDevEnvironmentFileName(fileName: string): string | undefine
  * 从 XML 内容中提取 LVVersion 属性值。
  * 支持 .lvproj 的 `<Project LVVersion="...">` 和 .lvlib 的 `<Library LVVersion="...">`。
  */
-function extractLvVersionFromXml(xmlContent: string): string | undefined {
+export function extractLvVersionFromXml(xmlContent: string): string | undefined {
     const match = xmlContent.match(/LVVersion\s*=\s*"([0-9A-Fa-f]{8})"/);
     if (!match) {
         return undefined;

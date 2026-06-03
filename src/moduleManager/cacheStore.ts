@@ -9,6 +9,7 @@ const README_CACHE_KEY = STORAGE_KEYS.readmeCache;
 const MODULE_ETAG_KEY = STORAGE_KEYS.moduleEtag;
 const MODULE_AUTH_KEY = STORAGE_KEYS.moduleAuth;
 const MODULE_SORT_STATE_KEY = STORAGE_KEYS.moduleSortState;
+const MODULE_LV_VERSION_KEY = STORAGE_KEYS.moduleLvVersion;
 const MODULE_CACHE_SCHEMA_VERSION = 1;
 
 function isModuleSnapshotShape(value: unknown): value is ModuleCacheSnapshot {
@@ -133,11 +134,32 @@ export class ModuleCacheStore {
 		await this.globalState.update(MODULE_ETAG_KEY, etag);
 	}
 
+	/**
+	 * 获取远程 LabVIEW 版本缓存（moduleKey → 版本显示名）。
+	 * 用于暂存通过 GitHub API 检测到的仓库版本信息，避免每次刷新重复请求。
+	 */
+	public getLvVersionCache(): Record<string, string> {
+		const value = this.globalState.get<unknown>(MODULE_LV_VERSION_KEY);
+		if (!value || typeof value !== 'object' || Array.isArray(value)) {
+			return {};
+		}
+		return value as Record<string, string>;
+	}
+
+	/**
+	 * 更新远程 LabVIEW 版本缓存。
+	 * @param cache 部分更新的 moduleKey → 版本显示名映射
+	 */
+	public async setLvVersionCache(cache: Record<string, string>): Promise<void> {
+		await this.globalState.update(MODULE_LV_VERSION_KEY, cache);
+	}
+
 	public async clear(): Promise<void> {
 		await this.globalState.update(MODULE_CACHE_KEY, undefined);
 		await this.globalState.update(README_CACHE_KEY, undefined);
 		await this.globalState.update(MODULE_ETAG_KEY, undefined);
 		await this.globalState.update(MODULE_AUTH_KEY, undefined);
 		await this.globalState.update(MODULE_SORT_STATE_KEY, undefined);
+		await this.globalState.update(MODULE_LV_VERSION_KEY, undefined);
 	}
 }
