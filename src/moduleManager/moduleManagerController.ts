@@ -16,6 +16,7 @@ import { getApplyMethodLabel, t } from './messages';
 import { openBuiltinReadmePreview, type ReadmePreviewServiceDeps } from './readmePreviewService';
 import { DEFAULT_MODULE_SORT_STATE, isModuleSortField, normalizeModuleSortState, sortModules } from './sort';
 import { getUserFacingErrorMessage } from './userFacingErrors';
+import { detectLabviewVersion } from './labviewVersionDetector';
 
 const LOCAL_MODULE_CONFIG_GLOB = `**/{${LOCAL_MODULE_CONFIG_FILE},${LEGACY_LOCAL_MODULE_CONFIG_FILE}}`;
 const WORKSPACE_INIT_CONTEXT_KEY = CONTEXT_KEYS.canInitializeWorkspace;
@@ -1904,7 +1905,7 @@ export class ModuleManagerController {
 			gitAvailable: !!repoRoot,
 			appliedModuleKeys: this.mapAppliedModuleKeys(config),
 			staleModuleKeys,
-			managedModules: this.mapManagedModules(config, staleModuleKeys),
+			managedModules: await this.mapManagedModules(config, staleModuleKeys, workspaceRoot),
 			unmanagedFolders: moduleRoot ? await this.mapUnmanagedFolders(workspaceRoot, moduleRoot, config) : [],
 		});
 	}
@@ -1917,7 +1918,7 @@ export class ModuleManagerController {
 		return await this.hasLocalModuleRoot(workspaceRoot, defaultRoot) ? defaultRoot : undefined;
 	}
 
-	private mapManagedModules(config: LocalModuleConfig | undefined, staleModuleKeys: string[]): LocalManagedModuleEntry[] {
+	private async mapManagedModules(config: LocalModuleConfig | undefined, staleModuleKeys: string[], workspaceRoot: string): Promise<LocalManagedModuleEntry[]> {
 		if (!config) {
 			return [];
 		}
@@ -1928,7 +1929,7 @@ export class ModuleManagerController {
 			availableModulesBySource.set(this.normalizeModuleSource(moduleEntry.repoUrl), moduleEntry);
 		}
 
-		return Object.values(config.modules)
+		const entries = Object.values(config.modules)
 			.sort((left, right) => left.path.localeCompare(right.path))
 			.map((configEntry) => {
 				const availableModule = this.findAvailableModule(configEntry.owner, configEntry.name)
@@ -1936,7 +1937,7 @@ export class ModuleManagerController {
 				const moduleEntry = availableModule ?? this.synthesizeModuleEntry(configEntry);
 				return {
 					id: configEntry.key,
-					kind: 'managed',
+					kind: 'managed' as const,
 					owner: configEntry.owner,
 					name: configEntry.name,
 					path: configEntry.path,
@@ -1954,6 +1955,20 @@ export class ModuleManagerController {
 					stale: staleSet.has(`${configEntry.owner}/${configEntry.name}`),
 				};
 			});
+
+		// 并行检测各模块的 LabVIEW 版本
+		const results = await Promise.all(
+			entries.map(async (entry) => {
+				const absPath = path.resolve(workspaceRoot, entry.path);
+				const versionResult = await detectLabviewVersion(absPath);
+				if (versionResult) {
+					entry.labviewVersion = versionResult.display;
+				}
+			}),
+		);
+		void results;
+
+		return entries;
 	}
 
 	private async mapUnmanagedFolders(
@@ -1965,7 +1980,7 @@ export class ModuleManagerController {
 			Object.values(config?.modules ?? {}).map((entry) => entry.path.replace(/\\/g, '/').toLowerCase()),
 		);
 		const directories = await this.workspaceModuleService.listModuleDirectories(workspaceRoot, moduleRoot);
-		return directories
+		const entries = directories
 			.map((directoryName) => {
 				const relativePath = path.posix.join(moduleRoot, directoryName);
 				return {
@@ -1976,6 +1991,19 @@ export class ModuleManagerController {
 				};
 			})
 			.filter((entry) => !managedPaths.has(entry.path.toLowerCase()));
+
+		// 并行检测各未管理文件夹的 LabVIEW 版本
+		await Promise.all(
+			entries.map(async (entry) => {
+				const absPath = path.resolve(workspaceRoot, entry.path);
+				const versionResult = await detectLabviewVersion(absPath);
+				if (versionResult) {
+					entry.labviewVersion = versionResult.display;
+				}
+			}),
+		);
+
+		return entries;
 	}
 
 	/**
