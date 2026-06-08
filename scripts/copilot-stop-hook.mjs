@@ -1,8 +1,5 @@
-import { spawnSync } from 'child_process';
-import path from 'path';
 import { clearSessionMarker, emitJson, getHookSessionId, isStopHookActive, readHookInput, readSessionMarker } from './copilot-hook-state.mjs';
-
-const root = process.cwd();
+import { compileOnly, getCurrentVersion, installVsix } from './hook-actions.mjs';
 
 function toReason(message) {
     const normalized = message.replace(/\s+/g, ' ').trim();
@@ -23,48 +20,34 @@ function main() {
         return;
     }
 
-    const nodeCommand = process.execPath;
-    const scriptPath = path.join(root, 'scripts', 'local-finish-hook.mjs');
-    const result = spawnSync(nodeCommand, [scriptPath, '--stop-hook'], {
-        cwd: root,
-        encoding: 'utf8',
-        stdio: ['ignore', 'pipe', 'pipe'],
-    });
-
-    if (result.stdout) {
-        process.stderr.write(result.stdout);
-    }
-    if (result.stderr) {
-        process.stderr.write(result.stderr);
-    }
-
-    if (result.status === 0) {
+    const cwd = process.cwd();
+    try {
+        compileOnly(cwd);
+        const version = getCurrentVersion(cwd);
+        installVsix(version, cwd);
         clearSessionMarker(sessionId);
         emitJson({ continue: true });
-        return;
-    }
+    } catch (error) {
+        const failureText = error instanceof Error ? error.message : String(error);
+        const reason = toReason(failureText || `Local finish hook exited with an error.`);
+        if (isStopHookActive(hookInput)) {
+            emitJson({
+                continue: true,
+                systemMessage: `Local finish hook still failing during repeated stop attempt after ${marker.toolName ?? 'a code edit'}. Allowing stop to avoid an infinite loop. ${reason}`,
+            });
+            return;
+        }
 
-    const failureText = [result.stderr, result.stdout]
-        .filter((value) => typeof value === 'string' && value.trim().length > 0)
-        .join('\n');
-    const reason = toReason(failureText || `Local finish hook exited with code ${result.status ?? 'unknown'}.`);
-    if (isStopHookActive(hookInput)) {
         emitJson({
             continue: true,
-            systemMessage: `Local finish hook still failing during repeated stop attempt after ${marker.toolName ?? 'a code edit'}. Allowing stop to avoid an infinite loop. ${reason}`,
+            systemMessage: `Local finish hook failed after ${marker.toolName ?? 'a code edit'}: ${reason}`,
+            hookSpecificOutput: {
+                hookEventName: 'Stop',
+                decision: 'block',
+                reason: `Local finish hook failed after ${marker.toolName ?? 'a code edit'}. Fix the compile/load problem before ending. ${reason}`,
+            },
         });
-        return;
     }
-
-    emitJson({
-        continue: true,
-        systemMessage: `Local finish hook failed after ${marker.toolName ?? 'a code edit'}: ${reason}`,
-        hookSpecificOutput: {
-            hookEventName: 'Stop',
-            decision: 'block',
-            reason: `Local finish hook failed after ${marker.toolName ?? 'a code edit'}. Fix the compile/load problem before ending. ${reason}`,
-        },
-    });
 }
 
 main();

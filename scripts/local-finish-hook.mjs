@@ -1,138 +1,19 @@
+/**
+ * local-finish-hook.mjs
+ * 本地完成流水线：版本递增 → 类型检查 → Lint → 编译 → 测试 → VSIX 打包安装。
+ * 支持 --stop-hook 模式（仅编译+VSIX）和 --skip-vsix 模式。
+ * 共享的构建/打包函数从 hook-actions.mjs 导入。
+ */
+
 import fs from 'fs';
 import path from 'path';
-import os from 'os';
-import { execFileSync } from 'child_process';
 import semver from 'semver';
+import { compileOnly, getCurrentVersion, installVsix, logPhase, runNpmScript } from './hook-actions.mjs';
 
-const root = process.cwd();
-const packageJsonPath = path.join(root, 'package.json');
-const readmePath = path.join(root, 'README.md');
-const changelogPath = path.join(root, 'CHANGELOG.md');
-
-function getCurrentVersion() {
-	const pkg = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
-	if (typeof pkg.version !== 'string' || !pkg.version.trim()) {
-		throw new Error('package.json version is missing');
-	}
-	return pkg.version.trim();
-}
-
-function quote(value) {
-	return `"${String(value).replace(/"/g, '\\"')}"`;
-}
-
-function quoteForCmd(value) {
-	return `"${String(value).replace(/"/g, '""')}"`;
-}
-
-function logPhase(title) {
-	console.log(`\n[hook] === ${title} ===`);
-}
-
-function resolveCodeCommand() {
-	if (process.env.VSCODE_CLI) {
-		return process.env.VSCODE_CLI;
-	}
-	const localAppData = process.env.LOCALAPPDATA;
-	if (localAppData) {
-		const vscodeRoot = path.join(localAppData, 'Programs', 'Microsoft VS Code');
-		const codeCli = path.join(vscodeRoot, 'bin', 'code.cmd');
-		if (fs.existsSync(codeCli)) {
-			return codeCli;
-		}
-		const codeExe = path.join(vscodeRoot, 'Code.exe');
-		if (fs.existsSync(codeExe)) {
-			return codeExe;
-		}
-	}
-	return 'code';
-}
-
-function resolveNpmRunner() {
-	const npmExecPath = process.env.npm_execpath;
-	if (npmExecPath) {
-		if (path.extname(npmExecPath).toLowerCase() === '.js') {
-			return {
-				command: process.execPath,
-				baseArgs: [npmExecPath],
-			};
-		}
-		return {
-			command: npmExecPath,
-			baseArgs: [],
-		};
-	}
-
-	if (process.platform === 'win32') {
-		const programFiles = process.env.ProgramFiles ?? 'C:\\Program Files';
-		const npmCmd = path.join(programFiles, 'nodejs', 'npm.cmd');
-		if (fs.existsSync(npmCmd)) {
-			return {
-				command: npmCmd,
-				baseArgs: [],
-			};
-		}
-	}
-
-	return {
-		command: 'npm',
-		baseArgs: [],
-	};
-}
-
-const npmRunner = resolveNpmRunner();
-
-function runFile(command, args) {
-	const renderedArgs = args.map((arg) => quote(arg)).join(' ');
-	console.log(`[hook] ${quote(command)} ${renderedArgs}`);
-	if (process.platform === 'win32' && ['.cmd', '.bat'].includes(path.extname(command).toLowerCase())) {
-		const powerShellExe = path.join(
-			process.env.SystemRoot ?? 'C:\\Windows',
-			'System32',
-			'WindowsPowerShell',
-			'v1.0',
-			'powershell.exe',
-		);
-		const argumentList = args.map((arg) => `'${escapePowerShellLiteral(arg)}'`).join(', ');
-		const script = `& '${escapePowerShellLiteral(command)}' @(${argumentList})`;
-		execFileSync(powerShellExe, ['-NoProfile', '-NonInteractive', '-Command', script], {
-			stdio: 'inherit',
-			cwd: root,
-		});
-		return;
-	}
-	execFileSync(command, args, { stdio: 'inherit', cwd: root });
-}
-
-function runNpm(args) {
-	runFile(npmRunner.command, [...npmRunner.baseArgs, ...args]);
-}
-
-function runNpmScript(scriptName) {
-	runNpm(['run', scriptName]);
-}
-
-function escapePowerShellLiteral(value) {
-	return String(value).replace(/'/g, "''");
-}
-
-function runVsCodeInstall(command, args) {
-	if (process.platform !== 'win32') {
-		runFile(command, args);
-		return;
-	}
-
-	const powerShellExe = path.join(
-		process.env.SystemRoot ?? 'C:\\Windows',
-		'System32',
-		'WindowsPowerShell',
-		'v1.0',
-		'powershell.exe',
-	);
-	const argumentList = args.map((arg) => `'${escapePowerShellLiteral(arg)}'`).join(', ');
-	const script = `Start-Process -FilePath '${escapePowerShellLiteral(command)}' -ArgumentList @(${argumentList}) -NoNewWindow -Wait`;
-	runFile(powerShellExe, ['-NoProfile', '-NonInteractive', '-Command', script]);
-}
+const cwd = process.cwd();
+const packageJsonPath = path.join(cwd, 'package.json');
+const readmePath = path.join(cwd, 'README.md');
+const changelogPath = path.join(cwd, 'CHANGELOG.md');
 
 function getDefaultChangelogSection() {
 	return [
@@ -187,64 +68,28 @@ function updateVersionAndDocs() {
 	return nextVersion;
 }
 
-function runStopHook(needsVsix) {
-	const version = getCurrentVersion();
-	console.log(`[hook] npm runner: ${npmRunner.command}`);
-	if (needsVsix) {
-		console.log('[hook] VSIX build/install is enabled for this run.');
-	} else {
-		console.log('[hook] VSIX build/install skipped (--skip-vsix).');
-	}
-
-	logPhase('Compile');
-	runNpmScript('compile');
-	if (needsVsix) {
-		installVsix(version);
-	}
-	console.log(`[hook] Completed stop hook with version ${version}`);
-}
-
-function installVsix(version) {
-	const vsixFile = `csm-vsc-support-${version}.vsix`;
-	const vsixPath = path.join(root, vsixFile);
-	const extensionsDir = process.env.VSCODE_EXTENSIONS_DIR || path.join(os.homedir(), '.vscode', 'extensions');
-	const codeCommand = resolveCodeCommand();
-	const nodeCommand = process.execPath;
-
-	logPhase('VSIX Packaging');
-	runNpm(['exec', '--yes', '--package', '@vscode/vsce@3.7.1', '--', 'vsce', 'package', '--no-dependencies']);
-
-	console.log(`[hook] VS Code CLI: ${codeCommand}`);
-	console.log(`[hook] Extensions dir: ${extensionsDir}`);
-	try {
-		runVsCodeInstall(codeCommand, ['--extensions-dir', extensionsDir, '--install-extension', vsixPath, '--force']);
-	} catch (error) {
-		const message = error instanceof Error ? error.message : String(error);
-		throw new Error(`Failed to install ${vsixFile}. Packaged VSIX remains at ${vsixPath}. Set VSCODE_CLI if VS Code CLI cannot be resolved. ${message}`);
-	}
-
-	logPhase('VSIX Verification');
-	try {
-		runFile(nodeCommand, ['scripts/verify-local-install.mjs', '--extensions-dir', extensionsDir, '--version', version]);
-	} catch (error) {
-		const message = error instanceof Error ? error.message : String(error);
-		throw new Error(`Installed VSIX verification failed for ${vsixFile} in ${extensionsDir}. ${message}`);
-	}
-}
-
 function main() {
 	const skipVsix = process.argv.includes('--skip-vsix');
 	const forceVsix = process.argv.includes('--force-vsix');
 	const stopHookMode = process.argv.includes('--stop-hook');
 	const needsVsix = !skipVsix;
+
 	if (forceVsix) {
 		console.log('[hook] --force-vsix is now redundant; VSIX build/install runs by default.');
 	}
+
 	if (stopHookMode) {
-		runStopHook(needsVsix);
+		// Stop hook 模式：仅编译 + VSIX，不做版本递增和测试
+		compileOnly(cwd);
+		if (needsVsix) {
+			const version = getCurrentVersion(cwd);
+			installVsix(version, cwd);
+		}
+		console.log(`[hook] Completed stop hook with version ${getCurrentVersion(cwd)}`);
 		return;
 	}
-	console.log(`[hook] npm runner: ${npmRunner.command}`);
+
+	// 完整本地流水线
 	if (needsVsix) {
 		console.log('[hook] VSIX build/install is enabled for this run.');
 	} else {
@@ -254,19 +99,19 @@ function main() {
 	logPhase('Version & Docs');
 	const version = updateVersionAndDocs();
 	logPhase('Type Check');
-	runNpmScript('check-types');
+	runNpmScript('check-types', cwd);
 	logPhase('Lint');
-	runNpmScript('lint');
+	runNpmScript('lint', cwd);
 	logPhase('Compile');
-	runNpmScript('compile');
+	runNpmScript('compile', cwd);
 	if (needsVsix) {
-		installVsix(version);
+		installVsix(version, cwd);
 	}
 	logPhase('Test Compile');
-	runNpmScript('compile-tests');
+	runNpmScript('compile-tests', cwd);
 	try {
 		logPhase('Test');
-		runNpmScript('test');
+		runNpmScript('test', cwd);
 	} catch {
 		console.warn('[hook] npm test failed. Continuing to VSIX packaging for local verification.');
 	}
