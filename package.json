@@ -297,6 +297,18 @@
           ],
           "scope": "window",
           "description": "%configuration.csmModules.hiddenTopics.description%"
+        },
+        "csmModules.autoStarCsmCore": {
+          "type": "boolean",
+          "default": true,
+          "scope": "window",
+          "description": "%configuration.csmModules.autoStarCsmCore.description%"
+        },
+        "csmModules.autoStarModuleRepo": {
+          "type": "boolean",
+          "default": true,
+          "scope": "window",
+          "description": "%configuration.csmModules.autoStarModuleRepo.description%"
         }
       }
     },
