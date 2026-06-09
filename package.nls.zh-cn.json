@@ -23,5 +23,6 @@
   "configuration.csmModules.hiddenTopics.description": "用于配置在 CSM Modules 侧边栏徽标、树视图提示和本地搜索文本中隐藏的模块仓库 topics。",
   "configuration.csmModules.dedup.enabled.description": "启用 .csmlog 文件中连续重复日志消息的折叠。",
   "configuration.csmModules.dedup.minRepeatCount.description": "创建可折叠组所需的最小连续相同日志消息数（最小值为 2）。匹配采用宽松策略——数字参数差异（如重连计数）会被忽略。",
+  "configuration.csmModules.dedup.multiLineEnabled.description": "检测并折叠多行重复的日志块（如每秒重复一次的 5 行 UI 更新循环）。",
   "iconThemes.csmFileIcons.label": "CSM 文件图标"
 }

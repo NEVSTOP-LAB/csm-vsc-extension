@@ -310,6 +310,12 @@
           "minimum": 2,
           "scope": "resource",
           "description": "%configuration.csmModules.dedup.minRepeatCount.description%"
+        },
+        "csmModules.dedup.multiLineEnabled": {
+          "type": "boolean",
+          "default": true,
+          "scope": "resource",
+          "description": "%configuration.csmModules.dedup.multiLineEnabled.description%"
         }
       }
     },
