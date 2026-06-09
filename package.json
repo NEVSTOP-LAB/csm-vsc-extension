@@ -316,6 +316,12 @@
           "default": true,
           "scope": "resource",
           "description": "%configuration.csmModules.dedup.multiLineEnabled.description%"
+        },
+        "csmModules.dedup.autoFold": {
+          "type": "boolean",
+          "default": true,
+          "scope": "resource",
+          "description": "%configuration.csmModules.dedup.autoFold.description%"
         }
       }
     },

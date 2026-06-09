@@ -29,12 +29,37 @@ function foldIcon(editor: vscode.TextEditor, g: RepeatedGroup): string {
 }
 
 // ---- 装饰类型 ----
+// 四种背景色：组索引 × 块索引 的奇偶交替，使相邻组及组内相邻块均可区分
 
-/** 所有重复行淡背景 */
-const bgType = vscode.window.createTextEditorDecorationType({
-    backgroundColor: new vscode.ThemeColor('editor.findMatchHighlightBackground'),
+/** 偶数组 + 偶数块 — 亮蓝色 */
+const bgType00 = vscode.window.createTextEditorDecorationType({
+    backgroundColor: 'rgba(110, 160, 230, 0.10)',
     isWholeLine: true,
-    overviewRulerColor: new vscode.ThemeColor('editor.findMatchHighlightBorder'),
+    overviewRulerColor: 'rgba(110, 160, 230, 0.10)',
+    overviewRulerLane: vscode.OverviewRulerLane.Right,
+});
+
+/** 偶数组 + 奇数块 — 深蓝色 */
+const bgType01 = vscode.window.createTextEditorDecorationType({
+    backgroundColor: 'rgba(40, 75, 140, 0.10)',
+    isWholeLine: true,
+    overviewRulerColor: 'rgba(40, 75, 140, 0.10)',
+    overviewRulerLane: vscode.OverviewRulerLane.Right,
+});
+
+/** 奇数组 + 偶数块 — 亮琥珀色 */
+const bgType10 = vscode.window.createTextEditorDecorationType({
+    backgroundColor: 'rgba(230, 175, 70, 0.10)',
+    isWholeLine: true,
+    overviewRulerColor: 'rgba(230, 175, 70, 0.10)',
+    overviewRulerLane: vscode.OverviewRulerLane.Right,
+});
+
+/** 奇数组 + 奇数块 — 深琥珀色 */
+const bgType11 = vscode.window.createTextEditorDecorationType({
+    backgroundColor: 'rgba(140, 90, 30, 0.10)',
+    isWholeLine: true,
+    overviewRulerColor: 'rgba(140, 90, 30, 0.10)',
     overviewRulerLane: vscode.OverviewRulerLane.Right,
 });
 
@@ -57,6 +82,9 @@ const borderType = vscode.window.createTextEditorDecorationType({
 // ---- 自动折叠 ----
 
 async function autoFoldGroups(editor: vscode.TextEditor, groups: RepeatedGroup[]): Promise<void> {
+    const cfg = vscode.workspace.getConfiguration('csmModules.dedup');
+    if (!cfg.get<boolean>('autoFold', true)) { return; }
+
     const uri = editor.document.uri.toString();
     if (autoFoldedDocs.has(uri)) { return; }
     autoFoldedDocs.add(uri);
@@ -85,12 +113,16 @@ async function autoFoldGroups(editor: vscode.TextEditor, groups: RepeatedGroup[]
 
 async function applyDecorations(editor: vscode.TextEditor): Promise<void> {
     if (editor.document.languageId !== 'csmlog') {
-        editor.setDecorations(bgType, []); editor.setDecorations(infoType, []); editor.setDecorations(borderType, []);
+        editor.setDecorations(bgType00, []); editor.setDecorations(bgType01, []);
+        editor.setDecorations(bgType10, []); editor.setDecorations(bgType11, []);
+        editor.setDecorations(infoType, []); editor.setDecorations(borderType, []);
         return;
     }
     const cfg = vscode.workspace.getConfiguration('csmModules.dedup');
     if (!cfg.get<boolean>('enabled', true)) {
-        editor.setDecorations(bgType, []); editor.setDecorations(infoType, []); editor.setDecorations(borderType, []);
+        editor.setDecorations(bgType00, []); editor.setDecorations(bgType01, []);
+        editor.setDecorations(bgType10, []); editor.setDecorations(bgType11, []);
+        editor.setDecorations(infoType, []); editor.setDecorations(borderType, []);
         return;
     }
 
@@ -100,21 +132,33 @@ async function applyDecorations(editor: vscode.TextEditor): Promise<void> {
 
     await autoFoldGroups(editor, groups);
 
-    const bgRanges: vscode.Range[] = [];
+    const bgRanges00: vscode.Range[] = [];
+    const bgRanges01: vscode.Range[] = [];
+    const bgRanges10: vscode.Range[] = [];
+    const bgRanges11: vscode.Range[] = [];
     const infoOpts: vscode.DecorationOptions[] = [];
     const borderRanges: vscode.Range[] = [];
 
-    for (const g of groups) {
+    groups.forEach((g, groupIdx) => {
         const bs = g.blockSize;
         const totalBlocks = g.count;
         const totalLines = totalBlocks * bs;
-        const foldStart = g.startLine + bs - 1;   // 第一组最后一行
-        const foldEnd = g.endLine;
+        const groupParity = groupIdx % 2;  // 0=偶数, 1=奇数
 
-        // 所有重复行淡背景 + 左侧竖线
+        // 所有重复行背景 + 左侧竖线
         for (let l = g.startLine; l <= g.endLine; l++) {
             const r = editor.document.lineAt(l).range;
-            bgRanges.push(r);
+            const blockIdx = Math.floor((l - g.startLine) / bs);
+            const blockParity = blockIdx % 2;  // 0=偶数块, 1=奇数块
+
+            // 四种组合分配：组奇偶 × 块奇偶
+            if (groupParity === 0) {
+                if (blockParity === 0) { bgRanges00.push(r); }
+                else { bgRanges01.push(r); }
+            } else {
+                if (blockParity === 0) { bgRanges10.push(r); }
+                else { bgRanges11.push(r); }
+            }
             borderRanges.push(r);
         }
 
@@ -131,15 +175,17 @@ async function applyDecorations(editor: vscode.TextEditor): Promise<void> {
                 before: {
                     contentText: label,
                     color: new vscode.ThemeColor('editorInfo.foreground'),
-                    backgroundColor: new vscode.ThemeColor('editorInfo.background'),
                     fontWeight: 'bold',
                     margin: '0 8px 0 0',
                 },
             },
         });
-    }
+    });
 
-    editor.setDecorations(bgType, bgRanges);
+    editor.setDecorations(bgType00, bgRanges00);
+    editor.setDecorations(bgType01, bgRanges01);
+    editor.setDecorations(bgType10, bgRanges10);
+    editor.setDecorations(bgType11, bgRanges11);
     editor.setDecorations(infoType, infoOpts);
     editor.setDecorations(borderType, borderRanges);
 }

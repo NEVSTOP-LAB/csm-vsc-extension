@@ -24,5 +24,6 @@
   "configuration.csmModules.dedup.enabled.description": "Enable collapsing of consecutive duplicate log messages in .csmlog files.",
   "configuration.csmModules.dedup.minRepeatCount.description": "Minimum number of consecutive identical log messages required to create a foldable group (minimum 2). Messages are matched loosely — numeric parameters (e.g. connection attempt counters) are ignored.",
   "configuration.csmModules.dedup.multiLineEnabled.description": "Detect and collapse multi-line repeating log blocks (e.g. a 5-line UI update cycle that repeats every second).",
+  "configuration.csmModules.dedup.autoFold.description": "Automatically fold all detected duplicate groups when opening a .csmlog file.",
   "iconThemes.csmFileIcons.label": "CSM File Icons"
 }
