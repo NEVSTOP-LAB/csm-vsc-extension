@@ -57,7 +57,7 @@ function getRanges(lines: string[]): RangeLike[] {
 teardown(() => {
     // Reset dedup config to enabled defaults for each test
     setConfig('csmModules.dedup.enabled', true);
-    setConfig('csmModules.dedup.minRepeatCount', 3);
+    setConfig('csmModules.dedup.minRepeatCount', 2);
 });
 
 // ---------------------------------------------------------------------------
@@ -116,13 +116,17 @@ suite('CSMLogFoldingRangeProvider', () => {
         assert.strictEqual(ranges[0].kind, 3);
     });
 
-    test('returns empty for 2 repeated lines (minRepeat=3 default)', () => {
+    test('returns one folding range for 2 repeated lines with default minRepeat=2', () => {
         const lines = [
             '2026/03/20 17:32:59.426 [Error] AI | Same error',
             '2026/03/20 17:32:59.427 [Error] AI | Same error',
         ];
-        // minRepeat=3, 2 lines → not detected
-        assert.deepStrictEqual(getRanges(lines), []);
+        // minRepeat=2, 2 lines → detected
+        const ranges = getRanges(lines);
+        assert.strictEqual(ranges.length, 1);
+        assert.strictEqual(ranges[0].start, 0);
+        assert.strictEqual(ranges[0].end, 1);
+        assert.strictEqual(ranges[0].kind, 3);
     });
 
     test('returns folding ranges for separate groups', () => {
@@ -145,7 +149,7 @@ suite('CSMLogFoldingRangeProvider', () => {
         assert.strictEqual(ranges[1].end, 6);
     });
 
-    test('config line interrupts repeat chain', () => {
+    test('config line splits repeat chain into separate groups', () => {
         const lines = [
             '2026/03/20 17:32:59.426 [Error] AI | Same error',
             '2026/03/20 17:32:59.427 [Error] AI | Same error',
@@ -154,8 +158,12 @@ suite('CSMLogFoldingRangeProvider', () => {
             '2026/03/20 17:32:59.429 [Error] AI | Same error',
         ];
         const ranges = getRanges(lines);
-        // 2 on each side, default minRepeat=3 → none
-        assert.strictEqual(ranges.length, 0);
+        // 2 on each side, default minRepeat=2 → two separate groups
+        assert.strictEqual(ranges.length, 2);
+        assert.strictEqual(ranges[0].start, 0);
+        assert.strictEqual(ranges[0].end, 1);
+        assert.strictEqual(ranges[1].start, 3);
+        assert.strictEqual(ranges[1].end, 4);
     });
 
     test('merges parameterized duplicates', () => {

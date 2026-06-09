@@ -6,7 +6,7 @@ import {
     LOGGER_MESSAGE_REGEX,
 } from './common/constants';
 import { SymbolEntry, buildDocumentSymbols } from './common/symbols';
-import { detectAllRepeatedGroups, truncateSignature } from './common/csmlogDedup';
+import { detectAllRepeatedGroups, truncateSignature, DISABLE_MULTI_LINE } from './common/csmlogDedup';
 
 const symbolMessages = {
     moduleCreated: {
@@ -89,14 +89,14 @@ export class CSMLogDocumentSymbolProvider implements vscode.DocumentSymbolProvid
 
         // 检测并添加重复日志组（由 csmModules.dedup.* 配置控制）
         try {
-            const config = vscode.workspace.getConfiguration('csmModules.dedup');
-            const dedupEnabled = config.get<boolean>('enabled', true);
+            const dedupConfig = vscode.workspace.getConfiguration('csmModules.dedup');
+            const dedupEnabled = dedupConfig.get<boolean>('enabled', true);
             if (dedupEnabled) {
-                const minRepeat = config.get<number>('minRepeatCount', 2);
-                const multiLineEnabled = config.get<boolean>('multiLineEnabled', true);
+                const minRepeat = dedupConfig.get<number>('minRepeatCount', 2);
+                const multiLineEnabled = dedupConfig.get<boolean>('multiLineEnabled', true);
                 const repeatedGroups = multiLineEnabled
                     ? detectAllRepeatedGroups(document, minRepeat)
-                    : detectAllRepeatedGroups(document, minRepeat, 999);
+                    : detectAllRepeatedGroups(document, minRepeat, DISABLE_MULTI_LINE);
 
                 // 收集已有条目覆盖的行号
                 const coveredLines = new Set<number>();

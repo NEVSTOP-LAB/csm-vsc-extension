@@ -8,7 +8,7 @@
 // ---------------------------------------------------------------------------
 
 import * as vscode from 'vscode';
-import { detectAllRepeatedGroups } from './common/csmlogDedup';
+import { detectAllRepeatedGroups, DISABLE_MULTI_LINE } from './common/csmlogDedup';
 
 /**
  * 读取去重配置。
@@ -16,7 +16,7 @@ import { detectAllRepeatedGroups } from './common/csmlogDedup';
 function getDedupConfig(): { enabled: boolean; minRepeat: number; multiLineEnabled: boolean } {
     const config = vscode.workspace.getConfiguration('csmModules.dedup');
     const enabled = config.get<boolean>('enabled', true);
-    const minRepeat = config.get<number>('minRepeatCount', 3);
+    const minRepeat = config.get<number>('minRepeatCount', 2);
     const multiLineEnabled = config.get<boolean>('multiLineEnabled', true);
     return { enabled, minRepeat, multiLineEnabled };
 }
@@ -40,7 +40,7 @@ export class CSMLogFoldingRangeProvider implements vscode.FoldingRangeProvider {
 
         const repeatedGroups = multiLineEnabled
             ? detectAllRepeatedGroups(document, minRepeat)
-            : detectAllRepeatedGroups(document, minRepeat, 999); // 999 = effectively disable multi-line
+            : detectAllRepeatedGroups(document, minRepeat, DISABLE_MULTI_LINE);
 
         return repeatedGroups
             .map((group): vscode.FoldingRange | null => {

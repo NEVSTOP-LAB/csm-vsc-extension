@@ -7,7 +7,7 @@
 // ---------------------------------------------------------------------------
 
 import * as vscode from 'vscode';
-import { detectAllRepeatedGroups, RepeatedGroup } from './common/csmlogDedup';
+import { detectAllRepeatedGroups, RepeatedGroup, DISABLE_MULTI_LINE } from './common/csmlogDedup';
 import { localizeBundle } from './i18n';
 
 const autoFoldedDocs = new Set<string>();
@@ -99,7 +99,8 @@ async function autoFoldGroups(editor: vscode.TextEditor, groups: RepeatedGroup[]
     const foldable = groups.filter(g => g.count >= 2);
     if (foldable.length === 0) { return; }
 
-    await new Promise(resolve => setTimeout(resolve, 500));
+    // 让出微任务以确保 VS Code 完成当前批次的装饰渲染
+    await Promise.resolve();
 
     // 多选区同时折叠所有组，高效且不跳光标
     const selections = foldable.map(g => {
@@ -135,7 +136,7 @@ async function applyDecorations(editor: vscode.TextEditor): Promise<void> {
 
     const groups = cfg.get<boolean>('multiLineEnabled', true)
         ? detectAllRepeatedGroups(editor.document, cfg.get<number>('minRepeatCount', 2))
-        : detectAllRepeatedGroups(editor.document, cfg.get<number>('minRepeatCount', 2), 999);
+        : detectAllRepeatedGroups(editor.document, cfg.get<number>('minRepeatCount', 2), DISABLE_MULTI_LINE);
 
     await autoFoldGroups(editor, groups);
 
@@ -221,17 +222,21 @@ export function setupDedupDecorator(context: vscode.ExtensionContext): void {
         }),
     );
 
-    // 文档内容变更时更新
+    // 文档内容变更时更新（带防抖，避免大文件编辑时频繁全量扫描）
+    let debounceTimer: ReturnType<typeof setTimeout> | undefined;
     context.subscriptions.push(
         vscode.workspace.onDidChangeTextDocument((event) => {
             const editor = vscode.window.activeTextEditor;
             if (editor && event.document === editor.document) {
-                void applyDecorations(editor);
+                if (debounceTimer) { clearTimeout(debounceTimer); }
+                debounceTimer = setTimeout(() => {
+                    void applyDecorations(editor);
+                }, 400);
             }
         }),
     );
 
-    // 折叠/展开时更新图标（▼ ↔ ▶）
+    // 折叠/展开时更新图标（▼ ↔ ▶）—— 不防抖，确保即时响应
     context.subscriptions.push(
         vscode.window.onDidChangeTextEditorVisibleRanges((event) => {
             if (event.textEditor.document.languageId === 'csmlog') {
@@ -240,10 +245,16 @@ export function setupDedupDecorator(context: vscode.ExtensionContext): void {
         }),
     );
 
-    // 文档关闭时清理自动折叠记录
+    // 文档关闭时清理自动折叠记录和防抖定时器
     context.subscriptions.push(
         vscode.workspace.onDidCloseTextDocument((document) => {
             autoFoldedDocs.delete(document.uri.toString());
+            if (debounceTimer) { clearTimeout(debounceTimer); }
         }),
     );
+
+    // 扩展停用时清理所有自动折叠记录，避免重新激活后遗留状态
+    context.subscriptions.push({
+        dispose: () => { autoFoldedDocs.clear(); },
+    });
 }

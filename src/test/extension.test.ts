@@ -330,18 +330,13 @@ suite('Language Definition Tests', () => {
         );
     });
 
-    test('package.json sets global files.autoGuessEncoding in configurationDefaults', () => {
+    test('package.json does NOT set global files.autoGuessEncoding (only per-language)', () => {
         const pkgPath = path.resolve(__dirname, '../../package.json');
         const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));
         const configurationDefaults = pkg.contributes?.configurationDefaults ?? {};
         assert.ok(
-            Object.prototype.hasOwnProperty.call(configurationDefaults, 'files.autoGuessEncoding'),
-            'configurationDefaults should define global files.autoGuessEncoding'
-        );
-        assert.strictEqual(
-            configurationDefaults['files.autoGuessEncoding'],
-            true,
-            'global files.autoGuessEncoding should be true'
+            !Object.prototype.hasOwnProperty.call(configurationDefaults, 'files.autoGuessEncoding'),
+            'configurationDefaults should NOT define global files.autoGuessEncoding (only [csmlog] and [lvcsm])'
         );
     });
 

@@ -14,6 +14,9 @@
 import * as vscode from 'vscode';
 import { RE_DATE_TS, CONFIG_LINE_REGEX } from './constants';
 
+/** 禁用多行块检测的哨兵值（远大于实际可能的块重复次数）。 */
+export const DISABLE_MULTI_LINE = 999;
+
 /**
  * 重复组描述。
  */
