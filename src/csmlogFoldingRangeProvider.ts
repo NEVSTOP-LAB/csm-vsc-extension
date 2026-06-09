@@ -44,20 +44,24 @@ export class CSMLogFoldingRangeProvider implements vscode.FoldingRangeProvider {
 
         return repeatedGroups
             .map((group): vscode.FoldingRange | null => {
-                // 多行块：折叠从第二个块开始，保留第一个块作为"模板"可见
-                // 单行：从第一行开始折叠（第一行可见作为模板）
-                const foldStart = group.blockSize > 1
-                    ? group.startLine + group.blockSize
-                    : group.startLine;
+                const bs = group.blockSize;
 
-                // 只有当可折叠行数 >= 1 时才创建折叠范围
+                // 第一块始终可见：startLine .. startLine+bs-1
+                const firstVisibleEnd = group.startLine + bs - 1;
+
+                // 末块可见的条件：重复次数 >= 3
+                if (group.count >= 3) {
+                    const lastVisibleStart = group.endLine - bs + 1;
+                    const foldStart = firstVisibleEnd + 1;
+                    const foldEnd = lastVisibleStart - 1;
+                    if (foldStart > foldEnd) { return null; }
+                    return new vscode.FoldingRange(foldStart, foldEnd, vscode.FoldingRangeKind.Region);
+                }
+
+                // count == 2：仅首块可见，第二块折叠
+                const foldStart = firstVisibleEnd + 1;
                 if (foldStart > group.endLine) { return null; }
-
-                return new vscode.FoldingRange(
-                    foldStart,
-                    group.endLine,
-                    vscode.FoldingRangeKind.Region,
-                );
+                return new vscode.FoldingRange(foldStart, group.endLine, vscode.FoldingRangeKind.Region);
             })
             .filter((r): r is vscode.FoldingRange => r !== null);
     }

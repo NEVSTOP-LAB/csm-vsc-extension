@@ -97,8 +97,9 @@ suite('CSMLogFoldingRangeProvider', () => {
         ];
         const ranges = getRanges(lines);
         assert.strictEqual(ranges.length, 1);
-        assert.strictEqual(ranges[0].start, 0);
-        assert.strictEqual(ranges[0].end, 2);
+        // 首末行可见，仅中间行折叠
+        assert.strictEqual(ranges[0].start, 1);
+        assert.strictEqual(ranges[0].end, 1);
         assert.strictEqual(ranges[0].kind, 3); // FoldingRangeKind.Region = 3
     });
 
@@ -118,7 +119,8 @@ suite('CSMLogFoldingRangeProvider', () => {
         ];
         const ranges = getRanges(lines);
         assert.strictEqual(ranges.length, 1);
-        assert.strictEqual(ranges[0].start, 0);
+        // 仅 2 行：首行可见，末行折叠
+        assert.strictEqual(ranges[0].start, 1);
         assert.strictEqual(ranges[0].end, 1);
     });
 
@@ -137,10 +139,11 @@ suite('CSMLogFoldingRangeProvider', () => {
         ];
         const ranges = getRanges(lines);
         assert.strictEqual(ranges.length, 2);
-        assert.strictEqual(ranges[0].start, 0);
-        assert.strictEqual(ranges[0].end, 2);
-        assert.strictEqual(ranges[1].start, 4);
-        assert.strictEqual(ranges[1].end, 6);
+        // 每组 3 行：首末可见，中间行折叠
+        assert.strictEqual(ranges[0].start, 1);
+        assert.strictEqual(ranges[0].end, 1);
+        assert.strictEqual(ranges[1].start, 5);
+        assert.strictEqual(ranges[1].end, 5);
     });
 
     test('config line interrupts repeat chain', () => {

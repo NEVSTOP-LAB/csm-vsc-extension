@@ -18,6 +18,14 @@ import { detectAllRepeatedGroups, RepeatedGroup } from './common/csmlogDedup';
 const autoFoldedDocs = new Set<string>();
 
 /**
+ * 从日志行提取简短时间戳（HH:MM:SS），用于折叠标记中的时间跨度显示。
+ */
+function extractShortTimestamp(line: string): string | null {
+    const m = line.match(/\d{4}[/-]\d{2}[/-]\d{2}\s+(\d{2}:\d{2}:\d{2})/);
+    return m ? m[1] : null;
+}
+
+/**
  * 重复行背景装饰：浅灰色，覆盖整行，右侧概览标尺标记。
  */
 const dedupBgDecorationType = vscode.window.createTextEditorDecorationType({
@@ -90,24 +98,38 @@ async function applyDecorations(editor: vscode.TextEditor): Promise<void> {
     const markerOpts: vscode.DecorationOptions[] = [];
 
     for (const group of groups) {
-        // 折叠入口行（模板块最后一行，始终可见；折叠后标记在此处显示）
-        const markerLine = group.blockSize > 1
-            ? group.startLine + group.blockSize - 1  // 模板块最后一行
-            : group.startLine;                         // 单行：起始行
+        const bs = group.blockSize;
 
+        // 所有重复行添加淡背景
         for (let line = group.startLine; line <= group.endLine; line++) {
             bgRanges.push(editor.document.lineAt(line).range);
         }
 
-        if (markerLine <= group.endLine) {
-            const countLabel = group.blockSize > 1
-                ? `${group.count - 1}× [${group.blockSize}L]`
-                : `${group.count}`;
+        // 计算折叠信息
+        const foldedCount = group.count >= 3 ? group.count - 2 : 1;
+        const foldStartLine = group.startLine + bs; // 折叠起始行
+
+        if (foldStartLine <= group.endLine) {
+            // 提取折叠段首尾时间戳
+            const firstFoldedLine = editor.document.lineAt(foldStartLine).text;
+            const lastFoldedLine = editor.document.lineAt(
+                group.count >= 3 ? group.endLine - bs : group.endLine
+            ).text;
+            const ts1 = extractShortTimestamp(firstFoldedLine);
+            const ts2 = extractShortTimestamp(lastFoldedLine);
+
+            // 构建标记文字
+            const label = bs > 1
+                ? `▼ ${foldedCount} blocks (${bs}L)`
+                : `▼ ${foldedCount} lines`;
+            const timeSpan = ts1 && ts2 ? ` | ${ts1} → ${ts2}` : '';
+            const contentText = `${label}${timeSpan} `;
+
             markerOpts.push({
-                range: editor.document.lineAt(markerLine).range,
+                range: editor.document.lineAt(foldStartLine).range,
                 renderOptions: {
                     before: {
-                        contentText: `▼ ×${countLabel} `,
+                        contentText,
                         color: new vscode.ThemeColor('editorInfo.foreground'),
                         backgroundColor: new vscode.ThemeColor('editorInfo.background'),
                         fontWeight: 'bold',
