@@ -33,11 +33,14 @@ const infoType = vscode.window.createTextEditorDecorationType({
     overviewRulerLane: vscode.OverviewRulerLane.Right,
 });
 
-/** 可见模板行左侧竖线 */
+/** 可见模板行左侧竖线（使用 before 管道符模拟） */
 const borderType = vscode.window.createTextEditorDecorationType({
-    isWholeLine: true,
-    border: '0 0 0 2px solid',
-    borderColor: new vscode.ThemeColor('editorInfo.foreground'),
+    before: {
+        contentText: '│ ',
+        color: new vscode.ThemeColor('editorLineNumber.activeForeground'),
+        fontWeight: 'bold',
+        margin: '0 4px 0 0',
+    },
 });
 
 // ---- 自动折叠 ----
@@ -51,15 +54,20 @@ async function autoFoldGroups(editor: vscode.TextEditor, groups: RepeatedGroup[]
     if (foldable.length === 0) { return; }
 
     await new Promise(resolve => setTimeout(resolve, 500));
-    const saved = editor.selection;
 
-    for (const g of foldable) {
+    // 多选区同时折叠所有组，高效且不跳光标
+    const selections = foldable.map(g => {
         const fs = g.startLine + g.blockSize;
-        if (fs > g.endLine) { continue; }
-        editor.selection = new vscode.Selection(new vscode.Position(fs, 0), new vscode.Position(g.endLine, 0));
-        await vscode.commands.executeCommand('editor.fold');
+        const fe = g.endLine;
+        return new vscode.Selection(new vscode.Position(fs, 0), new vscode.Position(fe, 0));
+    });
+    editor.selections = selections;
+    await vscode.commands.executeCommand('editor.fold');
+    // 恢复单光标到第一组可见位置
+    if (foldable.length > 0) {
+        const g = foldable[0];
+        editor.selection = new vscode.Selection(new vscode.Position(g.startLine, 0), new vscode.Position(g.startLine, 0));
     }
-    editor.selection = saved;
 }
 
 // ---- 装饰应用 ----
@@ -102,7 +110,7 @@ async function applyDecorations(editor: vscode.TextEditor): Promise<void> {
             borderRanges.push(editor.document.lineAt(l).range);
         }
 
-        // 首行信息线
+        // 首行信息线（放在折叠起始行，折叠后 VS Code 将此行作为折叠头显示）
         const ts1 = shortTs(editor.document.lineAt(foldStart).text);
         const ts2 = shortTs(editor.document.lineAt(foldEnd).text);
         const timeSpan = ts1 && ts2 ? ` | ${ts1} → ${ts2}` : '';
@@ -111,7 +119,7 @@ async function applyDecorations(editor: vscode.TextEditor): Promise<void> {
             : `▼ ${foldedLines} lines${timeSpan} | L${foldStart + 1}-L${foldEnd + 1} `;
 
         infoOpts.push({
-            range: editor.document.lineAt(g.startLine).range,
+            range: editor.document.lineAt(foldStart).range,
             renderOptions: {
                 before: {
                     contentText: label,
