@@ -161,7 +161,7 @@ export function detectRepeatedGroups(
  *
  * 算法：对每个起始位置，尝试 2~20 行的块大小，
  * 检查是否能找到至少 `minRepeatBlocks` 次连续重复。
- * 优先匹配更大的块，已覆盖的行不再参与后续匹配。
+ * 优先匹配最小的有效块，以找到最基础的重复单元。
  *
  * @param document — VS Code 文本文档
  * @param minRepeatBlocks — 最小块重复次数（默认 2，即至少出现两次）
@@ -190,8 +190,8 @@ export function detectMultiLineRepeatedGroups(
         let bestL = 0;
         let bestReps = 0;
 
-        // 从大到小尝试块大小，优先匹配更大的块
-        for (let L = Math.min(MAX_BLOCK, lineCount - i); L >= 2; L--) {
+        // 从小到大尝试块大小，优先匹配最小的有效块（最基础的重复单元）
+        for (let L = 2; L <= Math.min(MAX_BLOCK, lineCount - i); L++) {
             // 第一块必须全部为非 null
             let blockValid = true;
             for (let k = 0; k < L; k++) {
@@ -219,7 +219,7 @@ export function detectMultiLineRepeatedGroups(
             if (reps >= minRepeatBlocks) {
                 bestL = L;
                 bestReps = reps;
-                break;  // 找到最大有效块，停止搜索更小的 L
+                break;  // 找到最小有效块，停止搜索更大的 L
             }
         }
 

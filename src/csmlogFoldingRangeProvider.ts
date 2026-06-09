@@ -42,12 +42,23 @@ export class CSMLogFoldingRangeProvider implements vscode.FoldingRangeProvider {
             ? detectAllRepeatedGroups(document, minRepeat)
             : detectAllRepeatedGroups(document, minRepeat, 999); // 999 = effectively disable multi-line
 
-        return repeatedGroups.map((group): vscode.FoldingRange =>
-            new vscode.FoldingRange(
-                group.startLine,
-                group.endLine,
-                vscode.FoldingRangeKind.Region,
-            ),
-        );
+        return repeatedGroups
+            .map((group): vscode.FoldingRange | null => {
+                // 多行块：折叠从第二个块开始，保留第一个块作为"模板"可见
+                // 单行：从第一行开始折叠（第一行可见作为模板）
+                const foldStart = group.blockSize > 1
+                    ? group.startLine + group.blockSize
+                    : group.startLine;
+
+                // 只有当可折叠行数 >= 1 时才创建折叠范围
+                if (foldStart > group.endLine) { return null; }
+
+                return new vscode.FoldingRange(
+                    foldStart,
+                    group.endLine,
+                    vscode.FoldingRangeKind.Region,
+                );
+            })
+            .filter((r): r is vscode.FoldingRange => r !== null);
     }
 }

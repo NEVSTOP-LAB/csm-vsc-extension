@@ -335,8 +335,8 @@ suite('detectMultiLineRepeatedGroups', () => {
         assert.deepStrictEqual(groups, []);
     });
 
-    test('prioritizes larger block size over smaller', () => {
-        // 6 identical lines: 3-line block × 2 wins over 2-line block × 3
+    test('prioritizes smallest valid block size', () => {
+        // 6 identical lines: 2-line block × 3 wins over 3-line block × 2
         const lines = [
             '2026/03/20 17:32:59.426 [Error] AI | X',
             '2026/03/20 17:32:59.427 [Error] AI | X',
@@ -347,9 +347,9 @@ suite('detectMultiLineRepeatedGroups', () => {
         ];
         const groups = detectMultiLineRepeatedGroups(makeDoc(lines));
         assert.strictEqual(groups.length, 1);
-        // Since all lines identical, largest matching block should be found
-        // 3-line block × 2 is better than 2-line block × 3
-        assert.strictEqual(groups[0].blockSize >= 3, true);
+        // Smallest valid block should be found: 2-line block × 3
+        assert.strictEqual(groups[0].blockSize, 2);
+        assert.strictEqual(groups[0].count, 3);
     });
 
     test('null signature lines break multi-line blocks', () => {

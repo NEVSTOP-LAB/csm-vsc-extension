@@ -15,3 +15,5 @@ esbuild.js
 **/*.ts
 **/.vscode-test.*
 CONTRIBUTING.md
+
+.ignore
