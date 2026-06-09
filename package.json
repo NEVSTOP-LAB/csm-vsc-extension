@@ -334,7 +334,6 @@
           "default": true,
           "scope": "window",
           "description": "%configuration.csmModules.autoStarModuleRepo.description%"
-
         }
       }
     },
