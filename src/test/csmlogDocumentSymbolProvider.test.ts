@@ -12,9 +12,6 @@ import * as assert from 'assert';
 import * as path from 'path';
 import { __setLanguageOverrideForTests } from '../i18n';
 
-// vscode mock configuration helper for dedup config — use require to avoid TS type errors
-const { __setConfigurationValue } = require('vscode') as { __setConfigurationValue: (key: string, value: unknown) => void };
-
 // Load the compiled provider (vscode is already intercepted by setup.js)
 const { CSMLogDocumentSymbolProvider } = require(
     path.resolve(__dirname, '../csmlogDocumentSymbolProvider'),
@@ -77,7 +74,7 @@ const KIND_PROPERTY = vscode.SymbolKind.Property;
 const KIND_CONSTRUCTOR = vscode.SymbolKind.Constructor;
 const KIND_EVENT = vscode.SymbolKind.Event;
 const KIND_KEY = vscode.SymbolKind.Key;
-const KIND_ENUM_MEMBER = vscode.SymbolKind.EnumMember;
+
 
 teardown(() => {
     __setLanguageOverrideForTests(undefined);
@@ -336,76 +333,5 @@ suite('CSMLogDocumentSymbolProvider — edge cases', () => {
 
     test('blank lines produce no symbols', () => {
         assert.deepStrictEqual(getSymbols(['', '  ', '\t']), []);
-    });
-});
-
-suite('CSMLogDocumentSymbolProvider — dedup groups', () => {
-
-    teardown(() => {
-        // Reset dedup config to defaults for each test
-        __setConfigurationValue('csmModules.dedup.enabled', true);
-        __setConfigurationValue('csmModules.dedup.minRepeatCount', 3);
-    });
-
-    test('dedup groups appear as EnumMember symbols', () => {
-        const lines = [
-            '2026/03/20 17:32:59.426 [Error] AI | Same error',
-            '2026/03/20 17:32:59.427 [Error] AI | Same error',
-            '2026/03/20 17:32:59.428 [Error] AI | Same error',
-        ];
-        const syms = getSymbols(lines);
-        assert.strictEqual(syms.length, 1);
-        assert.strictEqual(syms[0].kind, KIND_ENUM_MEMBER);
-        assert.strictEqual(syms[0].name, '×3 [1-line] [Error] AI | Same error');
-    });
-
-    test('dedup groups are interleaved with existing symbols', () => {
-        const lines = [
-            '- PeriodicLog.Enable | 1',               // 0: Property
-            '2026/03/20 17:32:59.426 [Error] AI | X', // 1-3: EnumMember (repeated)
-            '2026/03/20 17:32:59.427 [Error] AI | X',
-            '2026/03/20 17:32:59.428 [Error] AI | X',
-            '2026/03/20 17:32:59.425 [Module Created] AI | ...', // 4: Constructor
-        ];
-        const syms = getSymbols(lines);
-        assert.strictEqual(syms.length, 3);
-        assert.strictEqual(syms[0].kind, KIND_PROPERTY);
-        assert.strictEqual(syms[1].kind, KIND_ENUM_MEMBER);
-        assert.strictEqual(syms[1].name, '×3 [1-line] [Error] AI | X');
-        assert.strictEqual(syms[2].kind, KIND_CONSTRUCTOR);
-    });
-
-    test('dedup groups not created when disabled', () => {
-        __setConfigurationValue('csmModules.dedup.enabled', false);
-        const lines = [
-            '2026/03/20 17:32:59.426 [Error] AI | Same error',
-            '2026/03/20 17:32:59.427 [Error] AI | Same error',
-            '2026/03/20 17:32:59.428 [Error] AI | Same error',
-        ];
-        assert.deepStrictEqual(getSymbols(lines), []);
-    });
-
-    test('dedup groups not created with minRepeat=5 but only 4 repeats (multi-line disabled)', () => {
-        __setConfigurationValue('csmModules.dedup.minRepeatCount', 5);
-        __setConfigurationValue('csmModules.dedup.multiLineEnabled', false);
-        const lines = [
-            '2026/03/20 17:32:59.426 [Error] AI | Same error',
-            '2026/03/20 17:32:59.427 [Error] AI | Same error',
-            '2026/03/20 17:32:59.428 [Error] AI | Same error',
-            '2026/03/20 17:32:59.429 [Error] AI | Same error',
-        ];
-        assert.deepStrictEqual(getSymbols(lines), []);
-    });
-
-    test('dedup group range spans the correct lines', () => {
-        const lines = [
-            '2026/03/20 17:32:59.426 [Error] AI | Same error',
-            '2026/03/20 17:32:59.427 [Error] AI | Same error',
-            '2026/03/20 17:32:59.428 [Error] AI | Same error',
-        ];
-        const syms = getSymbols(lines);
-        assert.strictEqual(syms.length, 1);
-        assert.strictEqual(syms[0].range.start.line, 0);
-        assert.strictEqual(syms[0].range.end.line, 2);
     });
 });

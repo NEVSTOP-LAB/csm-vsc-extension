@@ -6,7 +6,6 @@ import {
     LOGGER_MESSAGE_REGEX,
 } from './common/constants';
 import { SymbolEntry, buildDocumentSymbols } from './common/symbols';
-import { detectAllRepeatedGroups, truncateSignature } from './common/csmlogDedup';
 
 const symbolMessages = {
     moduleCreated: {
@@ -80,30 +79,7 @@ export class CSMLogDocumentSymbolProvider implements vscode.DocumentSymbolProvid
             }
         }
 
-        // —— 重复日志组检测 ——
-        // 从配置中读取去重参数，若启用则在日志行中检测连续重复组，
-        // 并在大纲中为每个组创建一条枚举成员符号（×N 格式），方便快速导航。
-        const dedupConfig = vscode.workspace.getConfiguration('csmModules.dedup');
-        const dedupEnabled = dedupConfig.get<boolean>('enabled', true);
-        if (dedupEnabled) {
-            const minRepeat = dedupConfig.get<number>('minRepeatCount', 3);
-            const multiLineEnabled = dedupConfig.get<boolean>('multiLineEnabled', true);
-
-            const repeatedGroups = multiLineEnabled
-                ? detectAllRepeatedGroups(document, minRepeat)
-                : detectAllRepeatedGroups(document, minRepeat, 999);
-
-            for (const group of repeatedGroups) {
-                const displaySig = truncateSignature(group.signature);
-                entries.push({
-                    lineIndex: group.startLine,
-                    name: `×${group.count} [${group.blockSize}-line] ${displaySig}`,
-                    kind: vscode.SymbolKind.EnumMember,
-                });
-            }
-        }
-
-        // 按行号排序后统一构建 DocumentSymbol（确保现有条目和去重组条目交错时范围计算正确）
+        // 按行号排序后统一构建 DocumentSymbol
         entries.sort((a, b) => a.lineIndex - b.lineIndex);
         return buildDocumentSymbols(document, entries);
     }
