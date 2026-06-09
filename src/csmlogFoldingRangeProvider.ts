@@ -44,17 +44,11 @@ export class CSMLogFoldingRangeProvider implements vscode.FoldingRangeProvider {
 
         return repeatedGroups
             .map((group): vscode.FoldingRange | null => {
-                // ≤3 次重复：首末行/块已足够表达，不再折叠
-                if (group.count <= 3) { return null; }
-
+                // 首块/首行始终可见，其余全部折叠
                 const bs = group.blockSize;
-                // 首块可见：startLine .. startLine+bs-1
-                // 末块可见：endLine-bs+1 .. endLine
-                // 中间折叠
                 const foldStart = group.startLine + bs;
-                const foldEnd = group.endLine - bs;
-                if (foldStart > foldEnd) { return null; }
-                return new vscode.FoldingRange(foldStart, foldEnd, vscode.FoldingRangeKind.Region);
+                if (foldStart > group.endLine) { return null; }
+                return new vscode.FoldingRange(foldStart, group.endLine, vscode.FoldingRangeKind.Region);
             })
             .filter((r): r is vscode.FoldingRange => r !== null);
     }

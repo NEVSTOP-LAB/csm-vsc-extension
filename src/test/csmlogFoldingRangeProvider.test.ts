@@ -89,27 +89,31 @@ suite('CSMLogFoldingRangeProvider', () => {
         assert.deepStrictEqual(getRanges(lines), []);
     });
 
-    test('returns empty for 3 repeated lines (≤3 not folded)', () => {
+    test('returns one folding range for 3 repeated lines', () => {
         const lines = [
             '2026/03/20 17:32:59.426 [Error] AI | Same error',
             '2026/03/20 17:32:59.427 [Error] AI | Same error',
             '2026/03/20 17:32:59.428 [Error] AI | Same error',
-        ];
-        assert.deepStrictEqual(getRanges(lines), []);
-    });
-
-    test('returns one folding range for 4 repeated lines', () => {
-        const lines = [
-            '2026/03/20 17:32:59.426 [Error] AI | Same error',
-            '2026/03/20 17:32:59.427 [Error] AI | Same error',
-            '2026/03/20 17:32:59.428 [Error] AI | Same error',
-            '2026/03/20 17:32:59.429 [Error] AI | Same error',
         ];
         const ranges = getRanges(lines);
         assert.strictEqual(ranges.length, 1);
-        // 首末行可见，中间 2 行折叠
+        // 首行可见，后 2 行折叠
         assert.strictEqual(ranges[0].start, 1);
         assert.strictEqual(ranges[0].end, 2);
+        assert.strictEqual(ranges[0].kind, 3);
+    });
+
+    test('returns one folding range for 2 repeated lines', () => {
+        setConfig('csmModules.dedup.minRepeatCount', 2);
+        const lines = [
+            '2026/03/20 17:32:59.426 [Error] AI | Same error',
+            '2026/03/20 17:32:59.427 [Error] AI | Same error',
+        ];
+        const ranges = getRanges(lines);
+        assert.strictEqual(ranges.length, 1);
+        // 首行可见，第二行折叠
+        assert.strictEqual(ranges[0].start, 1);
+        assert.strictEqual(ranges[0].end, 1);
         assert.strictEqual(ranges[0].kind, 3);
     });
 
@@ -118,40 +122,28 @@ suite('CSMLogFoldingRangeProvider', () => {
             '2026/03/20 17:32:59.426 [Error] AI | Same error',
             '2026/03/20 17:32:59.427 [Error] AI | Same error',
         ];
+        // minRepeat=3, 2 lines → not detected
         assert.deepStrictEqual(getRanges(lines), []);
     });
 
-    test('returns empty when minRepeatCount=2 but only 2 repeats (≤3)', () => {
-        setConfig('csmModules.dedup.minRepeatCount', 2);
+    test('returns folding ranges for separate groups', () => {
         const lines = [
-            '2026/03/20 17:32:59.426 [Error] AI | Same error',
-            '2026/03/20 17:32:59.427 [Error] AI | Same error',
-        ];
-        assert.deepStrictEqual(getRanges(lines), []);
-    });
-
-    test('returns folding ranges for groups with 4+ repeats', () => {
-        const lines = [
-            // Group A (lines 0-3): 4 repeats
             '2026/03/20 17:32:59.426 [Error] AI | Error A',
             '2026/03/20 17:32:59.427 [Error] AI | Error A',
             '2026/03/20 17:32:59.428 [Error] AI | Error A',
-            '2026/03/20 17:32:59.429 [Error] AI | Error A',
-            // Different (line 4)
-            '2026/03/20 17:32:59.430 [Error] AI | Error B',
-            // Group B (lines 5-8): 4 repeats
+            '2026/03/20 17:32:59.429 [Error] AI | Error B',
+            '2026/03/20 17:32:59.430 [Error] AI | Error C',
             '2026/03/20 17:32:59.431 [Error] AI | Error C',
             '2026/03/20 17:32:59.432 [Error] AI | Error C',
-            '2026/03/20 17:32:59.433 [Error] AI | Error C',
-            '2026/03/20 17:32:59.434 [Error] AI | Error C',
         ];
         const ranges = getRanges(lines);
         assert.strictEqual(ranges.length, 2);
-        // 每组 4 行：首末可见，中间 2 行折叠
+        // Group A (lines 0-2): 首行可见，后 2 行折叠
         assert.strictEqual(ranges[0].start, 1);
         assert.strictEqual(ranges[0].end, 2);
-        assert.strictEqual(ranges[1].start, 6);
-        assert.strictEqual(ranges[1].end, 7);
+        // Group B (lines 4-6): 首行可见，后 2 行折叠
+        assert.strictEqual(ranges[1].start, 5);
+        assert.strictEqual(ranges[1].end, 6);
     });
 
     test('config line interrupts repeat chain', () => {
@@ -167,7 +159,7 @@ suite('CSMLogFoldingRangeProvider', () => {
         assert.strictEqual(ranges.length, 0);
     });
 
-    test('merges parameterized duplicates (4 lines, ≥4 folded)', () => {
+    test('merges parameterized duplicates', () => {
         const lines = [
             '2026/03/20 17:32:59.426 [Error] AI | timeout after 5000ms',
             '2026/03/20 17:32:59.427 [Error] AI | timeout after 3000ms',
@@ -176,7 +168,8 @@ suite('CSMLogFoldingRangeProvider', () => {
         ];
         const ranges = getRanges(lines);
         assert.strictEqual(ranges.length, 1);
+        // 首行可见，后 3 行折叠
         assert.strictEqual(ranges[0].start, 1);
-        assert.strictEqual(ranges[0].end, 2);
+        assert.strictEqual(ranges[0].end, 3);
     });
 });

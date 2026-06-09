@@ -1,148 +1,132 @@
 // ---------------------------------------------------------------------------
 // csmlogDedupDecorator.ts — CSM 日志重复行背景装饰器
 // ---------------------------------------------------------------------------
-// 为检测到的连续重复日志行组添加视觉标记：
-//   1. 打开文件时自动折叠所有重复组
-//   2. 所有重复行：浅灰色背景 + 概览标尺标记
-//   3. 折叠入口行：醒目的 "▼ ×N" 前缀文字标记（仅折叠时可见的行上）
-//
-// 由 extension.ts 在 activate 时调用 setupDedupDecorator() 注册。
+//   1. 打开文件自动折叠所有重复组（count ≥ 2）
+//   2. 首行信息线：显示时间跨度、起止行号、折叠块数/行数
+//   3. 可见模板行左侧竖线 + 所有重复行淡背景 + 概览标尺
 // ---------------------------------------------------------------------------
 
 import * as vscode from 'vscode';
 import { detectAllRepeatedGroups, RepeatedGroup } from './common/csmlogDedup';
 
-/**
- * 已自动折叠过的文档 URI 集合（避免重复折叠）。
- */
 const autoFoldedDocs = new Set<string>();
 
-/**
- * 从日志行提取简短时间戳（HH:MM:SS），用于折叠标记中的时间跨度显示。
- */
-function extractShortTimestamp(line: string): string | null {
+/** 提取 HH:MM:SS 时间戳 */
+function shortTs(line: string): string | null {
     const m = line.match(/\d{4}[/-]\d{2}[/-]\d{2}\s+(\d{2}:\d{2}:\d{2})/);
     return m ? m[1] : null;
 }
 
-/**
- * 重复行背景装饰：浅灰色，覆盖整行，右侧概览标尺标记。
- */
-const dedupBgDecorationType = vscode.window.createTextEditorDecorationType({
+// ---- 装饰类型 ----
+
+/** 所有重复行淡背景 */
+const bgType = vscode.window.createTextEditorDecorationType({
     backgroundColor: new vscode.ThemeColor('editor.findMatchHighlightBackground'),
     isWholeLine: true,
     overviewRulerColor: new vscode.ThemeColor('editor.findMatchHighlightBorder'),
     overviewRulerLane: vscode.OverviewRulerLane.Right,
 });
 
-/**
- * 折叠标记装饰：在折叠入口行显示醒目的 "▼ ×N" 文字标记。
- */
-const foldMarkerDecorationType = vscode.window.createTextEditorDecorationType({
+/** 首行信息线 */
+const infoType = vscode.window.createTextEditorDecorationType({
     overviewRulerColor: new vscode.ThemeColor('editorInfo.foreground'),
     overviewRulerLane: vscode.OverviewRulerLane.Right,
 });
 
-/**
- * 对编辑器自动折叠所有重复组（仅首次）。
- */
+/** 可见模板行左侧竖线 */
+const borderType = vscode.window.createTextEditorDecorationType({
+    isWholeLine: true,
+    border: '0 0 0 2px solid',
+    borderColor: new vscode.ThemeColor('editorInfo.foreground'),
+});
+
+// ---- 自动折叠 ----
+
 async function autoFoldGroups(editor: vscode.TextEditor, groups: RepeatedGroup[]): Promise<void> {
     const uri = editor.document.uri.toString();
     if (autoFoldedDocs.has(uri)) { return; }
     autoFoldedDocs.add(uri);
 
-    // 延迟执行，等 VS Code 完成语法高亮和折叠范围计算
-    await new Promise(resolve => setTimeout(resolve, 300));
+    const foldable = groups.filter(g => g.count >= 2);
+    if (foldable.length === 0) { return; }
 
-    for (const group of groups) {
-        const foldStart = group.blockSize > 1
-            ? group.startLine + group.blockSize
-            : group.startLine;
-        if (foldStart >= group.endLine) { continue; }
+    await new Promise(resolve => setTimeout(resolve, 500));
+    const saved = editor.selection;
 
-        // 将光标移到折叠起始行，执行 editor.fold
-        const pos = new vscode.Position(foldStart, 0);
-        editor.selection = new vscode.Selection(pos, pos);
+    for (const g of foldable) {
+        const fs = g.startLine + g.blockSize;
+        if (fs > g.endLine) { continue; }
+        editor.selection = new vscode.Selection(new vscode.Position(fs, 0), new vscode.Position(g.endLine, 0));
         await vscode.commands.executeCommand('editor.fold');
     }
+    editor.selection = saved;
 }
 
-/**
- * 为指定编辑器中的重复日志行应用背景装饰，并自动折叠。
- */
+// ---- 装饰应用 ----
+
 async function applyDecorations(editor: vscode.TextEditor): Promise<void> {
     if (editor.document.languageId !== 'csmlog') {
-        editor.setDecorations(dedupBgDecorationType, []);
-        editor.setDecorations(foldMarkerDecorationType, []);
+        editor.setDecorations(bgType, []); editor.setDecorations(infoType, []); editor.setDecorations(borderType, []);
+        return;
+    }
+    const cfg = vscode.workspace.getConfiguration('csmModules.dedup');
+    if (!cfg.get<boolean>('enabled', true)) {
+        editor.setDecorations(bgType, []); editor.setDecorations(infoType, []); editor.setDecorations(borderType, []);
         return;
     }
 
-    const config = vscode.workspace.getConfiguration('csmModules.dedup');
-    if (!config.get<boolean>('enabled', true)) {
-        editor.setDecorations(dedupBgDecorationType, []);
-        editor.setDecorations(foldMarkerDecorationType, []);
-        return;
-    }
+    const groups = cfg.get<boolean>('multiLineEnabled', true)
+        ? detectAllRepeatedGroups(editor.document, cfg.get<number>('minRepeatCount', 2))
+        : detectAllRepeatedGroups(editor.document, cfg.get<number>('minRepeatCount', 2), 999);
 
-    const minRepeat = config.get<number>('minRepeatCount', 2);
-    const multiLineEnabled = config.get<boolean>('multiLineEnabled', true);
-
-    const groups = multiLineEnabled
-        ? detectAllRepeatedGroups(editor.document, minRepeat)
-        : detectAllRepeatedGroups(editor.document, minRepeat, 999);
-
-    // —— 自动折叠（仅首次打开时） ——
     autoFoldGroups(editor, groups);
 
     const bgRanges: vscode.Range[] = [];
-    const markerOpts: vscode.DecorationOptions[] = [];
+    const infoOpts: vscode.DecorationOptions[] = [];
+    const borderRanges: vscode.Range[] = [];
 
-    for (const group of groups) {
-        const bs = group.blockSize;
+    for (const g of groups) {
+        const bs = g.blockSize;
+        const foldedBlocks = g.count - 1;
+        const foldedLines = foldedBlocks * bs;
+        const foldStart = g.startLine + bs;  // 折叠起始行 (0-based)
+        const foldEnd = g.endLine;           // 折叠结束行 (0-based)
 
-        // 所有重复行添加淡背景
-        for (let line = group.startLine; line <= group.endLine; line++) {
-            bgRanges.push(editor.document.lineAt(line).range);
+        // 所有重复行淡背景
+        for (let l = g.startLine; l <= g.endLine; l++) {
+            bgRanges.push(editor.document.lineAt(l).range);
         }
 
-        // 计算折叠信息（仅 count ≥ 4 时折叠）
-        if (group.count >= 4) {
-            const bs = group.blockSize;
-            const foldedCount = group.count - 2;
-            const foldStartLine = group.startLine + bs; // 折叠起始行
-
-            if (foldStartLine <= group.endLine - bs) {
-                // 提取折叠段首尾时间戳
-                const firstFoldedLine = editor.document.lineAt(foldStartLine).text;
-                const lastFoldedLine = editor.document.lineAt(group.endLine - bs).text;
-                const ts1 = extractShortTimestamp(firstFoldedLine);
-                const ts2 = extractShortTimestamp(lastFoldedLine);
-
-                // 构建标记文字
-                const label = bs > 1
-                    ? `${foldedCount} blocks (${bs}L)`
-                    : `${foldedCount} lines`;
-                const timeSpan = ts1 && ts2 ? ` | ${ts1} → ${ts2}` : '';
-                const contentText = `▼ ${label}${timeSpan} `;
-
-                markerOpts.push({
-                    range: editor.document.lineAt(foldStartLine).range,
-                    renderOptions: {
-                        before: {
-                            contentText,
-                            color: new vscode.ThemeColor('editorInfo.foreground'),
-                            backgroundColor: new vscode.ThemeColor('editorInfo.background'),
-                            fontWeight: 'bold',
-                            margin: '0 8px 0 0',
-                        },
-                    },
-                });
-            }
+        // 可见模板行左侧竖线
+        for (let l = g.startLine; l < foldStart; l++) {
+            borderRanges.push(editor.document.lineAt(l).range);
         }
+
+        // 首行信息线
+        const ts1 = shortTs(editor.document.lineAt(foldStart).text);
+        const ts2 = shortTs(editor.document.lineAt(foldEnd).text);
+        const timeSpan = ts1 && ts2 ? ` | ${ts1} → ${ts2}` : '';
+        const label = bs > 1
+            ? `▼ ${foldedBlocks} blocks · ${foldedLines} lines${timeSpan} | L${foldStart + 1}-L${foldEnd + 1} `
+            : `▼ ${foldedLines} lines${timeSpan} | L${foldStart + 1}-L${foldEnd + 1} `;
+
+        infoOpts.push({
+            range: editor.document.lineAt(g.startLine).range,
+            renderOptions: {
+                before: {
+                    contentText: label,
+                    color: new vscode.ThemeColor('editorInfo.foreground'),
+                    backgroundColor: new vscode.ThemeColor('editorInfo.background'),
+                    fontWeight: 'bold',
+                    margin: '0 8px 0 0',
+                },
+            },
+        });
     }
 
-    editor.setDecorations(dedupBgDecorationType, bgRanges);
-    editor.setDecorations(foldMarkerDecorationType, markerOpts);
+    editor.setDecorations(bgType, bgRanges);
+    editor.setDecorations(infoType, infoOpts);
+    editor.setDecorations(borderType, borderRanges);
 }
 
 /**
