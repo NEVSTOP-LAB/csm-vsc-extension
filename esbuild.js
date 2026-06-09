@@ -34,6 +34,7 @@ async function main() {
 		format: 'cjs',
 		target: 'node14',
 		minify: production,
+		charset: 'utf8',
 		sourcemap: !production,
 		sourcesContent: false,
 		platform: 'node',

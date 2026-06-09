@@ -11,10 +11,21 @@ import { detectAllRepeatedGroups, RepeatedGroup } from './common/csmlogDedup';
 
 const autoFoldedDocs = new Set<string>();
 
-/** 提取 HH:MM:SS 时间戳 */
+/** 提取 HH:MM:SS.mmm 时间戳（与原始日志精度一致） */
 function shortTs(line: string): string | null {
-    const m = line.match(/\d{4}[/-]\d{2}[/-]\d{2}\s+(\d{2}:\d{2}:\d{2})/);
+    const m = line.match(/\d{4}[/-]\d{2}[/-]\d{2}\s+(\d{2}:\d{2}:\d{2}\.\d{3})/);
     return m ? m[1] : null;
+}
+
+/** 判断重复组的折叠状态：折叠=▶，展开=▼ */
+function foldIcon(editor: vscode.TextEditor, g: RepeatedGroup): string {
+    const nextLine = g.startLine + g.blockSize;  // 折叠头行的下一行
+    for (const r of editor.visibleRanges) {
+        if (r.start.line <= nextLine && r.end.line >= nextLine) {
+            return '▼';  // 下一行可见 → 已展开
+        }
+    }
+    return '▶';  // 下一行不可见 → 已折叠
 }
 
 // ---- 装饰类型 ----
@@ -57,7 +68,7 @@ async function autoFoldGroups(editor: vscode.TextEditor, groups: RepeatedGroup[]
 
     // 多选区同时折叠所有组，高效且不跳光标
     const selections = foldable.map(g => {
-        const fs = g.startLine + g.blockSize;
+        const fs = g.startLine + g.blockSize - 1;
         const fe = g.endLine;
         return new vscode.Selection(new vscode.Position(fs, 0), new vscode.Position(fe, 0));
     });
@@ -87,7 +98,7 @@ async function applyDecorations(editor: vscode.TextEditor): Promise<void> {
         ? detectAllRepeatedGroups(editor.document, cfg.get<number>('minRepeatCount', 2))
         : detectAllRepeatedGroups(editor.document, cfg.get<number>('minRepeatCount', 2), 999);
 
-    autoFoldGroups(editor, groups);
+    await autoFoldGroups(editor, groups);
 
     const bgRanges: vscode.Range[] = [];
     const infoOpts: vscode.DecorationOptions[] = [];
@@ -95,30 +106,27 @@ async function applyDecorations(editor: vscode.TextEditor): Promise<void> {
 
     for (const g of groups) {
         const bs = g.blockSize;
-        const foldedBlocks = g.count - 1;
-        const foldedLines = foldedBlocks * bs;
-        const foldStart = g.startLine + bs;  // 折叠起始行 (0-based)
-        const foldEnd = g.endLine;           // 折叠结束行 (0-based)
+        const totalBlocks = g.count;
+        const totalLines = totalBlocks * bs;
+        const foldStart = g.startLine + bs - 1;   // 第一组最后一行
+        const foldEnd = g.endLine;
 
-        // 所有重复行淡背景
+        // 所有重复行淡背景 + 左侧竖线
         for (let l = g.startLine; l <= g.endLine; l++) {
-            bgRanges.push(editor.document.lineAt(l).range);
+            const r = editor.document.lineAt(l).range;
+            bgRanges.push(r);
+            borderRanges.push(r);
         }
 
-        // 可见模板行左侧竖线
-        for (let l = g.startLine; l < foldStart; l++) {
-            borderRanges.push(editor.document.lineAt(l).range);
-        }
-
-        // 首行信息线（放在折叠起始行，折叠后 VS Code 将此行作为折叠头显示）
-        const ts1 = shortTs(editor.document.lineAt(foldStart).text);
-        const ts2 = shortTs(editor.document.lineAt(foldEnd).text);
+        // 信息行（before 装饰在首行之前）
+        const ts1 = shortTs(editor.document.lineAt(g.startLine).text);
+        const ts2 = shortTs(editor.document.lineAt(g.endLine).text);
         const timeSpan = ts1 && ts2 ? ` | ${ts1} → ${ts2}` : '';
-        // 统一信息行格式（不区分单行/多行）
-        const label = `▼ ${foldedBlocks} blocks · ${foldedLines} lines${timeSpan} | L${foldStart + 1}-L${foldEnd + 1} `;
+        const icon = foldIcon(editor, g);
+        const label = `${icon} ${totalBlocks} blocks · ${totalLines} lines${timeSpan} | L${g.startLine + 1}-L${g.endLine + 1}`;
 
         infoOpts.push({
-            range: editor.document.lineAt(foldStart).range,
+            range: editor.document.lineAt(g.startLine).range,
             renderOptions: {
                 before: {
                     contentText: label,
@@ -164,6 +172,15 @@ export function setupDedupDecorator(context: vscode.ExtensionContext): void {
             const editor = vscode.window.activeTextEditor;
             if (editor && event.document === editor.document) {
                 void applyDecorations(editor);
+            }
+        }),
+    );
+
+    // 折叠/展开时更新图标（▼ ↔ ▶）
+    context.subscriptions.push(
+        vscode.window.onDidChangeTextEditorVisibleRanges((event) => {
+            if (event.textEditor.document.languageId === 'csmlog') {
+                void applyDecorations(event.textEditor);
             }
         }),
     );

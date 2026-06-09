@@ -97,8 +97,8 @@ suite('CSMLogFoldingRangeProvider', () => {
         ];
         const ranges = getRanges(lines);
         assert.strictEqual(ranges.length, 1);
-        // 首行可见，后 2 行折叠
-        assert.strictEqual(ranges[0].start, 1);
+        // 折叠从第一组最后一行（即首行）开始
+        assert.strictEqual(ranges[0].start, 0);
         assert.strictEqual(ranges[0].end, 2);
         assert.strictEqual(ranges[0].kind, 3);
     });
@@ -111,8 +111,7 @@ suite('CSMLogFoldingRangeProvider', () => {
         ];
         const ranges = getRanges(lines);
         assert.strictEqual(ranges.length, 1);
-        // 首行可见，第二行折叠
-        assert.strictEqual(ranges[0].start, 1);
+        assert.strictEqual(ranges[0].start, 0);
         assert.strictEqual(ranges[0].end, 1);
         assert.strictEqual(ranges[0].kind, 3);
     });
@@ -138,11 +137,11 @@ suite('CSMLogFoldingRangeProvider', () => {
         ];
         const ranges = getRanges(lines);
         assert.strictEqual(ranges.length, 2);
-        // Group A (lines 0-2): 首行可见，后 2 行折叠
-        assert.strictEqual(ranges[0].start, 1);
+        // Group A (lines 0-2): 从首行开始折叠
+        assert.strictEqual(ranges[0].start, 0);
         assert.strictEqual(ranges[0].end, 2);
-        // Group B (lines 4-6): 首行可见，后 2 行折叠
-        assert.strictEqual(ranges[1].start, 5);
+        // Group B (lines 4-6): 从首行开始折叠
+        assert.strictEqual(ranges[1].start, 4);
         assert.strictEqual(ranges[1].end, 6);
     });
 
@@ -168,8 +167,8 @@ suite('CSMLogFoldingRangeProvider', () => {
         ];
         const ranges = getRanges(lines);
         assert.strictEqual(ranges.length, 1);
-        // 首行可见，后 3 行折叠
-        assert.strictEqual(ranges[0].start, 1);
+        // 从首行开始折叠
+        assert.strictEqual(ranges[0].start, 0);
         assert.strictEqual(ranges[0].end, 3);
     });
 });

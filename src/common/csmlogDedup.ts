@@ -281,8 +281,27 @@ export function detectAllRepeatedGroups(
     // 4) 对未覆盖的行运行单行检测
     const singleGroups = detectRepeatedGroupsExcluding(document, minRepeat, covered);
 
-    // 5) 合并并按行号排序
-    return [...filteredMulti, ...singleGroups].sort((a, b) => a.startLine - b.startLine);
+    // 5) 合并、排序、去重叠（确保完全包含的嵌套组被移除）
+    const all = [...filteredMulti, ...singleGroups].sort((a, b) => a.startLine - b.startLine);
+    return removeNestedGroups(all);
+}
+
+/**
+ * 移除被其他组完全包含的嵌套重复组，避免折叠区域展开后还有子折叠。
+ */
+function removeNestedGroups(groups: RepeatedGroup[]): RepeatedGroup[] {
+    return groups.filter((g, i) => {
+        for (let j = 0; j < groups.length; j++) {
+            if (i === j) { continue; }
+            const other = groups[j];
+            // 如果 other 完全包含 g（边界相同不算嵌套）
+            if (other.startLine <= g.startLine && other.endLine >= g.endLine &&
+                (other.startLine < g.startLine || other.endLine > g.endLine)) {
+                return false;
+            }
+        }
+        return true;
+    });
 }
 
 /**
