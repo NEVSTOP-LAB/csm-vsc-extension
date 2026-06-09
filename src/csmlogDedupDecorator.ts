@@ -37,7 +37,7 @@ const infoType = vscode.window.createTextEditorDecorationType({
 const borderType = vscode.window.createTextEditorDecorationType({
     before: {
         contentText: '│ ',
-        color: new vscode.ThemeColor('editorLineNumber.activeForeground'),
+        color: new vscode.ThemeColor('editorInfo.foreground'),
         fontWeight: 'bold',
         margin: '0 4px 0 0',
     },
@@ -114,9 +114,8 @@ async function applyDecorations(editor: vscode.TextEditor): Promise<void> {
         const ts1 = shortTs(editor.document.lineAt(foldStart).text);
         const ts2 = shortTs(editor.document.lineAt(foldEnd).text);
         const timeSpan = ts1 && ts2 ? ` | ${ts1} → ${ts2}` : '';
-        const label = bs > 1
-            ? `▼ ${foldedBlocks} blocks · ${foldedLines} lines${timeSpan} | L${foldStart + 1}-L${foldEnd + 1} `
-            : `▼ ${foldedLines} lines${timeSpan} | L${foldStart + 1}-L${foldEnd + 1} `;
+        // 统一信息行格式（不区分单行/多行）
+        const label = `▼ ${foldedBlocks} blocks · ${foldedLines} lines${timeSpan} | L${foldStart + 1}-L${foldEnd + 1} `;
 
         infoOpts.push({
             range: editor.document.lineAt(foldStart).range,

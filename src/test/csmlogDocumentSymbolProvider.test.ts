@@ -356,7 +356,7 @@ suite('CSMLogDocumentSymbolProvider — dedup groups', () => {
         const syms = getSymbols(lines);
         assert.strictEqual(syms.length, 1);
         assert.strictEqual(syms[0].kind, KIND_ENUM_MEMBER);
-        assert.strictEqual(syms[0].name, '×3 [Error] AI | Same error');
+        assert.strictEqual(syms[0].name, '×3 [1-line] [Error] AI | Same error');
     });
 
     test('dedup groups are interleaved with existing symbols', () => {
@@ -371,7 +371,7 @@ suite('CSMLogDocumentSymbolProvider — dedup groups', () => {
         assert.strictEqual(syms.length, 3);
         assert.strictEqual(syms[0].kind, KIND_PROPERTY);
         assert.strictEqual(syms[1].kind, KIND_ENUM_MEMBER);
-        assert.strictEqual(syms[1].name, '×3 [Error] AI | X');
+        assert.strictEqual(syms[1].name, '×3 [1-line] [Error] AI | X');
         assert.strictEqual(syms[2].kind, KIND_CONSTRUCTOR);
     });
 

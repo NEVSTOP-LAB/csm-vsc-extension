@@ -95,20 +95,11 @@ export class CSMLogDocumentSymbolProvider implements vscode.DocumentSymbolProvid
 
             for (const group of repeatedGroups) {
                 const displaySig = truncateSignature(group.signature);
-                if (group.blockSize > 1) {
-                    // 多行块：显示块大小信息
-                    entries.push({
-                        lineIndex: group.startLine,
-                        name: `×${group.count} [${group.blockSize}-line] ${displaySig}`,
-                        kind: vscode.SymbolKind.EnumMember,
-                    });
-                } else {
-                    entries.push({
-                        lineIndex: group.startLine,
-                        name: `×${group.count} ${displaySig}`,
-                        kind: vscode.SymbolKind.EnumMember,
-                    });
-                }
+                entries.push({
+                    lineIndex: group.startLine,
+                    name: `×${group.count} [${group.blockSize}-line] ${displaySig}`,
+                    kind: vscode.SymbolKind.EnumMember,
+                });
             }
         }
 
