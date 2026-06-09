@@ -2,17 +2,20 @@
 // csmlogDedupDecorator.ts — CSM 日志重复行背景装饰器
 // ---------------------------------------------------------------------------
 // 为检测到的连续重复日志行组添加视觉标记：
-//   1. 折叠起始行：醒目的左侧蓝色边框 + 着重背景 + "▼ ×N" 前缀文字
-//   2. 其余重复行：浅灰色背景 + 概览标尺标记
-//
-// 使重复区域在折叠前后都一眼可见，帮助用户快速定位淹没在
-// 重复内容中的关键信息。
+//   1. 打开文件时自动折叠所有重复组
+//   2. 所有重复行：浅灰色背景 + 概览标尺标记
+//   3. 折叠入口行：醒目的 "▼ ×N" 前缀文字标记（仅折叠时可见的行上）
 //
 // 由 extension.ts 在 activate 时调用 setupDedupDecorator() 注册。
 // ---------------------------------------------------------------------------
 
 import * as vscode from 'vscode';
-import { detectAllRepeatedGroups } from './common/csmlogDedup';
+import { detectAllRepeatedGroups, RepeatedGroup } from './common/csmlogDedup';
+
+/**
+ * 已自动折叠过的文档 URI 集合（避免重复折叠）。
+ */
+const autoFoldedDocs = new Set<string>();
 
 /**
  * 重复行背景装饰：浅灰色，覆盖整行，右侧概览标尺标记。
@@ -25,8 +28,7 @@ const dedupBgDecorationType = vscode.window.createTextEditorDecorationType({
 });
 
 /**
- * 折叠标记装饰：在折叠起始行通过 before 文字显示醒目的 ×N 标记。
- * 文字以加粗 + 主题色背景呈现，与淡色重复行背景形成对比。
+ * 折叠标记装饰：在折叠入口行显示醒目的 "▼ ×N" 文字标记。
  */
 const foldMarkerDecorationType = vscode.window.createTextEditorDecorationType({
     overviewRulerColor: new vscode.ThemeColor('editorInfo.foreground'),
@@ -34,9 +36,33 @@ const foldMarkerDecorationType = vscode.window.createTextEditorDecorationType({
 });
 
 /**
- * 为指定编辑器中的重复日志行应用背景装饰。
+ * 对编辑器自动折叠所有重复组（仅首次）。
  */
-function applyDecorations(editor: vscode.TextEditor): void {
+async function autoFoldGroups(editor: vscode.TextEditor, groups: RepeatedGroup[]): Promise<void> {
+    const uri = editor.document.uri.toString();
+    if (autoFoldedDocs.has(uri)) { return; }
+    autoFoldedDocs.add(uri);
+
+    // 延迟执行，等 VS Code 完成语法高亮和折叠范围计算
+    await new Promise(resolve => setTimeout(resolve, 300));
+
+    for (const group of groups) {
+        const foldStart = group.blockSize > 1
+            ? group.startLine + group.blockSize
+            : group.startLine;
+        if (foldStart >= group.endLine) { continue; }
+
+        // 将光标移到折叠起始行，执行 editor.fold
+        const pos = new vscode.Position(foldStart, 0);
+        editor.selection = new vscode.Selection(pos, pos);
+        await vscode.commands.executeCommand('editor.fold');
+    }
+}
+
+/**
+ * 为指定编辑器中的重复日志行应用背景装饰，并自动折叠。
+ */
+async function applyDecorations(editor: vscode.TextEditor): Promise<void> {
     if (editor.document.languageId !== 'csmlog') {
         editor.setDecorations(dedupBgDecorationType, []);
         editor.setDecorations(foldMarkerDecorationType, []);
@@ -57,51 +83,42 @@ function applyDecorations(editor: vscode.TextEditor): void {
         ? detectAllRepeatedGroups(editor.document, minRepeat)
         : detectAllRepeatedGroups(editor.document, minRepeat, 999);
 
+    // —— 自动折叠（仅首次打开时） ——
+    autoFoldGroups(editor, groups);
+
     const bgRanges: vscode.Range[] = [];
-    const markerRanges: vscode.Range[] = [];
-    const markerTexts: Record<number, string> = {}; // line index → marker text
+    const markerOpts: vscode.DecorationOptions[] = [];
 
     for (const group of groups) {
-        // 折叠起始行：单行 = startLine，多行 = startLine + blockSize（模板之后第一行）
-        const foldStart = group.blockSize > 1
-            ? group.startLine + group.blockSize
-            : group.startLine;
+        // 折叠入口行（模板块最后一行，始终可见；折叠后标记在此处显示）
+        const markerLine = group.blockSize > 1
+            ? group.startLine + group.blockSize - 1  // 模板块最后一行
+            : group.startLine;                         // 单行：起始行
 
         for (let line = group.startLine; line <= group.endLine; line++) {
-            // 所有重复行添加淡背景
             bgRanges.push(editor.document.lineAt(line).range);
         }
 
-        // 折叠起始行添加醒目标记
-        if (foldStart <= group.endLine) {
-            const markerLine = editor.document.lineAt(foldStart);
-            markerRanges.push(markerLine.range);
-
-            // 生成折叠标记文字
-            const count = group.blockSize > 1
+        if (markerLine <= group.endLine) {
+            const countLabel = group.blockSize > 1
                 ? `${group.count - 1}× [${group.blockSize}L]`
                 : `${group.count}`;
-            markerTexts[foldStart] = count;
+            markerOpts.push({
+                range: editor.document.lineAt(markerLine).range,
+                renderOptions: {
+                    before: {
+                        contentText: `▼ ×${countLabel} `,
+                        color: new vscode.ThemeColor('editorInfo.foreground'),
+                        backgroundColor: new vscode.ThemeColor('editorInfo.background'),
+                        fontWeight: 'bold',
+                        margin: '0 8px 0 0',
+                    },
+                },
+            });
         }
     }
 
-    // 为每条标记行设置独特的 before.contentText
     editor.setDecorations(dedupBgDecorationType, bgRanges);
-
-    // 为折叠标记行设置不同文字——需要逐行创建 decoration options
-    const markerOpts: vscode.DecorationOptions[] = markerRanges.map((range) => ({
-        range,
-        renderOptions: {
-            before: {
-                contentText: `▼ ×${markerTexts[range.start.line] ?? '?'} `,
-                color: new vscode.ThemeColor('editorInfo.foreground'),
-                backgroundColor: new vscode.ThemeColor('editorInfo.background'),
-                fontWeight: 'bold',
-                margin: '0 8px 0 0',
-            },
-        },
-    }));
-
     editor.setDecorations(foldMarkerDecorationType, markerOpts);
 }
 
@@ -115,25 +132,32 @@ export function setupDedupDecorator(context: vscode.ExtensionContext): void {
     // 当前活动编辑器立即应用装饰
     const activeEditor = vscode.window.activeTextEditor;
     if (activeEditor) {
-        applyDecorations(activeEditor);
+        void applyDecorations(activeEditor);
     }
 
     // 活动编辑器切换时更新
     context.subscriptions.push(
         vscode.window.onDidChangeActiveTextEditor((editor) => {
             if (editor) {
-                applyDecorations(editor);
+                void applyDecorations(editor);
             }
         }),
     );
 
-    // 文档内容变更时更新（限流：仅处理 csmlog 文件）
+    // 文档内容变更时更新
     context.subscriptions.push(
         vscode.workspace.onDidChangeTextDocument((event) => {
             const editor = vscode.window.activeTextEditor;
             if (editor && event.document === editor.document) {
-                applyDecorations(editor);
+                void applyDecorations(editor);
             }
+        }),
+    );
+
+    // 文档关闭时清理自动折叠记录
+    context.subscriptions.push(
+        vscode.workspace.onDidCloseTextDocument((document) => {
+            autoFoldedDocs.delete(document.uri.toString());
         }),
     );
 }
