@@ -6,6 +6,7 @@ import {
     LOGGER_MESSAGE_REGEX,
 } from './common/constants';
 import { SymbolEntry, buildDocumentSymbols } from './common/symbols';
+import { detectRepeatedGroups, truncateSignature, DedupLevel } from './common/csmlogDedup';
 
 const symbolMessages = {
     moduleCreated: {
@@ -30,10 +31,13 @@ const symbolMessages = {
  *  - Module Created events      (`[Module Created]`)            → SymbolKind.Constructor
  *  - Module Destroyed events    (`[Module Destroyed]`)          → SymbolKind.Event
  *  - Logger system messages     (`<Label>`)                     → SymbolKind.Key
+ *  - Repeated log groups        (consecutive duplicate lines)   → SymbolKind.EnumMember
  *
  * Each symbol's full range extends from its own line to the line immediately
  * before the next symbol (or the end of the document), so that the outline
  * entries are collapsible in the Explorer panel.
+ *
+ * Repeated log group detection is controlled by `csmModules.dedup.*` settings.
  */
 export class CSMLogDocumentSymbolProvider implements vscode.DocumentSymbolProvider {
 
@@ -76,6 +80,29 @@ export class CSMLogDocumentSymbolProvider implements vscode.DocumentSymbolProvid
             }
         }
 
+        // —— 重复日志组检测 ——
+        // 从配置中读取去重参数，若启用则在日志行中检测连续重复组，
+        // 并在大纲中为每个组创建一条枚举成员符号（×N 格式），方便快速导航。
+        const dedupConfig = vscode.workspace.getConfiguration('csmModules.dedup');
+        const dedupEnabled = dedupConfig.get<boolean>('enabled', true);
+        if (dedupEnabled) {
+            const minRepeat = dedupConfig.get<number>('minRepeatCount', 3);
+            const rawLevel = dedupConfig.get<string>('normalizationLevel', 'exact');
+            const level: DedupLevel = rawLevel === 'numeric' ? 'numeric' : 'exact';
+
+            const repeatedGroups = detectRepeatedGroups(document, minRepeat, level);
+            for (const group of repeatedGroups) {
+                const displaySig = truncateSignature(group.signature);
+                entries.push({
+                    lineIndex: group.startLine,
+                    name: `×${group.count} ${displaySig}`,
+                    kind: vscode.SymbolKind.EnumMember,
+                });
+            }
+        }
+
+        // 按行号排序后统一构建 DocumentSymbol（确保现有条目和去重组条目交错时范围计算正确）
+        entries.sort((a, b) => a.lineIndex - b.lineIndex);
         return buildDocumentSymbols(document, entries);
     }
 }

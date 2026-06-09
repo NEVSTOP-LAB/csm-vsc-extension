@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { CSMLogHoverProvider } from './csmlogHoverProvider';
 import { CSMLogDocumentSymbolProvider } from './csmlogDocumentSymbolProvider';
+import { CSMLogFoldingRangeProvider } from './csmlogFoldingRangeProvider';
 import { LvcsmDocumentSymbolProvider } from './lvcsmDocumentSymbolProvider';
 import { clearAnchorCache } from './hoverData';
 import { ModuleManagerController } from './moduleManager';
@@ -12,6 +13,7 @@ export function activate(context: vscode.ExtensionContext) {
 		context.subscriptions.push(
 			vscode.languages.registerHoverProvider({ language: 'csmlog' }, new CSMLogHoverProvider()),
 			vscode.languages.registerDocumentSymbolProvider({ language: 'csmlog' }, new CSMLogDocumentSymbolProvider()),
+			vscode.languages.registerFoldingRangeProvider({ language: 'csmlog' }, new CSMLogFoldingRangeProvider()),
 			vscode.languages.registerDocumentSymbolProvider({ language: 'lvcsm' }, new LvcsmDocumentSymbolProvider()),
 			// Clean up anchor cache when documents are closed to prevent memory leaks
 			vscode.workspace.onDidCloseTextDocument((document) => {

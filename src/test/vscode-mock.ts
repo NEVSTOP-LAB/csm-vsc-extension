@@ -171,6 +171,33 @@ export class DocumentSymbol {
     ) { }
 }
 
+// ---------------------------------------------------------------------------
+// FoldingRange stubs
+// ---------------------------------------------------------------------------
+
+export enum FoldingRangeKind {
+    Comment = 1,
+    Imports = 2,
+    Region = 3,
+}
+
+export class FoldingRange {
+    kind?: FoldingRangeKind;
+    constructor(
+        public start: number,
+        public end: number,
+        kind?: FoldingRangeKind,
+    ) {
+        this.kind = kind;
+    }
+}
+
+export class CancellationToken {
+    isCancellationRequested = false;
+    onCancellationRequested = () => ({ dispose() { } });
+    static readonly None = new CancellationToken();
+}
+
 export class Disposable {
     constructor(private readonly callback: () => void = () => { }) { }
     dispose(): void {
