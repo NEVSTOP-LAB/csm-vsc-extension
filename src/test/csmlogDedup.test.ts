@@ -13,6 +13,8 @@ const {
     extractSignature,
     normalizeSignature,
     detectRepeatedGroups,
+    detectMultiLineRepeatedGroups,
+    detectAllRepeatedGroups,
     truncateSignature,
 } = require(
     path.resolve(__dirname, '../common/csmlogDedup'),
@@ -20,6 +22,8 @@ const {
     extractSignature: (line: string) => string | null;
     normalizeSignature: (sig: string) => string;
     detectRepeatedGroups: (doc: DocLike, minRepeat: number) => GroupLike[];
+    detectMultiLineRepeatedGroups: (doc: DocLike, minRepeatBlocks?: number) => GroupLike[];
+    detectAllRepeatedGroups: (doc: DocLike, minRepeat: number, minRepeatBlocks?: number) => GroupLike[];
     truncateSignature: (sig: string, maxLen?: number) => string;
 };
 
@@ -37,6 +41,7 @@ interface GroupLike {
     endLine: number;
     count: number;
     signature: string;
+    blockSize: number;
 }
 
 function makeDoc(lines: string[]): DocLike {
@@ -259,6 +264,157 @@ suite('detectRepeatedGroups', () => {
         const groups = detectRepeatedGroups(makeDoc(lines), 3);
         assert.strictEqual(groups.length, 1);
         assert.strictEqual(groups[0].count, 3);
+    });
+});
+
+// ---------------------------------------------------------------------------
+// detectMultiLineRepeatedGroups
+// ---------------------------------------------------------------------------
+
+suite('detectMultiLineRepeatedGroups', () => {
+
+    test('returns empty for empty document', () => {
+        const groups = detectMultiLineRepeatedGroups(makeDoc([]));
+        assert.deepStrictEqual(groups, []);
+    });
+
+    test('returns empty when no multi-line pattern exists', () => {
+        const lines = [
+            '2026/03/20 17:32:59.426 [Error] AI | Error A',
+            '2026/03/20 17:32:59.427 [Error] AI | Error B',
+            '2026/03/20 17:32:59.428 [Error] AI | Error C',
+        ];
+        const groups = detectMultiLineRepeatedGroups(makeDoc(lines));
+        assert.deepStrictEqual(groups, []);
+    });
+
+    test('detects 2-line block repeating 3 times', () => {
+        const lines = [
+            // Block (2 lines)
+            '2026/03/20 17:32:59.426 [State Change] MainUI | Macro: Update UI',
+            '2026/03/20 17:32:59.427 [State Change] MainUI | UI: Refresh',
+            // Repeat 1
+            '2026/03/20 17:32:59.500 [State Change] MainUI | Macro: Update UI',
+            '2026/03/20 17:32:59.501 [State Change] MainUI | UI: Refresh',
+            // Repeat 2
+            '2026/03/20 17:32:59.600 [State Change] MainUI | Macro: Update UI',
+            '2026/03/20 17:32:59.601 [State Change] MainUI | UI: Refresh',
+        ];
+        const groups = detectMultiLineRepeatedGroups(makeDoc(lines));
+        assert.strictEqual(groups.length, 1);
+        assert.strictEqual(groups[0].startLine, 0);
+        assert.strictEqual(groups[0].endLine, 5);
+        assert.strictEqual(groups[0].blockSize, 2);
+        assert.strictEqual(groups[0].count, 3);
+    });
+
+    test('detects 5-line block repeating (real-world UI update cycle)', () => {
+        // 模拟 TopmostVI.csmlog 的 5 行 UI 更新循环重复 3 次
+        const block = [
+            '2025/09/24 10:30:05.900 [2025/09/24 10:30:05.900] [State Change] MainUI | Macro: Update UI',
+            '2025/09/24 10:30:05.900 [2025/09/24 10:30:05.900] [State Change] MainUI | UI: Refresh',
+            '2025/09/24 10:30:05.903 [2025/09/24 10:30:05.902] [State Change] MainUI | UI: Refresh Last Error',
+            '2025/09/24 10:30:05.903 [2025/09/24 10:30:05.903] [State Change] MainUI | UI: Update Exp List',
+            '2025/09/24 10:30:05.904 [2025/09/24 10:30:05.904] [State Change] MainUI | ',
+        ];
+        const lines = [...block, ...block, ...block];
+        const groups = detectMultiLineRepeatedGroups(makeDoc(lines));
+        assert.strictEqual(groups.length, 1);
+        assert.strictEqual(groups[0].startLine, 0);
+        assert.strictEqual(groups[0].endLine, 14);
+        assert.strictEqual(groups[0].blockSize, 5);
+        assert.strictEqual(groups[0].count, 3);
+    });
+
+    test('returns empty when only 1 repetition (below minRepeatBlocks=2)', () => {
+        const lines = [
+            '2026/03/20 17:32:59.426 [State Change] MainUI | Macro: Update UI',
+            '2026/03/20 17:32:59.427 [State Change] MainUI | UI: Refresh',
+        ];
+        const groups = detectMultiLineRepeatedGroups(makeDoc(lines));
+        assert.deepStrictEqual(groups, []);
+    });
+
+    test('prioritizes larger block size over smaller', () => {
+        // 6 identical lines: 3-line block × 2 wins over 2-line block × 3
+        const lines = [
+            '2026/03/20 17:32:59.426 [Error] AI | X',
+            '2026/03/20 17:32:59.427 [Error] AI | X',
+            '2026/03/20 17:32:59.428 [Error] AI | X',
+            '2026/03/20 17:32:59.429 [Error] AI | X',
+            '2026/03/20 17:32:59.430 [Error] AI | X',
+            '2026/03/20 17:32:59.431 [Error] AI | X',
+        ];
+        const groups = detectMultiLineRepeatedGroups(makeDoc(lines));
+        assert.strictEqual(groups.length, 1);
+        // Since all lines identical, largest matching block should be found
+        // 3-line block × 2 is better than 2-line block × 3
+        assert.strictEqual(groups[0].blockSize >= 3, true);
+    });
+
+    test('null signature lines break multi-line blocks', () => {
+        const lines = [
+            '2026/03/20 17:32:59.426 [State Change] MainUI | Macro: Update UI',
+            '2026/03/20 17:32:59.427 [State Change] MainUI | UI: Refresh',
+            '- PeriodicLog.Enable | 1',  // config line — null signature
+            '2026/03/20 17:32:59.428 [State Change] MainUI | Macro: Update UI',
+            '2026/03/20 17:32:59.429 [State Change] MainUI | UI: Refresh',
+        ];
+        const groups = detectMultiLineRepeatedGroups(makeDoc(lines));
+        // Config line prevents forming a 2-line block that repeats
+        assert.deepStrictEqual(groups, []);
+    });
+});
+
+// ---------------------------------------------------------------------------
+// detectAllRepeatedGroups (combined single + multi-line)
+// ---------------------------------------------------------------------------
+
+suite('detectAllRepeatedGroups', () => {
+
+    test('multi-line groups take priority over single-line', () => {
+        // 5-line block × 2 = 10 lines. Single-line on same lines would give
+        // 5 groups of 2 each. With combined detection, only 1 multi-line group.
+        const block = [
+            '2026/03/20 17:32:59.426 [State Change] MainUI | A',
+            '2026/03/20 17:32:59.427 [State Change] MainUI | B',
+            '2026/03/20 17:32:59.428 [State Change] MainUI | C',
+            '2026/03/20 17:32:59.429 [State Change] MainUI | D',
+            '2026/03/20 17:32:59.430 [State Change] MainUI | E',
+        ];
+        const lines = [...block, ...block];  // 10 lines
+        const groups = detectAllRepeatedGroups(makeDoc(lines), 2);
+        assert.strictEqual(groups.length, 1);
+        assert.strictEqual(groups[0].blockSize, 5);
+        assert.strictEqual(groups[0].count, 2);
+        assert.strictEqual(groups[0].startLine, 0);
+        assert.strictEqual(groups[0].endLine, 9);
+    });
+
+    test('single-line groups fill gaps not covered by multi-line', () => {
+        // Multi-line block followed by single-line repeats
+        const multiBlock = [
+            '2026/03/20 17:32:59.426 [State Change] MainUI | A',
+            '2026/03/20 17:32:59.427 [State Change] MainUI | B',
+        ];
+        const lines = [
+            ...multiBlock,  // 0-1: block A
+            ...multiBlock,  // 2-3: repeat A
+            // 4-6: single-line repeats (not multi-line)
+            '2026/03/20 17:32:59.428 [Error] AI | X',
+            '2026/03/20 17:32:59.429 [Error] AI | X',
+            '2026/03/20 17:32:59.430 [Error] AI | X',
+        ];
+        const groups = detectAllRepeatedGroups(makeDoc(lines), 2);
+        assert.strictEqual(groups.length, 2);
+        // Multi-line group first (lines 0-3)
+        assert.strictEqual(groups[0].blockSize, 2);
+        assert.strictEqual(groups[0].startLine, 0);
+        assert.strictEqual(groups[0].endLine, 3);
+        // Single-line group second (lines 4-6)
+        assert.strictEqual(groups[1].blockSize, 1);
+        assert.strictEqual(groups[1].startLine, 4);
+        assert.strictEqual(groups[1].endLine, 6);
     });
 });
 
