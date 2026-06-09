@@ -154,6 +154,204 @@ export function detectRepeatedGroups(
 }
 
 /**
+ * 多行块重复检测：识别连续重复的多行日志块。
+ *
+ * 与单行检测不同，此函数将连续的 N 行视为一个"块"，
+ * 检测该块是否在文档中连续重复出现。
+ *
+ * 算法：对每个起始位置，尝试 2~20 行的块大小，
+ * 检查是否能找到至少 `minRepeatBlocks` 次连续重复。
+ * 优先匹配更大的块，已覆盖的行不再参与后续匹配。
+ *
+ * @param document — VS Code 文本文档
+ * @param minRepeatBlocks — 最小块重复次数（默认 2，即至少出现两次）
+ * @returns 检测到的多行重复组列表
+ */
+export function detectMultiLineRepeatedGroups(
+    document: vscode.TextDocument,
+    minRepeatBlocks: number = 2,
+): RepeatedGroup[] {
+    const lineCount = document.lineCount;
+    const MAX_BLOCK = 20;
+
+    // 1) 预计算所有行的归一化签名
+    const sigs: (string | null)[] = [];
+    for (let i = 0; i < lineCount; i++) {
+        const rawSig = extractSignature(document.lineAt(i).text);
+        sigs.push(rawSig !== null ? normalizeSignature(rawSig) : null);
+    }
+
+    const groups: RepeatedGroup[] = [];
+    const covered = new Set<number>();  // 已被多行组覆盖的行
+
+    for (let i = 0; i < lineCount; i++) {
+        if (covered.has(i) || sigs[i] === null) { continue; }
+
+        let bestL = 0;
+        let bestReps = 0;
+
+        // 从大到小尝试块大小，优先匹配更大的块
+        for (let L = Math.min(MAX_BLOCK, lineCount - i); L >= 2; L--) {
+            // 第一块必须全部为非 null
+            let blockValid = true;
+            for (let k = 0; k < L; k++) {
+                if (sigs[i + k] === null) { blockValid = false; break; }
+            }
+            if (!blockValid) { continue; }
+
+            // 计算连续重复次数
+            let reps = 1;
+            let offset = i + L;
+
+            while (offset + L <= lineCount) {
+                let match = true;
+                for (let k = 0; k < L; k++) {
+                    if (sigs[i + k] !== sigs[offset + k]) {
+                        match = false;
+                        break;
+                    }
+                }
+                if (!match) { break; }
+                reps++;
+                offset += L;
+            }
+
+            if (reps >= minRepeatBlocks) {
+                bestL = L;
+                bestReps = reps;
+                break;  // 找到最大有效块，停止搜索更小的 L
+            }
+        }
+
+        if (bestL >= 2 && bestReps >= minRepeatBlocks) {
+            const endLine = i + bestL * bestReps - 1;
+            groups.push({
+                startLine: i,
+                endLine,
+                count: bestReps,
+                signature: sigs[i]!,  // 第一行签名（用于显示摘要）
+                blockSize: bestL,
+            });
+            // 标记已覆盖行，避免重复检测
+            for (let line = i; line <= endLine; line++) {
+                covered.add(line);
+            }
+        }
+    }
+
+    return groups;
+}
+
+/**
+ * 统一重复检测：先执行多行块重复检测，再对未覆盖的行执行单行检测。
+ *
+ * 多行组覆盖的行不再参与单行检测，避免重复和重叠。
+ *
+ * @param document — VS Code 文本文档
+ * @param minRepeat — 最小连续重复次数阈值（单行）
+ * @param minRepeatBlocks — 最小块重复次数（多行，默认 2）
+ * @returns 合并后的所有重复组（按行号升序）
+ */
+export function detectAllRepeatedGroups(
+    document: vscode.TextDocument,
+    minRepeat: number,
+    minRepeatBlocks: number = 2,
+): RepeatedGroup[] {
+    // 1) 多行块检测
+    const multiGroups = detectMultiLineRepeatedGroups(document, minRepeatBlocks);
+
+    // 2) 收集多行组已覆盖的行
+    const covered = new Set<number>();
+    for (const g of multiGroups) {
+        for (let line = g.startLine; line <= g.endLine; line++) {
+            covered.add(line);
+        }
+    }
+
+    // 3) 对未覆盖的行运行单行检测
+    const singleGroups = detectRepeatedGroupsExcluding(document, minRepeat, covered);
+
+    // 4) 合并并按行号排序
+    return [...multiGroups, ...singleGroups].sort((a, b) => a.startLine - b.startLine);
+}
+
+/**
+ * 单行重复检测（排除指定行）。
+ * 内部函数，由 detectAllRepeatedGroups 调用。
+ */
+function detectRepeatedGroupsExcluding(
+    document: vscode.TextDocument,
+    minRepeat: number,
+    excludeLines: Set<number>,
+): RepeatedGroup[] {
+    const groups: RepeatedGroup[] = [];
+    const lineCount = document.lineCount;
+
+    let runStart = -1;
+    let runSig: string | null = null;
+    let runCount = 0;
+
+    for (let i = 0; i < lineCount; i++) {
+        // 跳过被多行组覆盖的行
+        if (excludeLines.has(i)) {
+            // 中断当前序列
+            if (runCount >= minRepeat && runSig !== null && runStart >= 0) {
+                groups.push({
+                    startLine: runStart,
+                    endLine: runStart + runCount - 1,
+                    count: runCount,
+                    signature: runSig,
+                    blockSize: 1,
+                });
+            }
+            runStart = -1;
+            runSig = null;
+            runCount = 0;
+            continue;
+        }
+
+        const line = document.lineAt(i).text;
+        const rawSig = extractSignature(line);
+        const sig = rawSig !== null ? normalizeSignature(rawSig) : null;
+
+        if (sig !== null && sig === runSig) {
+            runCount++;
+        } else {
+            if (runCount >= minRepeat && runSig !== null && runStart >= 0) {
+                groups.push({
+                    startLine: runStart,
+                    endLine: runStart + runCount - 1,
+                    count: runCount,
+                    signature: runSig,
+                    blockSize: 1,
+                });
+            }
+            if (sig !== null) {
+                runStart = i;
+                runSig = sig;
+                runCount = 1;
+            } else {
+                runStart = -1;
+                runSig = null;
+                runCount = 0;
+            }
+        }
+    }
+
+    if (runCount >= minRepeat && runSig !== null && runStart >= 0) {
+        groups.push({
+            startLine: runStart,
+            endLine: runStart + runCount - 1,
+            count: runCount,
+            signature: runSig,
+            blockSize: 1,
+        });
+    }
+
+    return groups;
+}
+
+/**
  * 截断签名用于大纲显示。
  *
  * @param sig — 归一化签名
