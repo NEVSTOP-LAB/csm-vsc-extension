@@ -318,6 +318,56 @@ suite('Language Definition Tests', () => {
         );
     });
 
+    test('package.json registers configurationDefaults for csmlog', () => {
+        const pkgPath = path.resolve(__dirname, '../../package.json');
+        const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));
+        const configurationDefaults = pkg.contributes?.configurationDefaults ?? {};
+        const csmlogDefaults = configurationDefaults['[csmlog]'];
+        assert.ok(csmlogDefaults, 'configurationDefaults for [csmlog] should be registered in package.json');
+        assert.ok(
+            Object.prototype.hasOwnProperty.call(csmlogDefaults, 'files.autoGuessEncoding'),
+            '[csmlog] configurationDefaults should define files.autoGuessEncoding'
+        );
+    });
+
+    test('package.json does NOT set global files.autoGuessEncoding (only per-language)', () => {
+        const pkgPath = path.resolve(__dirname, '../../package.json');
+        const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));
+        const configurationDefaults = pkg.contributes?.configurationDefaults ?? {};
+        assert.ok(
+            !Object.prototype.hasOwnProperty.call(configurationDefaults, 'files.autoGuessEncoding'),
+            'configurationDefaults should NOT define global files.autoGuessEncoding (only [csmlog] and [lvcsm])'
+        );
+    });
+
+    test('package.json contributes dedup configuration settings', () => {
+        const pkgPath = path.resolve(__dirname, '../../package.json');
+        const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));
+        const configuration = pkg.contributes?.configuration ?? {};
+        const properties = configuration.properties ?? {};
+
+        const dedupEnabled = properties['csmModules.dedup.enabled'];
+        assert.ok(dedupEnabled, 'csmModules.dedup.enabled should be declared');
+        assert.strictEqual(dedupEnabled.type, 'boolean');
+        assert.strictEqual(dedupEnabled.default, true);
+
+        const dedupMinRepeat = properties['csmModules.dedup.minRepeatCount'];
+        assert.ok(dedupMinRepeat, 'csmModules.dedup.minRepeatCount should be declared');
+        assert.strictEqual(dedupMinRepeat.type, 'number');
+        assert.strictEqual(dedupMinRepeat.default, 2);
+        assert.strictEqual(dedupMinRepeat.minimum, 2);
+
+        const dedupMultiLine = properties['csmModules.dedup.multiLineEnabled'];
+        assert.ok(dedupMultiLine, 'csmModules.dedup.multiLineEnabled should be declared');
+        assert.strictEqual(dedupMultiLine.type, 'boolean');
+        assert.strictEqual(dedupMultiLine.default, true);
+
+        const dedupAutoFold = properties['csmModules.dedup.autoFold'];
+        assert.ok(dedupAutoFold, 'csmModules.dedup.autoFold should be declared');
+        assert.strictEqual(dedupAutoFold.type, 'boolean');
+        assert.strictEqual(dedupAutoFold.default, true);
+    });
+
     test('package.json contributes module manager default root setting', () => {
         const pkgPath = path.resolve(__dirname, '../../package.json');
         const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));

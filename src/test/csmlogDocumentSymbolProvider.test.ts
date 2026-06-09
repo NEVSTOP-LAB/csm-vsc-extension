@@ -48,7 +48,7 @@ function makeDoc(lines: string[]): DocLike {
                 text,
                 range: {
                     start: { line: i, character: 0 },
-                    end:   { line: i, character: text.length },
+                    end: { line: i, character: text.length },
                 },
             };
         },
@@ -70,10 +70,11 @@ function names(syms: SymbolLike[]): string[] {
 
 // VS Code SymbolKind constants (from vscode-mock)
 import * as vscode from 'vscode';
-const KIND_PROPERTY    = vscode.SymbolKind.Property;
+const KIND_PROPERTY = vscode.SymbolKind.Property;
 const KIND_CONSTRUCTOR = vscode.SymbolKind.Constructor;
-const KIND_EVENT       = vscode.SymbolKind.Event;
-const KIND_KEY         = vscode.SymbolKind.Key;
+const KIND_EVENT = vscode.SymbolKind.Event;
+const KIND_KEY = vscode.SymbolKind.Key;
+
 
 teardown(() => {
     __setLanguageOverrideForTests(undefined);
