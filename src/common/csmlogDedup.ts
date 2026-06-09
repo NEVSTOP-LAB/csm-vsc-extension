@@ -15,11 +15,6 @@ import * as vscode from 'vscode';
 import { RE_DATE_TS, CONFIG_LINE_REGEX } from './constants';
 
 /**
- * 归一化级别。
- */
-export type DedupLevel = 'exact' | 'numeric';
-
-/**
  * 重复组描述。
  */
 export interface RepeatedGroup {
@@ -78,22 +73,14 @@ export function extractSignature(line: string): string | null {
 }
 
 /**
- * 按归一化级别对消息签名进行归一化。
+ * 对消息签名进行归一化（将连续数字替换为 '#' 占位符）。
+ * 采用宽松匹配策略，使仅参数值不同的消息被识别为重复。
  *
  * @param sig — 消息签名（已剥离时间戳）
- * @param level — 归一化级别
  * @returns 归一化后的签名
  */
-export function normalizeSignature(sig: string, level: DedupLevel): string {
-    switch (level) {
-        case 'exact':
-            return sig;
-        case 'numeric':
-            // 将连续的数字序列替换为单个 '#' 占位符
-            return sig.replace(/\d+/g, '#');
-        default:
-            return sig;
-    }
+export function normalizeSignature(sig: string): string {
+    return sig.replace(/\d+/g, '#');
 }
 
 /**
@@ -110,7 +97,6 @@ export function normalizeSignature(sig: string, level: DedupLevel): string {
 export function detectRepeatedGroups(
     document: vscode.TextDocument,
     minRepeat: number,
-    level: DedupLevel,
 ): RepeatedGroup[] {
     const groups: RepeatedGroup[] = [];
     const lineCount = document.lineCount;
@@ -122,7 +108,7 @@ export function detectRepeatedGroups(
     for (let i = 0; i < lineCount; i++) {
         const line = document.lineAt(i).text;
         const rawSig = extractSignature(line);
-        const sig = rawSig !== null ? normalizeSignature(rawSig, level) : null;
+        const sig = rawSig !== null ? normalizeSignature(rawSig) : null;
 
         if (sig !== null && sig === runSig) {
             // 延续当前重复序列

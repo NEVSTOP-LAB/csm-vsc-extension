@@ -306,20 +306,10 @@
         },
         "csmModules.dedup.minRepeatCount": {
           "type": "number",
-          "default": 3,
+          "default": 2,
           "minimum": 2,
           "scope": "resource",
           "description": "%configuration.csmModules.dedup.minRepeatCount.description%"
-        },
-        "csmModules.dedup.normalizationLevel": {
-          "type": "string",
-          "enum": [
-            "exact",
-            "numeric"
-          ],
-          "default": "exact",
-          "scope": "resource",
-          "description": "%configuration.csmModules.dedup.normalizationLevel.description%"
         }
       }
     },

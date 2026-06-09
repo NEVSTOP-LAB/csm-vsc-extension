@@ -6,7 +6,7 @@ import {
     LOGGER_MESSAGE_REGEX,
 } from './common/constants';
 import { SymbolEntry, buildDocumentSymbols } from './common/symbols';
-import { detectRepeatedGroups, truncateSignature, DedupLevel } from './common/csmlogDedup';
+import { detectRepeatedGroups, truncateSignature } from './common/csmlogDedup';
 
 const symbolMessages = {
     moduleCreated: {
@@ -87,10 +87,8 @@ export class CSMLogDocumentSymbolProvider implements vscode.DocumentSymbolProvid
         const dedupEnabled = dedupConfig.get<boolean>('enabled', true);
         if (dedupEnabled) {
             const minRepeat = dedupConfig.get<number>('minRepeatCount', 3);
-            const rawLevel = dedupConfig.get<string>('normalizationLevel', 'exact');
-            const level: DedupLevel = rawLevel === 'numeric' ? 'numeric' : 'exact';
 
-            const repeatedGroups = detectRepeatedGroups(document, minRepeat, level);
+            const repeatedGroups = detectRepeatedGroups(document, minRepeat);
             for (const group of repeatedGroups) {
                 const displaySig = truncateSignature(group.signature);
                 entries.push({

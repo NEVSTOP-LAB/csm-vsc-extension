@@ -58,7 +58,6 @@ teardown(() => {
     // Reset dedup config to enabled defaults for each test
     setConfig('csmModules.dedup.enabled', true);
     setConfig('csmModules.dedup.minRepeatCount', 3);
-    setConfig('csmModules.dedup.normalizationLevel', 'exact');
 });
 
 // ---------------------------------------------------------------------------
@@ -83,9 +82,9 @@ suite('CSMLogFoldingRangeProvider', () => {
 
     test('returns empty when no repeats', () => {
         const lines = [
-            '2026/03/20 17:32:59.426 [Error] AI | Error 1',
-            '2026/03/20 17:32:59.427 [Error] AI | Error 2',
-            '2026/03/20 17:32:59.428 [Error] AI | Error 3',
+            '2026/03/20 17:32:59.426 [Error] AI | Error A',
+            '2026/03/20 17:32:59.427 [Error] AI | Error B',
+            '2026/03/20 17:32:59.428 [Error] AI | Error C',
         ];
         assert.deepStrictEqual(getRanges(lines), []);
     });
@@ -157,8 +156,7 @@ suite('CSMLogFoldingRangeProvider', () => {
         assert.strictEqual(ranges.length, 0);
     });
 
-    test('numeric dedup merges parameterized duplicates', () => {
-        setConfig('csmModules.dedup.normalizationLevel', 'numeric');
+    test('merges parameterized duplicates (default behavior)', () => {
         const lines = [
             '2026/03/20 17:32:59.426 [Error] AI | timeout after 5000ms',
             '2026/03/20 17:32:59.427 [Error] AI | timeout after 3000ms',

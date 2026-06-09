@@ -345,7 +345,6 @@ suite('CSMLogDocumentSymbolProvider — dedup groups', () => {
         // Reset dedup config to defaults for each test
         __setConfigurationValue('csmModules.dedup.enabled', true);
         __setConfigurationValue('csmModules.dedup.minRepeatCount', 3);
-        __setConfigurationValue('csmModules.dedup.normalizationLevel', 'exact');
     });
 
     test('dedup groups appear as EnumMember symbols', () => {

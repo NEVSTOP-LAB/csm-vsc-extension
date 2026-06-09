@@ -18,8 +18,8 @@ const {
     path.resolve(__dirname, '../common/csmlogDedup'),
 ) as {
     extractSignature: (line: string) => string | null;
-    normalizeSignature: (sig: string, level: 'exact' | 'numeric') => string;
-    detectRepeatedGroups: (doc: DocLike, minRepeat: number, level: string) => GroupLike[];
+    normalizeSignature: (sig: string) => string;
+    detectRepeatedGroups: (doc: DocLike, minRepeat: number) => GroupLike[];
     truncateSignature: (sig: string, maxLen?: number) => string;
 };
 
@@ -122,28 +122,23 @@ suite('extractSignature', () => {
 
 suite('normalizeSignature', () => {
 
-    test('exact level returns signature unchanged', () => {
-        const result = normalizeSignature('[Error] AI | timeout after 5000ms', 'exact');
-        assert.strictEqual(result, '[Error] AI | timeout after 5000ms');
-    });
-
-    test('numeric level replaces digit sequences with #', () => {
-        const result = normalizeSignature('[Error] AI | timeout after 5000ms', 'numeric');
+    test('replaces digit sequences with #', () => {
+        const result = normalizeSignature('[Error] AI | timeout after 5000ms');
         assert.strictEqual(result, '[Error] AI | timeout after #ms');
     });
 
-    test('numeric level handles multiple number sequences', () => {
-        const result = normalizeSignature('[Sync Message] API | Value 123 at index 456', 'numeric');
+    test('handles multiple number sequences', () => {
+        const result = normalizeSignature('[Sync Message] API | Value 123 at index 456');
         assert.strictEqual(result, '[Sync Message] API | Value # at index #');
     });
 
-    test('numeric level handles no numbers', () => {
-        const result = normalizeSignature('[Status] Module | OK', 'numeric');
+    test('handles no numbers', () => {
+        const result = normalizeSignature('[Status] Module | OK');
         assert.strictEqual(result, '[Status] Module | OK');
     });
 
-    test('numeric level handles only numbers', () => {
-        const result = normalizeSignature('12345 67890', 'numeric');
+    test('handles only numbers', () => {
+        const result = normalizeSignature('12345 67890');
         assert.strictEqual(result, '# #');
     });
 });
@@ -155,17 +150,17 @@ suite('normalizeSignature', () => {
 suite('detectRepeatedGroups', () => {
 
     test('returns empty for empty document', () => {
-        const groups = detectRepeatedGroups(makeDoc([]), 3, 'exact');
+        const groups = detectRepeatedGroups(makeDoc([]), 3);
         assert.deepStrictEqual(groups, []);
     });
 
     test('returns empty when no lines repeat', () => {
         const lines = [
-            '2026/03/20 17:32:59.426 [Error] AI | Error 1',
-            '2026/03/20 17:32:59.427 [Error] AI | Error 2',
-            '2026/03/20 17:32:59.428 [Error] AI | Error 3',
+            '2026/03/20 17:32:59.426 [Error] AI | Error A',
+            '2026/03/20 17:32:59.427 [Error] AI | Error B',
+            '2026/03/20 17:32:59.428 [Error] AI | Error C',
         ];
-        const groups = detectRepeatedGroups(makeDoc(lines), 3, 'exact');
+        const groups = detectRepeatedGroups(makeDoc(lines), 3);
         assert.deepStrictEqual(groups, []);
     });
 
@@ -174,7 +169,7 @@ suite('detectRepeatedGroups', () => {
             '2026/03/20 17:32:59.426 [Error] AI | Same error',
             '2026/03/20 17:32:59.427 [Error] AI | Same error',
         ];
-        const groups = detectRepeatedGroups(makeDoc(lines), 3, 'exact');
+        const groups = detectRepeatedGroups(makeDoc(lines), 3);
         assert.deepStrictEqual(groups, []);
     });
 
@@ -184,7 +179,7 @@ suite('detectRepeatedGroups', () => {
             '2026/03/20 17:32:59.427 [Error] AI | Same error',
             '2026/03/20 17:32:59.428 [Error] AI | Same error',
         ];
-        const groups = detectRepeatedGroups(makeDoc(lines), 3, 'exact');
+        const groups = detectRepeatedGroups(makeDoc(lines), 3);
         assert.strictEqual(groups.length, 1);
         assert.strictEqual(groups[0].startLine, 0);
         assert.strictEqual(groups[0].endLine, 2);
@@ -197,7 +192,7 @@ suite('detectRepeatedGroups', () => {
             '2026/03/20 17:32:59.426 [Error] AI | Same error',
             '2026/03/20 17:32:59.427 [Error] AI | Same error',
         ];
-        const groups = detectRepeatedGroups(makeDoc(lines), 2, 'exact');
+        const groups = detectRepeatedGroups(makeDoc(lines), 2);
         assert.strictEqual(groups.length, 1);
         assert.strictEqual(groups[0].count, 2);
     });
@@ -211,7 +206,7 @@ suite('detectRepeatedGroups', () => {
             '2026/03/20 17:32:59.430 [Error] AI | Error B',
             '2026/03/20 17:32:59.431 [Error] AI | Error B',
         ];
-        const groups = detectRepeatedGroups(makeDoc(lines), 3, 'exact');
+        const groups = detectRepeatedGroups(makeDoc(lines), 3);
         assert.strictEqual(groups.length, 2);
         assert.strictEqual(groups[0].startLine, 0);
         assert.strictEqual(groups[0].endLine, 2);
@@ -227,7 +222,7 @@ suite('detectRepeatedGroups', () => {
             '2026/03/20 17:32:59.428 [Error] AI | Same error',
             '2026/03/20 17:32:59.429 [Error] AI | Same error',
         ];
-        const groups = detectRepeatedGroups(makeDoc(lines), 3, 'exact');
+        const groups = detectRepeatedGroups(makeDoc(lines), 3);
         // Each side of the config line has only 2 repeats, below threshold of 3
         assert.strictEqual(groups.length, 0);
     });
@@ -238,7 +233,7 @@ suite('detectRepeatedGroups', () => {
             '2026/03/20 17:32:59.427 [Error] AI | timeout after 3000ms',
             '2026/03/20 17:32:59.428 [Error] AI | timeout after 1000ms',
         ];
-        const groups = detectRepeatedGroups(makeDoc(lines), 3, 'numeric');
+        const groups = detectRepeatedGroups(makeDoc(lines), 3);
         assert.strictEqual(groups.length, 1);
         assert.strictEqual(groups[0].count, 3);
     });
@@ -249,7 +244,7 @@ suite('detectRepeatedGroups', () => {
             '2026/03/20 17:32:59.500 [17:32:59.499] [Error] AI | Same error',
             '2026/03/20 17:32:59.600 [17:32:59.599] [Error] AI | Same error',
         ];
-        const groups = detectRepeatedGroups(makeDoc(lines), 3, 'exact');
+        const groups = detectRepeatedGroups(makeDoc(lines), 3);
         assert.strictEqual(groups.length, 1);
         // absolute and relative timestamps differ but are stripped; message body is identical
     });
@@ -261,7 +256,7 @@ suite('detectRepeatedGroups', () => {
             '2025/05/25 21:28:22.555 [2025/05/25 21:28:22.555] [User Log] tcp-client | Try to Connect PXI >> {localhost;6340;2}',
             '2025/05/25 21:28:23.158 [2025/05/25 21:28:23.158] [User Log] tcp-client | Try to Connect PXI >> {localhost;6340;3}',
         ];
-        const groups = detectRepeatedGroups(makeDoc(lines), 3, 'numeric');
+        const groups = detectRepeatedGroups(makeDoc(lines), 3);
         assert.strictEqual(groups.length, 1);
         assert.strictEqual(groups[0].count, 3);
     });

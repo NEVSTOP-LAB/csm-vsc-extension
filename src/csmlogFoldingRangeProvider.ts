@@ -8,18 +8,16 @@
 // ---------------------------------------------------------------------------
 
 import * as vscode from 'vscode';
-import { detectRepeatedGroups, DedupLevel } from './common/csmlogDedup';
+import { detectRepeatedGroups } from './common/csmlogDedup';
 
 /**
  * 读取去重配置。
  */
-function getDedupConfig(): { enabled: boolean; minRepeat: number; level: DedupLevel } {
+function getDedupConfig(): { enabled: boolean; minRepeat: number } {
     const config = vscode.workspace.getConfiguration('csmModules.dedup');
     const enabled = config.get<boolean>('enabled', true);
     const minRepeat = config.get<number>('minRepeatCount', 3);
-    const rawLevel = config.get<string>('normalizationLevel', 'exact');
-    const level: DedupLevel = rawLevel === 'numeric' ? 'numeric' : 'exact';
-    return { enabled, minRepeat, level };
+    return { enabled, minRepeat };
 }
 
 /**
@@ -36,10 +34,10 @@ export class CSMLogFoldingRangeProvider implements vscode.FoldingRangeProvider {
         _token: vscode.CancellationToken,
     ): vscode.ProviderResult<vscode.FoldingRange[]> {
 
-        const { enabled, minRepeat, level } = getDedupConfig();
+        const { enabled, minRepeat } = getDedupConfig();
         if (!enabled) { return []; }
 
-        const repeatedGroups = detectRepeatedGroups(document, minRepeat, level);
+        const repeatedGroups = detectRepeatedGroups(document, minRepeat);
 
         return repeatedGroups.map((group): vscode.FoldingRange =>
             new vscode.FoldingRange(
