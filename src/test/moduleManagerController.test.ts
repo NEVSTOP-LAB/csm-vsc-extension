@@ -2338,12 +2338,20 @@ suite('ModuleManagerController Regression Tests', () => {
 
 		await controller.applyToWorkspaceCommand(entry);
 
-		assert.deepStrictEqual(starRequests, [{
-			owner: 'org',
-			repo: 'module-star',
-			token: 'token',
-			starred: true,
-		}]);
+		assert.deepStrictEqual(starRequests, [
+			{
+				owner: 'org',
+				repo: 'module-star',
+				token: 'token',
+				starred: true,
+			},
+			{
+				owner: 'NEVSTOP-LAB',
+				repo: 'Communicable-State-Machine',
+				token: 'token',
+				starred: true,
+			},
+		]);
 		assert.strictEqual(renderedModules[renderedModules.length - 1]?.[0]?.starred, true);
 	});
 
