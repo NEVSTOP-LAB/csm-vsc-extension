@@ -22,10 +22,12 @@ export interface RepeatedGroup {
     startLine: number;
     /** 组结束行（0-based，含）。 */
     endLine: number;
-    /** 组内行数。 */
+    /** 重复次数：单行时为连续行数，多行时为块重复次数。 */
     count: number;
     /** 归一化后的消息签名（用于显示）。 */
     signature: string;
+    /** 重复块大小（行数）：1 = 单行重复，>1 = 多行块重复。 */
+    blockSize: number;
 }
 
 /**
@@ -121,6 +123,7 @@ export function detectRepeatedGroups(
                     endLine: runStart + runCount - 1,
                     count: runCount,
                     signature: runSig,
+                    blockSize: 1,
                 });
             }
             // 开始新序列（或重置）
@@ -143,6 +146,7 @@ export function detectRepeatedGroups(
             endLine: runStart + runCount - 1,
             count: runCount,
             signature: runSig,
+            blockSize: 1,
         });
     }
 
