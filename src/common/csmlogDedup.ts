@@ -260,19 +260,37 @@ export function detectAllRepeatedGroups(
     // 1) 多行块检测
     const multiGroups = detectMultiLineRepeatedGroups(document, minRepeatBlocks);
 
-    // 2) 收集多行组已覆盖的行
+    // 2) 过滤"伪多行组"：块内所有行签名相同 → 单行检测更能表达重复本质
+    const filteredMulti = multiGroups.filter((g) => {
+        if (g.blockSize <= 1) { return true; }
+        const firstSig = sigsOf(document, g.startLine);
+        for (let i = 1; i < g.blockSize; i++) {
+            if (sigsOf(document, g.startLine + i) !== firstSig) { return true; }
+        }
+        return false; // 块内全部相同 → 留给单行检测
+    });
+
+    // 3) 收集多行组已覆盖的行
     const covered = new Set<number>();
-    for (const g of multiGroups) {
+    for (const g of filteredMulti) {
         for (let line = g.startLine; line <= g.endLine; line++) {
             covered.add(line);
         }
     }
 
-    // 3) 对未覆盖的行运行单行检测
+    // 4) 对未覆盖的行运行单行检测
     const singleGroups = detectRepeatedGroupsExcluding(document, minRepeat, covered);
 
-    // 4) 合并并按行号排序
-    return [...multiGroups, ...singleGroups].sort((a, b) => a.startLine - b.startLine);
+    // 5) 合并并按行号排序
+    return [...filteredMulti, ...singleGroups].sort((a, b) => a.startLine - b.startLine);
+}
+
+/**
+ * 获取指定行的归一化签名（内部缓存辅助）。
+ */
+function sigsOf(document: vscode.TextDocument, line: number): string | null {
+    const rawSig = extractSignature(document.lineAt(line).text);
+    return rawSig !== null ? normalizeSignature(rawSig) : null;
 }
 
 /**

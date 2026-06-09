@@ -105,38 +105,39 @@ async function applyDecorations(editor: vscode.TextEditor): Promise<void> {
             bgRanges.push(editor.document.lineAt(line).range);
         }
 
-        // 计算折叠信息
-        const foldedCount = group.count >= 3 ? group.count - 2 : 1;
-        const foldStartLine = group.startLine + bs; // 折叠起始行
+        // 计算折叠信息（仅 count ≥ 4 时折叠）
+        if (group.count >= 4) {
+            const bs = group.blockSize;
+            const foldedCount = group.count - 2;
+            const foldStartLine = group.startLine + bs; // 折叠起始行
 
-        if (foldStartLine <= group.endLine) {
-            // 提取折叠段首尾时间戳
-            const firstFoldedLine = editor.document.lineAt(foldStartLine).text;
-            const lastFoldedLine = editor.document.lineAt(
-                group.count >= 3 ? group.endLine - bs : group.endLine
-            ).text;
-            const ts1 = extractShortTimestamp(firstFoldedLine);
-            const ts2 = extractShortTimestamp(lastFoldedLine);
+            if (foldStartLine <= group.endLine - bs) {
+                // 提取折叠段首尾时间戳
+                const firstFoldedLine = editor.document.lineAt(foldStartLine).text;
+                const lastFoldedLine = editor.document.lineAt(group.endLine - bs).text;
+                const ts1 = extractShortTimestamp(firstFoldedLine);
+                const ts2 = extractShortTimestamp(lastFoldedLine);
 
-            // 构建标记文字
-            const label = bs > 1
-                ? `▼ ${foldedCount} blocks (${bs}L)`
-                : `▼ ${foldedCount} lines`;
-            const timeSpan = ts1 && ts2 ? ` | ${ts1} → ${ts2}` : '';
-            const contentText = `${label}${timeSpan} `;
+                // 构建标记文字
+                const label = bs > 1
+                    ? `${foldedCount} blocks (${bs}L)`
+                    : `${foldedCount} lines`;
+                const timeSpan = ts1 && ts2 ? ` | ${ts1} → ${ts2}` : '';
+                const contentText = `▼ ${label}${timeSpan} `;
 
-            markerOpts.push({
-                range: editor.document.lineAt(foldStartLine).range,
-                renderOptions: {
-                    before: {
-                        contentText,
-                        color: new vscode.ThemeColor('editorInfo.foreground'),
-                        backgroundColor: new vscode.ThemeColor('editorInfo.background'),
-                        fontWeight: 'bold',
-                        margin: '0 8px 0 0',
+                markerOpts.push({
+                    range: editor.document.lineAt(foldStartLine).range,
+                    renderOptions: {
+                        before: {
+                            contentText,
+                            color: new vscode.ThemeColor('editorInfo.foreground'),
+                            backgroundColor: new vscode.ThemeColor('editorInfo.background'),
+                            fontWeight: 'bold',
+                            margin: '0 8px 0 0',
+                        },
                     },
-                },
-            });
+                });
+            }
         }
     }
 
