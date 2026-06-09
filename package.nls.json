@@ -1,6 +1,6 @@
 {
   "extension.displayName": "Communicable State Machine(CSM)",
-  "extension.description": "Language support for Communicable State Machine (CSM) files in Visual Studio Code",
+  "extension.description": "Language support for Communicable State Machine(CSM) files in Visual Studio Code",
   "commands.login.title": "CSM Modules: Sign In to GitHub",
   "commands.logout.title": "CSM Modules: Sign Out of GitHub",
   "commands.refresh.title": "CSM Modules: Refresh",
@@ -21,5 +21,7 @@
   "views.csmModules.view.name": "Available Modules",
   "configuration.csmModules.defaultModuleRoot.description": "Default relative directory used when initializing local CSM module management for a repository that does not already have a csm-modules.yaml file.",
   "configuration.csmModules.hiddenTopics.description": "Module repository topics to hide from the CSM Modules sidebar badges, tree tooltips, and local search text.",
+  "configuration.csmModules.autoStarCsmCore.description": "Automatically star the CSM Core repository (NEVSTOP-LAB/Communicable-State-Machine) on GitHub when applying modules to the local workspace.",
+  "configuration.csmModules.autoStarModuleRepo.description": "Automatically star the downloaded module repository on GitHub when applying it to the local workspace.",
   "iconThemes.csmFileIcons.label": "CSM File Icons"
 }

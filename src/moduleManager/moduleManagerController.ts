@@ -10,7 +10,7 @@ import { ModuleSidebarViewProvider } from './moduleSidebarViewProvider';
 import { IModuleViewProvider, ModuleSortField, ModuleSortState, SidebarWorkspaceContext } from './interfaces';
 import { ReadmeAssetCache } from './readmeAssetCache';
 import { DEFAULT_LOCAL_MODULE_ROOT, GitIdentity, LEGACY_LOCAL_MODULE_CONFIG_FILE, LOCAL_MODULE_CONFIG_FILE, WorkspaceModuleService } from './workspaceModuleService';
-import { COMMAND_IDS, CONFIG_KEYS, CONFIG_SECTIONS, CONTEXT_KEYS, VIEW_IDS } from './constants';
+import { COMMAND_IDS, CONFIG_KEYS, CONFIG_SECTIONS, CONTEXT_KEYS, GITHUB, VIEW_IDS } from './constants';
 import { Logger, getLogger, wrapCommand } from './logger';
 import { getApplyMethodLabel, t } from './messages';
 import { openBuiltinReadmePreview, type ReadmePreviewServiceDeps } from './readmePreviewService';
@@ -1363,29 +1363,58 @@ export class ModuleManagerController {
 	}
 
 	private async autoStarImportedModules(entries: CsmModuleEntry[]): Promise<void> {
-		if (entries.length === 0 || typeof this.githubService.setRepositoryStarred !== 'function') {
+		if (typeof this.githubService.setRepositoryStarred !== 'function') {
 			return;
 		}
+
+		const config = vscode.workspace.getConfiguration(CONFIG_SECTIONS.moduleManager);
+		const autoStarModuleRepo = config.get<boolean>(CONFIG_KEYS.autoStarModuleRepo, true);
+		const autoStarCsmCore = config.get<boolean>(CONFIG_KEYS.autoStarCsmCore, true);
+
+		// 如果没有需要 star 的操作，提前返回
+		if (!autoStarModuleRepo && !autoStarCsmCore) {
+			return;
+		}
+
 		const token = await this.ensureToken(false);
 		if (!token) {
 			return;
 		}
-		const updates = new Map<string, boolean>();
-		const seen = new Set<string>();
-		for (const entry of entries) {
-			const key = this.getModuleKey(entry);
-			if (seen.has(key) || entry.starred === true) {
-				continue;
+
+		// Star 已应用的模块仓库
+		if (autoStarModuleRepo && entries.length > 0) {
+			const updates = new Map<string, boolean>();
+			const seen = new Set<string>();
+			for (const entry of entries) {
+				const key = this.getModuleKey(entry);
+				if (seen.has(key) || entry.starred === true) {
+					continue;
+				}
+				seen.add(key);
+				try {
+					await this.githubService.setRepositoryStarred(entry.owner, entry.name, token, true);
+					updates.set(key, true);
+				} catch (error) {
+					this.logger.warn(`Failed to auto-star ${entry.owner}/${entry.name}: ${error instanceof Error ? error.message : String(error)}`);
+				}
 			}
-			seen.add(key);
+			this.updateAvailableModuleStarStates(updates);
+		}
+
+		// Star CSM Core 框架仓库
+		if (autoStarCsmCore) {
+			const { owner, name } = GITHUB.csmCoreRepo;
 			try {
-				await this.githubService.setRepositoryStarred(entry.owner, entry.name, token, true);
-				updates.set(key, true);
+				const alreadyStarred = typeof this.githubService.isRepositoryStarred === 'function'
+					? await this.githubService.isRepositoryStarred(owner, name, token)
+					: false;
+				if (!alreadyStarred) {
+					await this.githubService.setRepositoryStarred(owner, name, token, true);
+				}
 			} catch (error) {
-				this.logger.warn(`Failed to auto-star ${entry.owner}/${entry.name}: ${error instanceof Error ? error.message : String(error)}`);
+				this.logger.warn(`Failed to auto-star CSM Core (${owner}/${name}): ${error instanceof Error ? error.message : String(error)}`);
 			}
 		}
-		this.updateAvailableModuleStarStates(updates);
 	}
 
 	private async hydrateStarStates(modules: CsmModuleEntry[], token: string | undefined): Promise<CsmModuleEntry[]> {

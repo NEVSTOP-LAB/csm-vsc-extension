@@ -37,6 +37,8 @@ export const CONFIG_SECTIONS = {
 export const CONFIG_KEYS = {
 	defaultModuleRoot: 'defaultModuleRoot',
 	hiddenTopics: 'hiddenTopics',
+	autoStarCsmCore: 'autoStarCsmCore',
+	autoStarModuleRepo: 'autoStarModuleRepo',
 } as const;
 
 export const STORAGE_KEYS = {
@@ -65,4 +67,9 @@ export const GITHUB = {
 	userAgent: 'csm-vsc-support',
 	requiredScopes: ['read:user', 'repo'] as const,
 	providerId: 'github',
+	/** CSM Core 框架仓库 */
+	csmCoreRepo: {
+		owner: 'NEVSTOP-LAB',
+		name: 'Communicable-State-Machine',
+	},
 } as const;

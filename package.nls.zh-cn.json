@@ -1,6 +1,6 @@
 {
-  "extension.displayName": "可通信状态机（CSM）",
-  "extension.description": "为 Visual Studio Code 中的 Communicable State Machine (CSM) 文件提供语言支持",
+  "extension.displayName": "可通信状态机(CSM)",
+  "extension.description": "为 Visual Studio Code 中的 Communicable State Machine(CSM) 文件提供语言支持",
   "commands.login.title": "CSM 模块：登录 GitHub",
   "commands.logout.title": "CSM 模块：退出 GitHub 登录",
   "commands.refresh.title": "CSM 模块：刷新",
@@ -21,5 +21,7 @@
   "views.csmModules.view.name": "可用模块",
   "configuration.csmModules.defaultModuleRoot.description": "当仓库中尚不存在 csm-modules.yaml 文件时，用于初始化本地 CSM 模块管理的默认相对目录。",
   "configuration.csmModules.hiddenTopics.description": "用于配置在 CSM Modules 侧边栏徽标、树视图提示和本地搜索文本中隐藏的模块仓库 topics。",
+  "configuration.csmModules.autoStarCsmCore.description": "将模块应用到本地工作区时，自动在 GitHub 上 Star CSM Core 仓库（NEVSTOP-LAB/Communicable-State-Machine）。",
+  "configuration.csmModules.autoStarModuleRepo.description": "将模块应用到本地工作区时，自动在 GitHub 上 Star 所下载模块对应的仓库。",
   "iconThemes.csmFileIcons.label": "CSM 文件图标"
 }
