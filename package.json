@@ -322,6 +322,19 @@
           "default": true,
           "scope": "resource",
           "description": "%configuration.csmModules.dedup.autoFold.description%"
+        },
+        "csmModules.autoStarCsmCore": {
+          "type": "boolean",
+          "default": true,
+          "scope": "window",
+          "description": "%configuration.csmModules.autoStarCsmCore.description%"
+        },
+        "csmModules.autoStarModuleRepo": {
+          "type": "boolean",
+          "default": true,
+          "scope": "window",
+          "description": "%configuration.csmModules.autoStarModuleRepo.description%"
+
         }
       }
     },
