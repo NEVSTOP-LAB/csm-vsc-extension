@@ -8,8 +8,15 @@
 
 import * as vscode from 'vscode';
 import { detectAllRepeatedGroups, RepeatedGroup } from './common/csmlogDedup';
+import { localizeBundle } from './i18n';
 
 const autoFoldedDocs = new Set<string>();
+
+/** 装饰器文本本地化 */
+const decoratorMessages = {
+    blocks: { en: 'blocks', zh: '块' },
+    lines: { en: 'lines', zh: '行' },
+} as const;
 
 /** 提取 HH:MM:SS.mmm 时间戳（与原始日志精度一致） */
 function shortTs(line: string): string | null {
@@ -167,7 +174,9 @@ async function applyDecorations(editor: vscode.TextEditor): Promise<void> {
         const ts2 = shortTs(editor.document.lineAt(g.endLine).text);
         const timeSpan = ts1 && ts2 ? ` | ${ts1} → ${ts2}` : '';
         const icon = foldIcon(editor, g);
-        const label = `${icon} ${totalBlocks} blocks · ${totalLines} lines${timeSpan} | L${g.startLine + 1}-L${g.endLine + 1}`;
+        const blocksText = localizeBundle(decoratorMessages, 'blocks');
+        const linesText = localizeBundle(decoratorMessages, 'lines');
+        const label = `${icon} ${totalBlocks} ${blocksText} · ${totalLines} ${linesText}${timeSpan} | L${g.startLine + 1}-L${g.endLine + 1}`;
 
         infoOpts.push({
             range: editor.document.lineAt(g.startLine).range,

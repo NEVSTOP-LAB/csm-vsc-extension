@@ -6,6 +6,7 @@ import {
     LOGGER_MESSAGE_REGEX,
 } from './common/constants';
 import { SymbolEntry, buildDocumentSymbols } from './common/symbols';
+import { detectAllRepeatedGroups, truncateSignature } from './common/csmlogDedup';
 
 const symbolMessages = {
     moduleCreated: {
@@ -19,6 +20,10 @@ const symbolMessages = {
     unknownModule: {
         en: '<unknown-module>',
         zh: '<未知模块>',
+    },
+    repeatedGroup: {
+        en: 'Repeated',
+        zh: '重复',
     },
 } as const;
 
@@ -80,6 +85,46 @@ export class CSMLogDocumentSymbolProvider implements vscode.DocumentSymbolProvid
         }
 
         // 按行号排序后统一构建 DocumentSymbol
+        entries.sort((a, b) => a.lineIndex - b.lineIndex);
+
+        // 检测并添加重复日志组（由 csmModules.dedup.* 配置控制）
+        try {
+            const config = vscode.workspace.getConfiguration('csmModules.dedup');
+            const dedupEnabled = config.get<boolean>('enabled', true);
+            if (dedupEnabled) {
+                const minRepeat = config.get<number>('minRepeatCount', 2);
+                const multiLineEnabled = config.get<boolean>('multiLineEnabled', true);
+                const repeatedGroups = multiLineEnabled
+                    ? detectAllRepeatedGroups(document, minRepeat)
+                    : detectAllRepeatedGroups(document, minRepeat, 999);
+
+                // 收集已有条目覆盖的行号
+                const coveredLines = new Set<number>();
+                for (const entry of entries) {
+                    coveredLines.add(entry.lineIndex);
+                }
+
+                const repeatedLabel = localizeBundle(symbolMessages, 'repeatedGroup');
+                for (const group of repeatedGroups) {
+                    // 跳过与已有条目重叠的组（配置行、生命周期等优先）
+                    if (coveredLines.has(group.startLine)) { continue; }
+
+                    const shortSig = truncateSignature(group.signature, 50);
+                    const name = group.blockSize === 1
+                        ? `${repeatedLabel} ×${group.count}: ${shortSig}`
+                        : `${repeatedLabel} ×${group.count} (${group.blockSize}行/块): ${shortSig}`;
+                    entries.push({
+                        lineIndex: group.startLine,
+                        name,
+                        kind: vscode.SymbolKind.EnumMember,
+                    });
+                }
+            }
+        } catch {
+            // 去重检测失败不影响基本大纲功能
+        }
+
+        // 最终排序（包含去重组）后构建
         entries.sort((a, b) => a.lineIndex - b.lineIndex);
         return buildDocumentSymbols(document, entries);
     }

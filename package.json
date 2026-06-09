@@ -365,6 +365,7 @@
       }
     ],
     "configurationDefaults": {
+      "files.autoGuessEncoding": true,
       "[csmlog]": {
         "files.autoGuessEncoding": true
       },
