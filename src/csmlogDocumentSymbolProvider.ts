@@ -6,7 +6,7 @@ import {
     LOGGER_MESSAGE_REGEX,
 } from './common/constants';
 import { SymbolEntry, buildDocumentSymbols } from './common/symbols';
-import { detectRepeatedGroups, truncateSignature } from './common/csmlogDedup';
+import { detectAllRepeatedGroups, truncateSignature } from './common/csmlogDedup';
 
 const symbolMessages = {
     moduleCreated: {
@@ -87,15 +87,28 @@ export class CSMLogDocumentSymbolProvider implements vscode.DocumentSymbolProvid
         const dedupEnabled = dedupConfig.get<boolean>('enabled', true);
         if (dedupEnabled) {
             const minRepeat = dedupConfig.get<number>('minRepeatCount', 3);
+            const multiLineEnabled = dedupConfig.get<boolean>('multiLineEnabled', true);
 
-            const repeatedGroups = detectRepeatedGroups(document, minRepeat);
+            const repeatedGroups = multiLineEnabled
+                ? detectAllRepeatedGroups(document, minRepeat)
+                : detectAllRepeatedGroups(document, minRepeat, 999);
+
             for (const group of repeatedGroups) {
                 const displaySig = truncateSignature(group.signature);
-                entries.push({
-                    lineIndex: group.startLine,
-                    name: `×${group.count} ${displaySig}`,
-                    kind: vscode.SymbolKind.EnumMember,
-                });
+                if (group.blockSize > 1) {
+                    // 多行块：显示块大小信息
+                    entries.push({
+                        lineIndex: group.startLine,
+                        name: `×${group.count} [${group.blockSize}-line] ${displaySig}`,
+                        kind: vscode.SymbolKind.EnumMember,
+                    });
+                } else {
+                    entries.push({
+                        lineIndex: group.startLine,
+                        name: `×${group.count} ${displaySig}`,
+                        kind: vscode.SymbolKind.EnumMember,
+                    });
+                }
             }
         }
 

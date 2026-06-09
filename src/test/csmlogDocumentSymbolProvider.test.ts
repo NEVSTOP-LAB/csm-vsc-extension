@@ -385,8 +385,9 @@ suite('CSMLogDocumentSymbolProvider — dedup groups', () => {
         assert.deepStrictEqual(getSymbols(lines), []);
     });
 
-    test('dedup groups not created with minRepeat=5 but only 4 repeats', () => {
+    test('dedup groups not created with minRepeat=5 but only 4 repeats (multi-line disabled)', () => {
         __setConfigurationValue('csmModules.dedup.minRepeatCount', 5);
+        __setConfigurationValue('csmModules.dedup.multiLineEnabled', false);
         const lines = [
             '2026/03/20 17:32:59.426 [Error] AI | Same error',
             '2026/03/20 17:32:59.427 [Error] AI | Same error',

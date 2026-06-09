@@ -8,7 +8,7 @@
 // ---------------------------------------------------------------------------
 
 import * as vscode from 'vscode';
-import { detectRepeatedGroups } from './common/csmlogDedup';
+import { detectAllRepeatedGroups } from './common/csmlogDedup';
 
 /**
  * 重复行装饰类型：浅灰蓝色背景 + 左侧细边框，不干扰代码阅读。
@@ -36,7 +36,11 @@ function applyDecorations(editor: vscode.TextEditor): void {
     }
 
     const minRepeat = config.get<number>('minRepeatCount', 2);
-    const groups = detectRepeatedGroups(editor.document, minRepeat);
+    const multiLineEnabled = config.get<boolean>('multiLineEnabled', true);
+
+    const groups = multiLineEnabled
+        ? detectAllRepeatedGroups(editor.document, minRepeat)
+        : detectAllRepeatedGroups(editor.document, minRepeat, 999);
 
     const ranges: vscode.Range[] = [];
     for (const group of groups) {
