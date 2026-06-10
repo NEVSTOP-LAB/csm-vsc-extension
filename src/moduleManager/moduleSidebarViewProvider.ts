@@ -185,25 +185,27 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IM
 		this.gitAvailable = context.gitAvailable === true;
 		this.localManagedModules = context.managedModules ?? [];
 		this.localUnmanagedFolders = context.unmanagedFolders ?? [];
-		this.localManagedModulesById.clear();
-		for (const entry of this.localManagedModules) {
-			this.localManagedModulesById.set(entry.id, entry);
+		this.rebuildMap(this.localManagedModulesById, this.localManagedModules, (e) => e.id);
+		this.rebuildMap(this.localUnmanagedFoldersById, this.localUnmanagedFolders, (e) => e.id);
+		this.rebuildSet(this.appliedModuleKeys, context.appliedModuleKeys, (k) => this.findEntry(k) !== undefined);
+		this.rebuildSet(this.staleModuleKeys, context.staleModuleKeys ?? []);
+		this.render();
+	}
+
+	private rebuildMap<K, V>(map: Map<K, V>, items: V[], keyFn: (item: V) => K): void {
+		map.clear();
+		for (const item of items) {
+			map.set(keyFn(item), item);
 		}
-		this.localUnmanagedFoldersById.clear();
-		for (const entry of this.localUnmanagedFolders) {
-			this.localUnmanagedFoldersById.set(entry.id, entry);
-		}
-		this.appliedModuleKeys.clear();
-		for (const moduleKey of context.appliedModuleKeys) {
-			if (this.findEntry(moduleKey)) {
-				this.appliedModuleKeys.add(moduleKey);
+	}
+
+	private rebuildSet<T>(set: Set<T>, items: Iterable<T>, filter?: (item: T) => boolean): void {
+		set.clear();
+		for (const item of items) {
+			if (!filter || filter(item)) {
+				set.add(item);
 			}
 		}
-		this.staleModuleKeys.clear();
-		for (const key of context.staleModuleKeys ?? []) {
-			this.staleModuleKeys.add(key);
-		}
-		this.render();
 	}
 
 	public setOfflineMode(offline: boolean): void {
