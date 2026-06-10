@@ -1515,8 +1515,7 @@ export class ModuleManagerController {
 		try {
 			const cachedSnapshot = this.cacheStore.getModuleSnapshot();
 			const previousEtag = this.cacheStore.getModuleEtag();
-			const hideArchivedRepos = vscode.workspace.getConfiguration(CONFIG_SECTIONS.moduleManager).get<boolean>(CONFIG_KEYS.hideArchivedRepos, true);
-			const fetchResult = await this.githubService.fetchModules(token, { etag: previousEtag, hideArchivedRepos });
+			const fetchResult = await this.githubService.fetchModules(token, { etag: previousEtag });
 
 			if (fetchResult.notModified) {
 				// 304 Not Modified：使用缓存数据，仅在必要时补充 star 状态
@@ -1853,9 +1852,12 @@ export class ModuleManagerController {
 			: this.shouldRevealPrivateCache(snapshot)
 				? modules
 				: modules.filter((module) => module.visibility === 'public');
+		// 根据配置过滤已归档模块（默认隐藏，用户可通过 csmModules.hideArchivedRepos 关闭）
+		const hideArchived = vscode.workspace.getConfiguration(CONFIG_SECTIONS.moduleManager).get<boolean>(CONFIG_KEYS.hideArchivedRepos, true);
+		const visibleModules = hideArchived ? result.filter((module) => !module.archived) : result;
 		// 合并远程 LV 版本缓存
 		const lvCache = this.cacheStore.getLvVersionCache();
-		return result.map((m) => {
+		return visibleModules.map((m) => {
 			const moduleKey = this.getModuleKey(m);
 			const cachedVersion = lvCache[moduleKey];
 			// 优先使用 GitHub topics 提取的版本，回退到远程缓存
