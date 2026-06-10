@@ -77,8 +77,10 @@
 
 ## 参考资源
 
+> 注意：本扩展自 v0.0.27 起已不再提供文件图标主题，改为使用 `FileDecorationProvider` Badge 标记方式。以下链接中的 "Icon Theme" 仅供参考。
+
 - [VS Code Extension Icon Guidelines](https://code.visualstudio.com/api/references/extension-manifest#extension-icon)
-- [VS Code Icon Theme](https://code.visualstudio.com/api/extension-guides/icon-theme)
+- [VS Code File Decoration Provider API](https://code.visualstudio.com/api/references/vscode-api#FileDecorationProvider)
 - [Marketplace Extension Guidelines](https://code.visualstudio.com/api/references/extension-guidelines)
 
 ---

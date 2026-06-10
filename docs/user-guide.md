@@ -9,7 +9,7 @@
 - `.csmlog`：日志查看与辅助阅读
 - `.lvcsm`：配置文件编辑支持
 - `CSM Modules`：模块浏览与管理
-- `CSM File Icons`：专用文件图标主题
+- 文件装饰 (File Decorations)：自动为 CSM 文件添加 Badge 标记
 
 ## 模块管理入口
 
@@ -22,17 +22,16 @@
 |---|---|---|
 | `csmModules.defaultModuleRoot` | `csm` | 首次引入模块时预填的默认目录名 |
 
-## 文件图标主题
+## 文件装饰与标记
 
-扩展内置 **CSM File Icons** 文件图标主题，为 `.csmlog` 与 `.lvcsm` 提供专用图标。
+扩展会自动为 `.csmlog` 与 `.lvcsm` 文件在资源管理器中添加 Badge 标记：
 
-启用方式：
+- `.csmlog` 文件 → 蓝色 **`C`** 标记，表示 CSM 日志文件
+- `.lvcsm` 文件 → 绿色 **`L`** 标记，表示 LVCSM 脚本文件
 
-1. 打开 `首选项 → 文件图标主题`
-2. 选择 **CSM File Icons**
+该功能由扩展自动启用，可与用户安装的**任何**文件图标主题（如 Material Icon Theme、Seti 等）完美共存，无需手动切换。
 
 ## 其他文档
 
 - 模块管理详解：[`module-management.md`](module-management.md)
 - 开发者快速上手：[`quickstart.md`](quickstart.md)
-- 图标资源说明：[`images-guide.md`](images-guide.md)

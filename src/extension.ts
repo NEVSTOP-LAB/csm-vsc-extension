@@ -4,6 +4,7 @@ import { CSMLogDocumentSymbolProvider } from './csmlogDocumentSymbolProvider';
 import { LvcsmDocumentSymbolProvider } from './lvcsmDocumentSymbolProvider';
 import { clearAnchorCache } from './hoverData';
 import { ModuleManagerController } from './moduleManager';
+import { CsmFileDecorationProvider } from './fileDecorationProvider';
 
 export function activate(context: vscode.ExtensionContext) {
 	// 语言功能（高亮、Hover、Outline）必须在模块管理器之前注册，
@@ -17,6 +18,8 @@ export function activate(context: vscode.ExtensionContext) {
 			vscode.workspace.onDidCloseTextDocument((document) => {
 				clearAnchorCache(document.uri.toString());
 			}),
+			// 文件装饰（Badge 标记）可与任意图标主题共存
+			vscode.window.registerFileDecorationProvider(new CsmFileDecorationProvider()),
 		);
 	} catch (err) {
 		console.error('[CSM] Failed to register language providers:', err);

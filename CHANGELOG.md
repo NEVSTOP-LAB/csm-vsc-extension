@@ -18,6 +18,7 @@
 
 ### 重构
 
+- 移除 `CSM File Icons` 图标主题贡献，改为使用 `FileDecorationProvider` 提供文件 Badge 装饰（`C` / `L`），确保与用户自定义图标主题兼容
 - 提取共享 CSM 正则常量到 `src/common/constants.ts`，消除 `csmlogHoverProvider`、`csmlogDocumentSymbolProvider`、`lvcsmDocumentSymbolProvider` 之间的正则重复
 - 抽象 `src/common/symbols.ts` 通用 DocumentSymbol 构建工具（`SymbolEntry` 接口 + `buildDocumentSymbols()`），统一两个 Provider 的 Range 计算逻辑，消除 ~30 行重复代码
 - 统一 Hover 数据系统：将 `csmlogHoverProvider` 中 ~280 行硬编码 DB（事件类型、时间戳、配置项、日志标记）迁移到 `hoverData/` 模块化目录（新增 `events.ts`、`timestamps.ts`、`config.ts`、`markers.ts`），消除与 `hoverData/` 系统的数据重复

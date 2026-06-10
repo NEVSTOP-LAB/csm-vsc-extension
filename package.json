@@ -344,13 +344,6 @@
         "path": "./syntaxes/lvcsm.tmLanguage.json"
       }
     ],
-    "iconThemes": [
-      {
-        "id": "csm-file-icons",
-        "label": "%iconThemes.csmFileIcons.label%",
-        "path": "./images/fileicons/csm-icon-theme.json"
-      }
-    ],
     "configurationDefaults": {
       "[csmlog]": {
         "files.autoGuessEncoding": true

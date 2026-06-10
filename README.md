@@ -13,14 +13,14 @@
 | `.csmlog` 日志支持 | 语法高亮、Hover 悬停提示、Outline 大纲、自动编码识别 |
 | `.lvcsm` 配置文件支持 | 语法高亮、Outline 大纲、自动编码识别 |
 | `CSM Modules` 模块管理 | 侧边栏浏览、搜索、引入、更新、移除 CSM 模块，支持 GitHub 登录与批量操作 |
-| `CSM File Icons` 图标主题 | 为 `.csmlog` 与 `.lvcsm` 提供专用文件图标 |
+| 文件装饰 (File Decorations) | 为 `.csmlog` (C) 与 `.lvcsm` (L) 添加 Badge 标记，可与任意图标主题共存 |
 | 本地化 | 中文 / 英文界面切换 |
 
 ## 快速入口
 
 - 打开任意 `.csmlog` 或 `.lvcsm` 文件即可自动激活扩展功能
 - 打开侧边栏 **CSM Modules** 视图即可浏览和管理模块
-- 在 `首选项 → 文件图标主题` 中选择 **CSM File Icons** 启用专用图标
+- 扩展自动为 `.csmlog` / `.lvcsm` 文件添加 Badge 标记，无需手动设置
 
 ## 扩展设置
 
