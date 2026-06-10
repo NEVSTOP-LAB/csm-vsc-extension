@@ -95,11 +95,10 @@ export class CSMLogHoverProvider implements vscode.HoverProvider {
             return undefined;
         }
 
-        // 2. File logger line (no event type)
+        // 2. File logger line (no event type) — 复用 parseLogLineZones 避免重复匹配时间戳
         if (RE_FILE_LOGGER.test(line)) {
-            // Only hover over the timestamp portion
-            const dateTsMatch = line.match(RE_DATE_TS);
-            if (dateTsMatch && col < dateTsMatch[0].length) {
+            const zones = parseLogLineZones(line);
+            if (zones?.dateTs && col < zones.dateTs[1]) {
                 return buildHover(db['__TIMESTAMP_DATE__']!);
             }
             return undefined;
