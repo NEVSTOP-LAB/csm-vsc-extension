@@ -314,9 +314,17 @@ const messages = {
 		en: 'Fetching module catalog...',
 		zh: '正在获取模块目录...',
 	},
+	fetchingCatalogProgress: {
+		en: 'Fetched {fetched}/{total} modules...',
+		zh: '已获取 {fetched}/{total} 个模块...',
+	},
 	checkingUpdates: {
 		en: 'Checking for updates...',
 		zh: '正在检查更新...',
+	},
+	loadingDetailsProgress: {
+		en: 'Loading module details {done}/{total}...',
+		zh: '正在加载模块详情 {done}/{total}...',
 	},
 	preloadingReadme: {
 		en: 'Preloading README files...',
