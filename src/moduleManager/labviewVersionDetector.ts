@@ -162,36 +162,38 @@ export function getLvVersionDisplay(lvVersionHex: string): string | undefined {
  *   "DEV ENVIRONMENT LabVIEW 2020"      → "lv2020"
  *   "DEV ENVIRONMENT LabVIEW 2020(64bit)" → "lv2020(64bit)"
  */
+function formatLvDisplay(version: string, is64Bit: boolean): string {
+    return `lv${version}${is64Bit ? '(64bit)' : ''}`;
+}
+
 export function parseDevEnvironmentFileName(fileName: string): string | undefined {
     if (!fileName.startsWith(DEV_ENV_PREFIX)) {
         return undefined;
     }
 
     const suffix = fileName.slice(DEV_ENV_PREFIX.length).trim();
+    let version: string | undefined;
+    let is64Bit = false;
 
     // 匹配 "LabVIEW XXXX" 或 "LabVIEW XXXX(64bit)"
     const match = suffix.match(/^LabVIEW\s+(\d+(?:\.\d+)?)(?:\((\d+)bit\))?$/i);
-    if (!match) {
+    if (match) {
+        version = match[1];
+        is64Bit = match[2] === '64';
+    } else {
         // 宽松匹配：尝试提取版本号
         const looseMatch = suffix.match(/(\d+(?:\.\d+)?)/);
         if (!looseMatch) {
             return undefined;
         }
-        const version = looseMatch[1];
-        const is64Bit = /64\s*bit/i.test(suffix);
-        if (version.includes('.')) {
-            return `lv${version}${is64Bit ? '(64bit)' : ''}`;
-        }
-        return `lv${version}${is64Bit ? '(64bit)' : ''}`;
+        version = looseMatch[1];
+        is64Bit = /64\s*bit/i.test(suffix);
     }
 
-    const version = match[1];
-    const is64Bit = match[2] === '64';
-
-    if (version.includes('.')) {
-        return `lv${version}${is64Bit ? '(64bit)' : ''}`;
+    if (!version) {
+        return undefined;
     }
-    return `lv${version}${is64Bit ? '(64bit)' : ''}`;
+    return formatLvDisplay(version, is64Bit);
 }
 
 /**
