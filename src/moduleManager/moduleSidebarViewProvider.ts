@@ -302,7 +302,14 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IM
 
 	private async handleMessage(message: unknown): Promise<void> {
 		if (!this.isWebviewMessage(message)) { return; }
-		this.messageHandlers[message.type]?.(message);
+
+		const handler = Object.prototype.hasOwnProperty.call(this.messageHandlers, message.type)
+			? this.messageHandlers[message.type]
+			: undefined;
+
+		if (typeof handler === 'function') {
+			handler(message);
+		}
 	}
 
 	private isWebviewMessage(message: unknown): message is WebviewMessage {
