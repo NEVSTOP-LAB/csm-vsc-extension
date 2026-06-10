@@ -5,6 +5,7 @@ import { IModuleViewProvider, ModuleListScope, ModuleSortDirection, ModuleSortFi
 import { DEFAULT_MODULE_SORT_STATE, isModuleSortDirection, isModuleSortField, normalizeModuleSortState } from './sort';
 import { t } from './messages';
 import { renderModuleSidebarHtml } from './moduleSidebarHtml';
+import { getModuleKey } from './utils';
 
 interface ModuleSidebarActions {
 	onLogin: () => void;
@@ -78,7 +79,7 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IM
 	) { }
 
 	public static getModuleKey(entry: CsmModuleEntry): string {
-		return `${entry.owner}/${entry.name}`;
+		return getModuleKey(entry);
 	}
 
 	public resolveWebviewView(
@@ -215,181 +216,91 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IM
 		this.render();
 	}
 
-	private async handleMessage(message: unknown): Promise<void> {
-		if (!this.isWebviewMessage(message)) {
-			return;
-		}
+	// 消息类型 → 处理函数的声明式映射（替代 switch-case）
+	private readonly messageHandlers: Record<string, (msg: WebviewMessage) => void> = {
+		login: () => this.actions.onLogin(),
+		refresh: () => this.actions.onRefresh(),
+		initializeWorkspace: () => this.actions.onInitializeWorkspace(),
+		applySelected: () => this.actions.onApplySelection(),
+		setFilterQuery: (msg) => { this.filterQuery = typeof msg.query === 'string' ? msg.query.slice(0, 120) : ''; },
+		clearFilter: () => { this.filterQuery = ''; },
+		setIncludeApplied: (msg) => { this.includeAppliedModules = msg.includeApplied === true; this.render(); },
+		setScope: (msg) => {
+			if (msg.scope === 'all' || msg.scope === 'workspace' || msg.scope === 'catalog') {
+				this.scope = msg.scope;
+				this.render();
+			}
+		},
+		setSortField: (msg) => {
+			if (isModuleSortField(msg.sortField)) {
+				this.actions.onSortChange({ field: msg.sortField });
+			}
+		},
+		setSortDirection: (msg) => {
+			if (isModuleSortDirection(msg.sortDirection)) {
+				this.actions.onSortChange({ direction: msg.sortDirection });
+			}
+		},
+		dismissIntroTip: () => { this.introTipVisible = false; this.render(); },
+		showMore: () => { this.renderLimit += ModuleSidebarViewProvider.INITIAL_RENDER_LIMIT; this.render(); },
 
-		switch (message.type) {
-			case 'login':
-				this.actions.onLogin();
-				return;
-			case 'refresh':
-				this.actions.onRefresh();
-				return;
-			case 'initializeWorkspace':
-				this.actions.onInitializeWorkspace();
-				return;
-			case 'toggleStar': {
-				const entry = message.moduleKey ? this.findEntry(message.moduleKey) : undefined;
-				if (entry) {
-					this.actions.onToggleStar(entry);
-				}
-				return;
+		// moduleKey 查找 → 动作分发
+		toggleStar: (msg) => this.withModuleEntry(msg, (e) => this.actions.onToggleStar(e)),
+		openReadme: (msg) => this.withModuleEntry(msg, (e) => this.actions.onOpenReadme(e)),
+		openRepository: (msg) => this.withModuleEntry(msg, (e) => this.actions.onOpenRepository?.(e)),
+		togglePreview: (msg) => this.withModuleEntry(msg, (e) => this.actions.onOpenReadme(e)),
+		applyOne: (msg) => this.withModuleEntry(msg, (e) => this.actions.onApplySelection(e)),
+		removeModule: (msg) => this.withModuleEntry(msg, (e) => this.actions.onRemoveModule(e)),
+		updateModule: (msg) => this.withModuleEntry(msg, (e) => this.actions.onUpdateModule(e)),
+
+		// 选择状态
+		toggleSelection: (msg) => {
+			if (!msg.moduleKey) { return; }
+			if (msg.selected) {
+				this.selectedModuleKeys.add(msg.moduleKey);
+			} else {
+				this.selectedModuleKeys.delete(msg.moduleKey);
 			}
-			case 'applySelected':
-				this.actions.onApplySelection();
-				return;
-			case 'setFilterQuery':
-				this.filterQuery = typeof message.query === 'string' ? message.query.slice(0, 120) : '';
-				return;
-			case 'clearFilter':
-				this.filterQuery = '';
-				return;
-			case 'setIncludeApplied':
-				this.includeAppliedModules = message.includeApplied === true;
-				this.render();
-				return;
-			case 'setScope':
-				if (message.scope === 'all' || message.scope === 'workspace' || message.scope === 'catalog') {
-					this.scope = message.scope;
-					this.render();
-				}
-				return;
-			case 'setSortField':
-				if (isModuleSortField(message.sortField)) {
-					this.actions.onSortChange({ field: message.sortField });
-				}
-				return;
-			case 'setSortDirection':
-				if (isModuleSortDirection(message.sortDirection)) {
-					this.actions.onSortChange({ direction: message.sortDirection });
-				}
-				return;
-			case 'dismissIntroTip':
-				this.introTipVisible = false;
-				this.render();
-				return;
-			case 'toggleSelection': {
-				if (!message.moduleKey) {
-					return;
-				}
-				if (message.selected) {
-					this.selectedModuleKeys.add(message.moduleKey);
-				} else {
-					this.selectedModuleKeys.delete(message.moduleKey);
-				}
-				this.pruneSelection();
-				this.render();
-				this.actions.onSelectionChange([...this.selectedModuleKeys]);
-				return;
-			}
-			case 'openReadme': {
-				const entry = message.moduleKey ? this.findEntry(message.moduleKey) : undefined;
-				if (entry) {
-					this.actions.onOpenReadme(entry);
-				}
-				return;
-			}
-			case 'openRepository': {
-				const entry = message.moduleKey ? this.findEntry(message.moduleKey) : undefined;
-				if (entry) {
-					this.actions.onOpenRepository?.(entry);
-				}
-				return;
-			}
-			case 'togglePreview': {
-				const entry = message.moduleKey ? this.findEntry(message.moduleKey) : undefined;
-				if (entry) {
-					this.actions.onOpenReadme(entry);
-				}
-				return;
-			}
-			case 'applyOne': {
-				const entry = message.moduleKey ? this.findEntry(message.moduleKey) : undefined;
-				if (entry) {
-					this.actions.onApplySelection(entry);
-				}
-				return;
-			}
-			case 'removeModule': {
-				const entry = message.moduleKey ? this.findEntry(message.moduleKey) : undefined;
-				if (entry) {
-					this.actions.onRemoveModule(entry);
-				}
-				return;
-			}
-			case 'updateModule': {
-				const entry = message.moduleKey ? this.findEntry(message.moduleKey) : undefined;
-				if (entry) {
-					this.actions.onUpdateModule(entry);
-				}
-				return;
-			}
-			case 'openLocalReadme': {
-				const entry = message.localItemId ? this.localManagedModulesById.get(message.localItemId) : undefined;
-				if (entry) {
-					this.actions.onOpenReadme(entry.moduleEntry);
-				}
-				return;
-			}
-			case 'openLocalFolder': {
-				const managed = message.localItemId ? this.localManagedModulesById.get(message.localItemId) : undefined;
-				const unmanaged = message.localItemId ? this.localUnmanagedFoldersById.get(message.localItemId) : undefined;
-				const folderEntry = managed ?? unmanaged;
-				if (folderEntry) {
-					this.actions.onOpenLocalFolder?.(folderEntry);
-				}
-				return;
-			}
-			case 'removeLocalModule': {
-				const entry = message.localItemId ? this.localManagedModulesById.get(message.localItemId) : undefined;
-				if (entry) {
-					this.actions.onRemoveModule(entry.moduleEntry);
-				}
-				return;
-			}
-			case 'updateLocalModule': {
-				const entry = message.localItemId ? this.localManagedModulesById.get(message.localItemId) : undefined;
-				if (entry) {
-					this.actions.onUpdateModule(entry.moduleEntry);
-				}
-				return;
-			}
-			case 'toggleLocalModuleLock': {
-				const entry = message.localItemId ? this.localManagedModulesById.get(message.localItemId) : undefined;
-				if (entry) {
-					this.actions.onToggleLocalModuleLock?.(entry);
-				}
-				return;
-			}
-			case 'switchLocalModuleMethod': {
-				const entry = message.localItemId ? this.localManagedModulesById.get(message.localItemId) : undefined;
-				if (entry) {
-					this.actions.onSwitchLocalModuleMethod?.(entry);
-				}
-				return;
-			}
-			case 'createLocalRepository': {
-				const entry = message.localItemId ? this.localUnmanagedFoldersById.get(message.localItemId) : undefined;
-				if (entry) {
-					this.actions.onCreateLocalRepository?.(entry);
-				}
-				return;
-			}
-			case 'linkLocalRepository': {
-				const entry = message.localItemId ? this.localUnmanagedFoldersById.get(message.localItemId) : undefined;
-				if (entry) {
-					this.actions.onLinkLocalRepository?.(entry);
-				}
-				return;
-			}
-			case 'showMore': {
-				this.renderLimit += ModuleSidebarViewProvider.INITIAL_RENDER_LIMIT;
-				this.render();
-				return;
-			}
-		}
+			this.pruneSelection();
+			this.render();
+			this.actions.onSelectionChange([...this.selectedModuleKeys]);
+		},
+
+		// localItemId 查找 → 动作分发
+		openLocalReadme: (msg) => this.withLocalManagedEntry(msg, (e) => this.actions.onOpenReadme(e.moduleEntry)),
+		removeLocalModule: (msg) => this.withLocalManagedEntry(msg, (e) => this.actions.onRemoveModule(e.moduleEntry)),
+		updateLocalModule: (msg) => this.withLocalManagedEntry(msg, (e) => this.actions.onUpdateModule(e.moduleEntry)),
+		toggleLocalModuleLock: (msg) => this.withLocalManagedEntry(msg, (e) => this.actions.onToggleLocalModuleLock?.(e)),
+		switchLocalModuleMethod: (msg) => this.withLocalManagedEntry(msg, (e) => this.actions.onSwitchLocalModuleMethod?.(e)),
+		createLocalRepository: (msg) => this.withLocalUnmanagedEntry(msg, (e) => this.actions.onCreateLocalRepository?.(e)),
+		linkLocalRepository: (msg) => this.withLocalUnmanagedEntry(msg, (e) => this.actions.onLinkLocalRepository?.(e)),
+
+		openLocalFolder: (msg) => {
+			const managed = msg.localItemId ? this.localManagedModulesById.get(msg.localItemId) : undefined;
+			const unmanaged = msg.localItemId ? this.localUnmanagedFoldersById.get(msg.localItemId) : undefined;
+			const folderEntry = managed ?? unmanaged;
+			if (folderEntry) { this.actions.onOpenLocalFolder?.(folderEntry); }
+		},
+	};
+
+	private withModuleEntry(msg: WebviewMessage, action: (entry: CsmModuleEntry) => void): void {
+		const entry = msg.moduleKey ? this.findEntry(msg.moduleKey) : undefined;
+		if (entry) { action(entry); }
+	}
+
+	private withLocalManagedEntry(msg: WebviewMessage, action: (entry: LocalManagedModuleEntry) => void): void {
+		const entry = msg.localItemId ? this.localManagedModulesById.get(msg.localItemId) : undefined;
+		if (entry) { action(entry); }
+	}
+
+	private withLocalUnmanagedEntry(msg: WebviewMessage, action: (entry: LocalUnmanagedFolderEntry) => void): void {
+		const entry = msg.localItemId ? this.localUnmanagedFoldersById.get(msg.localItemId) : undefined;
+		if (entry) { action(entry); }
+	}
+
+	private async handleMessage(message: unknown): Promise<void> {
+		if (!this.isWebviewMessage(message)) { return; }
+		this.messageHandlers[message.type]?.(message);
 	}
 
 	private isWebviewMessage(message: unknown): message is WebviewMessage {
@@ -397,11 +308,11 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IM
 	}
 
 	private findEntry(moduleKey: string): CsmModuleEntry | undefined {
-		return this.modules.find((entry) => ModuleSidebarViewProvider.getModuleKey(entry) === moduleKey);
+		return this.modules.find((entry) => getModuleKey(entry) === moduleKey);
 	}
 
 	private pruneSelection(): void {
-		const availableKeys = new Set(this.modules.map((entry) => ModuleSidebarViewProvider.getModuleKey(entry)));
+		const availableKeys = new Set(this.modules.map((entry) => getModuleKey(entry)));
 		for (const key of [...this.selectedModuleKeys]) {
 			if (!availableKeys.has(key)) {
 				this.selectedModuleKeys.delete(key);

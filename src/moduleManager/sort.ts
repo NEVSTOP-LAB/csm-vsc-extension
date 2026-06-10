@@ -1,5 +1,6 @@
 import { ModuleSortDirection, ModuleSortField, ModuleSortState } from './interfaces';
 import { CsmModuleEntry } from './types';
+import { getModuleKey } from './utils';
 
 export const MODULE_SORT_FIELDS: readonly ModuleSortField[] = ['name', 'owner', 'updatedAt', 'applied'];
 export const MODULE_SORT_DIRECTIONS: readonly ModuleSortDirection[] = ['asc', 'desc'];
@@ -115,6 +116,3 @@ function applyDirection(compareResult: number, direction: ModuleSortDirection): 
 	return direction === 'desc' ? -compareResult : compareResult;
 }
 
-function getModuleKey(entry: CsmModuleEntry): string {
-	return `${entry.owner}/${entry.name}`;
-}

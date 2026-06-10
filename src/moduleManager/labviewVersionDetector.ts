@@ -294,110 +294,64 @@ async function findFirstFile(dirPath: string, pattern: RegExp): Promise<string |
 }
 
 /**
+ * 从 startDir 向上遍历祖先目录，对每个目录调用 visitor 直到返回非 undefined 值。
+ * 用于实现"查找最近的匹配文件"模式。
+ */
+async function walkUpAncestors<T>(
+    startDir: string,
+    visitor: (dir: string) => Promise<T | undefined>,
+): Promise<T | undefined> {
+    let currentDir = path.resolve(startDir);
+    const root = path.parse(currentDir).root;
+    while (true) {
+        const result = await visitor(currentDir);
+        if (result !== undefined) { return result; }
+        if (currentDir === root) { break; }
+        const parent = path.dirname(currentDir);
+        if (parent === currentDir) { break; }
+        currentDir = parent;
+    }
+    return undefined;
+}
+
+/**
  * 从当前目录向上遍历祖先目录，查找"DEV ENVIRONMENT"标记文件。
  * 返回距离当前目录最近的匹配结果。
  */
 async function findDevEnvironmentFile(moduleDirPath: string): Promise<string | undefined> {
-    let currentDir = path.resolve(moduleDirPath);
-    const root = path.parse(currentDir).root;
-
-    while (currentDir !== root) {
-        const result = await findFirstFile(currentDir, /^DEV ENVIRONMENT/i);
-        if (result) {
-            return result;
-        }
-        const parent = path.dirname(currentDir);
-        if (parent === currentDir) {
-            break;
-        }
-        currentDir = parent;
-    }
-
-    // 检查根目录
-    const rootResult = await findFirstFile(root, /^DEV ENVIRONMENT/i);
-    return rootResult;
+    return walkUpAncestors(moduleDirPath, (dir) => findFirstFile(dir, /^DEV ENVIRONMENT/i));
 }
 
 /**
  * 从当前目录向上遍历，查找最近的 .lvproj 文件并提取 LVVersion。
  */
 async function findLvprojVersion(moduleDirPath: string): Promise<string | undefined> {
-    let currentDir = path.resolve(moduleDirPath);
-    const root = path.parse(currentDir).root;
-
-    while (currentDir !== root) {
-        const lvprojPath = await findFirstFile(currentDir, /\.lvproj$/i);
-        if (lvprojPath) {
-            try {
-                const content = await fs.readFile(lvprojPath, 'utf-8');
-                const version = extractLvVersionFromXml(content);
-                if (version) {
-                    return version;
-                }
-            } catch {
-                // 读取失败，继续向上查找
-            }
-        }
-        const parent = path.dirname(currentDir);
-        if (parent === currentDir) {
-            break;
-        }
-        currentDir = parent;
-    }
-
-    // 检查根目录
-    const rootLvproj = await findFirstFile(root, /\.lvproj$/i);
-    if (rootLvproj) {
+    return walkUpAncestors(moduleDirPath, async (dir) => {
+        const lvprojPath = await findFirstFile(dir, /\.lvproj$/i);
+        if (!lvprojPath) { return undefined; }
         try {
-            const content = await fs.readFile(rootLvproj, 'utf-8');
+            const content = await fs.readFile(lvprojPath, 'utf-8');
             return extractLvVersionFromXml(content);
         } catch {
-            // 忽略
+            return undefined;
         }
-    }
-
-    return undefined;
+    });
 }
 
 /**
  * 从当前目录向上遍历，查找最近的 .lvlib 文件并提取 LVVersion。
  */
 async function findLvlibVersion(moduleDirPath: string): Promise<string | undefined> {
-    let currentDir = path.resolve(moduleDirPath);
-    const root = path.parse(currentDir).root;
-
-    while (currentDir !== root) {
-        const lvlibPath = await findFirstFile(currentDir, /\.lvlib$/i);
-        if (lvlibPath) {
-            try {
-                const content = await fs.readFile(lvlibPath, 'utf-8');
-                const version = extractLvVersionFromXml(content);
-                if (version) {
-                    return version;
-                }
-            } catch {
-                // 读取失败，继续向上查找
-            }
-        }
-        const parent = path.dirname(currentDir);
-        if (parent === currentDir) {
-            break;
-        }
-        currentDir = parent;
-    }
-
-    // 检查根目录
-    const rootLvlib = await findFirstFile(root, /\.lvlib$/i);
-    if (rootLvlib) {
+    return walkUpAncestors(moduleDirPath, async (dir) => {
+        const lvlibPath = await findFirstFile(dir, /\.lvlib$/i);
+        if (!lvlibPath) { return undefined; }
         try {
-            const content = await fs.readFile(rootLvlib, 'utf-8');
+            const content = await fs.readFile(lvlibPath, 'utf-8');
             return extractLvVersionFromXml(content);
         } catch {
-            // 忽略
+            return undefined;
         }
-    }
-
-    return undefined;
+    });
 }
 
 /**

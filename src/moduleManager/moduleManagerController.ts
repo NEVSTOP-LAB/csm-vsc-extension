@@ -179,29 +179,37 @@ export class ModuleManagerController {
 		};
 	}
 
+	private registerCommand<T extends unknown[]>(
+		subscriptions: vscode.Disposable[],
+		commandId: string,
+		handler: (...args: T) => Promise<void> | void,
+	): void {
+		subscriptions.push(
+			vscode.commands.registerCommand(commandId, wrapCommand(commandId, handler, this.logger)),
+		);
+	}
+
 	public register(subscriptions: vscode.Disposable[]): void {
 		subscriptions.push(vscode.window.registerWebviewViewProvider(VIEW_IDS.moduleSidebar, this.sidebarViewProvider, {
 			webviewOptions: { retainContextWhenHidden: true },
 		}));
 
-		subscriptions.push(
-			vscode.commands.registerCommand(COMMAND_IDS.login, wrapCommand(COMMAND_IDS.login, () => this.loginCommand(), this.logger)),
-			vscode.commands.registerCommand(COMMAND_IDS.logout, wrapCommand(COMMAND_IDS.logout, () => this.logoutCommand(), this.logger)),
-			vscode.commands.registerCommand(COMMAND_IDS.refresh, wrapCommand(COMMAND_IDS.refresh, () => this.refreshCommand(), this.logger)),
-			vscode.commands.registerCommand(COMMAND_IDS.initializeWorkspace, wrapCommand(COMMAND_IDS.initializeWorkspace, () => this.initializeWorkspaceCommand(), this.logger)),
-			vscode.commands.registerCommand(COMMAND_IDS.openReadme, wrapCommand(COMMAND_IDS.openReadme, (entry?: CsmModuleEntry | ModuleTreeItem) => this.openReadmeCommand(entry), this.logger)),
-			vscode.commands.registerCommand(COMMAND_IDS.applyToWorkspace, wrapCommand(COMMAND_IDS.applyToWorkspace, (entry?: CsmModuleEntry | ModuleTreeItem) => this.applyToWorkspaceCommand(entry), this.logger)),
-			vscode.commands.registerCommand(COMMAND_IDS.removeModule, wrapCommand(COMMAND_IDS.removeModule, (entry?: CsmModuleEntry | ModuleTreeItem) => this.removeModuleCommand(entry), this.logger)),
-			vscode.commands.registerCommand(COMMAND_IDS.updateModule, wrapCommand(COMMAND_IDS.updateModule, (entry?: CsmModuleEntry | ModuleTreeItem) => this.updateModuleCommand(entry), this.logger)),
-			vscode.commands.registerCommand(COMMAND_IDS.contextApplyModule, wrapCommand(COMMAND_IDS.contextApplyModule, (context?: WebviewModuleContext) => this.contextApplyModuleCommand(context), this.logger)),
-			vscode.commands.registerCommand(COMMAND_IDS.contextOpenReadme, wrapCommand(COMMAND_IDS.contextOpenReadme, (context?: WebviewModuleContext) => this.contextOpenReadmeCommand(context), this.logger)),
-			vscode.commands.registerCommand(COMMAND_IDS.contextRemoveModule, wrapCommand(COMMAND_IDS.contextRemoveModule, (context?: WebviewModuleContext) => this.contextRemoveModuleCommand(context), this.logger)),
-			vscode.commands.registerCommand(COMMAND_IDS.contextUpdateModule, wrapCommand(COMMAND_IDS.contextUpdateModule, (context?: WebviewModuleContext) => this.contextUpdateModuleCommand(context), this.logger)),
-			vscode.commands.registerCommand(COMMAND_IDS.contextSelectModule, wrapCommand(COMMAND_IDS.contextSelectModule, (context?: WebviewModuleContext) => this.contextSelectModuleCommand(context), this.logger)),
-			vscode.commands.registerCommand(COMMAND_IDS.contextClearModuleSelection, wrapCommand(COMMAND_IDS.contextClearModuleSelection, (context?: WebviewModuleContext) => this.contextClearModuleSelectionCommand(context), this.logger)),
-			vscode.commands.registerCommand(COMMAND_IDS.contextOpenFolder, wrapCommand(COMMAND_IDS.contextOpenFolder, (context?: WebviewModuleContext) => this.contextOpenFolderCommand(context), this.logger)),
-			vscode.commands.registerCommand(COMMAND_IDS.setSortOrder, wrapCommand(COMMAND_IDS.setSortOrder, (field?: ModuleSortField) => this.setSortOrderCommand(field), this.logger)),
-		);
+		this.registerCommand(subscriptions, COMMAND_IDS.login, () => this.loginCommand());
+		this.registerCommand(subscriptions, COMMAND_IDS.logout, () => this.logoutCommand());
+		this.registerCommand(subscriptions, COMMAND_IDS.refresh, () => this.refreshCommand());
+		this.registerCommand(subscriptions, COMMAND_IDS.initializeWorkspace, () => this.initializeWorkspaceCommand());
+		this.registerCommand(subscriptions, COMMAND_IDS.openReadme, (entry?: CsmModuleEntry | ModuleTreeItem) => this.openReadmeCommand(entry));
+		this.registerCommand(subscriptions, COMMAND_IDS.applyToWorkspace, (entry?: CsmModuleEntry | ModuleTreeItem) => this.applyToWorkspaceCommand(entry));
+		this.registerCommand(subscriptions, COMMAND_IDS.removeModule, (entry?: CsmModuleEntry | ModuleTreeItem) => this.removeModuleCommand(entry));
+		this.registerCommand(subscriptions, COMMAND_IDS.updateModule, (entry?: CsmModuleEntry | ModuleTreeItem) => this.updateModuleCommand(entry));
+		this.registerCommand(subscriptions, COMMAND_IDS.contextApplyModule, (context?: WebviewModuleContext) => this.contextApplyModuleCommand(context));
+		this.registerCommand(subscriptions, COMMAND_IDS.contextOpenReadme, (context?: WebviewModuleContext) => this.contextOpenReadmeCommand(context));
+		this.registerCommand(subscriptions, COMMAND_IDS.contextRemoveModule, (context?: WebviewModuleContext) => this.contextRemoveModuleCommand(context));
+		this.registerCommand(subscriptions, COMMAND_IDS.contextUpdateModule, (context?: WebviewModuleContext) => this.contextUpdateModuleCommand(context));
+		this.registerCommand(subscriptions, COMMAND_IDS.contextSelectModule, (context?: WebviewModuleContext) => this.contextSelectModuleCommand(context));
+		this.registerCommand(subscriptions, COMMAND_IDS.contextClearModuleSelection, (context?: WebviewModuleContext) => this.contextClearModuleSelectionCommand(context));
+		this.registerCommand(subscriptions, COMMAND_IDS.contextOpenFolder, (context?: WebviewModuleContext) => this.contextOpenFolderCommand(context));
+		this.registerCommand(subscriptions, COMMAND_IDS.setSortOrder, (field?: ModuleSortField) => this.setSortOrderCommand(field));
 
 		// 延迟读取缓存快照，让 Webview 先渲染骨架屏，提升启动感知速度
 		// 使用微任务而非 setTimeout，确保测试中 await Promise.resolve() 能 flush
