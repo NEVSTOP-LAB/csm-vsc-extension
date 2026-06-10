@@ -118,8 +118,7 @@ export class GitHubModuleService {
 			repos.push(...(result.data.items ?? []).map(normalizeSearchRepo));
 			url = result.next ?? '';
 		}
-		const modules = dedupeRepos(repos).filter(hasModuleTopic).map(mapRepoToModuleEntry)
-			.sort((a, b) => a.name.localeCompare(b.name));
+		const modules = dedupeRepos(repos).filter(hasModuleTopic).map(mapRepoToModuleEntry).sort((a, b) => a.name.localeCompare(b.name));
 		return { modules, etag: firstResult.etag };
 	}
 

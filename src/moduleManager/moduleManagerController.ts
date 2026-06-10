@@ -1551,12 +1551,8 @@ export class ModuleManagerController {
 
 			// 新数据到达：立即预览渲染模块卡片，让用户看到内容
 			const modules = fetchResult.modules;
-			// 预览阶段同样遵循 hideArchivedRepos 配置，避免已归档仓库闪现
-			const previewModules = vscode.workspace.getConfiguration(CONFIG_SECTIONS.moduleManager).get<boolean>(CONFIG_KEYS.hideArchivedRepos, true)
-				? modules.filter((m) => !m.archived)
-				: modules;
 			if (!options.preserveVisibleModules && typeof this.treeDataProvider.setModulesPreview === 'function') {
-				this.treeDataProvider.setModulesPreview(previewModules);
+				this.treeDataProvider.setModulesPreview(this.filterArchivedModules(modules));
 			}
 
 			// 阶段 3：并行补充 star 状态和 README 预加载
@@ -1849,6 +1845,15 @@ export class ModuleManagerController {
 		return typeof knownAccountId === 'string' && knownAccountId === snapshot.refreshAccountId;
 	}
 
+	/**
+	 * 根据 csmModules.hideArchivedRepos 配置过滤已归档模块。
+	 * 配置默认值为 true（隐藏已归档仓库），用户可关闭以显示全部。
+	 */
+	private filterArchivedModules(modules: CsmModuleEntry[]): CsmModuleEntry[] {
+		const hideArchived = vscode.workspace.getConfiguration(CONFIG_SECTIONS.moduleManager).get<boolean>(CONFIG_KEYS.hideArchivedRepos, true);
+		return hideArchived ? modules.filter((m) => !m.archived) : modules;
+	}
+
 	private getVisibleModulesFromSnapshot(snapshot: ModuleCacheSnapshot | undefined): CsmModuleEntry[] {
 		const modules = snapshot?.modules ?? [];
 		const result = !modules.some((module) => module.visibility === 'private')
@@ -1856,9 +1861,7 @@ export class ModuleManagerController {
 			: this.shouldRevealPrivateCache(snapshot)
 				? modules
 				: modules.filter((module) => module.visibility === 'public');
-		// 根据配置过滤已归档模块（默认隐藏，用户可通过 csmModules.hideArchivedRepos 关闭）
-		const hideArchived = vscode.workspace.getConfiguration(CONFIG_SECTIONS.moduleManager).get<boolean>(CONFIG_KEYS.hideArchivedRepos, true);
-		const visibleModules = hideArchived ? result.filter((module) => !module.archived) : result;
+		const visibleModules = this.filterArchivedModules(result);
 		// 合并远程 LV 版本缓存
 		const lvCache = this.cacheStore.getLvVersionCache();
 		return visibleModules.map((m) => {
