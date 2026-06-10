@@ -89,17 +89,15 @@ function bcdDecode(hexByte: number): number {
     return ((hexByte >> 4) * 10) + (hexByte & 0x0F);
 }
 
-/**
- * 将 LVVersion 编码字符串解码为可读版本。
- * 优先查表，查不到则尝试根据编码规则推算。
- */
-export function decodeLvVersion(lvVersionHex: string): string | undefined {
-    const key = lvVersionHex.toUpperCase();
-    if (LV_VERSION_MAP[key]) {
-        return LV_VERSION_MAP[key];
-    }
+interface LvVersionFields {
+    yy: number;
+    mm: number;
+    is64Bit: boolean;
+}
 
-    // 尝试根据编码规则推算
+/** 从 LVVersion 十六进制编码中解析出主版本、次版本和 64 位标志。 */
+function parseLvVersionFields(lvVersionHex: string): LvVersionFields | undefined {
+    const key = lvVersionHex.toUpperCase();
     if (!/^[0-9a-fA-F]{8}$/.test(lvVersionHex)) {
         return undefined;
     }
@@ -112,6 +110,23 @@ export function decodeLvVersion(lvVersionHex: string): string | undefined {
         return undefined;
     }
 
+    return { yy, mm, is64Bit };
+}
+
+/**
+ * 将 LVVersion 编码字符串解码为可读版本。
+ * 优先查表，查不到则尝试根据编码规则推算。
+ */
+export function decodeLvVersion(lvVersionHex: string): string | undefined {
+    const key = lvVersionHex.toUpperCase();
+    if (LV_VERSION_MAP[key]) {
+        return LV_VERSION_MAP[key];
+    }
+
+    const fields = parseLvVersionFields(lvVersionHex);
+    if (!fields) { return undefined; }
+
+    const { yy, mm, is64Bit } = fields;
     const yearLabel = yy <= 8 ? `${yy}` : `20${yy.toString().padStart(2, '0')}`;
     const minorLabel = mm > 0 ? `.${mm}` : '';
     const bitLabel = is64Bit ? ' (64-bit)' : '';
@@ -128,19 +143,10 @@ export function getLvVersionDisplay(lvVersionHex: string): string | undefined {
         return LV_DISPLAY_MAP[key];
     }
 
-    // 根据编码规则推算
-    if (!/^[0-9a-fA-F]{8}$/.test(lvVersionHex)) {
-        return undefined;
-    }
+    const fields = parseLvVersionFields(lvVersionHex);
+    if (!fields) { return undefined; }
 
-    const yy = bcdDecode(parseInt(key.substring(0, 2), 16));
-    const mm = bcdDecode(parseInt(key.substring(2, 4), 16));
-    const is64Bit = (parseInt(key.substring(6, 8), 16) & 0x40) !== 0;
-
-    if (yy < 8 || yy > 99) {
-        return undefined;
-    }
-
+    const { yy, mm, is64Bit } = fields;
     let display: string;
     if (yy <= 9) {
         display = `lv${yy}.${mm}`;
