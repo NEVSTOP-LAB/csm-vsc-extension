@@ -339,6 +339,7 @@ export class ModuleManagerController {
 									moduleEntry,
 									applyMethod,
 									authToken,
+									(msg) => progress.report({ message: msg }),
 								);
 								progress.report({
 									increment: 100 / selectedEntries.length,
@@ -378,6 +379,7 @@ export class ModuleManagerController {
 								moduleEntry,
 								applyMethod,
 								authToken,
+								(msg) => progress.report({ message: msg }),
 							);
 							config = this.workspaceModuleService.withAppliedModule(config, applied);
 							await writeConfigSafely(config);
@@ -1425,11 +1427,12 @@ export class ModuleManagerController {
 		}
 	}
 
-	private async hydrateStarStates(modules: CsmModuleEntry[], token: string | undefined): Promise<CsmModuleEntry[]> {
+	private async hydrateStarStates(modules: CsmModuleEntry[], token: string | undefined, onProgress?: (done: number, total: number) => void): Promise<CsmModuleEntry[]> {
 		if (modules.length === 0 || !token || typeof this.githubService.isRepositoryStarred !== 'function') {
+			onProgress?.(modules.length, modules.length);
 			return modules;
 		}
-		const starStates = await this.fetchStarStatesParallel(modules, token, 8);
+		const starStates = await this.fetchStarStatesParallel(modules, token, 8, onProgress);
 		return modules.map((moduleEntry) => ({
 			...moduleEntry,
 			starred: starStates.get(this.getModuleKey(moduleEntry)),
@@ -1440,6 +1443,7 @@ export class ModuleManagerController {
 		modules: CsmModuleEntry[],
 		token: string,
 		concurrency: number,
+		onProgress?: (done: number, total: number) => void,
 	): Promise<Map<string, boolean>> {
 		const starredStates = new Map<string, boolean>();
 		const isRepositoryStarred = this.githubService.isRepositoryStarred?.bind(this.githubService);
@@ -1447,6 +1451,8 @@ export class ModuleManagerController {
 			return starredStates;
 		}
 		let cursor = 0;
+		let completed = 0;
+		const total = modules.length;
 		const worker = async (): Promise<void> => {
 			while (cursor < modules.length) {
 				const index = cursor;
@@ -1461,6 +1467,8 @@ export class ModuleManagerController {
 				} catch (error) {
 					this.logger.warn(`Failed to fetch star state for ${moduleEntry.owner}/${moduleEntry.name}: ${error instanceof Error ? error.message : String(error)}`);
 				}
+				completed += 1;
+				onProgress?.(completed, total);
 			}
 		};
 		const workerCount = Math.max(1, Math.min(concurrency, modules.length));
@@ -1515,7 +1523,14 @@ export class ModuleManagerController {
 		try {
 			const cachedSnapshot = this.cacheStore.getModuleSnapshot();
 			const previousEtag = this.cacheStore.getModuleEtag();
-			const fetchResult = await this.githubService.fetchModules(token, { etag: previousEtag });
+			const fetchResult = await this.githubService.fetchModules(token, {
+				etag: previousEtag,
+				onProgress: (fetched, total) => {
+					if (!options.preserveVisibleModules) {
+						this.treeDataProvider.setLoading(t('fetchingCatalogProgress', { fetched, total }));
+					}
+				},
+			});
 
 			if (fetchResult.notModified) {
 				// 304 Not Modified：使用缓存数据，仅在必要时补充 star 状态
@@ -1557,12 +1572,27 @@ export class ModuleManagerController {
 
 			// 阶段 3：并行补充 star 状态和 README 预加载
 			if (!options.preserveVisibleModules) {
-				this.treeDataProvider.setLoading(t('loadingStarStatus'));
+				this.treeDataProvider.setLoading(t('loadingDetailsProgress', { done: 0, total: modules.length * 2 }));
 			}
 
+			const detailProgress = { stars: 0, readmes: 0 };
+			const updateDetailProgress = () => {
+				if (!options.preserveVisibleModules) {
+					this.treeDataProvider.setLoading(
+						t('loadingDetailsProgress', { done: detailProgress.stars + detailProgress.readmes, total: modules.length * 2 }),
+					);
+				}
+			};
+
 			const [modulesWithStarState, refreshedReadme] = await Promise.all([
-				this.hydrateStarStates(modules, token),
-				this.fetchReadmesParallel(modules, token, 5),
+				this.hydrateStarStates(modules, token, (done) => {
+					detailProgress.stars = done;
+					updateDetailProgress();
+				}),
+				this.fetchReadmesParallel(modules, token, 5, (done) => {
+					detailProgress.readmes = done;
+					updateDetailProgress();
+				}),
 			]);
 			this.availableModules = modulesWithStarState;
 			// Parallelized README prefetch with bounded concurrency to avoid blocking on large lists.
@@ -1658,9 +1688,12 @@ export class ModuleManagerController {
 		modules: CsmModuleEntry[],
 		token: string | undefined,
 		concurrency: number,
+		onProgress?: (done: number, total: number) => void,
 	): Promise<Record<string, string>> {
 		const refreshed: Record<string, string> = {};
 		let cursor = 0;
+		let completed = 0;
+		const total = modules.length;
 		const worker = async (): Promise<void> => {
 			while (cursor < modules.length) {
 				const index = cursor;
@@ -1678,6 +1711,8 @@ export class ModuleManagerController {
 					this.logger.warn(`Failed to fetch README for ${moduleEntry.owner}/${moduleEntry.name}: ${error instanceof Error ? error.message : String(error)}`);
 					refreshed[key] = '';
 				}
+				completed += 1;
+				onProgress?.(completed, total);
 			}
 		};
 		const workerCount = Math.max(1, Math.min(concurrency, modules.length));

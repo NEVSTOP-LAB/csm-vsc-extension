@@ -234,6 +234,22 @@ const messages = {
 		en: 'Switched {module} to {method}.',
 		zh: '已将 {module} 切换为 {method}。',
 	},
+	applyingSubmoduleAdding: {
+		en: 'Adding submodule {repo}...',
+		zh: '正在添加子模块 {repo}...',
+	},
+	applyingSubmoduleInit: {
+		en: 'Initializing submodule {repo}...',
+		zh: '正在初始化子模块 {repo}...',
+	},
+	applyingCopyCloning: {
+		en: 'Cloning {repo} from GitHub...',
+		zh: '正在从 GitHub 克隆 {repo}...',
+	},
+	applyingCopyFiles: {
+		en: 'Copying {repo} files...',
+		zh: '正在复制 {repo} 文件...',
+	},
 	switchMethodSuccessWithBackup: {
 		en: 'Switched {module} to {method}. Backup saved to {backupPath}.',
 		zh: '已将 {module} 切换为 {method}。备份已保存到 {backupPath}。',
@@ -314,9 +330,17 @@ const messages = {
 		en: 'Fetching module catalog...',
 		zh: '正在获取模块目录...',
 	},
+	fetchingCatalogProgress: {
+		en: 'Fetched {fetched}/{total} modules...',
+		zh: '已获取 {fetched}/{total} 个模块...',
+	},
 	checkingUpdates: {
 		en: 'Checking for updates...',
 		zh: '正在检查更新...',
+	},
+	loadingDetailsProgress: {
+		en: 'Loading module details {done}/{total}...',
+		zh: '正在加载模块详情 {done}/{total}...',
 	},
 	preloadingReadme: {
 		en: 'Preloading README files...',

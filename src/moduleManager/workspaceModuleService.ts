@@ -5,6 +5,7 @@ import * as path from 'path';
 import JSZip from 'jszip';
 import * as yaml from 'js-yaml';
 import { CopyModuleUpdatePreview, CsmModuleEntry, LocalModuleConfig, LocalModuleConfigEntry, ModuleApplyMethod, ModuleUpdateResult } from './types';
+import { t } from './messages';
 import { GitService, IGitRunner } from './gitService';
 
 const CONFIG_VERSION = '2';
@@ -542,6 +543,7 @@ export class WorkspaceModuleService {
 		entry: CsmModuleEntry,
 		method: ModuleApplyMethod,
 		authToken?: string,
+		onProgress?: (message: string) => void,
 	): Promise<LocalModuleConfigEntry> {
 		const targetRelativePath = this.getTargetRelativePath(config, entry);
 		const targetPath = this.toAbsoluteTargetPath(repoRoot, targetRelativePath);
@@ -553,8 +555,8 @@ export class WorkspaceModuleService {
 		}
 
 		const appliedEntry = method === 'submodule'
-			? this.applyModuleAsSubmodule(repoRoot, entry, targetRelativePath, targetPath, authToken)
-			: this.applyModuleAsCopy(repoRoot, entry, targetRelativePath, targetPath, authToken);
+			? this.applyModuleAsSubmodule(repoRoot, entry, targetRelativePath, targetPath, authToken, onProgress)
+			: this.applyModuleAsCopy(repoRoot, entry, targetRelativePath, targetPath, authToken, onProgress);
 		const lockedEntry = this.normalizeConfigEntry(await appliedEntry);
 		await this.applyEntryLockState(repoRoot, lockedEntry);
 		return lockedEntry;
@@ -685,14 +687,17 @@ export class WorkspaceModuleService {
 		targetRelativePath: string,
 		targetPath: string,
 		authToken?: string,
+		onProgress?: (message: string) => void,
 	): Promise<LocalModuleConfigEntry> {
 		const branch = entry.defaultBranch || 'main';
+		onProgress?.(t('applyingSubmoduleAdding', { repo: `${entry.owner}/${entry.name}` }));
 		await this.runGit(
 			repoRoot,
 			['submodule', 'add', '-b', branch, entry.repoUrl, targetRelativePath],
 			authToken,
 			entry.repoUrl,
 		);
+		onProgress?.(t('applyingSubmoduleInit', { repo: `${entry.owner}/${entry.name}` }));
 		await this.runGit(
 			repoRoot,
 			['submodule', 'update', '--init', '--recursive', targetRelativePath],
@@ -709,6 +714,7 @@ export class WorkspaceModuleService {
 		targetRelativePath: string,
 		targetPath: string,
 		authToken?: string,
+		onProgress?: (message: string) => void,
 	): Promise<LocalModuleConfigEntry> {
 		const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'csm-module-'));
 		const checkoutPath = path.join(tempRoot, 'checkout');
@@ -719,8 +725,10 @@ export class WorkspaceModuleService {
 				cloneArgs.push('--branch', entry.defaultBranch);
 			}
 			cloneArgs.push(entry.repoUrl, checkoutPath);
+			onProgress?.(t('applyingCopyCloning', { repo: `${entry.owner}/${entry.name}` }));
 			await this.runGit(repoRoot, cloneArgs, authToken, entry.repoUrl);
 			const ref = await this.runGit(checkoutPath, ['rev-parse', 'HEAD']);
+			onProgress?.(t('applyingCopyFiles', { repo: `${entry.owner}/${entry.name}` }));
 			await fs.mkdir(path.dirname(targetPath), { recursive: true });
 			await this.copyDirectory(checkoutPath, targetPath);
 			return this.createConfigEntry(entry, 'copy', targetRelativePath, ref, branch);

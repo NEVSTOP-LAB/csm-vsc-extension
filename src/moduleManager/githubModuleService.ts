@@ -8,6 +8,7 @@ const MODULE_TOPIC = GITHUB.moduleTopic;
 const PER_PAGE = GITHUB.perPage;
 
 interface GitHubSearchResponse<T> {
+	total_count?: number;
 	items?: T[];
 }
 
@@ -105,23 +106,26 @@ export class GitHubModuleService {
 		};
 	}
 
-	public async fetchModules(token?: string, options: { etag?: string } = {}): Promise<{ modules: CsmModuleEntry[]; etag?: string; notModified?: boolean }> {
+	public async fetchModules(token?: string, options: { etag?: string; onProgress?: (fetched: number, total: number) => void } = {}): Promise<{ modules: CsmModuleEntry[]; totalCount?: number; etag?: string; notModified?: boolean }> {
 		const searchQuery = encodeURIComponent(`topic:${MODULE_TOPIC}`);
 		const initialUrl = `${GITHUB_API_BASE}/search/repositories?per_page=${PER_PAGE}&q=${searchQuery}`;
 		// Conditional request: send If-None-Match only on the first page; if 304, short-circuit.
 		const firstResult = await this.requestJson<GitHubSearchResponse<GitHubRepoSummary>>(initialUrl, token, options.etag);
 		if (firstResult.notModified) {
-			return { modules: [], etag: firstResult.etag, notModified: true };
+			return { modules: [], totalCount: 0, etag: firstResult.etag, notModified: true };
 		}
 		const repos: GitHubRepoSummary[] = [...(firstResult.data.items ?? []).map(normalizeSearchRepo)];
+		const totalCount = firstResult.data.total_count ?? repos.length;
+		options.onProgress?.(repos.length, totalCount);
 		let url = firstResult.next ?? '';
 		while (url) {
 			const result = await this.requestJson<GitHubSearchResponse<GitHubRepoSummary>>(url, token);
 			repos.push(...(result.data.items ?? []).map(normalizeSearchRepo));
+			options.onProgress?.(repos.length, totalCount);
 			url = result.next ?? '';
 		}
 		const modules = dedupeRepos(repos).filter(hasModuleTopic).map(mapRepoToModuleEntry).sort((a, b) => a.name.localeCompare(b.name));
-		return { modules, etag: firstResult.etag };
+		return { modules, totalCount, etag: firstResult.etag };
 	}
 
 	public async fetchReadme(owner: string, repo: string, token?: string): Promise<string> {
