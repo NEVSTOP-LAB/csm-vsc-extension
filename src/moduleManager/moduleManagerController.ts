@@ -1429,6 +1429,7 @@ export class ModuleManagerController {
 
 	private async hydrateStarStates(modules: CsmModuleEntry[], token: string | undefined, onProgress?: (done: number, total: number) => void): Promise<CsmModuleEntry[]> {
 		if (modules.length === 0 || !token || typeof this.githubService.isRepositoryStarred !== 'function') {
+			onProgress?.(modules.length, modules.length);
 			return modules;
 		}
 		const starStates = await this.fetchStarStatesParallel(modules, token, 8, onProgress);
