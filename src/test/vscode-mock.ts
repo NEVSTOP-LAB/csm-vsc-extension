@@ -246,12 +246,8 @@ class MockWebviewView {
     private viewTitle: string | undefined;
     private viewDescription: string | undefined;
 
-    constructor(
-        onHtmlChange: (html: string) => void,
-        private readonly onTitleChange: (title: string | undefined) => void,
-        private readonly onDescriptionChange: (description: string | undefined) => void,
-    ) {
-        this.webview = new MockWebview(onHtmlChange);
+    constructor(private readonly onChange: () => void) {
+        this.webview = new MockWebview(() => this.onChange());
     }
 
     get title(): string | undefined {
@@ -260,7 +256,7 @@ class MockWebviewView {
 
     set title(value: string | undefined) {
         this.viewTitle = value;
-        this.onTitleChange(value);
+        this.onChange();
     }
 
     get description(): string | undefined {
@@ -269,7 +265,7 @@ class MockWebviewView {
 
     set description(value: string | undefined) {
         this.viewDescription = value;
-        this.onDescriptionChange(value);
+        this.onChange();
     }
 }
 
@@ -601,14 +597,8 @@ export function __resolveWebviewView(viewId: string): { html: string; fireMessag
     }
 
     const view = new MockWebviewView(
-        (html: string) => {
-            lastWebviewView = { viewId, html, title: view.title, description: view.description, options: cloneWebviewOptions(view.webview.options) };
-        },
-        (title: string | undefined) => {
-            lastWebviewView = { viewId, html: view.webview.html, title, description: view.description, options: cloneWebviewOptions(view.webview.options) };
-        },
-        (description: string | undefined) => {
-            lastWebviewView = { viewId, html: view.webview.html, title: view.title, description, options: cloneWebviewOptions(view.webview.options) };
+        () => {
+            lastWebviewView = { viewId, html: view.webview.html, title: view.title, description: view.description, options: cloneWebviewOptions(view.webview.options) };
         },
     );
     webviewViews.set(viewId, view);
