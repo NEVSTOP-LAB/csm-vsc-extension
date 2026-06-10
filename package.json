@@ -298,31 +298,6 @@
           "scope": "window",
           "description": "%configuration.csmModules.hiddenTopics.description%"
         },
-        "csmModules.dedup.enabled": {
-          "type": "boolean",
-          "default": true,
-          "scope": "resource",
-          "description": "%configuration.csmModules.dedup.enabled.description%"
-        },
-        "csmModules.dedup.minRepeatCount": {
-          "type": "number",
-          "default": 2,
-          "minimum": 2,
-          "scope": "resource",
-          "description": "%configuration.csmModules.dedup.minRepeatCount.description%"
-        },
-        "csmModules.dedup.multiLineEnabled": {
-          "type": "boolean",
-          "default": true,
-          "scope": "resource",
-          "description": "%configuration.csmModules.dedup.multiLineEnabled.description%"
-        },
-        "csmModules.dedup.autoFold": {
-          "type": "boolean",
-          "default": true,
-          "scope": "resource",
-          "description": "%configuration.csmModules.dedup.autoFold.description%"
-        },
         "csmModules.autoStarCsmCore": {
           "type": "boolean",
           "default": true,

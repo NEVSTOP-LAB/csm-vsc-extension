@@ -21,10 +21,6 @@
   "views.csmModules.view.name": "Available Modules",
   "configuration.csmModules.defaultModuleRoot.description": "Default relative directory used when initializing local CSM module management for a repository that does not already have a csm-modules.yaml file.",
   "configuration.csmModules.hiddenTopics.description": "Module repository topics to hide from the CSM Modules sidebar badges, tree tooltips, and local search text.",
-  "configuration.csmModules.dedup.enabled.description": "Enable collapsing of consecutive duplicate log messages in .csmlog files.",
-  "configuration.csmModules.dedup.minRepeatCount.description": "Minimum number of consecutive identical log messages required to create a foldable group (minimum 2). Messages are matched loosely — numeric parameters (e.g. connection attempt counters) are ignored.",
-  "configuration.csmModules.dedup.multiLineEnabled.description": "Detect and collapse multi-line repeating log blocks (e.g. a 5-line UI update cycle that repeats every second).",
-  "configuration.csmModules.dedup.autoFold.description": "Automatically fold all detected duplicate groups when opening a .csmlog file.",
   "configuration.csmModules.autoStarCsmCore.description": "Automatically star the CSM Core repository (NEVSTOP-LAB/Communicable-State-Machine) on GitHub when applying modules to the local workspace.",
   "configuration.csmModules.autoStarModuleRepo.description": "Automatically star the downloaded module repository on GitHub when applying it to the local workspace.",
   "iconThemes.csmFileIcons.label": "CSM File Icons"
