@@ -1880,7 +1880,7 @@ export class ModuleManagerController {
 	}
 
 	/**
-	 * 统一的模块过滤流水线，按 order 依次应用各条过滤规则。
+	 * 统一的模块过滤流水线。各过滤器独立且皆为纯排除/去重，顺序不影响结果。
 	 * - filterByOwners：排除指定 owner
 	 * - filterByTopics：排除含有指定 topic 的仓库
 	 * - handleForkedModules：处理 fork 仓库
