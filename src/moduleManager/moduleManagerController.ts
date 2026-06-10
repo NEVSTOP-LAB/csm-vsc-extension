@@ -1551,8 +1551,12 @@ export class ModuleManagerController {
 
 			// 新数据到达：立即预览渲染模块卡片，让用户看到内容
 			const modules = fetchResult.modules;
+			// 预览阶段同样遵循 hideArchivedRepos 配置，避免已归档仓库闪现
+			const previewModules = vscode.workspace.getConfiguration(CONFIG_SECTIONS.moduleManager).get<boolean>(CONFIG_KEYS.hideArchivedRepos, true)
+				? modules.filter((m) => !m.archived)
+				: modules;
 			if (!options.preserveVisibleModules && typeof this.treeDataProvider.setModulesPreview === 'function') {
-				this.treeDataProvider.setModulesPreview(modules);
+				this.treeDataProvider.setModulesPreview(previewModules);
 			}
 
 			// 阶段 3：并行补充 star 状态和 README 预加载
