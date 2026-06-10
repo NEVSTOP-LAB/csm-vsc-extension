@@ -6,15 +6,9 @@ import * as vscode from 'vscode';
 import { CsmModuleEntry } from './types';
 import { getVisibilityLabel, getVisibilityTag, t } from './messages';
 import { getVisibleModuleTopics } from './topics';
+import { truncate } from './utils';
 
 export type ViewState = 'loading' | 'ready' | 'empty' | 'error';
-
-function truncate(text: string, maxLength: number): string {
-    if (text.length <= maxLength) {
-        return text;
-    }
-    return `${text.slice(0, maxLength - 3)}...`;
-}
 
 /**
  * 树视图中表示一个 CSM 模块的 TreeItem。

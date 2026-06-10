@@ -29,28 +29,25 @@ function lookupOperator(line: string, pos: number): HoverEntry | undefined {
         ['??',                        '??'],
     ];
     for (const [op, key] of candidates) {
-        // Check if the operator appears at or near pos
-        const start = Math.max(0, pos - op.length + 1);
-        const end = Math.min(line.length, pos + op.length);
-        const slice = line.substring(start, end);
-        if (slice.includes(op)) {
-            const idx = line.indexOf(op, Math.max(0, pos - op.length));
-            if (idx !== -1 && idx <= pos && pos < idx + op.length) {
-                return db[key];
-            }
+        const searchStart = Math.max(0, pos - op.length + 1);
+        const idx = line.indexOf(op, searchStart);
+        if (idx !== -1 && idx <= pos && pos < idx + op.length) {
+            return db[key];
         }
     }
     return undefined;
 }
 
+const WORD_CHAR = /[\w]/;
+
 /** Extract the word (identifier / command) around the cursor position. */
 function getWordAt(line: string, pos: number): string {
     // Expand left (include underscore, alphanumeric)
     let start = pos;
-    while (start > 0 && /[\w]/.test(line[start - 1])) { start--; }
+    while (start > 0 && WORD_CHAR.test(line[start - 1])) { start--; }
     // Expand right
     let end = pos;
-    while (end < line.length && /[\w]/.test(line[end])) { end++; }
+    while (end < line.length && WORD_CHAR.test(line[end])) { end++; }
     const base = line.substring(start, end);
 
     // If immediately followed by (...), include to handle WAIT(ms), RANDOM(INT), etc.

@@ -1,6 +1,7 @@
 import * as crypto from 'crypto';
 import { ModuleListScope, ModuleSortDirection, ModuleSortField, ModuleSortState } from './interfaces';
 import { getApplyMethodLabel, getHtmlLang, getVisibilityLabel, t } from './messages';
+import { truncate } from './utils';
 import { ViewState } from './moduleTreeTypes';
 import { sortModules } from './sort';
 import { getVisibleModuleTopics } from './topics';
@@ -35,13 +36,6 @@ export interface ModuleSidebarRenderState extends LocalWorkspaceRenderState {
 	renderLimit: number;
 	initialRenderLimit: number;
 	webviewCspSource?: string;
-}
-
-function truncate(text: string, maxLength: number): string {
-	if (text.length <= maxLength) {
-		return text;
-	}
-	return `${text.slice(0, maxLength - 3)}...`;
 }
 
 function escapeHtml(value: string): string {

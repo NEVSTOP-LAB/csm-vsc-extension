@@ -75,11 +75,7 @@ export class CSMLogDocumentSymbolProvider implements vscode.DocumentSymbolProvid
             }
         }
 
-        // 按行号排序后统一构建 DocumentSymbol
-        entries.sort((a, b) => a.lineIndex - b.lineIndex);
-
-        // 最终排序后构建
-        entries.sort((a, b) => a.lineIndex - b.lineIndex);
+        // 循环已按行号递增顺序 push，entries 天然有序，直接构建即可
         return buildDocumentSymbols(document, entries);
     }
 }

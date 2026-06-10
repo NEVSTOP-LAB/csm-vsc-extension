@@ -1,5 +1,5 @@
 import type { HoverEntry } from './types';
-import { localizeHoverEntries } from './localize';
+import { applyEnglishHoverTranslations } from './localize';
 import { isChineseLanguage } from '../i18n';
 import { operatorEntries } from './operators';
 import { commandEntries } from './commands';
@@ -38,7 +38,7 @@ export function getHoverDb(): Record<string, HoverEntry> {
     if (_hoverDbCache !== undefined && _hoverDbCache.isChinese === isChinese) {
         return _hoverDbCache.db;
     }
-    const db = localizeHoverEntries(zhHoverEntries, hoverTranslations);
+    const db = applyEnglishHoverTranslations(zhHoverEntries, hoverTranslations);
     _hoverDbCache = { isChinese, db };
     return db;
 }

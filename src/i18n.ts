@@ -12,6 +12,7 @@ export type LocalizedEntry = {
 export type LocalizedBundle = Record<string, LocalizedEntry>;
 
 let languageOverride: string | undefined;
+let _cachedLanguage: string | undefined;
 
 function getLanguageFromNlsConfig(): string | undefined {
 	const rawConfig = process.env.VSCODE_NLS_CONFIG;
@@ -30,15 +31,22 @@ function getLanguageFromNlsConfig(): string | undefined {
 }
 
 function getCurrentLanguage(): string {
+	// override（测试用）始终优先，不使用缓存
 	if (languageOverride) {
 		return languageOverride;
 	}
 
-	if (typeof vscode.env?.language === 'string' && vscode.env.language.trim().length > 0) {
-		return vscode.env.language;
+	if (_cachedLanguage !== undefined) {
+		return _cachedLanguage;
 	}
 
-	return getLanguageFromNlsConfig() ?? 'en';
+	if (typeof vscode.env?.language === 'string' && vscode.env.language.trim().length > 0) {
+		_cachedLanguage = vscode.env.language;
+		return _cachedLanguage;
+	}
+
+	_cachedLanguage = getLanguageFromNlsConfig() ?? 'en';
+	return _cachedLanguage;
 }
 
 export function isChineseLanguage(): boolean {
@@ -68,4 +76,5 @@ export function localizeBundle<Bundle extends LocalizedBundle, Key extends keyof
 
 export function __setLanguageOverrideForTests(language: string | undefined): void {
 	languageOverride = language;
+	_cachedLanguage = undefined; // 使缓存失效，下次调用重新检测
 }

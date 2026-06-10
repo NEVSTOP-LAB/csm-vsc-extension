@@ -89,17 +89,15 @@ function bcdDecode(hexByte: number): number {
     return ((hexByte >> 4) * 10) + (hexByte & 0x0F);
 }
 
-/**
- * 将 LVVersion 编码字符串解码为可读版本。
- * 优先查表，查不到则尝试根据编码规则推算。
- */
-export function decodeLvVersion(lvVersionHex: string): string | undefined {
-    const key = lvVersionHex.toUpperCase();
-    if (LV_VERSION_MAP[key]) {
-        return LV_VERSION_MAP[key];
-    }
+interface LvVersionFields {
+    yy: number;
+    mm: number;
+    is64Bit: boolean;
+}
 
-    // 尝试根据编码规则推算
+/** 从 LVVersion 十六进制编码中解析出主版本、次版本和 64 位标志。 */
+function parseLvVersionFields(lvVersionHex: string): LvVersionFields | undefined {
+    const key = lvVersionHex.toUpperCase();
     if (!/^[0-9a-fA-F]{8}$/.test(lvVersionHex)) {
         return undefined;
     }
@@ -112,6 +110,23 @@ export function decodeLvVersion(lvVersionHex: string): string | undefined {
         return undefined;
     }
 
+    return { yy, mm, is64Bit };
+}
+
+/**
+ * 将 LVVersion 编码字符串解码为可读版本。
+ * 优先查表，查不到则尝试根据编码规则推算。
+ */
+export function decodeLvVersion(lvVersionHex: string): string | undefined {
+    const key = lvVersionHex.toUpperCase();
+    if (LV_VERSION_MAP[key]) {
+        return LV_VERSION_MAP[key];
+    }
+
+    const fields = parseLvVersionFields(lvVersionHex);
+    if (!fields) { return undefined; }
+
+    const { yy, mm, is64Bit } = fields;
     const yearLabel = yy <= 8 ? `${yy}` : `20${yy.toString().padStart(2, '0')}`;
     const minorLabel = mm > 0 ? `.${mm}` : '';
     const bitLabel = is64Bit ? ' (64-bit)' : '';
@@ -128,19 +143,10 @@ export function getLvVersionDisplay(lvVersionHex: string): string | undefined {
         return LV_DISPLAY_MAP[key];
     }
 
-    // 根据编码规则推算
-    if (!/^[0-9a-fA-F]{8}$/.test(lvVersionHex)) {
-        return undefined;
-    }
+    const fields = parseLvVersionFields(lvVersionHex);
+    if (!fields) { return undefined; }
 
-    const yy = bcdDecode(parseInt(key.substring(0, 2), 16));
-    const mm = bcdDecode(parseInt(key.substring(2, 4), 16));
-    const is64Bit = (parseInt(key.substring(6, 8), 16) & 0x40) !== 0;
-
-    if (yy < 8 || yy > 99) {
-        return undefined;
-    }
-
+    const { yy, mm, is64Bit } = fields;
     let display: string;
     if (yy <= 9) {
         display = `lv${yy}.${mm}`;
@@ -162,36 +168,38 @@ export function getLvVersionDisplay(lvVersionHex: string): string | undefined {
  *   "DEV ENVIRONMENT LabVIEW 2020"      → "lv2020"
  *   "DEV ENVIRONMENT LabVIEW 2020(64bit)" → "lv2020(64bit)"
  */
+function formatLvDisplay(version: string, is64Bit: boolean): string {
+    return `lv${version}${is64Bit ? '(64bit)' : ''}`;
+}
+
 export function parseDevEnvironmentFileName(fileName: string): string | undefined {
     if (!fileName.startsWith(DEV_ENV_PREFIX)) {
         return undefined;
     }
 
     const suffix = fileName.slice(DEV_ENV_PREFIX.length).trim();
+    let version: string | undefined;
+    let is64Bit = false;
 
     // 匹配 "LabVIEW XXXX" 或 "LabVIEW XXXX(64bit)"
     const match = suffix.match(/^LabVIEW\s+(\d+(?:\.\d+)?)(?:\((\d+)bit\))?$/i);
-    if (!match) {
+    if (match) {
+        version = match[1];
+        is64Bit = match[2] === '64';
+    } else {
         // 宽松匹配：尝试提取版本号
         const looseMatch = suffix.match(/(\d+(?:\.\d+)?)/);
         if (!looseMatch) {
             return undefined;
         }
-        const version = looseMatch[1];
-        const is64Bit = /64\s*bit/i.test(suffix);
-        if (version.includes('.')) {
-            return `lv${version}${is64Bit ? '(64bit)' : ''}`;
-        }
-        return `lv${version}${is64Bit ? '(64bit)' : ''}`;
+        version = looseMatch[1];
+        is64Bit = /64\s*bit/i.test(suffix);
     }
 
-    const version = match[1];
-    const is64Bit = match[2] === '64';
-
-    if (version.includes('.')) {
-        return `lv${version}${is64Bit ? '(64bit)' : ''}`;
+    if (!version) {
+        return undefined;
     }
-    return `lv${version}${is64Bit ? '(64bit)' : ''}`;
+    return formatLvDisplay(version, is64Bit);
 }
 
 /**
@@ -294,110 +302,64 @@ async function findFirstFile(dirPath: string, pattern: RegExp): Promise<string |
 }
 
 /**
+ * 从 startDir 向上遍历祖先目录，对每个目录调用 visitor 直到返回非 undefined 值。
+ * 用于实现"查找最近的匹配文件"模式。
+ */
+async function walkUpAncestors<T>(
+    startDir: string,
+    visitor: (dir: string) => Promise<T | undefined>,
+): Promise<T | undefined> {
+    let currentDir = path.resolve(startDir);
+    const root = path.parse(currentDir).root;
+    while (true) {
+        const result = await visitor(currentDir);
+        if (result !== undefined) { return result; }
+        if (currentDir === root) { break; }
+        const parent = path.dirname(currentDir);
+        if (parent === currentDir) { break; }
+        currentDir = parent;
+    }
+    return undefined;
+}
+
+/**
  * 从当前目录向上遍历祖先目录，查找"DEV ENVIRONMENT"标记文件。
  * 返回距离当前目录最近的匹配结果。
  */
 async function findDevEnvironmentFile(moduleDirPath: string): Promise<string | undefined> {
-    let currentDir = path.resolve(moduleDirPath);
-    const root = path.parse(currentDir).root;
-
-    while (currentDir !== root) {
-        const result = await findFirstFile(currentDir, /^DEV ENVIRONMENT/i);
-        if (result) {
-            return result;
-        }
-        const parent = path.dirname(currentDir);
-        if (parent === currentDir) {
-            break;
-        }
-        currentDir = parent;
-    }
-
-    // 检查根目录
-    const rootResult = await findFirstFile(root, /^DEV ENVIRONMENT/i);
-    return rootResult;
+    return walkUpAncestors(moduleDirPath, (dir) => findFirstFile(dir, /^DEV ENVIRONMENT/i));
 }
 
 /**
  * 从当前目录向上遍历，查找最近的 .lvproj 文件并提取 LVVersion。
  */
 async function findLvprojVersion(moduleDirPath: string): Promise<string | undefined> {
-    let currentDir = path.resolve(moduleDirPath);
-    const root = path.parse(currentDir).root;
-
-    while (currentDir !== root) {
-        const lvprojPath = await findFirstFile(currentDir, /\.lvproj$/i);
-        if (lvprojPath) {
-            try {
-                const content = await fs.readFile(lvprojPath, 'utf-8');
-                const version = extractLvVersionFromXml(content);
-                if (version) {
-                    return version;
-                }
-            } catch {
-                // 读取失败，继续向上查找
-            }
-        }
-        const parent = path.dirname(currentDir);
-        if (parent === currentDir) {
-            break;
-        }
-        currentDir = parent;
-    }
-
-    // 检查根目录
-    const rootLvproj = await findFirstFile(root, /\.lvproj$/i);
-    if (rootLvproj) {
+    return walkUpAncestors(moduleDirPath, async (dir) => {
+        const lvprojPath = await findFirstFile(dir, /\.lvproj$/i);
+        if (!lvprojPath) { return undefined; }
         try {
-            const content = await fs.readFile(rootLvproj, 'utf-8');
+            const content = await fs.readFile(lvprojPath, 'utf-8');
             return extractLvVersionFromXml(content);
         } catch {
-            // 忽略
+            return undefined;
         }
-    }
-
-    return undefined;
+    });
 }
 
 /**
  * 从当前目录向上遍历，查找最近的 .lvlib 文件并提取 LVVersion。
  */
 async function findLvlibVersion(moduleDirPath: string): Promise<string | undefined> {
-    let currentDir = path.resolve(moduleDirPath);
-    const root = path.parse(currentDir).root;
-
-    while (currentDir !== root) {
-        const lvlibPath = await findFirstFile(currentDir, /\.lvlib$/i);
-        if (lvlibPath) {
-            try {
-                const content = await fs.readFile(lvlibPath, 'utf-8');
-                const version = extractLvVersionFromXml(content);
-                if (version) {
-                    return version;
-                }
-            } catch {
-                // 读取失败，继续向上查找
-            }
-        }
-        const parent = path.dirname(currentDir);
-        if (parent === currentDir) {
-            break;
-        }
-        currentDir = parent;
-    }
-
-    // 检查根目录
-    const rootLvlib = await findFirstFile(root, /\.lvlib$/i);
-    if (rootLvlib) {
+    return walkUpAncestors(moduleDirPath, async (dir) => {
+        const lvlibPath = await findFirstFile(dir, /\.lvlib$/i);
+        if (!lvlibPath) { return undefined; }
         try {
-            const content = await fs.readFile(rootLvlib, 'utf-8');
+            const content = await fs.readFile(lvlibPath, 'utf-8');
             return extractLvVersionFromXml(content);
         } catch {
-            // 忽略
+            return undefined;
         }
-    }
-
-    return undefined;
+    });
 }
 
 /**
