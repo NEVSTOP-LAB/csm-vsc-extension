@@ -39,6 +39,7 @@ export const CONFIG_KEYS = {
 	hiddenTopics: 'hiddenTopics',
 	autoStarCsmCore: 'autoStarCsmCore',
 	autoStarModuleRepo: 'autoStarModuleRepo',
+	hideArchivedRepos: 'hideArchivedRepos',
 } as const;
 
 export const STORAGE_KEYS = {

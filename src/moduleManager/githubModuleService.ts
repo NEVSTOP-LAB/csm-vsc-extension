@@ -46,6 +46,7 @@ export function mapRepoToModuleEntry(repo: GitHubRepoSummary): CsmModuleEntry {
 		description: repo.description ?? '',
 		topics,
 		visibility: repo.private ? 'private' : 'public',
+		archived: repo.archived,
 		defaultBranch: repo.default_branch,
 		repoUrl: repo.html_url,
 		updatedAt: repo.updated_at,
@@ -102,7 +103,7 @@ export class GitHubModuleService {
 		};
 	}
 
-	public async fetchModules(token?: string, options: { etag?: string } = {}): Promise<{ modules: CsmModuleEntry[]; etag?: string; notModified?: boolean }> {
+	public async fetchModules(token?: string, options: { etag?: string; hideArchivedRepos?: boolean } = {}): Promise<{ modules: CsmModuleEntry[]; etag?: string; notModified?: boolean }> {
 		const searchQuery = encodeURIComponent(`topic:${MODULE_TOPIC}`);
 		const initialUrl = `${GITHUB_API_BASE}/search/repositories?per_page=${PER_PAGE}&q=${searchQuery}`;
 		// Conditional request: send If-None-Match only on the first page; if 304, short-circuit.
@@ -117,7 +118,10 @@ export class GitHubModuleService {
 			repos.push(...(result.data.items ?? []).map(normalizeSearchRepo));
 			url = result.next ?? '';
 		}
-		const modules = dedupeRepos(repos).filter(hasModuleTopic).map(mapRepoToModuleEntry).sort((a, b) => a.name.localeCompare(b.name));
+		const hideArchived = options.hideArchivedRepos !== false;
+		const modules = dedupeRepos(repos).filter(hasModuleTopic).map(mapRepoToModuleEntry)
+			.filter((m) => !hideArchived || !m.archived)
+			.sort((a, b) => a.name.localeCompare(b.name));
 		return { modules, etag: firstResult.etag };
 	}
 

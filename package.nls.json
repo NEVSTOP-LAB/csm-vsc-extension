@@ -22,5 +22,6 @@
   "configuration.csmModules.defaultModuleRoot.description": "Default relative directory used when initializing local CSM module management for a repository that does not already have a csm-modules.yaml file.",
   "configuration.csmModules.hiddenTopics.description": "Module repository topics to hide from the CSM Modules sidebar badges, tree tooltips, and local search text.",
   "configuration.csmModules.autoStarCsmCore.description": "Automatically star the CSM Core repository (NEVSTOP-LAB/Communicable-State-Machine) on GitHub when applying modules to the local workspace.",
-  "configuration.csmModules.autoStarModuleRepo.description": "Automatically star the downloaded module repository on GitHub when applying it to the local workspace."
+  "configuration.csmModules.autoStarModuleRepo.description": "Automatically star the downloaded module repository on GitHub when applying it to the local workspace.",
+  "configuration.csmModules.hideArchivedRepos.description": "Hide archived module repositories from the Available Modules list. When disabled, archived repositories are shown alongside active ones."
 }

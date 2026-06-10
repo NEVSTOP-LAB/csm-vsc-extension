@@ -1515,7 +1515,8 @@ export class ModuleManagerController {
 		try {
 			const cachedSnapshot = this.cacheStore.getModuleSnapshot();
 			const previousEtag = this.cacheStore.getModuleEtag();
-			const fetchResult = await this.githubService.fetchModules(token, { etag: previousEtag });
+			const hideArchivedRepos = vscode.workspace.getConfiguration(CONFIG_SECTIONS.moduleManager).get<boolean>(CONFIG_KEYS.hideArchivedRepos, true);
+			const fetchResult = await this.githubService.fetchModules(token, { etag: previousEtag, hideArchivedRepos });
 
 			if (fetchResult.notModified) {
 				// 304 Not Modified：使用缓存数据，仅在必要时补充 star 状态
