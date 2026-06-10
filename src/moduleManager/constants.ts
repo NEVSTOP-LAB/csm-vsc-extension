@@ -40,6 +40,7 @@ export const CONFIG_KEYS = {
 	autoStarCsmCore: 'autoStarCsmCore',
 	autoStarModuleRepo: 'autoStarModuleRepo',
 	hideArchivedRepos: 'hideArchivedRepos',
+	forkedReposHandling: 'forkedReposHandling',
 } as const;
 
 export const STORAGE_KEYS = {

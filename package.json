@@ -315,6 +315,22 @@
           "default": true,
           "scope": "window",
           "description": "%configuration.csmModules.hideArchivedRepos.description%"
+        },
+        "csmModules.forkedReposHandling": {
+          "type": "string",
+          "enum": [
+            "exclude",
+            "latest",
+            "include"
+          ],
+          "enumDescriptions": [
+            "%configuration.csmModules.forkedReposHandling.exclude.description%",
+            "%configuration.csmModules.forkedReposHandling.latest.description%",
+            "%configuration.csmModules.forkedReposHandling.include.description%"
+          ],
+          "default": "exclude",
+          "scope": "window",
+          "description": "%configuration.csmModules.forkedReposHandling.description%"
         }
       }
     },

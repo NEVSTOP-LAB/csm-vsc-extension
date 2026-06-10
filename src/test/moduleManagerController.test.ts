@@ -3440,4 +3440,208 @@ suite('ModuleManagerController Regression Tests', () => {
 		assert.strictEqual(updatedModuleName, 'module-a');
 		assert.deepStrictEqual(selectionUpdates, [['org/module-a'], []]);
 	});
+
+	test('forkedReposHandling "exclude" (default) hides all fork modules from cache', async () => {
+		let visibleModuleCount = 0;
+		let visibleModuleNames: string[] = [];
+		const memento = new FakeMemento();
+		await memento.update('csmModules.cache.modules', createCachedSnapshot([
+			{
+				id: 1, owner: 'org', name: 'csmu',
+				description: 'original', topics: ['csm-modsets'],
+				visibility: 'public', defaultBranch: 'main',
+				repoUrl: 'https://github.com/org/csmu',
+				fork: false, pushedAt: '2026-01-01T00:00:00Z',
+			},
+			{
+				id: 2, owner: 'forker', name: 'csmu',
+				description: 'fork of csmu', topics: ['csm-modsets'],
+				visibility: 'public', defaultBranch: 'main',
+				repoUrl: 'https://github.com/forker/csmu',
+				fork: true, pushedAt: '2026-06-01T00:00:00Z',
+			},
+			{
+				id: 3, owner: 'other', name: 'standalone-fork',
+				description: 'standalone fork', topics: ['csm-modsets'],
+				visibility: 'public', defaultBranch: 'main',
+				repoUrl: 'https://github.com/other/standalone-fork',
+				fork: true, pushedAt: '2026-05-01T00:00:00Z',
+			},
+		], '2026-05-20T08:00:00.000Z'));
+
+		const controller = createController(memento, {
+			authService: {
+				getSessionSilently: async () => createSession('token', 'tester'),
+				getSessionInteractively: async () => createSession('token', 'tester'),
+				signOut: async () => undefined,
+			},
+			githubService: { fetchModules: async () => ({ modules: [] }), fetchReadme: async () => '' },
+			viewProvider: createViewProvider({
+				setModules: (modules: CsmModuleEntry[]) => {
+					visibleModuleCount = modules.length;
+					visibleModuleNames = modules.map((m) => m.name);
+				},
+			}),
+		});
+
+		controller.register([]);
+		await controller.logoutCommand();
+
+		// "exclude" default: only non-fork modules visible (id=1 csmu)
+		assert.strictEqual(visibleModuleCount, 1);
+		assert.deepStrictEqual(visibleModuleNames, ['csmu']);
+	});
+
+	test('forkedReposHandling "include" shows all fork modules', async () => {
+		let visibleModuleCount = 0;
+		const memento = new FakeMemento();
+		await memento.update('csmModules.cache.modules', createCachedSnapshot([
+			{
+				id: 1, owner: 'org', name: 'csmu',
+				description: 'original', topics: ['csm-modsets'],
+				visibility: 'public', defaultBranch: 'main',
+				repoUrl: 'https://github.com/org/csmu',
+				fork: false, pushedAt: '2026-01-01T00:00:00Z',
+			},
+			{
+				id: 2, owner: 'forker', name: 'csmu',
+				description: 'fork', topics: ['csm-modsets'],
+				visibility: 'public', defaultBranch: 'main',
+				repoUrl: 'https://github.com/forker/csmu',
+				fork: true, pushedAt: '2026-06-01T00:00:00Z',
+			},
+			{
+				id: 3, owner: 'other', name: 'standalone-fork',
+				description: 'standalone fork', topics: ['csm-modsets'],
+				visibility: 'public', defaultBranch: 'main',
+				repoUrl: 'https://github.com/other/standalone-fork',
+				fork: true, pushedAt: '2026-05-01T00:00:00Z',
+			},
+		], '2026-05-20T08:00:00.000Z'));
+
+		mocked.__setConfigurationValue('csmModules.forkedReposHandling', 'include');
+
+		const controller = createController(memento, {
+			authService: {
+				getSessionSilently: async () => createSession('token', 'tester'),
+				getSessionInteractively: async () => createSession('token', 'tester'),
+				signOut: async () => undefined,
+			},
+			githubService: { fetchModules: async () => ({ modules: [] }), fetchReadme: async () => '' },
+			viewProvider: createViewProvider({
+				setModules: (modules: CsmModuleEntry[]) => {
+					visibleModuleCount = modules.length;
+				},
+			}),
+		});
+
+		controller.register([]);
+		await controller.logoutCommand();
+
+		// "include": all 3 modules visible
+		assert.strictEqual(visibleModuleCount, 3);
+	});
+
+	test('forkedReposHandling "latest" keeps only the most recently pushed per name', async () => {
+		let visibleModuleNames: string[] = [];
+		let visibleOwners: string[] = [];
+		const memento = new FakeMemento();
+		await memento.update('csmModules.cache.modules', createCachedSnapshot([
+			{
+				id: 1, owner: 'org', name: 'csmu',
+				description: 'original (older)', topics: ['csm-modsets'],
+				visibility: 'public', defaultBranch: 'main',
+				repoUrl: 'https://github.com/org/csmu',
+				fork: false, pushedAt: '2026-01-01T00:00:00Z',
+			},
+			{
+				id: 2, owner: 'forker', name: 'csmu',
+				description: 'fork (newer)', topics: ['csm-modsets'],
+				visibility: 'public', defaultBranch: 'main',
+				repoUrl: 'https://github.com/forker/csmu',
+				fork: true, pushedAt: '2026-06-01T00:00:00Z',
+			},
+			{
+				id: 3, owner: 'other', name: 'other-module',
+				description: 'only version', topics: ['csm-modsets'],
+				visibility: 'public', defaultBranch: 'main',
+				repoUrl: 'https://github.com/other/other-module',
+				fork: false, pushedAt: '2026-03-01T00:00:00Z',
+			},
+		], '2026-05-20T08:00:00.000Z'));
+
+		mocked.__setConfigurationValue('csmModules.forkedReposHandling', 'latest');
+
+		const controller = createController(memento, {
+			authService: {
+				getSessionSilently: async () => createSession('token', 'tester'),
+				getSessionInteractively: async () => createSession('token', 'tester'),
+				signOut: async () => undefined,
+			},
+			githubService: { fetchModules: async () => ({ modules: [] }), fetchReadme: async () => '' },
+			viewProvider: createViewProvider({
+				setModules: (modules: CsmModuleEntry[]) => {
+					visibleModuleNames = modules.map((m) => m.name);
+					visibleOwners = modules.map((m) => m.owner);
+				},
+			}),
+		});
+
+		controller.register([]);
+		await controller.logoutCommand();
+
+		// "latest": csmu fork (newer) wins, other-module alone
+		assert.strictEqual(visibleModuleNames.length, 2);
+		assert.ok(visibleModuleNames.includes('csmu'));
+		assert.ok(visibleModuleNames.includes('other-module'));
+		// csmu should be the fork version (newer pushedAt)
+		const csmuEntry = visibleOwners[visibleModuleNames.indexOf('csmu')];
+		assert.strictEqual(csmuEntry, 'forker');
+	});
+
+	test('forkedReposHandling "latest" treats undefined pushedAt as earliest', async () => {
+		let visibleOwners: string[] = [];
+		let visibleModuleNames: string[] = [];
+		const memento = new FakeMemento();
+		await memento.update('csmModules.cache.modules', createCachedSnapshot([
+			{
+				id: 1, owner: 'org', name: 'csmu',
+				description: 'original (has pushedAt)', topics: ['csm-modsets'],
+				visibility: 'public', defaultBranch: 'main',
+				repoUrl: 'https://github.com/org/csmu',
+				fork: false, pushedAt: '2026-01-01T00:00:00Z',
+			},
+			{
+				id: 2, owner: 'forker', name: 'csmu',
+				description: 'fork (no pushedAt)', topics: ['csm-modsets'],
+				visibility: 'public', defaultBranch: 'main',
+				repoUrl: 'https://github.com/forker/csmu',
+				fork: true, pushedAt: undefined,
+			},
+		], '2026-05-20T08:00:00.000Z'));
+
+		mocked.__setConfigurationValue('csmModules.forkedReposHandling', 'latest');
+
+		const controller = createController(memento, {
+			authService: {
+				getSessionSilently: async () => createSession('token', 'tester'),
+				getSessionInteractively: async () => createSession('token', 'tester'),
+				signOut: async () => undefined,
+			},
+			githubService: { fetchModules: async () => ({ modules: [] }), fetchReadme: async () => '' },
+			viewProvider: createViewProvider({
+				setModules: (modules: CsmModuleEntry[]) => {
+					visibleModuleNames = modules.map((m) => m.name);
+					visibleOwners = modules.map((m) => m.owner);
+				},
+			}),
+		});
+
+		controller.register([]);
+		await controller.logoutCommand();
+
+		// "latest": original wins because fork has no pushedAt (treated as epoch 0)
+		assert.strictEqual(visibleModuleNames.length, 1);
+		assert.strictEqual(visibleOwners[0], 'org');
+	});
 });

@@ -47,6 +47,8 @@ export function mapRepoToModuleEntry(repo: GitHubRepoSummary): CsmModuleEntry {
 		topics,
 		visibility: repo.private ? 'private' : 'public',
 		archived: repo.archived,
+		fork: repo.fork,
+		pushedAt: repo.pushed_at,
 		defaultBranch: repo.default_branch,
 		repoUrl: repo.html_url,
 		updatedAt: repo.updated_at,
