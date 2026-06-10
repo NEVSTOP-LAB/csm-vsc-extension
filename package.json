@@ -309,6 +309,12 @@
           "default": true,
           "scope": "window",
           "description": "%configuration.csmModules.autoStarModuleRepo.description%"
+        },
+        "csmModules.hideArchivedRepos": {
+          "type": "boolean",
+          "default": true,
+          "scope": "window",
+          "description": "%configuration.csmModules.hideArchivedRepos.description%"
         }
       }
     },

@@ -5,6 +5,7 @@ export interface CsmModuleEntry {
 	description: string;
 	topics: string[];
 	visibility: 'public' | 'private';
+	archived?: boolean;
 	defaultBranch: string;
 	repoUrl: string;
 	starred?: boolean;
@@ -100,6 +101,7 @@ export interface GitHubRepoSummary {
 	full_name: string;
 	description: string | null;
 	private: boolean;
+	archived?: boolean;
 	default_branch: string;
 	html_url: string;
 	topics?: string[];
