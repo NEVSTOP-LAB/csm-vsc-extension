@@ -27,5 +27,7 @@
   "configuration.csmModules.forkedReposHandling.description": "Control how forked module repositories appear in the list.",
   "configuration.csmModules.forkedReposHandling.exclude.description": "Exclude all forked repositories (show only original repos).",
   "configuration.csmModules.forkedReposHandling.latest.description": "Keep only the most recently pushed version per repository name.",
-  "configuration.csmModules.forkedReposHandling.include.description": "Show all repositories including forks."
+  "configuration.csmModules.forkedReposHandling.include.description": "Show all repositories including forks.",
+  "configuration.csmModules.hiddenOwners.description": "Owners whose repositories should be hidden from the Available Modules list (case-insensitive).",
+  "configuration.csmModules.filterTopics.description": "Repositories containing any of these topics will be hidden from the Available Modules list (case-insensitive)."
 }

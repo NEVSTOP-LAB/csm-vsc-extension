@@ -3644,4 +3644,168 @@ suite('ModuleManagerController Regression Tests', () => {
 		assert.strictEqual(visibleModuleNames.length, 1);
 		assert.strictEqual(visibleOwners[0], 'org');
 	});
+
+	test('hiddenOwners excludes repositories from specified owners (case-insensitive)', async () => {
+		let visibleOwners: string[] = [];
+		const memento = new FakeMemento();
+		await memento.update('csmModules.cache.modules', createCachedSnapshot([
+			{
+				id: 1, owner: 'OrgA', name: 'module-a',
+				description: 'a', topics: ['csm-modsets'],
+				visibility: 'public', defaultBranch: 'main',
+				repoUrl: 'https://github.com/OrgA/module-a',
+			},
+			{
+				id: 2, owner: 'orgb', name: 'module-b',
+				description: 'b', topics: ['csm-modsets'],
+				visibility: 'public', defaultBranch: 'main',
+				repoUrl: 'https://github.com/orgb/module-b',
+			},
+			{
+				id: 3, owner: 'OrgC', name: 'module-c',
+				description: 'c', topics: ['csm-modsets'],
+				visibility: 'public', defaultBranch: 'main',
+				repoUrl: 'https://github.com/OrgC/module-c',
+			},
+		], '2026-05-20T08:00:00.000Z'));
+
+		mocked.__setConfigurationValue('csmModules.hiddenOwners', ['orga', 'ORGC']);
+
+		const controller = createController(memento, {
+			authService: {
+				getSessionSilently: async () => createSession('token', 'tester'),
+				getSessionInteractively: async () => createSession('token', 'tester'),
+				signOut: async () => undefined,
+			},
+			githubService: { fetchModules: async () => ({ modules: [] }), fetchReadme: async () => '' },
+			viewProvider: createViewProvider({
+				setModules: (modules: CsmModuleEntry[]) => {
+					visibleOwners = modules.map((m) => m.owner);
+				},
+			}),
+		});
+
+		controller.register([]);
+		await controller.logoutCommand();
+
+		assert.strictEqual(visibleOwners.length, 1);
+		assert.deepStrictEqual(visibleOwners, ['orgb']);
+	});
+
+	test('filterTopics excludes repositories containing specified topics', async () => {
+		let visibleNames: string[] = [];
+		const memento = new FakeMemento();
+		await memento.update('csmModules.cache.modules', createCachedSnapshot([
+			{
+				id: 1, owner: 'org', name: 'module-a',
+				description: 'a', topics: ['csm-modsets', 'deprecated'],
+				visibility: 'public', defaultBranch: 'main',
+				repoUrl: 'https://github.com/org/module-a',
+			},
+			{
+				id: 2, owner: 'org', name: 'module-b',
+				description: 'b', topics: ['csm-modsets'],
+				visibility: 'public', defaultBranch: 'main',
+				repoUrl: 'https://github.com/org/module-b',
+			},
+			{
+				id: 3, owner: 'org', name: 'module-c',
+				description: 'c', topics: ['csm-modsets', 'LEGACY'],
+				visibility: 'public', defaultBranch: 'main',
+				repoUrl: 'https://github.com/org/module-c',
+			},
+		], '2026-05-20T08:00:00.000Z'));
+
+		mocked.__setConfigurationValue('csmModules.filterTopics', ['deprecated', 'legacy']);
+
+		const controller = createController(memento, {
+			authService: {
+				getSessionSilently: async () => createSession('token', 'tester'),
+				getSessionInteractively: async () => createSession('token', 'tester'),
+				signOut: async () => undefined,
+			},
+			githubService: { fetchModules: async () => ({ modules: [] }), fetchReadme: async () => '' },
+			viewProvider: createViewProvider({
+				setModules: (modules: CsmModuleEntry[]) => {
+					visibleNames = modules.map((m) => m.name);
+				},
+			}),
+		});
+
+		controller.register([]);
+		await controller.logoutCommand();
+
+		assert.strictEqual(visibleNames.length, 1);
+		assert.deepStrictEqual(visibleNames, ['module-b']);
+	});
+
+	test('filter pipeline combines hiddenOwners, filterTopics, fork exclude, and archived', async () => {
+		let visibleNames: string[] = [];
+		const memento = new FakeMemento();
+		await memento.update('csmModules.cache.modules', createCachedSnapshot([
+			{
+				id: 1, owner: 'good', name: 'mod-ok',
+				description: '', topics: ['csm-modsets'],
+				visibility: 'public', defaultBranch: 'main',
+				repoUrl: 'https://github.com/good/mod-ok',
+				fork: false, archived: false,
+			},
+			{
+				id: 2, owner: 'blocked-owner', name: 'mod-blocked-by-owner',
+				description: '', topics: ['csm-modsets'],
+				visibility: 'public', defaultBranch: 'main',
+				repoUrl: 'https://github.com/blocked-owner/mod-blocked-by-owner',
+				fork: false, archived: false,
+			},
+			{
+				id: 3, owner: 'good', name: 'mod-deprecated-topic',
+				description: '', topics: ['csm-modsets', 'deprecated'],
+				visibility: 'public', defaultBranch: 'main',
+				repoUrl: 'https://github.com/good/mod-deprecated-topic',
+				fork: false, archived: false,
+			},
+			{
+				id: 4, owner: 'good', name: 'mod-fork',
+				description: '', topics: ['csm-modsets'],
+				visibility: 'public', defaultBranch: 'main',
+				repoUrl: 'https://github.com/good/mod-fork',
+				fork: true, archived: false,
+			},
+			{
+				id: 5, owner: 'good', name: 'mod-archived',
+				description: '', topics: ['csm-modsets'],
+				visibility: 'public', defaultBranch: 'main',
+				repoUrl: 'https://github.com/good/mod-archived',
+				fork: false, archived: true,
+			},
+		], '2026-05-20T08:00:00.000Z'));
+
+		mocked.__setConfigurationValue('csmModules.hiddenOwners', ['blocked-owner']);
+		mocked.__setConfigurationValue('csmModules.filterTopics', ['deprecated']);
+
+		const controller = createController(memento, {
+			authService: {
+				getSessionSilently: async () => createSession('token', 'tester'),
+				getSessionInteractively: async () => createSession('token', 'tester'),
+				signOut: async () => undefined,
+			},
+			githubService: { fetchModules: async () => ({ modules: [] }), fetchReadme: async () => '' },
+			viewProvider: createViewProvider({
+				setModules: (modules: CsmModuleEntry[]) => {
+					visibleNames = modules.map((m) => m.name);
+				},
+			}),
+		});
+
+		controller.register([]);
+		await controller.logoutCommand();
+
+		// Only mod-ok survives all filters:
+		// - blocked-owner filtered by hiddenOwners
+		// - deprecated topic filtered by filterTopics
+		// - fork filtered by default forkedReposHandling "exclude"
+		// - archived filtered by default hideArchivedRepos true
+		assert.strictEqual(visibleNames.length, 1);
+		assert.deepStrictEqual(visibleNames, ['mod-ok']);
+	});
 });
