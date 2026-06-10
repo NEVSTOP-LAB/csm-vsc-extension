@@ -41,6 +41,8 @@ export const CONFIG_KEYS = {
 	autoStarModuleRepo: 'autoStarModuleRepo',
 	hideArchivedRepos: 'hideArchivedRepos',
 	forkedReposHandling: 'forkedReposHandling',
+	hiddenOwners: 'hiddenOwners',
+	filterTopics: 'filterTopics',
 } as const;
 
 export const STORAGE_KEYS = {

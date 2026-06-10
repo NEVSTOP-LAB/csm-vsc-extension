@@ -1552,7 +1552,7 @@ export class ModuleManagerController {
 			// 新数据到达：立即预览渲染模块卡片，让用户看到内容
 			const modules = fetchResult.modules;
 			if (!options.preserveVisibleModules && typeof this.treeDataProvider.setModulesPreview === 'function') {
-				this.treeDataProvider.setModulesPreview(this.filterArchivedModules(this.handleForkedModules(modules)));
+				this.treeDataProvider.setModulesPreview(this.filterModules(modules));
 			}
 
 			// 阶段 3：并行补充 star 状态和 README 预加载
@@ -1846,6 +1846,57 @@ export class ModuleManagerController {
 	}
 
 	/**
+	 * 根据 csmModules.hiddenOwners 配置排除指定 owner 的仓库。
+	 * 配置默认值为空数组（不排除任何 owner），大小写不敏感匹配。
+	 */
+	private filterByOwners(modules: CsmModuleEntry[]): CsmModuleEntry[] {
+		const hiddenOwners = vscode.workspace.getConfiguration(CONFIG_SECTIONS.moduleManager)
+			.get<readonly string[]>(CONFIG_KEYS.hiddenOwners, []);
+		if (hiddenOwners.length === 0) {
+			return modules;
+		}
+		const owners = new Set(hiddenOwners.map((o) => o.trim().toLowerCase()).filter(Boolean));
+		if (owners.size === 0) {
+			return modules;
+		}
+		return modules.filter((m) => !owners.has(m.owner.toLowerCase()));
+	}
+
+	/**
+	 * 根据 csmModules.filterTopics 配置排除含有指定 topic 的仓库。
+	 * 配置默认值为空数组（不排除任何 topic），大小写不敏感匹配。
+	 */
+	private filterByTopics(modules: CsmModuleEntry[]): CsmModuleEntry[] {
+		const filterTopics = vscode.workspace.getConfiguration(CONFIG_SECTIONS.moduleManager)
+			.get<readonly string[]>(CONFIG_KEYS.filterTopics, []);
+		if (filterTopics.length === 0) {
+			return modules;
+		}
+		const topics = new Set(filterTopics.map((t) => t.trim().toLowerCase()).filter(Boolean));
+		if (topics.size === 0) {
+			return modules;
+		}
+		return modules.filter((m) => !(m.topics ?? []).some((t) => topics.has(t.toLowerCase())));
+	}
+
+	/**
+	 * 统一的模块过滤流水线，按 order 依次应用各条过滤规则。
+	 * - filterByOwners：排除指定 owner
+	 * - filterByTopics：排除含有指定 topic 的仓库
+	 * - handleForkedModules：处理 fork 仓库
+	 * - filterArchivedModules：隐藏已归档仓库
+	 */
+	private filterModules(modules: CsmModuleEntry[]): CsmModuleEntry[] {
+		return this.filterArchivedModules(
+			this.handleForkedModules(
+				this.filterByTopics(
+					this.filterByOwners(modules),
+				),
+			),
+		);
+	}
+
+	/**
 	 * 根据 csmModules.hideArchivedRepos 配置过滤已归档模块。
 	 * 配置默认值为 true（隐藏已归档仓库），用户可关闭以显示全部。
 	 */
@@ -1895,7 +1946,7 @@ export class ModuleManagerController {
 			: this.shouldRevealPrivateCache(snapshot)
 				? modules
 				: modules.filter((module) => module.visibility === 'public');
-		const visibleModules = this.filterArchivedModules(this.handleForkedModules(result));
+		const visibleModules = this.filterModules(result);
 		// 合并远程 LV 版本缓存
 		const lvCache = this.cacheStore.getLvVersionCache();
 		return visibleModules.map((m) => {

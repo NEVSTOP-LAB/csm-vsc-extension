@@ -282,7 +282,22 @@
           "type": "string",
           "default": "csm",
           "scope": "resource",
+          "order": 1,
           "description": "%configuration.csmModules.defaultModuleRoot.description%"
+        },
+        "csmModules.autoStarCsmCore": {
+          "type": "boolean",
+          "default": true,
+          "scope": "window",
+          "order": 2,
+          "description": "%configuration.csmModules.autoStarCsmCore.description%"
+        },
+        "csmModules.autoStarModuleRepo": {
+          "type": "boolean",
+          "default": true,
+          "scope": "window",
+          "order": 3,
+          "description": "%configuration.csmModules.autoStarModuleRepo.description%"
         },
         "csmModules.hiddenTopics": {
           "type": "array",
@@ -296,24 +311,34 @@
             "labview"
           ],
           "scope": "window",
+          "order": 10,
           "description": "%configuration.csmModules.hiddenTopics.description%"
         },
-        "csmModules.autoStarCsmCore": {
-          "type": "boolean",
-          "default": true,
+        "csmModules.hiddenOwners": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
           "scope": "window",
-          "description": "%configuration.csmModules.autoStarCsmCore.description%"
+          "order": 11,
+          "description": "%configuration.csmModules.hiddenOwners.description%"
         },
-        "csmModules.autoStarModuleRepo": {
-          "type": "boolean",
-          "default": true,
+        "csmModules.filterTopics": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
           "scope": "window",
-          "description": "%configuration.csmModules.autoStarModuleRepo.description%"
+          "order": 12,
+          "description": "%configuration.csmModules.filterTopics.description%"
         },
         "csmModules.hideArchivedRepos": {
           "type": "boolean",
           "default": true,
           "scope": "window",
+          "order": 13,
           "description": "%configuration.csmModules.hideArchivedRepos.description%"
         },
         "csmModules.forkedReposHandling": {
@@ -330,6 +355,7 @@
           ],
           "default": "exclude",
           "scope": "window",
+          "order": 14,
           "description": "%configuration.csmModules.forkedReposHandling.description%"
         }
       }
