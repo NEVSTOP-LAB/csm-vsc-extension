@@ -9,6 +9,12 @@ export function applyEnglishHoverTranslations(entries: Record<string, HoverEntry
 		return entries;
 	}
 
+	// 无翻译时跳过拷贝，直接返回原文
+	const translationKeys = Object.keys(translations);
+	if (translationKeys.length === 0) {
+		return entries;
+	}
+
 	const localized: Record<string, HoverEntry> = {};
 	for (const [key, entry] of Object.entries(entries)) {
 		localized[key] = translations[key] ?? entry;
