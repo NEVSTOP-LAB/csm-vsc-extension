@@ -1,5 +1,5 @@
 import * as assert from 'assert';
-import { GitHubModuleService } from '../moduleManager/githubModuleService';
+import { GitHubModuleService, mapRepoToModuleEntry } from '../moduleManager/githubModuleService';
 
 type FetchFn = typeof globalThis.fetch;
 
@@ -260,5 +260,76 @@ suite('GitHubModuleService Tests', () => {
 				body: JSON.stringify({ names: ['labview-csm', 'csm-modsets'] }),
 			},
 		]);
+	});
+
+	test('mapRepoToModuleEntry preserves fork and pushed_at fields', () => {
+		const repo = {
+			id: 1,
+			name: 'my-module',
+			full_name: 'org/my-module',
+			description: 'desc',
+			private: false,
+			fork: true,
+			pushed_at: '2026-06-01T00:00:00Z',
+			archived: false,
+			default_branch: 'main',
+			html_url: 'https://github.com/org/my-module',
+			topics: ['csm-modsets'],
+			updated_at: '2026-05-01T00:00:00Z',
+		};
+
+		const entry = mapRepoToModuleEntry(repo);
+		assert.strictEqual(entry.fork, true);
+		assert.strictEqual(entry.pushedAt, '2026-06-01T00:00:00Z');
+		assert.strictEqual(entry.archived, false);
+	});
+
+	test('mapRepoToModuleEntry treats undefined fork and pushed_at as undefined', () => {
+		const repo = {
+			id: 2,
+			name: 'other-module',
+			full_name: 'org/other-module',
+			description: null,
+			private: false,
+			default_branch: 'main',
+			html_url: 'https://github.com/org/other-module',
+		};
+
+		const entry = mapRepoToModuleEntry(repo);
+		assert.strictEqual(entry.fork, undefined);
+		assert.strictEqual(entry.pushedAt, undefined);
+		assert.strictEqual(entry.archived, undefined);
+	});
+
+	test('fetchModules preserves fork and pushed_at from GitHub API response', async () => {
+		globalThis.fetch = (async () => ({
+			ok: true,
+			status: 200,
+			headers: createHeaders({ etag: '"etag-fork-test"' }),
+			json: async () => ({
+				items: [
+					{
+						id: 10,
+						name: 'csmu',
+						full_name: 'forker/csmu',
+						description: 'fork of csmu',
+						private: false,
+						fork: true,
+						pushed_at: '2026-06-10T00:00:00Z',
+						default_branch: 'main',
+						html_url: 'https://github.com/forker/csmu',
+						topics: ['csm-modsets'],
+						updated_at: '2026-06-10T00:00:00Z',
+					},
+				],
+			}),
+		}) as Response) as FetchFn;
+
+		const service = new GitHubModuleService();
+		const result = await service.fetchModules();
+
+		assert.strictEqual(result.modules.length, 1);
+		assert.strictEqual(result.modules[0]?.fork, true);
+		assert.strictEqual(result.modules[0]?.pushedAt, '2026-06-10T00:00:00Z');
 	});
 });
