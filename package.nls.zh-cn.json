@@ -23,5 +23,9 @@
   "configuration.csmModules.hiddenTopics.description": "用于配置在 CSM Modules 侧边栏徽标、树视图提示和本地搜索文本中隐藏的模块仓库 topics。",
   "configuration.csmModules.autoStarCsmCore.description": "将模块应用到本地工作区时，自动在 GitHub 上 Star CSM Core 仓库（NEVSTOP-LAB/Communicable-State-Machine）。",
   "configuration.csmModules.autoStarModuleRepo.description": "将模块应用到本地工作区时，自动在 GitHub 上 Star 所下载模块对应的仓库。",
-  "configuration.csmModules.hideArchivedRepos.description": "在可用模块列表中隐藏已归档的模块仓库。关闭后，已归档的仓库将与活跃仓库一同显示。"
+  "configuration.csmModules.hideArchivedRepos.description": "在可用模块列表中隐藏已归档的模块仓库。关闭后，已归档的仓库将与活跃仓库一同显示。",
+  "configuration.csmModules.forkedReposHandling.description": "控制 fork 模块仓库在列表中的显示方式。",
+  "configuration.csmModules.forkedReposHandling.exclude.description": "排除所有 fork 仓库（仅显示原始仓库）。",
+  "configuration.csmModules.forkedReposHandling.latest.description": "同名仓库仅保留推送时间最新的版本。",
+  "configuration.csmModules.forkedReposHandling.include.description": "显示全部仓库（含 fork）。"
 }

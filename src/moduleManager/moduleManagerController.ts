@@ -1552,7 +1552,7 @@ export class ModuleManagerController {
 			// 新数据到达：立即预览渲染模块卡片，让用户看到内容
 			const modules = fetchResult.modules;
 			if (!options.preserveVisibleModules && typeof this.treeDataProvider.setModulesPreview === 'function') {
-				this.treeDataProvider.setModulesPreview(this.filterArchivedModules(modules));
+				this.treeDataProvider.setModulesPreview(this.filterArchivedModules(this.handleForkedModules(modules)));
 			}
 
 			// 阶段 3：并行补充 star 状态和 README 预加载
@@ -1854,6 +1854,40 @@ export class ModuleManagerController {
 		return hideArchived ? modules.filter((m) => !m.archived) : modules;
 	}
 
+	/**
+	 * 根据 csmModules.forkedReposHandling 配置处理 fork 仓库。
+	 * - 'exclude'：隐藏所有 fork（默认）
+	 * - 'latest'：同名仓库仅保留 pushedAt 最新的版本
+	 * - 'include'：全部显示
+	 */
+	private handleForkedModules(modules: CsmModuleEntry[]): CsmModuleEntry[] {
+		const handling = vscode.workspace.getConfiguration(CONFIG_SECTIONS.moduleManager)
+			.get<string>(CONFIG_KEYS.forkedReposHandling, 'exclude');
+		switch (handling) {
+			case 'exclude':
+				return modules.filter((m) => !m.fork);
+			case 'latest': {
+				// 按 name 分组，每组取 pushedAt 最新者（undefined 视为最早）
+				const byName = new Map<string, CsmModuleEntry[]>();
+				for (const m of modules) {
+					const group = byName.get(m.name) ?? [];
+					group.push(m);
+					byName.set(m.name, group);
+				}
+				return [...byName.values()].map((group) =>
+					group.reduce((best, current) => {
+						const bestTime = best.pushedAt ? Date.parse(best.pushedAt) : 0;
+						const curTime = current.pushedAt ? Date.parse(current.pushedAt) : 0;
+						return curTime > bestTime ? current : best;
+					})
+				);
+			}
+			case 'include':
+			default:
+				return modules;
+		}
+	}
+
 	private getVisibleModulesFromSnapshot(snapshot: ModuleCacheSnapshot | undefined): CsmModuleEntry[] {
 		const modules = snapshot?.modules ?? [];
 		const result = !modules.some((module) => module.visibility === 'private')
@@ -1861,7 +1895,7 @@ export class ModuleManagerController {
 			: this.shouldRevealPrivateCache(snapshot)
 				? modules
 				: modules.filter((module) => module.visibility === 'public');
-		const visibleModules = this.filterArchivedModules(result);
+		const visibleModules = this.filterArchivedModules(this.handleForkedModules(result));
 		// 合并远程 LV 版本缓存
 		const lvCache = this.cacheStore.getLvVersionCache();
 		return visibleModules.map((m) => {
