@@ -1571,7 +1571,7 @@ export class ModuleManagerController {
 
 			// 阶段 3：并行补充 star 状态和 README 预加载
 			if (!options.preserveVisibleModules) {
-				this.treeDataProvider.setLoading(t('loadingDetailsProgress', { done: 0, total: modules.length }));
+				this.treeDataProvider.setLoading(t('loadingDetailsProgress', { done: 0, total: modules.length * 2 }));
 			}
 
 			const detailProgress = { stars: 0, readmes: 0 };

@@ -5,6 +5,7 @@ import * as path from 'path';
 import JSZip from 'jszip';
 import * as yaml from 'js-yaml';
 import { CopyModuleUpdatePreview, CsmModuleEntry, LocalModuleConfig, LocalModuleConfigEntry, ModuleApplyMethod, ModuleUpdateResult } from './types';
+import { t } from './messages';
 import { GitService, IGitRunner } from './gitService';
 
 const CONFIG_VERSION = '2';
@@ -689,14 +690,14 @@ export class WorkspaceModuleService {
 		onProgress?: (message: string) => void,
 	): Promise<LocalModuleConfigEntry> {
 		const branch = entry.defaultBranch || 'main';
-		onProgress?.(`Adding submodule ${entry.owner}/${entry.name}...`);
+		onProgress?.(t('applyingSubmoduleAdding', { repo: `${entry.owner}/${entry.name}` }));
 		await this.runGit(
 			repoRoot,
 			['submodule', 'add', '-b', branch, entry.repoUrl, targetRelativePath],
 			authToken,
 			entry.repoUrl,
 		);
-		onProgress?.(`Initializing submodule ${entry.owner}/${entry.name}...`);
+		onProgress?.(t('applyingSubmoduleInit', { repo: `${entry.owner}/${entry.name}` }));
 		await this.runGit(
 			repoRoot,
 			['submodule', 'update', '--init', '--recursive', targetRelativePath],
@@ -724,10 +725,10 @@ export class WorkspaceModuleService {
 				cloneArgs.push('--branch', entry.defaultBranch);
 			}
 			cloneArgs.push(entry.repoUrl, checkoutPath);
-			onProgress?.(`Cloning ${entry.owner}/${entry.name} from GitHub...`);
+			onProgress?.(t('applyingCopyCloning', { repo: `${entry.owner}/${entry.name}` }));
 			await this.runGit(repoRoot, cloneArgs, authToken, entry.repoUrl);
 			const ref = await this.runGit(checkoutPath, ['rev-parse', 'HEAD']);
-			onProgress?.(`Copying ${entry.owner}/${entry.name} files...`);
+			onProgress?.(t('applyingCopyFiles', { repo: `${entry.owner}/${entry.name}` }));
 			await fs.mkdir(path.dirname(targetPath), { recursive: true });
 			await this.copyDirectory(checkoutPath, targetPath);
 			return this.createConfigEntry(entry, 'copy', targetRelativePath, ref, branch);
