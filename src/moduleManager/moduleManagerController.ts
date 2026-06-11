@@ -243,7 +243,10 @@ export class ModuleManagerController {
 			void vscode.window.showErrorMessage(t('commandErrorPrefix', { message }));
 		});
 
-		void this.refreshWorkspaceInitializationState({ prompt: true });
+		const initRefresh = this.refreshWorkspaceInitializationState({ prompt: true });
+		void initRefresh.catch((error) => {
+			this.logger.error(`Failed to refresh workspace initialization state during registration: ${error instanceof Error ? error.message : String(error)}`);
+		});
 	}
 
 	public async applyToWorkspaceCommand(entry?: CsmModuleEntry | ModuleTreeItem, useOnlyEntry = false): Promise<void> {
@@ -333,19 +336,22 @@ export class ModuleManagerController {
 						// then atomically merge into config in one write (review item 2.4).
 						const settled = await Promise.allSettled(
 							selectedEntries.map(async (moduleEntry) => {
-								const applied = await this.workspaceModuleService.applyModule(
-									applyRoot,
-									config,
-									moduleEntry,
-									applyMethod,
-									authToken,
-									(msg) => progress.report({ message: msg }),
-								);
-								progress.report({
-									increment: 100 / selectedEntries.length,
-									message: `${moduleEntry.owner}/${moduleEntry.name}`,
-								});
-								return applied;
+								try {
+									const applied = await this.workspaceModuleService.applyModule(
+										applyRoot,
+										config,
+										moduleEntry,
+										applyMethod,
+										authToken,
+										(msg) => progress.report({ message: msg }),
+									);
+									return applied;
+								} finally {
+									progress.report({
+										increment: 100 / selectedEntries.length,
+										message: `${moduleEntry.owner}/${moduleEntry.name}`,
+									});
+								}
 							}),
 						);
 						const successes: LocalModuleConfigEntry[] = [];

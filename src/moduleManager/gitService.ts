@@ -60,7 +60,6 @@ export class GitService implements IGitRunner {
 	public async exec(options: GitExecOptions): Promise<string> {
 		const { cwd, args, authToken, repoUrl } = options;
 		const env = { ...process.env };
-		const cleanupTasks: Array<() => Promise<void>> = [];
 
 		if (authToken && this.usesHttpsRemote(repoUrl)) {
 			const askpass = await this.ensureAskpassScript();
@@ -81,14 +80,6 @@ export class GitService implements IGitRunner {
 			return stdout.trim();
 		} catch (error) {
 			throw new Error(formatCommandError(error));
-		} finally {
-			for (const task of cleanupTasks) {
-				try {
-					await task();
-				} catch {
-					// best effort
-				}
-			}
 		}
 	}
 

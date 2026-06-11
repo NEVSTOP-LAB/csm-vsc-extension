@@ -30,11 +30,6 @@ export class LoginCommand {
 	execute(): Promise<void> { return this.target.loginCommand(); }
 }
 
-export class LogoutCommand {
-	constructor(private readonly target: CommandTarget) { }
-	execute(): Promise<void> { return this.target.logoutCommand(); }
-}
-
 export class RefreshCommand {
 	constructor(private readonly target: CommandTarget) { }
 	execute(): Promise<void> { return this.target.refreshCommand(); }
