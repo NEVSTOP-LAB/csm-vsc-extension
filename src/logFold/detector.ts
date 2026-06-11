@@ -3,7 +3,6 @@
 // ---------------------------------------------------------------------------
 
 import { LineSignature, FoldRegion, RepeatPattern, FoldOptions, DEFAULT_FOLD_OPTIONS } from './types';
-import { normalizeLine } from './normalizer';
 import { CSMLOG_RELATIVE_TS_PATTERN } from '../common/constants';
 
 // ---------------------------------------------------------------------------
@@ -110,7 +109,7 @@ export function detectRepeatRegions(
                 startLine: runStart,
                 endLine: runEnd,
                 repeatCount: runCount,
-                pattern: classifyPattern(runSig, runSamples, rawLines),
+                pattern: classifyPattern(),
                 sampleLines: [...runSamples],
                 signature: runSig.normalized,
             });
@@ -271,17 +270,9 @@ export function detectRepeatRegions(
 // ---------------------------------------------------------------------------
 
 /**
- * 判定 L1 区域的模式：exact / parameterized / interleaved（初始假定 exact）
+ * L1 阶段统一返回 'exact'；L3 会进一步判定 parameterized/interleaved。
  */
-function classifyPattern(
-    sig: LineSignature,
-    _samples: string[],
-    _rawLines: string[],
-): RepeatPattern {
-    if (sig.paramMask.length > 0) {
-        // 签名中有参数归一化 → 可能参数化，L3 会进一步确认
-        return 'exact';
-    }
+function classifyPattern(): RepeatPattern {
     return 'exact';
 }
 
@@ -293,17 +284,20 @@ function checkParamsVariation(
     rawLines: string[],
     signatures: Array<LineSignature | null>,
 ): boolean {
-    // 取首尾各一条做比对
     if (region.endLine <= region.startLine) { return false; }
     const firstSig = signatures[region.startLine];
-    const lastSig = signatures[region.endLine];
-    if (!firstSig || !lastSig) { return false; }
-    if (firstSig.paramMask.length === 0 && lastSig.paramMask.length === 0) { return false; }
+    if (!firstSig || firstSig.paramMask.length === 0) { return false; }
 
-    // 归一化后相同但原始行不同 → 参数变化
-    const firstRaw = rawLines[region.startLine];
-    const lastRaw = rawLines[region.endLine];
-    return firstRaw !== lastRaw;
+    // 去重原始行（归一化后签名相同但原始行有多种 → 参数化）
+    const uniqueRaw = new Set<string>();
+    for (let i = region.startLine; i <= region.endLine; i++) {
+        const sig = signatures[i];
+        if (sig && sig.normalized === firstSig.normalized) {
+            uniqueRaw.add(rawLines[i]);
+            if (uniqueRaw.size > 1) { return true; }
+        }
+    }
+    return false;
 }
 
 /**
@@ -339,7 +333,9 @@ function extractParams(
         for (const m of raw.matchAll(/\{([^}]*)\}/g)) { values.push(m[1]); }
         // >> 引导值
         for (const m of raw.matchAll(/>>\s+([^<\n]+?)(?=\s*<-|$)/g)) { values.push(m[1].trim()); }
-        if (values.length > 0) { result.push(values); }
+        // 去重（brace 和 arrow 可能捕获同一参数的不同表示）
+        const uniqueValues = [...new Set(values)];
+        if (uniqueValues.length > 0) { result.push(uniqueValues); }
     }
 
     return result;
