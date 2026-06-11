@@ -27,9 +27,6 @@ let decorDebounceTimer: ReturnType<typeof setTimeout> | undefined;
 /** 当前装饰类型（随主题变化而重建） */
 let currentDecorTypes: DecorationTypes | undefined;
 
-/** 已执行过自动折叠的文档 URI（避免重复折叠） */
-const autoFoldedDocs = new Set<string>();
-
 export function activate(context: vscode.ExtensionContext) {
 	// 语言功能（高亮、Hover、Outline）必须在模块管理器之前注册，
 	// 确保即使模块管理器初始化失败，csmlog/lvcsm 的基本语言特性仍可用。
@@ -88,19 +85,14 @@ export function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(
 		vscode.workspace.onDidCloseTextDocument((document) => {
 			foldProvider.clearCache(document.uri.toString());
-			autoFoldedDocs.delete(document.uri.toString());
 		}),
 	);
 
-	// 切换编辑器时统一更新状态栏和装饰，并触发自动折叠
+	// 切换编辑器时统一更新状态栏和装饰
 	context.subscriptions.push(
 		vscode.window.onDidChangeActiveTextEditor((editor) => {
 			updateStatusBar(statusBarItem, editor);
 			scheduleDecorUpdate(editor);
-			// 对新打开的 csmlog 文件自动折叠
-			if (editor && editor.document.languageId === 'csmlog') {
-				autoFoldOnOpen(editor);
-			}
 		}),
 	);
 
@@ -125,10 +117,6 @@ export function activate(context: vscode.ExtensionContext) {
 	// 初始化
 	updateStatusBar(statusBarItem, vscode.window.activeTextEditor);
 	scheduleDecorUpdate(vscode.window.activeTextEditor);
-	// 如果有已打开的 csmlog 文件，自动折叠
-	if (vscode.window.activeTextEditor?.document.languageId === 'csmlog') {
-		autoFoldOnOpen(vscode.window.activeTextEditor);
-	}
 
 	// ---- 装饰器 dispose ----
 	if (currentDecorTypes) {
@@ -169,7 +157,7 @@ function registerCommands(
 	context.subscriptions.push(
 		vscode.commands.registerCommand('csmlog.folding.toggleEnabled', async () => {
 			const config = vscode.workspace.getConfiguration('csmlog.folding');
-			const current = config.get<boolean>('enabled', true);
+			const current = config.get<boolean>('enabled', false);
 			await config.update('enabled', !current, vscode.ConfigurationTarget.Global);
 			// 清除缓存强制重算
 			const editor = vscode.window.activeTextEditor;
@@ -177,13 +165,11 @@ function registerCommands(
 				foldProvider.clearCache(editor.document.uri.toString());
 				updateStatusBar(statusBarItem, editor);
 				scheduleDecorUpdate(editor);
-				if (!current) {
-					// 刚启用 → 自动折叠
-					autoFoldOnOpen(editor);
-				} else {
+				if (current) {
 					// 刚禁用 → 展开全部
 					await vscode.commands.executeCommand('editor.unfoldAll');
 				}
+				// 刚启用 → 仅更新装饰和状态栏（不自动折叠）
 			}
 		}),
 	);
@@ -246,33 +232,6 @@ function registerCommands(
 			);
 		}),
 	);
-}
-
-// ---------------------------------------------------------------------------
-// 自动折叠
-// ---------------------------------------------------------------------------
-
-/**
- * 对首次打开的 csmlog 文档自动折叠所有重复区。
- * 每个文档只执行一次（跟踪 autoFoldedDocs）。
- */
-async function autoFoldOnOpen(editor: vscode.TextEditor): Promise<void> {
-	const uri = editor.document.uri.toString();
-	if (autoFoldedDocs.has(uri)) { return; }
-
-	const options = readFoldOptions();
-	if (!options.enabled) { return; }
-
-	// 等一段时间确保 FoldingRangeProvider 已返回结果
-	await new Promise((resolve) => setTimeout(resolve, 300));
-
-	try {
-		// foldAllMarkerRegions: 折叠所有标记为 Region 的折叠区
-		await vscode.commands.executeCommand('editor.foldAllMarkerRegions');
-		autoFoldedDocs.add(uri);
-	} catch {
-		// 忽略失败（某些 VS Code 版本可能不支持该命令）
-	}
 }
 
 // ---------------------------------------------------------------------------

@@ -407,7 +407,7 @@
         },
         "csmlog.folding.enabled": {
           "type": "boolean",
-          "default": true,
+          "default": false,
           "scope": "window",
           "order": 100,
           "description": "%configuration.csmlog.folding.enabled.description%"
