@@ -144,9 +144,14 @@
         "icon": "$(info)"
       },
       {
-        "command": "csmlog.folding.toggleEnabled",
-        "title": "%commands.csmlog.folding.toggleEnabled.title%",
+        "command": "csmlog.folding.enable",
+        "title": "%commands.csmlog.folding.enable.title%",
         "icon": "$(eye)"
+      },
+      {
+        "command": "csmlog.folding.disable",
+        "title": "%commands.csmlog.folding.disable.title%",
+        "icon": "$(eye-closed)"
       },
       {
         "command": "csmlog.folding.foldAll",
@@ -276,8 +281,13 @@
       ],
       "editor/title": [
         {
-          "command": "csmlog.folding.toggleEnabled",
-          "when": "editorLangId == csmlog",
+          "command": "csmlog.folding.enable",
+          "when": "editorLangId == csmlog && !config.csmlog.folding.enabled",
+          "group": "navigation"
+        },
+        {
+          "command": "csmlog.folding.disable",
+          "when": "editorLangId == csmlog && config.csmlog.folding.enabled",
           "group": "navigation"
         },
         {
