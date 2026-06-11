@@ -13,14 +13,15 @@ argument-hint: "描述需要开发的 VS Code 扩展功能或要解决的问题"
 
 当前项目 `csm-vsc-support`（publisher: NEVSTOP-LAB），技术栈：
 - TypeScript（strict，Node16 模块，ES2022 目标），esbuild 打包，Mocha 测试
-- VS Code 最低版本：`^1.60.0`（来自 `engines.vscode`，非 `@types/vscode`）
+- VS Code 最低版本：`^1.63.0`（来自 `engines.vscode`，非 `@types/vscode`）
 - 文件扩展名：`.csmlog`（日志）、`.lvcsm`（配置）
+- 源码模块：`src/logFold/`（日志折叠）、`src/moduleManager/`（模块管理）、`src/hoverData/`（Hover 数据）、`src/common/`（共享工具）
 
 ## 子 agent 分派规则
 
 | 任务类型 | 分派到 |
 |---------|--------|
-| 编写/修改 `src/` 下的 TypeScript 源码（provider、command、extension.ts 等） | `vscode-ext-api` |
+| 编写/修改 `src/` 下的 TypeScript 源码（provider、command、extension.ts、FoldingRangeProvider 等） | `vscode-ext-api` |
 | 修改 `package.json` 的 contributes、activationEvents、configuration 等清单配置 | `vscode-ext-manifest` |
 | 修改 `syntaxes/*.tmLanguage.json`、`language-configuration.json` 等语法高亮文件 | `vscode-ext-syntax` |
 | 审查 doc-code 同步、版本号一致性、README/CHANGELOG 更新 | `vscode-ext-review` |

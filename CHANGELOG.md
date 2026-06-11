@@ -8,6 +8,11 @@
 
 ### 新增
 
+- **CSMLog 日志重复折叠**：`.csmlog` 文件中重复的日志行自动检测并折叠显示，支持 5 种重复模式（精确重复、参数变化重复、多行块重复、交错重复）。通过三级递进算法（L1 连续行匹配 → L2 Rabin-Karp 滚动哈希块匹配 → L3 token 级参数确认）实现高效检测（100K 行约 265ms）。提供 `csmlog.folding.*` 配置项（启用/阈值/块大小/智能参数/装饰样式）和 3 条命令（`toggleAllFolds` / `foldCurrentRegion` / `showStats`）
+- 折叠区域以四种底色区分重复类型（灰蓝精确/灰紫参数/灰绿块/灰橙交错），概要标签显示重复次数、时间跨度和频率
+- 新增 `src/logFold/` 模块：`types.ts` 核心类型、`normalizer.ts` 归一化引擎、`detector.ts` 检测算法、`foldingProvider.ts` FoldingRangeProvider、`decorations.ts` 装饰器
+- 新增 `src/test/logFold/` 测试模块：28 项测试覆盖归一化、检测、Provider、性能
+
 - 本地模块卡片新增 LabVIEW 开发版本徽章，自动检测模块的开发版本并以 `lv2020` / `lv2020(64bit)` 格式展示
 - 版本检测支持四种优先级来源：`DEV ENVIRONMENT` 目录标记文件、`.lvproj` 项目文件、`.lvlib` 库文件、`.vi` 二进制文件头（保底方案）
 - 新增 `src/moduleManager/labviewVersionDetector.ts` 版本检测模块，含完整 BCD 编码解码和版本映射表（8.0~2025）
