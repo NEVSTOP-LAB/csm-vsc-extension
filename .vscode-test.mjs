@@ -8,5 +8,9 @@ export default defineConfig({
 	files: [
 		'out/test/extension.test.js',
 		'out/test/moduleManagerIntegration.test.js',
+		'out/test/logFold/normalizer.test.js',
+		'out/test/logFold/detector.test.js',
+		'out/test/logFold/foldingProvider.test.js',
+		'out/test/logFold/performance.test.js',
 	],
 });
