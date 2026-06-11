@@ -31,6 +31,9 @@ let savedTopLine: number | undefined;
 /** 模块级 foldProvider 引用（供 updateDecorationsForEditor 检查激活状态） */
 let foldProvider: CSMLogFoldingRangeProvider;
 
+/** 记录当前已全部折叠的文档 URI（用于 toggleAllFolds 判断方向） */
+const fullyFoldedDocs = new Set<string>();
+
 // ---------------------------------------------------------------------------
 // activate
 // ---------------------------------------------------------------------------
@@ -172,6 +175,7 @@ function registerCommands(
 			await new Promise((resolve) => setTimeout(resolve, 150));
 			savedTopLine = editor.visibleRanges[0]?.start.line;
 			await vscode.commands.executeCommand('editor.foldAllMarkerRegions');
+			fullyFoldedDocs.add(uri);
 			restoreViewport(editor);
 
 			scheduleDecorUpdate(editor);
@@ -187,6 +191,7 @@ function registerCommands(
 
 			const uri = editor.document.uri.toString();
 			foldProvider.enabledDocs.delete(uri);
+			fullyFoldedDocs.delete(uri);
 
 			await vscode.commands.executeCommand('setContext', 'csmlog.folding.activated', false);
 
@@ -204,10 +209,31 @@ function registerCommands(
 		vscode.commands.registerCommand('csmlog.folding.toggleAllFolds', async () => {
 			const editor = vscode.window.activeTextEditor;
 			if (!editor || editor.document.languageId !== 'csmlog') { return; }
-			if (!foldProvider.enabledDocs.has(editor.document.uri.toString())) { return; }
+			const uri = editor.document.uri.toString();
+			if (!foldProvider.enabledDocs.has(uri)) { return; }
 
 			savedTopLine = editor.visibleRanges[0]?.start.line;
-			await vscode.commands.executeCommand('editor.toggleFold');
+
+			// 判断当前是否处于已折叠状态：
+			// 如果存在至少一个 region 是折叠的 → 当前是折叠态 → 展开全部
+			// 否则 → 折叠全部
+			const regions = detectFoldRegions(editor);
+			const anyFolded = regions.some((r) => {
+				if (r.endLine <= r.startLine) { return true; }
+				const checkLine = r.startLine + 1;
+				return !editor.visibleRanges.some(
+					(vr) => vr.start.line <= checkLine && vr.end.line >= checkLine,
+				);
+			});
+
+			if (anyFolded) {
+				await vscode.commands.executeCommand('editor.unfoldAll');
+				fullyFoldedDocs.delete(uri);
+			} else {
+				await vscode.commands.executeCommand('editor.foldAllMarkerRegions');
+				fullyFoldedDocs.add(uri);
+			}
+
 			restoreViewport(editor);
 			scheduleDecorUpdate(editor);
 			updateStatusBar(statusBarItem, editor, foldProvider);
@@ -253,6 +279,21 @@ async function restoreViewport(editor: vscode.TextEditor): Promise<void> {
 			vscode.TextEditorRevealType.AtTop,
 		);
 	}
+}
+
+// ---------------------------------------------------------------------------
+// 折叠区域检测（轻量，用于 toggleAllFolds 判断当前折叠方向）
+// ---------------------------------------------------------------------------
+
+function detectFoldRegions(editor: vscode.TextEditor): Array<{ startLine: number; endLine: number }> {
+	const rawLines: string[] = [];
+	const signatures: Array<import('./logFold/types').LineSignature | null> = [];
+	for (let i = 0; i < editor.document.lineCount; i++) {
+		const raw = editor.document.lineAt(i).text;
+		rawLines.push(raw);
+		signatures.push(normalizeLine(raw));
+	}
+	return detectRepeatRegions(rawLines, signatures, readFoldOptions());
 }
 
 // ---------------------------------------------------------------------------
