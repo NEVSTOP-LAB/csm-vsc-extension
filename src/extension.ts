@@ -33,6 +33,9 @@ let savedTopLine: number | undefined;
 // ---------------------------------------------------------------------------
 
 export function activate(context: vscode.ExtensionContext) {
+	// 初始化折叠上下文键（必须在注册 menus 之前，否则 editor/title 按钮不显示）
+	vscode.commands.executeCommand('setContext', 'csmlog.folding.activated', false);
+
 	// 语言功能（高亮、Hover、Outline）
 	try {
 		context.subscriptions.push(
