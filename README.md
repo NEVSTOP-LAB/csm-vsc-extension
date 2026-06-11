@@ -10,7 +10,7 @@
 
 | 功能 | 说明 |
 |---|---|
-| `.csmlog` 日志支持 | 语法高亮、Hover 悬停提示、Outline 大纲、自动编码识别 |
+| `.csmlog` 日志支持 | 语法高亮、Hover 悬停提示、Outline 大纲、**智能重复折叠**、自动编码识别 |
 | `.lvcsm` 配置文件支持 | 语法高亮、Outline 大纲、自动编码识别 |
 | `CSM Modules` 模块管理 | 侧边栏浏览、搜索、引入、更新、移除 CSM 模块，支持 GitHub 登录与批量操作 |
 | 文件装饰 (File Decorations) | 为 `.csmlog` (C) 与 `.lvcsm` (L) 添加 Badge 标记，可与任意图标主题共存 |
@@ -19,6 +19,7 @@
 ## 快速入口
 
 - 打开任意 `.csmlog` 或 `.lvcsm` 文件即可自动激活扩展功能
+- `.csmlog` 文件中的重复日志行会自动检测并折叠，可配置阈值与样式
 - 打开侧边栏 **CSM Modules** 视图即可浏览和管理模块
 - 扩展自动为 `.csmlog` / `.lvcsm` 文件添加 Badge 标记，无需手动设置
 
@@ -28,6 +29,10 @@
 |---|---|---|
 | `csmModules.defaultModuleRoot` | `csm` | 首次引入模块时预填的默认目录名 |
 | `csmModules.hiddenTopics` | `csm-modsets`, `lv-csm-app`, `labview-csm`, `labview` | 侧边栏中默认隐藏的 topic |
+| `csmlog.folding.minRepeatCount` | `3` | 最少连续重复几次触发折叠 |
+| `csmlog.folding.maxBlockLines` | `20` | 多行块匹配的最大行数 |
+| `csmlog.folding.smartParams` | `true` | 启用参数归一化，消息模板相同仅参数不同的行也折叠 |
+| `csmlog.folding.decorationStyle` | `compact` | 折叠概要标签样式（compact: ×42 / detailed: 含时间） |
 
 ## 更多文档
 

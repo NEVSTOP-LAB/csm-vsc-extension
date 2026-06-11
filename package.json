@@ -127,6 +127,26 @@
         "command": "csmModules.setSortOrder",
         "title": "%commands.setSortOrder.title%",
         "icon": "$(list-ordered)"
+      },
+      {
+        "command": "csmlog.folding.toggleAllFolds",
+        "title": "%commands.csmlog.folding.toggleAllFolds.title%",
+        "icon": "$(fold)"
+      },
+      {
+        "command": "csmlog.folding.showStats",
+        "title": "%commands.csmlog.folding.showStats.title%",
+        "icon": "$(info)"
+      },
+      {
+        "command": "csmlog.folding.activate",
+        "title": "%commands.csmlog.folding.activate.title%",
+        "icon": "$(eye)"
+      },
+      {
+        "command": "csmlog.folding.deactivate",
+        "title": "%commands.csmlog.folding.deactivate.title%",
+        "icon": "$(eye-closed)"
       }
     ],
     "viewsContainers": {
@@ -244,6 +264,23 @@
           "group": "2_actions@2"
         }
       ],
+      "editor/title": [
+        {
+          "command": "csmlog.folding.activate",
+          "when": "editorLangId == csmlog && !csmlog.folding.activated",
+          "group": "navigation"
+        },
+        {
+          "command": "csmlog.folding.deactivate",
+          "when": "editorLangId == csmlog && csmlog.folding.activated",
+          "group": "navigation"
+        },
+        {
+          "command": "csmlog.folding.toggleAllFolds",
+          "when": "editorLangId == csmlog && csmlog.folding.activated",
+          "group": "navigation@1"
+        }
+      ],
       "commandPalette": [
         {
           "command": "csmModules.contextApplyModule",
@@ -272,6 +309,10 @@
         {
           "command": "csmModules.contextOpenFolder",
           "when": "false"
+        },
+        {
+          "command": "csmlog.folding.showStats",
+          "when": "editorLangId == csmlog"
         }
       ]
     },
@@ -357,6 +398,46 @@
           "scope": "window",
           "order": 14,
           "description": "%configuration.csmModules.forkedReposHandling.description%"
+        },
+        "csmlog.folding.minRepeatCount": {
+          "type": "number",
+          "default": 3,
+          "minimum": 2,
+          "maximum": 100,
+          "scope": "window",
+          "order": 101,
+          "description": "%configuration.csmlog.folding.minRepeatCount.description%"
+        },
+        "csmlog.folding.maxBlockLines": {
+          "type": "number",
+          "default": 20,
+          "minimum": 2,
+          "maximum": 100,
+          "scope": "window",
+          "order": 102,
+          "description": "%configuration.csmlog.folding.maxBlockLines.description%"
+        },
+        "csmlog.folding.smartParams": {
+          "type": "boolean",
+          "default": true,
+          "scope": "window",
+          "order": 103,
+          "description": "%configuration.csmlog.folding.smartParams.description%"
+        },
+        "csmlog.folding.decorationStyle": {
+          "type": "string",
+          "enum": [
+            "compact",
+            "detailed"
+          ],
+          "enumDescriptions": [
+            "%configuration.csmlog.folding.decorationStyle.compact.description%",
+            "%configuration.csmlog.folding.decorationStyle.detailed.description%"
+          ],
+          "default": "compact",
+          "scope": "window",
+          "order": 104,
+          "description": "%configuration.csmlog.folding.decorationStyle.description%"
         }
       }
     },

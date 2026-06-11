@@ -17,6 +17,7 @@ user-invocable: false
 | `package.json` → `version` | CHANGELOG.md（版本号章节） |
 | `package.json` → `contributes` 新增 | README.md（功能列表）、CHANGELOG.md（变更记录） |
 | `src/` 新功能 | README.md（功能列表）、CHANGELOG.md（变更记录） |
+| `src/logFold/` 变更 | README.md（设置表格）、CHANGELOG.md（新增章节） |
 | `syntaxes/` 变更 | README.md、`docs/` 下相关设计文档 |
 
 ### 版本号铁律

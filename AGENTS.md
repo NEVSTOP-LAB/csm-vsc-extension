@@ -4,6 +4,17 @@
 
 ---
 
+## 项目架构
+
+| 模块 | 路径 | 职责 |
+|------|------|------|
+| 扩展入口 | `src/extension.ts` | 注册 Provider、命令、状态栏 |
+| 日志折叠 | `src/logFold/` | 归一化 → 检测 → FoldingRangeProvider → 装饰器 |
+| 语法高亮 | `syntaxes/*.tmLanguage.json` | csmlog / lvcsm TextMate 语法 |
+| 语言功能 | `src/csmlogHoverProvider.ts`, `src/csmlogDocumentSymbolProvider.ts` | Hover 提示、Outline 大纲 |
+| 模块管理 | `src/moduleManager/` | 侧边栏 Webview、GitHub/Git 操作 |
+| 共享工具 | `src/common/`, `src/hoverData/`, `src/i18n.ts` | 常量、Hover 数据、国际化 |
+
 ## 使用中文
 
 所有注释、回复和总结均使用中文。
