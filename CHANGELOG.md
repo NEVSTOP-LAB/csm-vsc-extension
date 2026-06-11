@@ -8,7 +8,7 @@
 
 ### 新增
 
-- **CSMLog 日志重复折叠**：`.csmlog` 文件中重复的日志行自动检测并折叠显示，支持 5 种重复模式（精确重复、参数变化重复、多行块重复、交错重复）。通过三级递进算法（L1 连续行匹配 → L2 Rabin-Karp 滚动哈希块匹配 → L3 token 级参数确认）实现高效检测（100K 行约 265ms）。提供 `csmlog.folding.*` 配置项（启用/阈值/块大小/智能参数/装饰样式）和 3 条命令（`toggleAllFolds` / `foldCurrentRegion` / `showStats`）
+- **CSMLog 日志重复折叠**：`.csmlog` 文件中重复的日志行自动检测并折叠显示，支持 4 种重复模式（精确重复、参数变化重复、多行块重复、交错重复）。通过三级递进算法（L1 连续行匹配 → L2 Rabin-Karp 滚动哈希块匹配 → L3 token 级参数确认）实现高效检测（100K 行约 265ms）。提供 `csmlog.folding.*` 配置项（阈值/块大小/智能参数/装饰样式）和命令（`toggleAllFolds` / `showStats`）。通过编辑器工具栏 👁 按钮按文件激活。
 - 折叠区域以四种底色区分重复类型（灰蓝精确/灰紫参数/灰绿块/灰橙交错），概要标签显示重复次数、时间跨度和频率
 - 新增 `src/logFold/` 模块：`types.ts` 核心类型、`normalizer.ts` 归一化引擎、`detector.ts` 检测算法、`foldingProvider.ts` FoldingRangeProvider、`decorations.ts` 装饰器
 - 新增 `src/test/logFold/` 测试模块：28 项测试覆盖归一化、检测、Provider、性能

@@ -187,6 +187,20 @@ export function detectRepeatRegions(
             let blockRunCount = 0;
 
             for (let pos = gs; pos + w - 1 <= ge; pos += w) {
+                // 跳过已被 L2 其他窗口大小覆盖的行，避免重叠区
+                let anyCovered = false;
+                for (let k = 0; k < w && !anyCovered; k++) {
+                    if (covered[pos + k]) { anyCovered = true; }
+                }
+                if (anyCovered) {
+                    // 冲刷当前运行
+                    flushBlockRun(blockRunStart, blockRunCount, w, minRepeat, rawLines, signatures, covered, regions);
+                    blockRunStart = -1;
+                    blockRunCount = 0;
+                    prevHash = -1;
+                    continue;
+                }
+
                 // 确保块内所有行有有效签名
                 let allValid = true;
                 for (let k = 0; k < w; k++) {
@@ -294,43 +308,38 @@ function checkParamsVariation(
 
 /**
  * 提取区域内每次出现的参数值。
+ * 使用正则直接从剥离时间戳后的原始行重新提取，不依赖归一化过程中记录的 paramMask 偏移
+ * （递进替换会导致偏移量相对于逐步缩短的中间文本，而非原始剥离文本）。
  */
 function extractParams(
     region: FoldRegion,
     rawLines: string[],
-    signatures: Array<LineSignature | null>,
+    _signatures: Array<LineSignature | null>,
 ): string[][] {
     const result: string[][] = [];
-    const sig = signatures[region.startLine];
-    if (!sig || sig.paramMask.length === 0) { return result; }
-
-    // 对每条采样行提取参数
     const sampleIndices: number[] = [];
     sampleIndices.push(region.startLine);
-    if (region.endLine > region.startLine) {
-        sampleIndices.push(region.endLine);
-    }
-    // 中间再取一条
+    if (region.endLine > region.startLine) { sampleIndices.push(region.endLine); }
     const mid = Math.floor((region.startLine + region.endLine) / 2);
-    if (mid !== region.startLine && mid !== region.endLine) {
-        sampleIndices.push(mid);
-    }
+    if (mid !== region.startLine && mid !== region.endLine) { sampleIndices.push(mid); }
+
+    const relTsRegex = new RegExp(CSMLOG_RELATIVE_TS_PATTERN, 'g');
+    // CSM 完整日期时间戳
+    const dateTsRe = /\d{4}[/-]\d{2}[/-]\d{2}\s+\d{2}:\d{2}:\d{2}\.\d{3}/;
 
     for (const idx of sampleIndices) {
-        const raw = rawLines[idx];
-        const lineSig = signatures[idx];
-        if (!lineSig || lineSig.paramMask.length === 0) { continue; }
-        // 从原始行中剥离时间戳前缀，使 paramMask 坐标对齐
-        const relTsRegex = new RegExp(CSMLOG_RELATIVE_TS_PATTERN, 'g');
-        const strippedRaw = raw.substring(lineSig.strippedOffset)
-            .replace(relTsRegex, '')
-            .replace(/\s{2,}/g, ' ')
-            .trim();
+        let raw = rawLines[idx];
+        // 剥离日期时间戳前缀和相对时间戳
+        const dateMatch = raw.match(dateTsRe);
+        if (dateMatch) { raw = raw.substring(raw.indexOf(dateMatch[0]) + dateMatch[0].length); }
+        raw = raw.replace(relTsRegex, '').replace(/\s{2,}/g, ' ').trim();
+
         const values: string[] = [];
-        for (const [start, end] of lineSig.paramMask) {
-            values.push(strippedRaw.substring(start, end));
-        }
-        result.push(values);
+        // 花括号参数块
+        for (const m of raw.matchAll(/\{([^}]*)\}/g)) { values.push(m[1]); }
+        // >> 引导值
+        for (const m of raw.matchAll(/>>\s+([^<\n]+?)(?=\s*<-|$)/g)) { values.push(m[1].trim()); }
+        if (values.length > 0) { result.push(values); }
     }
 
     return result;

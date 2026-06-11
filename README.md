@@ -30,8 +30,9 @@
 | `csmModules.defaultModuleRoot` | `csm` | 首次引入模块时预填的默认目录名 |
 | `csmModules.hiddenTopics` | `csm-modsets`, `lv-csm-app`, `labview-csm`, `labview` | 侧边栏中默认隐藏的 topic |
 | `csmlog.folding.minRepeatCount` | `3` | 最少连续重复几次触发折叠 |
-| `csmlog.folding.minRepeatCount` | `3` | 最少连续重复几次触发折叠 |
+| `csmlog.folding.maxBlockLines` | `20` | 多行块匹配的最大行数 |
 | `csmlog.folding.smartParams` | `true` | 启用参数归一化，消息模板相同仅参数不同的行也折叠 |
+| `csmlog.folding.decorationStyle` | `compact` | 折叠概要标签样式（compact: ×42 / detailed: 含时间） |
 
 ## 更多文档
 

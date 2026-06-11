@@ -31,9 +31,6 @@ let savedTopLine: number | undefined;
 /** 模块级 foldProvider 引用（供 updateDecorationsForEditor 检查激活状态） */
 let foldProvider: CSMLogFoldingRangeProvider;
 
-/** 记录当前已全部折叠的文档 URI（用于 toggleAllFolds 判断方向） */
-const fullyFoldedDocs = new Set<string>();
-
 // ---------------------------------------------------------------------------
 // activate
 // ---------------------------------------------------------------------------
@@ -175,7 +172,6 @@ function registerCommands(
 			await new Promise((resolve) => setTimeout(resolve, 150));
 			savedTopLine = editor.visibleRanges[0]?.start.line;
 			await vscode.commands.executeCommand('editor.foldAllMarkerRegions');
-			fullyFoldedDocs.add(uri);
 			restoreViewport(editor);
 
 			scheduleDecorUpdate(editor);
@@ -191,7 +187,6 @@ function registerCommands(
 
 			const uri = editor.document.uri.toString();
 			foldProvider.enabledDocs.delete(uri);
-			fullyFoldedDocs.delete(uri);
 
 			await vscode.commands.executeCommand('setContext', 'csmlog.folding.activated', false);
 
@@ -228,10 +223,8 @@ function registerCommands(
 
 			if (anyFolded) {
 				await vscode.commands.executeCommand('editor.unfoldAll');
-				fullyFoldedDocs.delete(uri);
 			} else {
 				await vscode.commands.executeCommand('editor.foldAllMarkerRegions');
-				fullyFoldedDocs.add(uri);
 			}
 
 			restoreViewport(editor);

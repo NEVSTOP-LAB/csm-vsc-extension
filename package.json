@@ -309,6 +309,10 @@
         {
           "command": "csmModules.contextOpenFolder",
           "when": "false"
+        },
+        {
+          "command": "csmlog.folding.showStats",
+          "when": "editorLangId == csmlog"
         }
       ]
     },
