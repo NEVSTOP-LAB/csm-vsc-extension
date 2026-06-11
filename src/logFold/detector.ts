@@ -32,6 +32,47 @@ function hashString(s: string): number {
     return h;
 }
 
+/**
+ * 冲刷多行块运行：将检测到的重复块记录到 regions 并标记 covered。
+ */
+function flushBlockRun(
+    blockRunStart: number,
+    blockRunCount: number,
+    w: number,
+    minRepeat: number,
+    rawLines: string[],
+    signatures: Array<LineSignature | null>,
+    covered: boolean[],
+    regions: FoldRegion[],
+): void {
+    if (blockRunCount < minRepeat || blockRunStart < 0) { return; }
+
+    const blockSamples: string[] = [];
+    const firstBlockEnd = blockRunStart + w - 1;
+    for (let k = 0; k < Math.min(3 * w, firstBlockEnd - blockRunStart + 1); k++) {
+        blockSamples.push(rawLines[blockRunStart + k]);
+    }
+    // 最后一块样本
+    const lastBlockStart = blockRunStart + (blockRunCount - 1) * w;
+    if (lastBlockStart !== blockRunStart) {
+        blockSamples.push('---');
+        for (let k = 0; k < w; k++) {
+            blockSamples.push(rawLines[lastBlockStart + k]);
+        }
+    }
+    regions.push({
+        startLine: blockRunStart,
+        endLine: blockRunStart + blockRunCount * w - 1,
+        repeatCount: blockRunCount,
+        pattern: 'block-exact',
+        sampleLines: blockSamples,
+        signature: signatures[blockRunStart]!.normalized,
+    });
+    for (let j = blockRunStart; j < blockRunStart + blockRunCount * w; j++) {
+        covered[j] = true;
+    }
+}
+
 // ---------------------------------------------------------------------------
 // 主检测器
 // ---------------------------------------------------------------------------
@@ -153,31 +194,7 @@ export function detectRepeatRegions(
                 }
                 if (!allValid) {
                     // 冲刷并跳过
-                    if (blockRunCount >= minRepeat && blockRunStart >= 0) {
-                        const blockSamples: string[] = [];
-                        for (let k = 0; k < Math.min(3 * w, (blockRunStart + w - 1) - blockRunStart + 1); k++) {
-                            blockSamples.push(rawLines[blockRunStart + k]);
-                        }
-                        // 最后一块样本
-                        const lastBlockStart = blockRunStart + (blockRunCount - 1) * w;
-                        if (lastBlockStart !== blockRunStart) {
-                            blockSamples.push('---');
-                            for (let k = 0; k < w; k++) {
-                                blockSamples.push(rawLines[lastBlockStart + k]);
-                            }
-                        }
-                        regions.push({
-                            startLine: blockRunStart,
-                            endLine: blockRunStart + blockRunCount * w - 1,
-                            repeatCount: blockRunCount,
-                            pattern: 'block-exact',
-                            sampleLines: blockSamples,
-                            signature: signatures[blockRunStart]!.normalized,
-                        });
-                        for (let j = blockRunStart; j < blockRunStart + blockRunCount * w; j++) {
-                            covered[j] = true;
-                        }
-                    }
+                    flushBlockRun(blockRunStart, blockRunCount, w, minRepeat, rawLines, signatures, covered, regions);
                     blockRunStart = -1;
                     blockRunCount = 0;
                     prevHash = -1;
@@ -195,30 +212,7 @@ export function detectRepeatRegions(
                     }
                 } else {
                     // 冲刷
-                    if (blockRunCount >= minRepeat && blockRunStart >= 0) {
-                        const blockSamples: string[] = [];
-                        for (let k = 0; k < Math.min(3 * w, (blockRunStart + w - 1) - blockRunStart + 1); k++) {
-                            blockSamples.push(rawLines[blockRunStart + k]);
-                        }
-                        const lastBlockStart = blockRunStart + (blockRunCount - 1) * w;
-                        if (lastBlockStart !== blockRunStart) {
-                            blockSamples.push('---');
-                            for (let k = 0; k < w; k++) {
-                                blockSamples.push(rawLines[lastBlockStart + k]);
-                            }
-                        }
-                        regions.push({
-                            startLine: blockRunStart,
-                            endLine: blockRunStart + blockRunCount * w - 1,
-                            repeatCount: blockRunCount,
-                            pattern: 'block-exact',
-                            sampleLines: blockSamples,
-                            signature: signatures[blockRunStart]!.normalized,
-                        });
-                        for (let j = blockRunStart; j < blockRunStart + blockRunCount * w; j++) {
-                            covered[j] = true;
-                        }
-                    }
+                    flushBlockRun(blockRunStart, blockRunCount, w, minRepeat, rawLines, signatures, covered, regions);
                     blockRunStart = -1;
                     blockRunCount = 0;
                 }
@@ -226,30 +220,7 @@ export function detectRepeatRegions(
             }
 
             // 冲刷最后的块运行
-            if (blockRunCount >= minRepeat && blockRunStart >= 0) {
-                const blockSamples: string[] = [];
-                for (let k = 0; k < Math.min(3 * w, (blockRunStart + w - 1) - blockRunStart + 1); k++) {
-                    blockSamples.push(rawLines[blockRunStart + k]);
-                }
-                const lastBlockStart = blockRunStart + (blockRunCount - 1) * w;
-                if (lastBlockStart !== blockRunStart) {
-                    blockSamples.push('---');
-                    for (let k = 0; k < w; k++) {
-                        blockSamples.push(rawLines[lastBlockStart + k]);
-                    }
-                }
-                regions.push({
-                    startLine: blockRunStart,
-                    endLine: blockRunStart + blockRunCount * w - 1,
-                    repeatCount: blockRunCount,
-                    pattern: 'block-exact',
-                    sampleLines: blockSamples,
-                    signature: signatures[blockRunStart]!.normalized,
-                });
-                for (let j = blockRunStart; j < blockRunStart + blockRunCount * w; j++) {
-                    covered[j] = true;
-                }
-            }
+            flushBlockRun(blockRunStart, blockRunCount, w, minRepeat, rawLines, signatures, covered, regions);
         }
     }
 
@@ -349,9 +320,14 @@ function extractParams(
         const raw = rawLines[idx];
         const lineSig = signatures[idx];
         if (!lineSig || lineSig.paramMask.length === 0) { continue; }
+        // 从原始行中剥离时间戳前缀，使 paramMask 坐标对齐
+        const strippedRaw = raw.substring(lineSig.strippedOffset)
+            .replace(/\[\d{2}:\d{2}:\d{2}\.\d{3}\]/g, '')
+            .replace(/\s{2,}/g, ' ')
+            .trim();
         const values: string[] = [];
         for (const [start, end] of lineSig.paramMask) {
-            values.push(raw.substring(start, end));
+            values.push(strippedRaw.substring(start, end));
         }
         result.push(values);
     }

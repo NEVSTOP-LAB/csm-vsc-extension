@@ -14,7 +14,6 @@ const PATTERN_BG_COLORS: Record<RepeatPattern, string> = {
     exact: 'rgba(100, 140, 180, 0.06)',          // 灰蓝
     parameterized: 'rgba(130, 110, 180, 0.06)',   // 灰紫
     'block-exact': 'rgba(100, 160, 130, 0.06)',   // 灰绿
-    'block-parameterized': 'rgba(90, 150, 150, 0.06)', // 灰青
     interleaved: 'rgba(180, 145, 100, 0.06)',     // 灰橙
 };
 
@@ -143,7 +142,7 @@ export function applyDecorations(
         });
 
         // 参数高亮：仅在 parameterized 模式下
-        if (region.pattern === 'parameterized' || region.pattern === 'block-parameterized') {
+        if (region.pattern === 'parameterized') {
             if (region.paramsByOccurrence && region.paramsByOccurrence.length > 0) {
                 // 在第一条样本行找到参数位置并高亮
                 // 简化处理：仅对起始行应用参数高亮（通过匹配花括号内容）

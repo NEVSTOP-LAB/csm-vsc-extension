@@ -84,9 +84,14 @@ export class CSMLogFoldingRangeProvider implements vscode.FoldingRangeProvider {
      */
     onDocumentChanged(e: vscode.TextDocumentChangeEvent): void {
         const key = e.document.uri.toString();
-        // 直接清除缓存，下次 provideFoldingRanges 时全量重算
-        // （增量重算可在后续优化）
         this.cache.delete(key);
+    }
+
+    /**
+     * 显式清除某个文档的缓存（在文档关闭时调用，防止内存泄漏）。
+     */
+    clearCache(uri: string): void {
+        this.cache.delete(uri);
     }
 }
 

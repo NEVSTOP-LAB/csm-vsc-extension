@@ -17,6 +17,12 @@ export interface LineSignature {
      * 回溯原始行时可根据此区间定位原始参数位置。
      */
     paramMask: Array<[number, number]>;
+    /**
+     * 归一化文本在原始行中的起始偏移量。
+     * 即：rawLine.substring(strippedOffset) 去掉时间戳后得到归一化前的文本。
+     * 用于将 paramMask 坐标映射回原始行。
+     */
+    strippedOffset: number;
 }
 
 /**
@@ -25,14 +31,13 @@ export interface LineSignature {
  *  - exact:               单条消息精确重复（去时间戳后完全相同）
  *  - parameterized:       消息模板相同但参数值变化
  *  - block-exact:         多行块精确重复
- *  - block-parameterized: 多行块模板相同但块内参数变化
+ *  - block-exact:         多行块精确重复
  *  - interleaved:         多条消息以各自频率交错出现
  */
 export type RepeatPattern =
     | 'exact'
     | 'parameterized'
     | 'block-exact'
-    | 'block-parameterized'
     | 'interleaved';
 
 /**
