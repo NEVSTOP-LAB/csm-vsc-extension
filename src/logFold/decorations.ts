@@ -85,15 +85,15 @@ export function createDecorationTypes(themeKind: vscode.ColorThemeKind): Decorat
         rangeBehavior: vscode.DecorationRangeBehavior.ClosedClosed,
     });
 
-    // 折叠三角 — 已折叠状态（▼）
+    // 折叠三角 — 已折叠状态（▶ 表示内容已收起，点击展开）
     const foldTriangleFolded = vscode.window.createTextEditorDecorationType({
-        before: { contentText: '▼ ', color: triangleColor, fontWeight: 'bold', margin: '0 4px 0 0' },
+        before: { contentText: '▶ ', color: triangleColor, fontWeight: 'bold', margin: '0 4px 0 0' },
         rangeBehavior: vscode.DecorationRangeBehavior.ClosedClosed,
     });
 
-    // 折叠三角 — 已展开状态（▶）
+    // 折叠三角 — 已展开状态（▼ 表示内容可见，点击收起）
     const foldTriangleExpanded = vscode.window.createTextEditorDecorationType({
-        before: { contentText: '▶ ', color: triangleColor, fontWeight: 'bold', margin: '0 4px 0 0' },
+        before: { contentText: '▼ ', color: triangleColor, fontWeight: 'bold', margin: '0 4px 0 0' },
         rangeBehavior: vscode.DecorationRangeBehavior.ClosedClosed,
     });
 
