@@ -127,6 +127,21 @@
         "command": "csmModules.setSortOrder",
         "title": "%commands.setSortOrder.title%",
         "icon": "$(list-ordered)"
+      },
+      {
+        "command": "csmlog.folding.toggleAllFolds",
+        "title": "%commands.csmlog.folding.toggleAllFolds.title%",
+        "icon": "$(fold)"
+      },
+      {
+        "command": "csmlog.folding.foldCurrentRegion",
+        "title": "%commands.csmlog.folding.foldCurrentRegion.title%",
+        "icon": "$(collapse-all)"
+      },
+      {
+        "command": "csmlog.folding.showStats",
+        "title": "%commands.csmlog.folding.showStats.title%",
+        "icon": "$(info)"
       }
     ],
     "viewsContainers": {
