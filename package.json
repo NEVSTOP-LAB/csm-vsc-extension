@@ -357,6 +357,53 @@
           "scope": "window",
           "order": 14,
           "description": "%configuration.csmModules.forkedReposHandling.description%"
+        },
+        "csmlog.folding.enabled": {
+          "type": "boolean",
+          "default": true,
+          "scope": "window",
+          "order": 100,
+          "description": "%configuration.csmlog.folding.enabled.description%"
+        },
+        "csmlog.folding.minRepeatCount": {
+          "type": "number",
+          "default": 3,
+          "minimum": 2,
+          "maximum": 100,
+          "scope": "window",
+          "order": 101,
+          "description": "%configuration.csmlog.folding.minRepeatCount.description%"
+        },
+        "csmlog.folding.maxBlockLines": {
+          "type": "number",
+          "default": 20,
+          "minimum": 2,
+          "maximum": 100,
+          "scope": "window",
+          "order": 102,
+          "description": "%configuration.csmlog.folding.maxBlockLines.description%"
+        },
+        "csmlog.folding.smartParams": {
+          "type": "boolean",
+          "default": true,
+          "scope": "window",
+          "order": 103,
+          "description": "%configuration.csmlog.folding.smartParams.description%"
+        },
+        "csmlog.folding.decorationStyle": {
+          "type": "string",
+          "enum": [
+            "compact",
+            "detailed"
+          ],
+          "enumDescriptions": [
+            "%configuration.csmlog.folding.decorationStyle.compact.description%",
+            "%configuration.csmlog.folding.decorationStyle.detailed.description%"
+          ],
+          "default": "compact",
+          "scope": "window",
+          "order": 104,
+          "description": "%configuration.csmlog.folding.decorationStyle.description%"
         }
       }
     },

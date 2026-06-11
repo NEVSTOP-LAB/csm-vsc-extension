@@ -29,5 +29,12 @@
   "configuration.csmModules.forkedReposHandling.latest.description": "Keep only the most recently pushed version per repository name.",
   "configuration.csmModules.forkedReposHandling.include.description": "Show all repositories including forks.",
   "configuration.csmModules.hiddenOwners.description": "Owners whose repositories should be hidden from the Available Modules list (case-insensitive).",
-  "configuration.csmModules.filterTopics.description": "Repositories containing any of these topics will be hidden from the Available Modules list (case-insensitive)."
+  "configuration.csmModules.filterTopics.description": "Repositories containing any of these topics will be hidden from the Available Modules list (case-insensitive).",
+  "configuration.csmlog.folding.enabled.description": "Enable folding of repeated log lines in CSMLog files.",
+  "configuration.csmlog.folding.minRepeatCount.description": "Minimum number of consecutive identical (or similar) lines before they are folded into a repeat region.",
+  "configuration.csmlog.folding.maxBlockLines.description": "Maximum number of lines in a block pattern to detect for multi-line repeating blocks.",
+  "configuration.csmlog.folding.smartParams.description": "When enabled, lines with the same message template but different parameter values are folded together (e.g. 'Try to Connect >> {localhost;6340;1}' and '… >> {localhost;6340;2}').",
+  "configuration.csmlog.folding.decorationStyle.description": "Controls the information shown on folded repeat regions.",
+  "configuration.csmlog.folding.decorationStyle.compact.description": "Show repeat count only (e.g. '…×42').",
+  "configuration.csmlog.folding.decorationStyle.detailed.description": "Show repeat count, time span and rate (e.g. '…重复 42 次 · 12:26:15~12:26:26 · ≈4.2条/s')."
 }

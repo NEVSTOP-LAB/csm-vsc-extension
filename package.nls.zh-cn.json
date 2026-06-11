@@ -29,5 +29,12 @@
   "configuration.csmModules.forkedReposHandling.latest.description": "同名仓库仅保留推送时间最新的版本。",
   "configuration.csmModules.forkedReposHandling.include.description": "显示全部仓库（含 fork）。",
   "configuration.csmModules.hiddenOwners.description": "从可用模块列表中排除的仓库所有者（大小写不敏感）。",
-  "configuration.csmModules.filterTopics.description": "含有这些 topic 之一的仓库将从可用模块列表中排除（大小写不敏感）。"
+  "configuration.csmModules.filterTopics.description": "含有这些 topic 之一的仓库将从可用模块列表中排除（大小写不敏感）。",
+  "configuration.csmlog.folding.enabled.description": "启用 CSMLog 文件中重复日志行的折叠显示。",
+  "configuration.csmlog.folding.minRepeatCount.description": "连续重复多少次后触发折叠（最小值 2）。",
+  "configuration.csmlog.folding.maxBlockLines.description": "多行块模式匹配的最大行数。",
+  "configuration.csmlog.folding.smartParams.description": "启用后，消息模板相同但参数值不同的行也会被折叠（如 \"Try to Connect >> {localhost;6340;1}\" 和 \"… >> {localhost;6340;2}\"）。",
+  "configuration.csmlog.folding.decorationStyle.description": "控制折叠区域概要标签的详细程度。",
+  "configuration.csmlog.folding.decorationStyle.compact.description": "仅显示重复次数（如 \"…×42\"）。",
+  "configuration.csmlog.folding.decorationStyle.detailed.description": "显示重复次数、时间跨度和速率（如 \"…重复 42 次 · 12:26:15~12:26:26 · ≈4.2条/s\"）。"
 }
