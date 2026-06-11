@@ -31,7 +31,6 @@ export interface LineSignature {
  *  - exact:               单条消息精确重复（去时间戳后完全相同）
  *  - parameterized:       消息模板相同但参数值变化
  *  - block-exact:         多行块精确重复
- *  - block-exact:         多行块精确重复
  *  - interleaved:         多条消息以各自频率交错出现
  */
 export type RepeatPattern =

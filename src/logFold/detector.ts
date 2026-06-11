@@ -4,6 +4,7 @@
 
 import { LineSignature, FoldRegion, RepeatPattern, FoldOptions, DEFAULT_FOLD_OPTIONS } from './types';
 import { normalizeLine } from './normalizer';
+import { CSMLOG_RELATIVE_TS_PATTERN } from '../common/constants';
 
 // ---------------------------------------------------------------------------
 // 工具：滚动哈希
@@ -321,8 +322,9 @@ function extractParams(
         const lineSig = signatures[idx];
         if (!lineSig || lineSig.paramMask.length === 0) { continue; }
         // 从原始行中剥离时间戳前缀，使 paramMask 坐标对齐
+        const relTsRegex = new RegExp(CSMLOG_RELATIVE_TS_PATTERN, 'g');
         const strippedRaw = raw.substring(lineSig.strippedOffset)
-            .replace(/\[\d{2}:\d{2}:\d{2}\.\d{3}\]/g, '')
+            .replace(relTsRegex, '')
             .replace(/\s{2,}/g, ' ')
             .trim();
         const values: string[] = [];

@@ -13,7 +13,7 @@ import {
 	detectRepeatRegions,
 	normalizeLine,
 } from './logFold';
-import { DEFAULT_FOLD_OPTIONS, FoldOptions, FoldRegion } from './logFold/types';
+import { DEFAULT_FOLD_OPTIONS, FoldOptions } from './logFold/types';
 
 // ---------------------------------------------------------------------------
 // 装饰器更新去抖
