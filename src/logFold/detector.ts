@@ -91,7 +91,6 @@ export function detectRepeatRegions(
     signatures: Array<LineSignature | null>,
     options: FoldOptions = DEFAULT_FOLD_OPTIONS,
 ): FoldRegion[] {
-    if (!options.enabled) { return []; }
 
     const n = rawLines.length;
     const minRepeat = Math.max(2, options.minRepeatCount);

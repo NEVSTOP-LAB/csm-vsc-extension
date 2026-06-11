@@ -25,7 +25,7 @@ const DEBOUNCE_MS = 200;
 let decorDebounceTimer: ReturnType<typeof setTimeout> | undefined;
 let currentDecorTypes: DecorationTypes | undefined;
 
-/** 暂存折叠前的视窗首行，用于折叠后恢复滚动位置 */
+/** 暂存折叠前的视窗首行 */
 let savedTopLine: number | undefined;
 
 // ---------------------------------------------------------------------------
@@ -56,7 +56,7 @@ export function activate(context: vscode.ExtensionContext) {
 		vscode.languages.registerFoldingRangeProvider({ language: 'csmlog' }, foldProvider),
 	);
 
-	// 主题变更时重建装饰类型
+	// 主题变更
 	context.subscriptions.push(
 		vscode.window.onDidChangeActiveColorTheme((theme) => {
 			if (currentDecorTypes) {
@@ -66,7 +66,7 @@ export function activate(context: vscode.ExtensionContext) {
 				disposeDecorationTypes(currentDecorTypes);
 			}
 			currentDecorTypes = createDecorationTypes(theme.kind);
-			scheduleDecorUpdate(vscode.window.activeTextEditor);
+			refreshDecorForActiveEditor();
 		}),
 	);
 
@@ -74,22 +74,27 @@ export function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(
 		vscode.workspace.onDidChangeTextDocument((e) => {
 			foldProvider.onDocumentChanged(e);
-			scheduleDecorUpdate(vscode.window.activeTextEditor);
+			refreshDecorForActiveEditor();
 		}),
 	);
 
-	// 关闭文档时清除折叠缓存
+	// 关闭文档时清除缓存 + 清理 per-file 状态
 	context.subscriptions.push(
 		vscode.workspace.onDidCloseTextDocument((document) => {
-			foldProvider.clearCache(document.uri.toString());
+			const uri = document.uri.toString();
+			foldProvider.clearCache(uri);
+			foldProvider.enabledDocs.delete(uri);
 		}),
 	);
 
-	// 切换编辑器时更新状态栏和装饰
+	// 切换编辑器时更新状态栏和装饰，重置 toolbar context
 	context.subscriptions.push(
 		vscode.window.onDidChangeActiveTextEditor((editor) => {
-			updateStatusBar(statusBarItem, editor);
-			scheduleDecorUpdate(editor);
+			const isCsmlog = editor?.document.languageId === 'csmlog';
+			const activated = isCsmlog && foldProvider.enabledDocs.has(editor!.document.uri.toString());
+			vscode.commands.executeCommand('setContext', 'csmlog.folding.activated', activated);
+			updateStatusBar(statusBarItem, editor, foldProvider);
+			refreshDecorForActiveEditor();
 		}),
 	);
 
@@ -107,7 +112,7 @@ export function activate(context: vscode.ExtensionContext) {
 	statusBarItem.command = 'csmlog.folding.toggleAllFolds';
 	statusBarItem.tooltip = '切换全部 CSMLog 重复区折叠';
 	context.subscriptions.push(statusBarItem);
-	updateStatusBar(statusBarItem, vscode.window.activeTextEditor);
+	updateStatusBar(statusBarItem, vscode.window.activeTextEditor, foldProvider);
 	scheduleDecorUpdate(vscode.window.activeTextEditor);
 
 	// ---- 装饰器 dispose ----
@@ -146,92 +151,76 @@ function registerCommands(
 	statusBarItem: vscode.StatusBarItem,
 ): void {
 
-	// 启用折叠
+	// ---- 激活当前文件的折叠功能（检测 + 自动全部折叠） ----
 	context.subscriptions.push(
-		vscode.commands.registerCommand('csmlog.folding.enable', async () => {
-			const config = vscode.workspace.getConfiguration('csmlog.folding');
-			await config.update('enabled', true, vscode.ConfigurationTarget.Global);
-			const editor = vscode.window.activeTextEditor;
-			if (editor) {
-				foldProvider.clearCache(editor.document.uri.toString());
-				updateStatusBar(statusBarItem, editor);
-				scheduleDecorUpdate(editor);
-			}
-		}),
-	);
-
-	// 禁用折叠
-	context.subscriptions.push(
-		vscode.commands.registerCommand('csmlog.folding.disable', async () => {
-			const config = vscode.workspace.getConfiguration('csmlog.folding');
-			await config.update('enabled', false, vscode.ConfigurationTarget.Global);
-			const editor = vscode.window.activeTextEditor;
-			if (editor) {
-				await vscode.commands.executeCommand('editor.unfoldAll');
-				foldProvider.clearCache(editor.document.uri.toString());
-				updateStatusBar(statusBarItem, editor);
-				scheduleDecorUpdate(editor);
-			}
-		}),
-	);
-
-	// 折叠全部重复区（保持视窗位置）
-	context.subscriptions.push(
-		vscode.commands.registerCommand('csmlog.folding.foldAll', async () => {
+		vscode.commands.registerCommand('csmlog.folding.activate', async () => {
 			const editor = vscode.window.activeTextEditor;
 			if (!editor || editor.document.languageId !== 'csmlog') { return; }
-			// 保存当前视窗顶部行号
+
+			const uri = editor.document.uri.toString();
+			foldProvider.enabledDocs.add(uri);
+			foldProvider.clearCache(uri);
+
+			// 设置 context key，控制工具栏按钮显隐
+			await vscode.commands.executeCommand('setContext', 'csmlog.folding.activated', true);
+
+			// 等待 FoldingRangeProvider 返回结果后自动折叠全部
+			await new Promise((resolve) => setTimeout(resolve, 200));
 			savedTopLine = editor.visibleRanges[0]?.start.line;
 			await vscode.commands.executeCommand('editor.foldAllMarkerRegions');
-			// 恢复视窗位置
 			restoreViewport(editor);
+
 			scheduleDecorUpdate(editor);
-			updateStatusBar(statusBarItem, editor);
+			updateStatusBar(statusBarItem, editor, foldProvider);
 		}),
 	);
 
-	// 展开全部重复区（保持视窗位置）
+	// ---- 停用当前文件的折叠功能（展开全部 + 清除） ----
 	context.subscriptions.push(
-		vscode.commands.registerCommand('csmlog.folding.unfoldAll', async () => {
+		vscode.commands.registerCommand('csmlog.folding.deactivate', async () => {
 			const editor = vscode.window.activeTextEditor;
 			if (!editor || editor.document.languageId !== 'csmlog') { return; }
+
+			const uri = editor.document.uri.toString();
+			foldProvider.enabledDocs.delete(uri);
+			foldProvider.clearCache(uri);
+
+			await vscode.commands.executeCommand('setContext', 'csmlog.folding.activated', false);
+
 			savedTopLine = editor.visibleRanges[0]?.start.line;
 			await vscode.commands.executeCommand('editor.unfoldAll');
 			restoreViewport(editor);
-			scheduleDecorUpdate(editor);
-			updateStatusBar(statusBarItem, editor);
+
+			if (currentDecorTypes) { clearDecorations(editor, currentDecorTypes); }
+			updateStatusBar(statusBarItem, editor, foldProvider);
 		}),
 	);
 
-	// 切换全部
+	// ---- 切换全部折叠/展开（保持视窗位置） ----
 	context.subscriptions.push(
 		vscode.commands.registerCommand('csmlog.folding.toggleAllFolds', async () => {
 			const editor = vscode.window.activeTextEditor;
 			if (!editor || editor.document.languageId !== 'csmlog') { return; }
+			if (!foldProvider.enabledDocs.has(editor.document.uri.toString())) { return; }
+
 			savedTopLine = editor.visibleRanges[0]?.start.line;
 			await vscode.commands.executeCommand('editor.toggleFold');
 			restoreViewport(editor);
 			scheduleDecorUpdate(editor);
-			updateStatusBar(statusBarItem, editor);
+			updateStatusBar(statusBarItem, editor, foldProvider);
 		}),
 	);
 
-	// 折叠当前区
-	context.subscriptions.push(
-		vscode.commands.registerCommand('csmlog.folding.foldCurrentRegion', async () => {
-			const editor = vscode.window.activeTextEditor;
-			if (!editor || editor.document.languageId !== 'csmlog') { return; }
-			await vscode.commands.executeCommand('editor.fold', { levels: 1, direction: 'up' });
-			scheduleDecorUpdate(editor);
-		}),
-	);
-
-	// 统计
+	// ---- 统计 ----
 	context.subscriptions.push(
 		vscode.commands.registerCommand('csmlog.folding.showStats', () => {
 			const editor = vscode.window.activeTextEditor;
 			if (!editor || editor.document.languageId !== 'csmlog') {
 				vscode.window.showInformationMessage('CSMLog Fold: 当前文件不是 CSMLog 文件');
+				return;
+			}
+			if (!foldProvider.enabledDocs.has(editor.document.uri.toString())) {
+				vscode.window.showInformationMessage('CSMLog Fold: 请先点击工具栏 👁 按钮启用折叠检测');
 				return;
 			}
 			const stats = computeFoldStats(editor);
@@ -251,9 +240,7 @@ async function restoreViewport(editor: vscode.TextEditor): Promise<void> {
 	if (savedTopLine === undefined) { return; }
 	const topLine = savedTopLine;
 	savedTopLine = undefined;
-	// 等 VS Code 完成折叠渲染后再恢复
 	await new Promise((resolve) => setTimeout(resolve, 50));
-	// 如果目标行仍在可见范围内则不跳转
 	const stillVisible = editor.visibleRanges.some(
 		(vr) => vr.start.line <= topLine && vr.end.line >= topLine,
 	);
@@ -269,6 +256,10 @@ async function restoreViewport(editor: vscode.TextEditor): Promise<void> {
 // 去抖
 // ---------------------------------------------------------------------------
 
+function refreshDecorForActiveEditor(): void {
+	scheduleDecorUpdate(vscode.window.activeTextEditor);
+}
+
 function scheduleDecorUpdate(editor: vscode.TextEditor | undefined): void {
 	if (decorDebounceTimer) { clearTimeout(decorDebounceTimer); }
 	decorDebounceTimer = setTimeout(() => {
@@ -281,8 +272,14 @@ function scheduleDecorUpdate(editor: vscode.TextEditor | undefined): void {
 // 状态栏
 // ---------------------------------------------------------------------------
 
-function updateStatusBar(item: vscode.StatusBarItem, editor: vscode.TextEditor | undefined): void {
+function updateStatusBar(
+	item: vscode.StatusBarItem,
+	editor: vscode.TextEditor | undefined,
+	foldProvider: CSMLogFoldingRangeProvider,
+): void {
 	if (!editor || editor.document.languageId !== 'csmlog') { item.hide(); return; }
+	if (!foldProvider.enabledDocs.has(editor.document.uri.toString())) { item.hide(); return; }
+
 	const stats = computeFoldStats(editor);
 	if (stats.regionCount === 0) { item.hide(); return; }
 	if (parseFloat(stats.percentage) > 50) {
@@ -304,13 +301,10 @@ function updateDecorationsForEditor(editor: vscode.TextEditor | undefined): void
 		if (editor && currentDecorTypes) { clearDecorations(editor, currentDecorTypes); }
 		return;
 	}
-	const options = readFoldOptions();
-	if (!options.enabled) {
-		if (currentDecorTypes) { clearDecorations(editor, currentDecorTypes); }
-		return;
-	}
+	// 装饰始终与当前折叠-region 绑定；折叠范围由 FoldingRangeProvider 控制
 	if (!currentDecorTypes) { return; }
 
+	const options = readFoldOptions();
 	const rawLines: string[] = [];
 	const signatures: Array<import('./logFold/types').LineSignature | null> = [];
 	for (let i = 0; i < editor.document.lineCount; i++) {
@@ -325,7 +319,6 @@ function updateDecorationsForEditor(editor: vscode.TextEditor | undefined): void
 function readFoldOptions(): FoldOptions {
 	const config = vscode.workspace.getConfiguration('csmlog.folding');
 	return {
-		enabled: config.get<boolean>('enabled', DEFAULT_FOLD_OPTIONS.enabled),
 		minRepeatCount: config.get<number>('minRepeatCount', DEFAULT_FOLD_OPTIONS.minRepeatCount),
 		maxBlockLines: config.get<number>('maxBlockLines', DEFAULT_FOLD_OPTIONS.maxBlockLines),
 		smartParams: config.get<boolean>('smartParams', DEFAULT_FOLD_OPTIONS.smartParams),
@@ -339,7 +332,6 @@ interface FoldStats { regionCount: number; foldedLines: number; percentage: stri
 
 function computeFoldStats(editor: vscode.TextEditor): FoldStats {
 	const options = readFoldOptions();
-	if (!options.enabled) { return { regionCount: 0, foldedLines: 0, percentage: '0.0' }; }
 	const rawLines: string[] = [];
 	const signatures: Array<import('./logFold/types').LineSignature | null> = [];
 	for (let i = 0; i < editor.document.lineCount; i++) {

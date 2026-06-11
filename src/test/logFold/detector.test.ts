@@ -184,11 +184,11 @@ suite('LogFold — Detector', () => {
             assert.ok(regions.length > 0);
         });
 
-        test('enabled=false 时应返回空', () => {
+        test('minRepeatCount=10 时只有大块重复才折叠', () => {
             const lines = ['a', 'a', 'a', 'a'];
             const sigs = makeSignatures(lines);
-            const regions = detectRepeatRegions(lines, sigs, opts({ enabled: false }));
-            assert.strictEqual(regions.length, 0);
+            const regions = detectRepeatRegions(lines, sigs, opts({ minRepeatCount: 10 }));
+            assert.strictEqual(regions.length, 0, '4条重复不满足 minRepeatCount=10');
         });
 
         test('单行文档不应产生折叠区', () => {

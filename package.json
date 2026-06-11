@@ -134,34 +134,19 @@
         "icon": "$(fold)"
       },
       {
-        "command": "csmlog.folding.foldCurrentRegion",
-        "title": "%commands.csmlog.folding.foldCurrentRegion.title%",
-        "icon": "$(collapse-all)"
-      },
-      {
         "command": "csmlog.folding.showStats",
         "title": "%commands.csmlog.folding.showStats.title%",
         "icon": "$(info)"
       },
       {
-        "command": "csmlog.folding.enable",
-        "title": "%commands.csmlog.folding.enable.title%",
+        "command": "csmlog.folding.activate",
+        "title": "%commands.csmlog.folding.activate.title%",
         "icon": "$(eye)"
       },
       {
-        "command": "csmlog.folding.disable",
-        "title": "%commands.csmlog.folding.disable.title%",
+        "command": "csmlog.folding.deactivate",
+        "title": "%commands.csmlog.folding.deactivate.title%",
         "icon": "$(eye-closed)"
-      },
-      {
-        "command": "csmlog.folding.foldAll",
-        "title": "%commands.csmlog.folding.foldAll.title%",
-        "icon": "$(collapse-all)"
-      },
-      {
-        "command": "csmlog.folding.unfoldAll",
-        "title": "%commands.csmlog.folding.unfoldAll.title%",
-        "icon": "$(expand-all)"
       }
     ],
     "viewsContainers": {
@@ -281,24 +266,19 @@
       ],
       "editor/title": [
         {
-          "command": "csmlog.folding.enable",
-          "when": "editorLangId == csmlog && !config.csmlog.folding.enabled",
+          "command": "csmlog.folding.activate",
+          "when": "editorLangId == csmlog && !csmlog.folding.activated",
           "group": "navigation"
         },
         {
-          "command": "csmlog.folding.disable",
-          "when": "editorLangId == csmlog && config.csmlog.folding.enabled",
+          "command": "csmlog.folding.deactivate",
+          "when": "editorLangId == csmlog && csmlog.folding.activated",
           "group": "navigation"
         },
         {
-          "command": "csmlog.folding.foldAll",
-          "when": "editorLangId == csmlog && config.csmlog.folding.enabled",
+          "command": "csmlog.folding.toggleAllFolds",
+          "when": "editorLangId == csmlog && csmlog.folding.activated",
           "group": "navigation@1"
-        },
-        {
-          "command": "csmlog.folding.unfoldAll",
-          "when": "editorLangId == csmlog && config.csmlog.folding.enabled",
-          "group": "navigation@2"
         }
       ],
       "commandPalette": [
@@ -414,13 +394,6 @@
           "scope": "window",
           "order": 14,
           "description": "%configuration.csmModules.forkedReposHandling.description%"
-        },
-        "csmlog.folding.enabled": {
-          "type": "boolean",
-          "default": false,
-          "scope": "window",
-          "order": 100,
-          "description": "%configuration.csmlog.folding.enabled.description%"
         },
         "csmlog.folding.minRepeatCount": {
           "type": "number",
