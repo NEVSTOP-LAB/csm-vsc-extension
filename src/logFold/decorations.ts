@@ -6,37 +6,58 @@ import * as vscode from 'vscode';
 import { FoldRegion, FoldOptions, DEFAULT_FOLD_OPTIONS, RepeatPattern } from './types';
 
 // ---------------------------------------------------------------------------
-// 颜色常量（四种模式）
+// 颜色常量（深色/浅色主题自适应）
 // ---------------------------------------------------------------------------
 
-/** 模式 → 底色的映射 */
-const PATTERN_BG_COLORS: Record<RepeatPattern, string> = {
-    exact: 'rgba(100, 140, 180, 0.06)',          // 灰蓝
-    parameterized: 'rgba(130, 110, 180, 0.06)',   // 灰紫
-    'block-exact': 'rgba(100, 160, 130, 0.06)',   // 灰绿
-    interleaved: 'rgba(180, 145, 100, 0.06)',     // 灰橙
+/** 模式 → 底色映射（浅色主题） */
+const LIGHT_BG: Record<RepeatPattern, string> = {
+    exact: 'rgba(100, 140, 180, 0.10)',
+    parameterized: 'rgba(130, 110, 180, 0.10)',
+    'block-exact': 'rgba(100, 160, 130, 0.10)',
+    interleaved: 'rgba(180, 145, 100, 0.10)',
 };
 
-const SUMMARY_LABEL_COLOR = '#6a737d';
-const PARAM_HIGHLIGHT_COLOR = '#c9d1d9';
+/** 模式 → 底色映射（深色主题） */
+const DARK_BG: Record<RepeatPattern, string> = {
+    exact: 'rgba(70, 130, 200, 0.16)',
+    parameterized: 'rgba(150, 110, 200, 0.16)',
+    'block-exact': 'rgba(70, 170, 130, 0.16)',
+    interleaved: 'rgba(200, 150, 80, 0.16)',
+};
+
+/** 概 要标签颜色 */
+const SUMMARY_LABEL_LIGHT = '#6a737d';
+const SUMMARY_LABEL_DARK = '#8b949e';
+
+/** 折叠三角标记颜色 */
+const FOLD_TRIANGLE_LIGHT = '#6a737d';
+const FOLD_TRIANGLE_DARK = '#8b949e';
 
 // ---------------------------------------------------------------------------
 // 装饰类型工厂
 // ---------------------------------------------------------------------------
 
-/**
- * 注册所有装饰类型并返回。
- * 调用方需将返回的装饰类型数组加入 `context.subscriptions`。
- */
-export function createDecorationTypes(): {
+export interface DecorationTypes {
     bgDecorations: Record<RepeatPattern, vscode.TextEditorDecorationType>;
     borderDecoration: vscode.TextEditorDecorationType;
     paramHighlightDecoration: vscode.TextEditorDecorationType;
     summaryLabelDecoration: vscode.TextEditorDecorationType;
-} {
+    foldTriangleDecoration: vscode.TextEditorDecorationType;
+}
+
+/**
+ * 根据当前主题创建全部装饰类型。
+ * 需要在主题切换时重新调用以获取适配的颜色。
+ */
+export function createDecorationTypes(themeKind: vscode.ColorThemeKind): DecorationTypes {
+    const isDark = themeKind === vscode.ColorThemeKind.Dark || themeKind === vscode.ColorThemeKind.HighContrast;
+    const bgColors = isDark ? DARK_BG : LIGHT_BG;
+    const summaryColor = isDark ? SUMMARY_LABEL_DARK : SUMMARY_LABEL_LIGHT;
+    const triangleColor = isDark ? FOLD_TRIANGLE_DARK : FOLD_TRIANGLE_LIGHT;
+
     // 四种模式底色
     const bgDecorations: Record<string, vscode.TextEditorDecorationType> = {};
-    for (const [pattern, bgColor] of Object.entries(PATTERN_BG_COLORS)) {
+    for (const [pattern, bgColor] of Object.entries(bgColors)) {
         bgDecorations[pattern] = vscode.window.createTextEditorDecorationType({
             backgroundColor: bgColor,
             isWholeLine: true,
@@ -44,8 +65,7 @@ export function createDecorationTypes(): {
         });
     }
 
-    // 左侧边框标识（展开后标识折叠区成员行）
-    // VS Code decoration API 不支持单侧 border，使用整体淡色 border 达成类似效果
+    // 左侧边框标识
     const borderDecoration = vscode.window.createTextEditorDecorationType({
         borderStyle: 'none none none solid',
         borderWidth: '0 0 0 2px',
@@ -55,17 +75,28 @@ export function createDecorationTypes(): {
 
     // 参数高亮
     const paramHighlightDecoration = vscode.window.createTextEditorDecorationType({
-        color: PARAM_HIGHLIGHT_COLOR,
-        fontWeight: 'normal',
+        color: isDark ? '#e1c06b' : '#b08800',
+        fontWeight: 'bold',
         rangeBehavior: vscode.DecorationRangeBehavior.ClosedClosed,
     });
 
     // 折叠概要标签（行末 after-text）
     const summaryLabelDecoration = vscode.window.createTextEditorDecorationType({
         after: {
-            color: SUMMARY_LABEL_COLOR,
+            color: summaryColor,
             fontStyle: 'italic',
             margin: '0 0 0 8px',
+        },
+        rangeBehavior: vscode.DecorationRangeBehavior.ClosedClosed,
+    });
+
+    // 折叠三角标记（行首 before-text），使用 ▼ emoji
+    const foldTriangleDecoration = vscode.window.createTextEditorDecorationType({
+        before: {
+            contentText: '▼ ',
+            color: triangleColor,
+            fontWeight: 'bold',
+            margin: '0 4px 0 0',
         },
         rangeBehavior: vscode.DecorationRangeBehavior.ClosedClosed,
     });
@@ -75,7 +106,19 @@ export function createDecorationTypes(): {
         borderDecoration,
         paramHighlightDecoration,
         summaryLabelDecoration,
+        foldTriangleDecoration,
     };
+}
+
+/**
+ * 释放所有装饰类型。
+ */
+export function disposeDecorationTypes(types: DecorationTypes): void {
+    for (const d of Object.values(types.bgDecorations)) { d.dispose(); }
+    types.borderDecoration.dispose();
+    types.paramHighlightDecoration.dispose();
+    types.summaryLabelDecoration.dispose();
+    types.foldTriangleDecoration.dispose();
 }
 
 // ---------------------------------------------------------------------------
@@ -83,58 +126,48 @@ export function createDecorationTypes(): {
 // ---------------------------------------------------------------------------
 
 /**
- * 根据折叠区域和编辑器折叠状态应用装饰。
- *
- * @param editor           当前文本编辑器
- * @param regions          检测到的折叠区域列表
- * @param decorTypes       装饰类型集合
- * @param options          用户折叠选项
+ * 根据折叠区域应用装饰。
  */
 export function applyDecorations(
     editor: vscode.TextEditor,
     regions: FoldRegion[],
-    decorTypes: ReturnType<typeof createDecorationTypes>,
+    decorTypes: DecorationTypes,
     options: FoldOptions = DEFAULT_FOLD_OPTIONS,
 ): void {
-    const { bgDecorations, borderDecoration, paramHighlightDecoration, summaryLabelDecoration } =
+    const { bgDecorations, borderDecoration, paramHighlightDecoration, summaryLabelDecoration, foldTriangleDecoration } =
         decorTypes;
 
-    // 按模式分组收集装饰范围
+    // 按模式分组
     const bgRanges: Record<string, vscode.Range[]> = {};
     const borderRanges: vscode.Range[] = [];
     const paramRanges: vscode.Range[] = [];
     const summaryOptions: vscode.DecorationOptions[] = [];
-
-    // 需要获取折叠状态来判断哪些行被折叠
+    const triangleRanges: vscode.Range[] = [];
 
     for (const region of regions) {
         const pattern = region.pattern;
 
         // 背景色：区间内所有行
         if (!bgRanges[pattern]) { bgRanges[pattern] = []; }
-        const bgRange = new vscode.Range(
+        bgRanges[pattern].push(new vscode.Range(
             region.startLine, 0,
             region.endLine, editor.document.lineAt(region.endLine).text.length,
-        );
-        bgRanges[pattern].push(bgRange);
+        ));
 
-        // 边框颜色：区间内所有行（定制 borderColor）
-        // 由于 VS Code decoration API 不支持单 decoration 多颜色，我们为每个模式单独应用
-        const borderRange = new vscode.Range(
-            region.startLine, 0,
-            region.endLine, 0,
-        );
-        borderRanges.push(borderRange);
+        // 左侧边框
+        borderRanges.push(new vscode.Range(region.startLine, 0, region.endLine, 0));
+
+        // ▼ 折叠三角：仅在起始行行首
+        triangleRanges.push(new vscode.Range(region.startLine, 0, region.startLine, 0));
 
         // 概要标签：仅在第 1 行末尾
         const summaryText = buildSummaryLabel(region, options);
-        const firstLineRange = new vscode.Range(region.startLine, 0, region.startLine, 0);
         summaryOptions.push({
-            range: firstLineRange,
+            range: new vscode.Range(region.startLine, 0, region.startLine, 0),
             renderOptions: {
                 after: {
                     contentText: summaryText,
-                    color: SUMMARY_LABEL_COLOR,
+                    color: undefined, // 使用 decoration type 自身的颜色
                     fontStyle: 'italic',
                     margin: '0 0 0 8px',
                 },
@@ -144,42 +177,33 @@ export function applyDecorations(
         // 参数高亮：仅在 parameterized 模式下
         if (region.pattern === 'parameterized') {
             if (region.paramsByOccurrence && region.paramsByOccurrence.length > 0) {
-                // 在第一条样本行找到参数位置并高亮
-                // 简化处理：仅对起始行应用参数高亮（通过匹配花括号内容）
                 const firstLine = editor.document.lineAt(region.startLine).text;
                 const braceRe = /\{[^}]*\}/g;
                 let bm: RegExpExecArray | null;
                 while ((bm = braceRe.exec(firstLine)) !== null) {
-                    paramRanges.push(
-                        new vscode.Range(
-                            region.startLine, bm.index,
-                            region.startLine, bm.index + bm[0].length,
-                        ),
-                    );
+                    paramRanges.push(new vscode.Range(
+                        region.startLine, bm.index,
+                        region.startLine, bm.index + bm[0].length,
+                    ));
                 }
             }
         }
     }
 
     // ---- 应用装饰 ----
-    // 背景
     for (const [pattern, ranges] of Object.entries(bgRanges)) {
         editor.setDecorations(bgDecorations[pattern as RepeatPattern], ranges);
     }
-
-    // 边框 — 使用 overlay 方式：为每个模式创建独立的 border decoration
-    // VS Code 不支持 per-range border color，所以用统一的不显眼颜色
-    editor.setDecorations(borderDecoration, borderRanges);
-
-    // 概要标签
-    editor.setDecorations(summaryLabelDecoration, summaryOptions);
-
-    // 参数高亮
-    if (paramRanges.length > 0) {
-        editor.setDecorations(paramHighlightDecoration, paramRanges);
-    } else {
-        editor.setDecorations(paramHighlightDecoration, []);
+    for (const pattern of Object.keys(bgDecorations)) {
+        if (!bgRanges[pattern]) {
+            editor.setDecorations(bgDecorations[pattern as RepeatPattern], []);
+        }
     }
+
+    editor.setDecorations(borderDecoration, borderRanges);
+    editor.setDecorations(summaryLabelDecoration, summaryOptions);
+    editor.setDecorations(foldTriangleDecoration, triangleRanges);
+    editor.setDecorations(paramHighlightDecoration, paramRanges.length > 0 ? paramRanges : []);
 }
 
 /**
@@ -187,25 +211,21 @@ export function applyDecorations(
  */
 export function clearDecorations(
     editor: vscode.TextEditor,
-    decorTypes: ReturnType<typeof createDecorationTypes>,
+    decorTypes: DecorationTypes,
 ): void {
-    const { bgDecorations, borderDecoration, paramHighlightDecoration, summaryLabelDecoration } =
-        decorTypes;
-    for (const d of Object.values(bgDecorations)) {
+    for (const d of Object.values(decorTypes.bgDecorations)) {
         editor.setDecorations(d, []);
     }
-    editor.setDecorations(borderDecoration, []);
-    editor.setDecorations(paramHighlightDecoration, []);
-    editor.setDecorations(summaryLabelDecoration, []);
+    editor.setDecorations(decorTypes.borderDecoration, []);
+    editor.setDecorations(decorTypes.paramHighlightDecoration, []);
+    editor.setDecorations(decorTypes.summaryLabelDecoration, []);
+    editor.setDecorations(decorTypes.foldTriangleDecoration, []);
 }
 
 // ---------------------------------------------------------------------------
 // 标签构建
 // ---------------------------------------------------------------------------
 
-/**
- * 构建折叠区域的概要标签文本。
- */
 function buildSummaryLabel(region: FoldRegion, options: FoldOptions): string {
     const count = region.repeatCount;
 
@@ -217,13 +237,11 @@ function buildSummaryLabel(region: FoldRegion, options: FoldOptions): string {
     const parts: string[] = [];
     parts.push(`…重复 ${count} 次`);
 
-    // 尝试从采样行提取时间范围
     if (region.sampleLines.length >= 2) {
         const firstTime = extractTime(region.sampleLines[0]);
         const lastTime = extractTime(region.sampleLines[region.sampleLines.length - 1]);
         if (firstTime && lastTime) {
-            // 只取 HH:MM:SS 部分
-            const firstShort = firstTime.slice(-12, -4); // HH:MM:SS
+            const firstShort = firstTime.slice(-12, -4);
             const lastShort = lastTime.slice(-12, -4);
             parts.push(`${firstShort}~${lastShort}`);
         }
@@ -232,14 +250,9 @@ function buildSummaryLabel(region: FoldRegion, options: FoldOptions): string {
     return `  ${parts.join(' · ')}`;
 }
 
-/**
- * 从原始日志行提取时间戳部分（相对时间戳优先，否则完整日期）。
- */
 function extractTime(line: string): string | null {
-    // 相对时间戳 [HH:MM:SS.mmm]
     const relMatch = line.match(/\[(\d{2}:\d{2}:\d{2}\.\d{3})\]/);
     if (relMatch) { return relMatch[1]; }
-    // 完整日期时间戳
     const dateMatch = line.match(/(\d{4}[/-]\d{2}[/-]\d{2}\s+\d{2}:\d{2}:\d{2}\.\d{3})/);
     if (dateMatch) { return dateMatch[1]; }
     return null;

@@ -142,6 +142,21 @@
         "command": "csmlog.folding.showStats",
         "title": "%commands.csmlog.folding.showStats.title%",
         "icon": "$(info)"
+      },
+      {
+        "command": "csmlog.folding.toggleEnabled",
+        "title": "%commands.csmlog.folding.toggleEnabled.title%",
+        "icon": "$(eye)"
+      },
+      {
+        "command": "csmlog.folding.foldAll",
+        "title": "%commands.csmlog.folding.foldAll.title%",
+        "icon": "$(collapse-all)"
+      },
+      {
+        "command": "csmlog.folding.unfoldAll",
+        "title": "%commands.csmlog.folding.unfoldAll.title%",
+        "icon": "$(expand-all)"
       }
     ],
     "viewsContainers": {
@@ -257,6 +272,23 @@
           "command": "csmModules.contextRemoveModule",
           "when": "webviewId == csmModules.view && webviewSection == workspaceCard && workspaceCardKind == managed && moduleKey",
           "group": "2_actions@2"
+        }
+      ],
+      "editor/title": [
+        {
+          "command": "csmlog.folding.toggleEnabled",
+          "when": "editorLangId == csmlog",
+          "group": "navigation"
+        },
+        {
+          "command": "csmlog.folding.foldAll",
+          "when": "editorLangId == csmlog && config.csmlog.folding.enabled",
+          "group": "navigation@1"
+        },
+        {
+          "command": "csmlog.folding.unfoldAll",
+          "when": "editorLangId == csmlog && config.csmlog.folding.enabled",
+          "group": "navigation@2"
         }
       ],
       "commandPalette": [

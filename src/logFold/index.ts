@@ -6,4 +6,10 @@ export { LineSignature, FoldRegion, RepeatPattern, FoldOptions, DEFAULT_FOLD_OPT
 export { normalizeLine } from './normalizer';
 export { detectRepeatRegions } from './detector';
 export { CSMLogFoldingRangeProvider } from './foldingProvider';
-export { createDecorationTypes, applyDecorations, clearDecorations } from './decorations';
+export {
+    createDecorationTypes,
+    disposeDecorationTypes,
+    applyDecorations,
+    clearDecorations,
+    DecorationTypes,
+} from './decorations';

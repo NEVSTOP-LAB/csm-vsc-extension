@@ -8,19 +8,27 @@ import { CsmFileDecorationProvider } from './fileDecorationProvider';
 import {
 	CSMLogFoldingRangeProvider,
 	createDecorationTypes,
+	disposeDecorationTypes,
 	applyDecorations,
 	clearDecorations,
 	detectRepeatRegions,
 	normalizeLine,
+	DecorationTypes,
 } from './logFold';
 import { DEFAULT_FOLD_OPTIONS, FoldOptions } from './logFold/types';
 
 // ---------------------------------------------------------------------------
-// 装饰器更新去抖
+// 状态（模块级变量，在 activate 中初始化）
 // ---------------------------------------------------------------------------
 
 const DEBOUNCE_MS = 200;
 let decorDebounceTimer: ReturnType<typeof setTimeout> | undefined;
+
+/** 当前装饰类型（随主题变化而重建） */
+let currentDecorTypes: DecorationTypes | undefined;
+
+/** 已执行过自动折叠的文档 URI（避免重复折叠） */
+const autoFoldedDocs = new Set<string>();
 
 export function activate(context: vscode.ExtensionContext) {
 	// 语言功能（高亮、Hover、Outline）必须在模块管理器之前注册，
@@ -41,7 +49,8 @@ export function activate(context: vscode.ExtensionContext) {
 
 	// ---- 日志折叠功能 ----
 	const foldProvider = new CSMLogFoldingRangeProvider();
-	const decorTypes = createDecorationTypes();
+	// 根据当前主题创建初始装饰类型
+	currentDecorTypes = createDecorationTypes(vscode.window.activeColorTheme.kind);
 
 	// 注册 FoldingRangeProvider
 	context.subscriptions.push(
@@ -51,11 +60,27 @@ export function activate(context: vscode.ExtensionContext) {
 		),
 	);
 
+	// 主题变更时重建装饰类型
+	context.subscriptions.push(
+		vscode.window.onDidChangeActiveColorTheme((theme) => {
+			if (currentDecorTypes) {
+				// 先清除旧的
+				if (vscode.window.activeTextEditor?.document.languageId === 'csmlog') {
+					clearDecorations(vscode.window.activeTextEditor, currentDecorTypes);
+				}
+				disposeDecorationTypes(currentDecorTypes);
+			}
+			currentDecorTypes = createDecorationTypes(theme.kind);
+			// 重新装饰当前编辑器
+			scheduleDecorUpdate(vscode.window.activeTextEditor);
+		}),
+	);
+
 	// 文档变更时清除折叠缓存 + 去抖更新装饰
 	context.subscriptions.push(
 		vscode.workspace.onDidChangeTextDocument((e) => {
 			foldProvider.onDocumentChanged(e);
-			scheduleDecorUpdate(vscode.window.activeTextEditor, decorTypes);
+			scheduleDecorUpdate(vscode.window.activeTextEditor);
 		}),
 	);
 
@@ -63,14 +88,19 @@ export function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(
 		vscode.workspace.onDidCloseTextDocument((document) => {
 			foldProvider.clearCache(document.uri.toString());
+			autoFoldedDocs.delete(document.uri.toString());
 		}),
 	);
 
-	// 切换编辑器时统一更新状态栏和装饰（避免双次计算）
+	// 切换编辑器时统一更新状态栏和装饰，并触发自动折叠
 	context.subscriptions.push(
 		vscode.window.onDidChangeActiveTextEditor((editor) => {
 			updateStatusBar(statusBarItem, editor);
-			scheduleDecorUpdate(editor, decorTypes);
+			scheduleDecorUpdate(editor);
+			// 对新打开的 csmlog 文件自动折叠
+			if (editor && editor.document.languageId === 'csmlog') {
+				autoFoldOnOpen(editor);
+			}
 		}),
 	);
 
@@ -78,7 +108,7 @@ export function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(
 		vscode.window.onDidChangeTextEditorVisibleRanges((e) => {
 			if (e.textEditor.document.languageId === 'csmlog') {
-				scheduleDecorUpdate(e.textEditor, decorTypes);
+				scheduleDecorUpdate(e.textEditor);
 			}
 		}),
 	);
@@ -89,36 +119,119 @@ export function activate(context: vscode.ExtensionContext) {
 		99,
 	);
 	statusBarItem.command = 'csmlog.folding.toggleAllFolds';
-	statusBarItem.tooltip = 'Toggle all CSMLog repeated region folds';
+	statusBarItem.tooltip = '切换全部 CSMLog 重复区折叠';
 	context.subscriptions.push(statusBarItem);
 
-	// 初始化当前编辑器的状态栏
+	// 初始化
 	updateStatusBar(statusBarItem, vscode.window.activeTextEditor);
-	scheduleDecorUpdate(vscode.window.activeTextEditor, decorTypes);
+	scheduleDecorUpdate(vscode.window.activeTextEditor);
+	// 如果有已打开的 csmlog 文件，自动折叠
+	if (vscode.window.activeTextEditor?.document.languageId === 'csmlog') {
+		autoFoldOnOpen(vscode.window.activeTextEditor);
+	}
 
-	// ---- 命令 ----
+	// ---- 装饰器 dispose ----
+	if (currentDecorTypes) {
+		context.subscriptions.push(
+			...Object.values(currentDecorTypes.bgDecorations),
+			currentDecorTypes.borderDecoration,
+			currentDecorTypes.paramHighlightDecoration,
+			currentDecorTypes.summaryLabelDecoration,
+			currentDecorTypes.foldTriangleDecoration,
+		);
+	}
+
+	// ---- 命令注册 ----
+	registerCommands(context, foldProvider, statusBarItem);
+
+	// ---- 模块管理器 ----
+	try {
+		const moduleManagerController = new ModuleManagerController(context);
+		moduleManagerController.register(context.subscriptions);
+	} catch (err) {
+		console.error('[CSM] Failed to initialize module manager (language features remain available):', err);
+	}
+}
+
+export function deactivate() { }
+
+// ---------------------------------------------------------------------------
+// 命令注册
+// ---------------------------------------------------------------------------
+
+function registerCommands(
+	context: vscode.ExtensionContext,
+	foldProvider: CSMLogFoldingRangeProvider,
+	statusBarItem: vscode.StatusBarItem,
+): void {
+
+	// 启用/禁用折叠
+	context.subscriptions.push(
+		vscode.commands.registerCommand('csmlog.folding.toggleEnabled', async () => {
+			const config = vscode.workspace.getConfiguration('csmlog.folding');
+			const current = config.get<boolean>('enabled', true);
+			await config.update('enabled', !current, vscode.ConfigurationTarget.Global);
+			// 清除缓存强制重算
+			const editor = vscode.window.activeTextEditor;
+			if (editor) {
+				foldProvider.clearCache(editor.document.uri.toString());
+				updateStatusBar(statusBarItem, editor);
+				scheduleDecorUpdate(editor);
+				if (!current) {
+					// 刚启用 → 自动折叠
+					autoFoldOnOpen(editor);
+				} else {
+					// 刚禁用 → 展开全部
+					await vscode.commands.executeCommand('editor.unfoldAll');
+				}
+			}
+		}),
+	);
+
+	// 折叠全部重复区
+	context.subscriptions.push(
+		vscode.commands.registerCommand('csmlog.folding.foldAll', async () => {
+			const editor = vscode.window.activeTextEditor;
+			if (!editor || editor.document.languageId !== 'csmlog') { return; }
+			await vscode.commands.executeCommand('editor.foldAllMarkerRegions');
+			scheduleDecorUpdate(editor);
+			updateStatusBar(statusBarItem, editor);
+		}),
+	);
+
+	// 展开全部重复区
+	context.subscriptions.push(
+		vscode.commands.registerCommand('csmlog.folding.unfoldAll', async () => {
+			const editor = vscode.window.activeTextEditor;
+			if (!editor || editor.document.languageId !== 'csmlog') { return; }
+			await vscode.commands.executeCommand('editor.unfoldAll');
+			scheduleDecorUpdate(editor);
+			updateStatusBar(statusBarItem, editor);
+		}),
+	);
+
+	// 切换全部（折→展 或 展→折）
 	context.subscriptions.push(
 		vscode.commands.registerCommand('csmlog.folding.toggleAllFolds', async () => {
 			const editor = vscode.window.activeTextEditor;
 			if (!editor || editor.document.languageId !== 'csmlog') { return; }
 			await vscode.commands.executeCommand('editor.toggleFold');
-			scheduleDecorUpdate(editor, decorTypes);
+			scheduleDecorUpdate(editor);
 			updateStatusBar(statusBarItem, editor);
 		}),
 	);
 
+	// 折叠当前区
 	context.subscriptions.push(
 		vscode.commands.registerCommand('csmlog.folding.foldCurrentRegion', async () => {
 			const editor = vscode.window.activeTextEditor;
 			if (!editor || editor.document.languageId !== 'csmlog') { return; }
-			await vscode.commands.executeCommand('editor.fold', {
-				levels: 1,
-				direction: 'up',
-			});
-			scheduleDecorUpdate(editor, decorTypes);
+			await vscode.commands.executeCommand('editor.fold', { levels: 1, direction: 'up' });
+			scheduleDecorUpdate(editor);
 		}),
 	);
 
+	// 统计
 	context.subscriptions.push(
 		vscode.commands.registerCommand('csmlog.folding.showStats', () => {
 			const editor = vscode.window.activeTextEditor;
@@ -133,40 +246,46 @@ export function activate(context: vscode.ExtensionContext) {
 			);
 		}),
 	);
-
-	// 装饰器 dispose
-	context.subscriptions.push(
-		...Object.values(decorTypes.bgDecorations),
-		decorTypes.borderDecoration,
-		decorTypes.paramHighlightDecoration,
-		decorTypes.summaryLabelDecoration,
-	);
-
-	// ---- 模块管理器 ----
-	try {
-		const moduleManagerController = new ModuleManagerController(context);
-		moduleManagerController.register(context.subscriptions);
-	} catch (err) {
-		console.error('[CSM] Failed to initialize module manager (language features remain available):', err);
-	}
 }
 
-export function deactivate() { }
+// ---------------------------------------------------------------------------
+// 自动折叠
+// ---------------------------------------------------------------------------
+
+/**
+ * 对首次打开的 csmlog 文档自动折叠所有重复区。
+ * 每个文档只执行一次（跟踪 autoFoldedDocs）。
+ */
+async function autoFoldOnOpen(editor: vscode.TextEditor): Promise<void> {
+	const uri = editor.document.uri.toString();
+	if (autoFoldedDocs.has(uri)) { return; }
+
+	const options = readFoldOptions();
+	if (!options.enabled) { return; }
+
+	// 等一段时间确保 FoldingRangeProvider 已返回结果
+	await new Promise((resolve) => setTimeout(resolve, 300));
+
+	try {
+		// foldAllMarkerRegions: 折叠所有标记为 Region 的折叠区
+		await vscode.commands.executeCommand('editor.foldAllMarkerRegions');
+		autoFoldedDocs.add(uri);
+	} catch {
+		// 忽略失败（某些 VS Code 版本可能不支持该命令）
+	}
+}
 
 // ---------------------------------------------------------------------------
 // 去抖辅助
 // ---------------------------------------------------------------------------
 
-function scheduleDecorUpdate(
-	editor: vscode.TextEditor | undefined,
-	decorTypes: ReturnType<typeof createDecorationTypes>,
-): void {
+function scheduleDecorUpdate(editor: vscode.TextEditor | undefined): void {
 	if (decorDebounceTimer) {
 		clearTimeout(decorDebounceTimer);
 	}
 	decorDebounceTimer = setTimeout(() => {
 		decorDebounceTimer = undefined;
-		updateDecorationsForEditor(editor, decorTypes);
+		updateDecorationsForEditor(editor);
 	}, DEBOUNCE_MS);
 }
 
@@ -204,22 +323,23 @@ function updateStatusBar(
 // 装饰器辅助
 // ---------------------------------------------------------------------------
 
-function updateDecorationsForEditor(
-	editor: vscode.TextEditor | undefined,
-	decorTypes: ReturnType<typeof createDecorationTypes>,
-): void {
+function updateDecorationsForEditor(editor: vscode.TextEditor | undefined): void {
 	if (!editor || editor.document.languageId !== 'csmlog') {
-		if (editor) {
-			clearDecorations(editor, decorTypes);
+		if (editor && currentDecorTypes) {
+			clearDecorations(editor, currentDecorTypes);
 		}
 		return;
 	}
 
 	const options = readFoldOptions();
 	if (!options.enabled) {
-		clearDecorations(editor, decorTypes);
+		if (currentDecorTypes) {
+			clearDecorations(editor, currentDecorTypes);
+		}
 		return;
 	}
+
+	if (!currentDecorTypes) { return; }
 
 	const rawLines: string[] = [];
 	const signatures: Array<import('./logFold/types').LineSignature | null> = [];
@@ -230,7 +350,7 @@ function updateDecorationsForEditor(
 	}
 
 	const regions = detectRepeatRegions(rawLines, signatures, options);
-	applyDecorations(editor, regions, decorTypes, options);
+	applyDecorations(editor, regions, currentDecorTypes, options);
 }
 
 function readFoldOptions(): FoldOptions {
