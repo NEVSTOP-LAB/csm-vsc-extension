@@ -28,6 +28,9 @@ let currentDecorTypes: DecorationTypes | undefined;
 /** 暂存折叠前的视窗首行 */
 let savedTopLine: number | undefined;
 
+/** 模块级 foldProvider 引用（供 updateDecorationsForEditor 检查激活状态） */
+let foldProvider: CSMLogFoldingRangeProvider;
+
 // ---------------------------------------------------------------------------
 // activate
 // ---------------------------------------------------------------------------
@@ -52,7 +55,7 @@ export function activate(context: vscode.ExtensionContext) {
 	}
 
 	// ---- 日志折叠功能 ----
-	const foldProvider = new CSMLogFoldingRangeProvider();
+	foldProvider = new CSMLogFoldingRangeProvider();
 	currentDecorTypes = createDecorationTypes(vscode.window.activeColorTheme.kind);
 
 	context.subscriptions.push(
@@ -154,7 +157,7 @@ function registerCommands(
 	statusBarItem: vscode.StatusBarItem,
 ): void {
 
-	// ---- 激活当前文件的折叠功能（检测 + 自动全部折叠） ----
+	// ---- 激活当前文件的折叠功能（显示装饰 + 自动全部折叠） ----
 	context.subscriptions.push(
 		vscode.commands.registerCommand('csmlog.folding.activate', async () => {
 			const editor = vscode.window.activeTextEditor;
@@ -162,13 +165,11 @@ function registerCommands(
 
 			const uri = editor.document.uri.toString();
 			foldProvider.enabledDocs.add(uri);
-			foldProvider.clearCache(uri);
 
-			// 设置 context key，控制工具栏按钮显隐
 			await vscode.commands.executeCommand('setContext', 'csmlog.folding.activated', true);
 
-			// 等待 FoldingRangeProvider 返回结果后自动折叠全部
-			await new Promise((resolve) => setTimeout(resolve, 200));
+			// 等折叠范围已被 VS Code 加载后自动全部折叠
+			await new Promise((resolve) => setTimeout(resolve, 150));
 			savedTopLine = editor.visibleRanges[0]?.start.line;
 			await vscode.commands.executeCommand('editor.foldAllMarkerRegions');
 			restoreViewport(editor);
@@ -178,7 +179,7 @@ function registerCommands(
 		}),
 	);
 
-	// ---- 停用当前文件的折叠功能（展开全部 + 清除） ----
+	// ---- 停用当前文件的折叠功能（隐藏装饰 + 全部展开） ----
 	context.subscriptions.push(
 		vscode.commands.registerCommand('csmlog.folding.deactivate', async () => {
 			const editor = vscode.window.activeTextEditor;
@@ -186,7 +187,6 @@ function registerCommands(
 
 			const uri = editor.document.uri.toString();
 			foldProvider.enabledDocs.delete(uri);
-			foldProvider.clearCache(uri);
 
 			await vscode.commands.executeCommand('setContext', 'csmlog.folding.activated', false);
 
@@ -304,8 +304,16 @@ function updateDecorationsForEditor(editor: vscode.TextEditor | undefined): void
 		if (editor && currentDecorTypes) { clearDecorations(editor, currentDecorTypes); }
 		return;
 	}
-	// 装饰始终与当前折叠-region 绑定；折叠范围由 FoldingRangeProvider 控制
 	if (!currentDecorTypes) { return; }
+
+	// 仅当该文件已激活折叠时才显示装饰（▼三角、概要标签、底色等）
+	// FoldingRangeProvider 始终提供折叠范围，行号旁折叠按钮始终可见
+	const uri = editor.document.uri.toString();
+	const activated = foldProvider.enabledDocs.has(uri);
+	if (!activated) {
+		clearDecorations(editor, currentDecorTypes);
+		return;
+	}
 
 	const options = readFoldOptions();
 	const rawLines: string[] = [];

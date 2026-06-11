@@ -49,9 +49,8 @@ export class CSMLogFoldingRangeProvider implements vscode.FoldingRangeProvider {
         _context: vscode.FoldingContext,
         _token: vscode.CancellationToken,
     ): vscode.ProviderResult<vscode.FoldingRange[]> {
-        // 仅当文档在 enabledDocs 集合中时才提供折叠范围
-        if (!this.enabledDocs.has(document.uri.toString())) { return []; }
-
+        // 始终返回检测到的折叠范围（保证行号旁折叠按钮始终可见）。
+        // enabledDocs 仅控制装饰和自动折叠行为，不影响 FoldingRangeProvider 输出。
         const options = this.getOptions();
 
         // 缓存
