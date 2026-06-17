@@ -747,7 +747,7 @@
     "check-types": "tsc --noEmit",
     "lint": "eslint src",
     "test": "vscode-test",
-    "vsix:package": "npx @vscode/vsce@3.7.1 package --no-dependencies",
+    "vsix:package": "npx @vscode/vsce@3.7.1 package --no-dependencies -o tmp/csm-vsc-support.vsix",
     "vsix:verify-local": "node scripts/verify-local-install.mjs",
     "hook:finish": "node scripts/local-finish-hook.mjs",
     "release:local": "npm run hook:finish"
