@@ -14,8 +14,8 @@ import * as assert from 'assert';
 import { execFileSync } from 'child_process';
 import * as fs from 'fs';
 import * as fsPromises from 'fs/promises';
-import * as os from 'os';
 import * as path from 'path';
+import { getTempRoot } from '../common/tempPaths';
 import { suite, test } from 'mocha';
 import { WorkspaceModuleService } from '../moduleManager';
 
@@ -125,7 +125,7 @@ suite('Module Manager Integration Tests', () => {
 		}
 		await activateDevelopmentExtension(vscode);
 
-		const tempRoot = await fsPromises.mkdtemp(path.join(os.tmpdir(), 'csm-host-smoke-nested-submodule-'));
+		const tempRoot = await fsPromises.mkdtemp(path.join(getTempRoot(), 'csm-host-smoke-nested-submodule-'));
 		const moduleRepo = path.join(tempRoot, 'module-repo');
 		const workspaceRepo = path.join(tempRoot, 'workspace-repo');
 		const service = new WorkspaceModuleService();

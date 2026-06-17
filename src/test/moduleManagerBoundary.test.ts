@@ -8,8 +8,8 @@
 import './setup';
 import * as assert from 'assert';
 import * as fs from 'fs/promises';
-import * as os from 'os';
 import * as path from 'path';
+import { getTempRoot } from '../common/tempPaths';
 import { suite, test } from 'mocha';
 
 import { WorkspaceModuleService } from '../moduleManager/workspaceModuleService';
@@ -33,7 +33,7 @@ class InMemoryGlobalState {
 suite('Module Manager Boundary Tests', () => {
 	test('YAML parser rejects malformed input gracefully', async () => {
 		const service = new WorkspaceModuleService();
-		const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'csm-yaml-'));
+		const tmpDir = await fs.mkdtemp(path.join(getTempRoot(), 'csm-yaml-'));
 		try {
 			const configDir = path.join(tmpDir, 'csm');
 			await fs.mkdir(configDir, { recursive: true });
@@ -51,7 +51,7 @@ suite('Module Manager Boundary Tests', () => {
 
 	test('writeConfig + loadConfig round-trips entries with special characters', async () => {
 		const service = new WorkspaceModuleService();
-		const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'csm-roundtrip-'));
+		const tmpDir = await fs.mkdtemp(path.join(getTempRoot(), 'csm-roundtrip-'));
 		try {
 			const configPath = path.join(tmpDir, 'csm', 'modules.yaml');
 			const config = {
@@ -92,7 +92,7 @@ suite('Module Manager Boundary Tests', () => {
 
 	test('targetExists rejects path-traversal style relative paths', async () => {
 		const service = new WorkspaceModuleService();
-		const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'csm-trav-'));
+		const tmpDir = await fs.mkdtemp(path.join(getTempRoot(), 'csm-trav-'));
 		const outsideFile = path.join(path.dirname(tmpDir), `csm-outside-${Date.now()}.txt`);
 		try {
 			await fs.writeFile(outsideFile, 'outside', 'utf8');
