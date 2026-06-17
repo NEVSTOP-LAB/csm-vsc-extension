@@ -626,9 +626,9 @@ export class WorkspaceModuleService {
 		if (!nestedRepoRoot) {
 			return undefined;
 		}
-		// path.resolve 用于标准化路径（处理 .. 和 .），但在 Windows 上不统一盘符大小写。
-		// git 返回的路径盘符可能为大写（如 D:/...），而 Node.js 用的小写（如 d:\...），
-		// 统一使用 normalizePath 做标准化比较。
+		// path.resolve 标准化路径（处理 .. 和 .）并统一为正斜杠。
+		// Windows 上 git 返回的路径盘符可能为大写（如 D:/...），Node.js 用小写（如 d:\...），
+		// 因此需要做大小写不敏感的比较。
 		const normalizedNested = path.resolve(nestedRepoRoot).replace(/\\/g, '/');
 		const normalizedTarget = path.resolve(targetPath).replace(/\\/g, '/');
 		const pathsEqual = process.platform === 'win32'

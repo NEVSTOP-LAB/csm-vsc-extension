@@ -26,7 +26,7 @@ let cachedTempRoot: string | null = null;
  * 这样在本地开发时所有临时文件集中在 `tmp/` 下，便于查看和管理；
  * 在用户安装的扩展中则继续使用系统临时目录。
  *
- * @returns 临时根目录的绝对路径，保证以路径分隔符结尾。
+ * @returns 临时根目录的绝对路径。
  */
 export function getTempRoot(): string {
     if (cachedTempRoot !== null) {
@@ -43,6 +43,13 @@ export function getTempRoot(): string {
                 const srcDir = path.join(dir, 'src');
                 if (fs.existsSync(srcDir)) {
                     cachedTempRoot = path.join(dir, 'tmp');
+                    // 确保 tmp/ 目录存在，fs.mkdtemp 需要父目录存在
+                    try {
+                        fs.mkdirSync(cachedTempRoot, { recursive: true });
+                    } catch {
+                        // 权限不足等原因创建失败，回退到系统临时目录
+                        cachedTempRoot = os.tmpdir();
+                    }
                 } else {
                     // 生产环境（安装的扩展），使用系统临时目录
                     cachedTempRoot = os.tmpdir();
@@ -50,7 +57,7 @@ export function getTempRoot(): string {
                 return cachedTempRoot;
             }
         } catch {
-            // 权限不足等情况，继续向上查找
+            // 权限不足等文件系统异常，跳过当前目录继续向上查找
         }
         const parent = path.dirname(dir);
         if (parent === dir) {
