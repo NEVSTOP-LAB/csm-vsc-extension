@@ -1,6 +1,6 @@
 import type { Dirent } from 'fs';
 import * as fs from 'fs/promises';
-import * as os from 'os';
+import { getTempRoot } from '../common/tempPaths';
 import * as path from 'path';
 import JSZip from 'jszip';
 import * as yaml from 'js-yaml';
@@ -485,7 +485,7 @@ export class WorkspaceModuleService {
 				};
 			}
 
-			const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'csm-update-'));
+			const tmpDir = await fs.mkdtemp(path.join(getTempRoot(), 'csm-update-'));
 			try {
 				const branch = normalizedEntry.branch || moduleEntry.defaultBranch || 'main';
 				await this.runGit(tmpDir, ['clone', '--depth', '1', '--branch', branch, normalizedEntry.source, 'src'], authToken, normalizedEntry.source);
@@ -716,7 +716,7 @@ export class WorkspaceModuleService {
 		authToken?: string,
 		onProgress?: (message: string) => void,
 	): Promise<LocalModuleConfigEntry> {
-		const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'csm-module-'));
+		const tempRoot = await fs.mkdtemp(path.join(getTempRoot(), 'csm-module-'));
 		const checkoutPath = path.join(tempRoot, 'checkout');
 		const branch = entry.defaultBranch || 'main';
 		try {
@@ -748,7 +748,7 @@ export class WorkspaceModuleService {
 		const normalizedEntry = this.normalizeConfigEntry(entry);
 		const targetRelativePath = this.normalizeRootPath(entry.path);
 		const targetPath = this.toAbsoluteTargetPath(workspaceRoot, targetRelativePath);
-		const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'csm-switch-copy-'));
+		const tempRoot = await fs.mkdtemp(path.join(getTempRoot(), 'csm-switch-copy-'));
 		const snapshotPath = path.join(tempRoot, 'snapshot');
 		try {
 			await this.copyDirectory(targetPath, snapshotPath);

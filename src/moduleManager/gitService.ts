@@ -1,6 +1,6 @@
 import { execFile } from 'child_process';
 import * as fs from 'fs/promises';
-import * as os from 'os';
+import { getTempRoot } from '../common/tempPaths';
 import * as path from 'path';
 import { promisify } from 'util';
 import * as vscode from 'vscode';
@@ -114,7 +114,7 @@ export class GitService implements IGitRunner {
 			return this.askpassScriptPath;
 		}
 		const isWindows = process.platform === 'win32';
-		const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'csm-git-askpass-'));
+		const dir = await fs.mkdtemp(path.join(getTempRoot(), 'csm-git-askpass-'));
 		const scriptPath = path.join(dir, isWindows ? 'askpass.cmd' : 'askpass.sh');
 		const scriptBody = isWindows
 			? '@echo off\r\nif /I "%~1"=="Username for *" (echo %CSM_GIT_USERNAME%) else (echo %CSM_GIT_TOKEN%)\r\n'
