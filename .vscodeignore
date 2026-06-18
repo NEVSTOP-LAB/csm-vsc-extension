@@ -26,3 +26,5 @@ scripts/**
 *.vsix
 .deepseek/**
 tmp/**
+.codegraph/**
+.reasonix/**
