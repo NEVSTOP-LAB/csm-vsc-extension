@@ -40,6 +40,16 @@
 - 开发环境下 `getTempRoot()` 返回项目根目录下的 `tmp/`，生产环境回退到 `os.tmpdir()`
 - `tmp/` 已加入 `.gitignore`，不会被 git 追踪
 
+## Shell / gh / git 操作避坑
+
+- **Bash on Windows 路径始终用正斜杠**：反斜杠被 bash 视为转义符，用 `/d/csm-vsc-extension`。
+- **Git Bash 删除目录用 `rm -rf`**：`rmdir /s /q` 是 cmd 语法，bash 中会失败。
+- **`gh api` 传整数用 `--input -` + JSON**：`-f` 将值当字符串发送，API 需整数时报 422。用 `echo '{"key":123}' | gh api ... --input -`。
+- **`gh pr create` 正文含特殊字符用 `--body-file`**：反引号等 shell 字符会解析失败，先写入文件再引用。
+- **`git add` 指定文件不用 `-A`**：`-A` 会误暂存 `nul`、`.codegraph/` 等未追踪文件。
+- **`fs.mkdtemp` 前确保父目录存在**：`mkdtemp` 不自动创建父目录，用 `fs.mkdirSync(dir, { recursive: true })` 兜底。
+- **Windows git vs Node.js 盘符大小写**：git 返回大写 `D:/...`，Node.js 用小写 `d:\...`，路径比较时先统一 `replace(/\\/g, '/').toLowerCase()`。
+
 ## 开发工作流
 
 按以下流程完成一个需求的开发，整个过程**自主执行，无需等待用户确认**：
