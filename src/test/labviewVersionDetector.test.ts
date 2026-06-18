@@ -4,8 +4,8 @@
 
 import * as assert from 'assert';
 import * as fs from 'fs/promises';
-import * as os from 'os';
 import * as path from 'path';
+import { getTempRoot } from '../common/tempPaths';
 import {
     decodeLvVersion,
     getLvVersionDisplay,
@@ -18,7 +18,7 @@ import {
  * 创建临时目录，返回路径和清理函数。
  */
 async function createTempDir(): Promise<{ dir: string; cleanup: () => Promise<void> }> {
-    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'lvver-test-'));
+    const dir = await fs.mkdtemp(path.join(getTempRoot(), 'lvver-test-'));
     return {
         dir,
         cleanup: async () => {

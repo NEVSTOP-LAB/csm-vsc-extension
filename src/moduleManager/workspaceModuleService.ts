@@ -1,6 +1,6 @@
 import type { Dirent } from 'fs';
 import * as fs from 'fs/promises';
-import * as os from 'os';
+import { getTempRoot } from '../common/tempPaths';
 import * as path from 'path';
 import JSZip from 'jszip';
 import * as yaml from 'js-yaml';
@@ -485,7 +485,7 @@ export class WorkspaceModuleService {
 				};
 			}
 
-			const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'csm-update-'));
+			const tmpDir = await fs.mkdtemp(path.join(getTempRoot(), 'csm-update-'));
 			try {
 				const branch = normalizedEntry.branch || moduleEntry.defaultBranch || 'main';
 				await this.runGit(tmpDir, ['clone', '--depth', '1', '--branch', branch, normalizedEntry.source, 'src'], authToken, normalizedEntry.source);
@@ -623,7 +623,18 @@ export class WorkspaceModuleService {
 		const normalizedTargetPath = this.normalizeRootPath(targetRelativePath);
 		const targetPath = this.toAbsoluteTargetPath(repoRoot, normalizedTargetPath);
 		const nestedRepoRoot = await this.resolveGitRepositoryRoot(targetPath);
-		if (!nestedRepoRoot || path.resolve(nestedRepoRoot) !== path.resolve(targetPath)) {
+		if (!nestedRepoRoot) {
+			return undefined;
+		}
+		// path.resolve 标准化路径（处理 .. 和 .），toPosixPath 将反斜杠统一为正斜杠。
+		// Windows 上 git 返回的路径盘符可能为大写（如 D:/...），Node.js 用小写（如 d:\...），
+		// 因此需要做大小写不敏感的比较。
+		const normalizedNested = toPosixPath(path.resolve(nestedRepoRoot));
+		const normalizedTarget = toPosixPath(path.resolve(targetPath));
+		const pathsEqual = process.platform === 'win32'
+			? normalizedNested.toLowerCase() === normalizedTarget.toLowerCase()
+			: normalizedNested === normalizedTarget;
+		if (!pathsEqual) {
 			return undefined;
 		}
 
@@ -716,7 +727,7 @@ export class WorkspaceModuleService {
 		authToken?: string,
 		onProgress?: (message: string) => void,
 	): Promise<LocalModuleConfigEntry> {
-		const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'csm-module-'));
+		const tempRoot = await fs.mkdtemp(path.join(getTempRoot(), 'csm-module-'));
 		const checkoutPath = path.join(tempRoot, 'checkout');
 		const branch = entry.defaultBranch || 'main';
 		try {
@@ -748,7 +759,7 @@ export class WorkspaceModuleService {
 		const normalizedEntry = this.normalizeConfigEntry(entry);
 		const targetRelativePath = this.normalizeRootPath(entry.path);
 		const targetPath = this.toAbsoluteTargetPath(workspaceRoot, targetRelativePath);
-		const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'csm-switch-copy-'));
+		const tempRoot = await fs.mkdtemp(path.join(getTempRoot(), 'csm-switch-copy-'));
 		const snapshotPath = path.join(tempRoot, 'snapshot');
 		try {
 			await this.copyDirectory(targetPath, snapshotPath);

@@ -4,6 +4,7 @@ node_modules
 .vscode-test/
 *.vsix
 *.log
+tmp/
 .deepseek/instructions.md
 csm/
 *.lvproj

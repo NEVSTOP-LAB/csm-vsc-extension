@@ -56,6 +56,7 @@ context.subscriptions.push(
 - 所有 disposable 必须通过 `context.subscriptions.push()` 注册，防止内存泄漏
 - Snippet 文本使用 `vscode.SnippetString` 包装，支持 `${1:placeholder}` Tab 占位符
 - `package.json` 的 `main` 指向 `./dist/extension.js`（esbuild 输出）
+- **临时文件**：所有需要创建临时文件/目录的代码必须使用 `getTempRoot()`（从 `../common/tempPaths` 导入），严禁直接使用 `os.tmpdir()`
 
 ## 工作流程
 
