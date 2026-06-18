@@ -1,8 +1,8 @@
 import * as assert from 'assert';
 import { execFileSync } from 'child_process';
 import * as fs from 'fs/promises';
-import * as os from 'os';
 import * as path from 'path';
+import { getTempRoot } from '../common/tempPaths';
 import JSZip from 'jszip';
 import { ModuleCacheStore, mapRepoToModuleEntry } from '../moduleManager';
 import { GitExecOptions, IGitRunner } from '../moduleManager/gitService';
@@ -202,7 +202,7 @@ suite('Module Manager Tests', () => {
 	});
 
 	test('ReadmeAssetCache saves and reads markdown to/from cache', async () => {
-		const storageRoot = vscode.Uri.file(path.join(os.tmpdir(), `csm-readme-assets-${Date.now()}`));
+		const storageRoot = vscode.Uri.file(path.join(getTempRoot(), `csm-readme-assets-${Date.now()}`));
 		const cache = new ReadmeAssetCache(storageRoot);
 		const entry: CsmModuleEntry = {
 			id: 1,
@@ -268,7 +268,7 @@ suite('Module Manager Tests', () => {
 	});
 
 	test('ModuleSidebarViewProvider renders extension-style module cards', () => {
-		const assetRoot = vscode.Uri.file(path.join(os.tmpdir(), 'csm-sidebar-readme-assets'));
+		const assetRoot = vscode.Uri.file(path.join(getTempRoot(), 'csm-sidebar-readme-assets'));
 		const provider = new ModuleSidebarViewProvider({
 			onLogin: () => undefined,
 			onRefresh: () => undefined,
@@ -982,7 +982,7 @@ suite('Module Manager Tests', () => {
 	});
 
 	test('WorkspaceModuleService persists and reloads local module config', async () => {
-		const repoRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'csm-modules-config-'));
+		const repoRoot = await fs.mkdtemp(path.join(getTempRoot(), 'csm-modules-config-'));
 		const service = new WorkspaceModuleService();
 		try {
 			const initialConfig = await service.initializeConfig(repoRoot, 'csm');
@@ -1010,7 +1010,7 @@ suite('Module Manager Tests', () => {
 	});
 
 	test('WorkspaceModuleService toggles local module files between readonly and writable', async () => {
-		const workspaceRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'csm-lock-toggle-'));
+		const workspaceRoot = await fs.mkdtemp(path.join(getTempRoot(), 'csm-lock-toggle-'));
 		const service = new WorkspaceModuleService();
 		try {
 			const targetPath = path.join(workspaceRoot, 'csm', 'module-a');
@@ -1056,7 +1056,7 @@ suite('Module Manager Tests', () => {
 	});
 
 	test('WorkspaceModuleService continues locking remaining files when one chmod fails', async () => {
-		const workspaceRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'csm-lock-partial-failure-'));
+		const workspaceRoot = await fs.mkdtemp(path.join(getTempRoot(), 'csm-lock-partial-failure-'));
 		const service = new WorkspaceModuleService();
 		const fsModule = require('fs/promises') as typeof fs & { chmod: typeof fs.chmod };
 		const originalChmod = fsModule.chmod;
@@ -1096,7 +1096,7 @@ suite('Module Manager Tests', () => {
 	});
 
 	test('WorkspaceModuleService skips redundant chmod calls when lock state already matches', async () => {
-		const workspaceRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'csm-lock-noop-sync-'));
+		const workspaceRoot = await fs.mkdtemp(path.join(getTempRoot(), 'csm-lock-noop-sync-'));
 		const service = new WorkspaceModuleService();
 		const fsModule = require('fs/promises') as typeof fs & { chmod: typeof fs.chmod };
 		const originalChmod = fsModule.chmod;
@@ -1133,7 +1133,7 @@ suite('Module Manager Tests', () => {
 	});
 
 	test('WorkspaceModuleService migrates legacy lvcsm config paths to yaml', async () => {
-		const repoRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'csm-modules-legacy-'));
+		const repoRoot = await fs.mkdtemp(path.join(getTempRoot(), 'csm-modules-legacy-'));
 		const service = new WorkspaceModuleService();
 		try {
 			const configDir = path.join(repoRoot, 'csm');
@@ -1164,7 +1164,7 @@ suite('Module Manager Tests', () => {
 	});
 
 	test('WorkspaceModuleService backfills missing locked flags when loading yaml config', async () => {
-		const repoRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'csm-modules-locked-migrate-'));
+		const repoRoot = await fs.mkdtemp(path.join(getTempRoot(), 'csm-modules-locked-migrate-'));
 		const service = new WorkspaceModuleService();
 		try {
 			const configDir = path.join(repoRoot, 'csm');
@@ -1195,7 +1195,7 @@ suite('Module Manager Tests', () => {
 	});
 
 	test('WorkspaceModuleService publishes a local folder to a new remote repository', async () => {
-		const folderPath = await fs.mkdtemp(path.join(os.tmpdir(), 'csm-publish-module-'));
+		const folderPath = await fs.mkdtemp(path.join(getTempRoot(), 'csm-publish-module-'));
 		const remoteUrl = 'https://github.com/tester/shared-module.git';
 		await fs.writeFile(path.join(folderPath, 'module.vi'), 'demo', 'utf8');
 
@@ -1269,7 +1269,7 @@ suite('Module Manager Tests', () => {
 	});
 
 	test('WorkspaceModuleService converts a published local folder into a git submodule', async () => {
-		const repoRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'csm-convert-submodule-'));
+		const repoRoot = await fs.mkdtemp(path.join(getTempRoot(), 'csm-convert-submodule-'));
 		const targetRelativePath = 'csm/custom-module';
 		const targetPath = path.join(repoRoot, 'csm', 'custom-module');
 		const remoteUrl = 'https://github.com/tester/shared-module.git';
@@ -1318,7 +1318,7 @@ suite('Module Manager Tests', () => {
 	});
 
 	test('WorkspaceModuleService switches a submodule to copy mode without changing module files', async () => {
-		const workspaceRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'csm-switch-to-copy-'));
+		const workspaceRoot = await fs.mkdtemp(path.join(getTempRoot(), 'csm-switch-to-copy-'));
 		const targetPath = path.join(workspaceRoot, 'csm', 'module-a');
 		await fs.mkdir(targetPath, { recursive: true });
 		await fs.writeFile(path.join(targetPath, 'README.md'), 'demo', 'utf8');
@@ -1366,7 +1366,7 @@ suite('Module Manager Tests', () => {
 	});
 
 	test('WorkspaceModuleService fails submodule-to-copy switch when the recreated target disappears before relocking', async () => {
-		const workspaceRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'csm-switch-to-copy-missing-'));
+		const workspaceRoot = await fs.mkdtemp(path.join(getTempRoot(), 'csm-switch-to-copy-missing-'));
 		const targetPath = path.join(workspaceRoot, 'csm', 'module-a');
 		const fsModule = require('fs/promises') as typeof fs & { copyFile: typeof fs.copyFile };
 		const originalCopyFile = fsModule.copyFile;
@@ -1418,7 +1418,7 @@ suite('Module Manager Tests', () => {
 	});
 
 	test('WorkspaceModuleService switches a copied module to submodule mode', async () => {
-		const repoRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'csm-switch-to-submodule-'));
+		const repoRoot = await fs.mkdtemp(path.join(getTempRoot(), 'csm-switch-to-submodule-'));
 		const targetPath = path.join(repoRoot, 'csm', 'module-a');
 		await fs.mkdir(targetPath, { recursive: true });
 		await fs.writeFile(path.join(targetPath, 'README.md'), 'demo', 'utf8');
@@ -1476,7 +1476,7 @@ suite('Module Manager Tests', () => {
 
 	test('WorkspaceModuleService reconstructs yaml config from existing csm submodules', async function () {
 		this.timeout(20000);
-		const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'csm-modules-recover-'));
+		const tempRoot = await fs.mkdtemp(path.join(getTempRoot(), 'csm-modules-recover-'));
 		const moduleRepo = path.join(tempRoot, 'module-a-repo');
 		const repoRoot = path.join(tempRoot, 'workspace-repo');
 		const service = new WorkspaceModuleService();
@@ -1515,7 +1515,7 @@ suite('Module Manager Tests', () => {
 
 	test('WorkspaceModuleService reconstructs yaml config from existing nested git module directories', async function () {
 		this.timeout(20000);
-		const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'csm-modules-recover-nested-'));
+		const tempRoot = await fs.mkdtemp(path.join(getTempRoot(), 'csm-modules-recover-nested-'));
 		const moduleRepo = path.join(tempRoot, 'module-nested-repo');
 		const repoRoot = path.join(tempRoot, 'workspace-repo');
 		const service = new WorkspaceModuleService();
@@ -1554,7 +1554,7 @@ suite('Module Manager Tests', () => {
 
 	test('WorkspaceModuleService previews and updates copy modules with a zip backup', async function () {
 		this.timeout(20000);
-		const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'csm-modules-copy-update-'));
+		const tempRoot = await fs.mkdtemp(path.join(getTempRoot(), 'csm-modules-copy-update-'));
 		const moduleRepo = path.join(tempRoot, 'module-copy-repo');
 		const workspaceRoot = path.join(tempRoot, 'plain-workspace');
 		const service = new WorkspaceModuleService();
@@ -1614,7 +1614,7 @@ suite('Module Manager Tests', () => {
 
 	test('WorkspaceModuleService syncSubmoduleEntriesToConfig adds untracked submodules to an existing config', async function () {
 		this.timeout(20000);
-		const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'csm-sync-submodules-'));
+		const tempRoot = await fs.mkdtemp(path.join(getTempRoot(), 'csm-sync-submodules-'));
 		const moduleRepo = path.join(tempRoot, 'module-b-repo');
 		const repoRoot = path.join(tempRoot, 'workspace-repo');
 		const service = new WorkspaceModuleService();
@@ -1656,7 +1656,7 @@ suite('Module Manager Tests', () => {
 
 	test('WorkspaceModuleService syncSubmoduleEntriesToConfig skips already-tracked submodules', async function () {
 		this.timeout(20000);
-		const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'csm-sync-skip-'));
+		const tempRoot = await fs.mkdtemp(path.join(getTempRoot(), 'csm-sync-skip-'));
 		const moduleRepo = path.join(tempRoot, 'module-c-repo');
 		const repoRoot = path.join(tempRoot, 'workspace-repo');
 		const service = new WorkspaceModuleService();
@@ -1691,7 +1691,7 @@ suite('Module Manager Tests', () => {
 
 	test('WorkspaceModuleService syncSubmoduleEntriesToConfig adds untracked nested git module directories to an existing config', async function () {
 		this.timeout(20000);
-		const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'csm-sync-nested-repos-'));
+		const tempRoot = await fs.mkdtemp(path.join(getTempRoot(), 'csm-sync-nested-repos-'));
 		const moduleRepo = path.join(tempRoot, 'module-d-repo');
 		const repoRoot = path.join(tempRoot, 'workspace-repo');
 		const service = new WorkspaceModuleService();

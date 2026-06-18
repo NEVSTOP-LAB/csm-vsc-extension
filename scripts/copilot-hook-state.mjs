@@ -1,12 +1,34 @@
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
+import { fileURLToPath } from 'url';
+
+function getProjectRoot() {
+    // 从当前脚本路径向上查找 package.json，定位项目根目录
+    const scriptDir = path.dirname(fileURLToPath(import.meta.url));
+    let dir = scriptDir;
+    for (let i = 0; i < 10; i++) {
+        if (fs.existsSync(path.join(dir, 'package.json'))) {
+            return dir;
+        }
+        const parent = path.dirname(dir);
+        if (parent === dir) break;
+        dir = parent;
+    }
+    return process.cwd();
+}
 
 function getStateRoot() {
     const configured = process.env.CSM_COPILOT_HOOK_STATE_DIR?.trim();
-    return configured
-        ? path.resolve(configured)
-        : path.join(os.tmpdir(), 'csm-copilot-hook-state');
+    if (configured) {
+        return path.resolve(configured);
+    }
+    const projectRoot = getProjectRoot();
+    // 开发环境（存在 src/）使用项目 tmp/，否则回退系统临时目录
+    if (fs.existsSync(path.join(projectRoot, 'src'))) {
+        return path.join(projectRoot, 'tmp', 'csm-copilot-hook-state');
+    }
+    return path.join(os.tmpdir(), 'csm-copilot-hook-state');
 }
 
 function sanitizeSessionId(sessionId) {

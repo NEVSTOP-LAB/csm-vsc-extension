@@ -1,7 +1,7 @@
 import * as assert from 'assert';
 import * as fs from 'fs';
-import * as os from 'os';
 import * as path from 'path';
+import { getTempRoot } from '../common/tempPaths';
 import * as vscode from 'vscode';
 import { DEFAULT_LOCAL_MODULE_ROOT, IModuleViewProvider, LEGACY_LOCAL_MODULE_CONFIG_FILE, LOCAL_MODULE_CONFIG_FILE } from '../moduleManager';
 import { ModuleManagerController, ModuleManagerControllerDeps } from '../moduleManager/moduleManagerController';
@@ -49,7 +49,7 @@ class FakeMemento {
 }
 
 function createController(globalState: FakeMemento = new FakeMemento(), deps: ModuleManagerControllerDeps = {}): ModuleManagerController {
-	const storageRoot = vscode.Uri.file(path.join(os.tmpdir(), `csm-vsc-support-tests-${Date.now()}`));
+	const storageRoot = vscode.Uri.file(path.join(getTempRoot(), `csm-vsc-support-tests-${Date.now()}`));
 	const context = {
 		globalState,
 		globalStorageUri: storageRoot,
@@ -96,7 +96,7 @@ function createCachedSnapshot(
 }
 
 function createWorkspaceFolderWithCsmProject(prefix: string, root = DEFAULT_LOCAL_MODULE_ROOT): { repoRoot: string; lvprojPath: string } {
-	const repoRoot = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
+	const repoRoot = fs.mkdtempSync(path.join(getTempRoot(), prefix));
 	fs.mkdirSync(path.join(repoRoot, root), { recursive: true });
 	const lvprojPath = path.join(repoRoot, 'demo.lvproj');
 	fs.writeFileSync(lvprojPath, '<Project />', 'utf8');
@@ -2356,7 +2356,7 @@ suite('ModuleManagerController Regression Tests', () => {
 	});
 
 	test('createLocalFolderRepositoryCommand runs the GitHub creation wizard with default topics', async () => {
-		const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'csm-share-module-'));
+		const workspaceRoot = fs.mkdtempSync(path.join(getTempRoot(), 'csm-share-module-'));
 		fs.mkdirSync(path.join(workspaceRoot, 'csm', 'custom-module'), { recursive: true });
 		const controller = createController() as any;
 		const existingConfig: LocalModuleConfig = {
@@ -2505,7 +2505,7 @@ suite('ModuleManagerController Regression Tests', () => {
 	});
 
 	test('createLocalFolderRepositoryCommand warns when local state sync fails after publish', async () => {
-		const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'csm-share-module-sync-fail-'));
+		const workspaceRoot = fs.mkdtempSync(path.join(getTempRoot(), 'csm-share-module-sync-fail-'));
 		fs.mkdirSync(path.join(workspaceRoot, 'csm', 'custom-module'), { recursive: true });
 		const controller = createController() as any;
 		const existingConfig: LocalModuleConfig = {
@@ -2599,7 +2599,7 @@ suite('ModuleManagerController Regression Tests', () => {
 	});
 
 	test('createLocalFolderRepositoryCommand keeps copy mode when workspace is not a git repo', async () => {
-		const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'csm-share-module-copy-fallback-'));
+		const workspaceRoot = fs.mkdtempSync(path.join(getTempRoot(), 'csm-share-module-copy-fallback-'));
 		fs.mkdirSync(path.join(workspaceRoot, 'csm', 'custom-module'), { recursive: true });
 		const controller = createController() as any;
 		const existingConfig: LocalModuleConfig = {
@@ -2701,7 +2701,7 @@ suite('ModuleManagerController Regression Tests', () => {
 	});
 
 	test('createLocalFolderRepositoryCommand waits for catalog refresh before resolving', async () => {
-		const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'csm-share-module-refresh-order-'));
+		const workspaceRoot = fs.mkdtempSync(path.join(getTempRoot(), 'csm-share-module-refresh-order-'));
 		fs.mkdirSync(path.join(workspaceRoot, 'csm', 'custom-module'), { recursive: true });
 		const controller = createController() as any;
 		const existingConfig: LocalModuleConfig = {
@@ -2794,7 +2794,7 @@ suite('ModuleManagerController Regression Tests', () => {
 	});
 
 	test('linkLocalFolderRepositoryCommand records an unmanaged folder against an online repository', async () => {
-		const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'csm-link-module-'));
+		const workspaceRoot = fs.mkdtempSync(path.join(getTempRoot(), 'csm-link-module-'));
 		fs.mkdirSync(path.join(workspaceRoot, 'csm', 'custom-module'), { recursive: true });
 		const controller = createController() as any;
 		const moduleToLink: CsmModuleEntry = {
@@ -2896,7 +2896,7 @@ suite('ModuleManagerController Regression Tests', () => {
 	});
 
 	test('linkLocalFolderRepositoryCommand keeps existing git submodule metadata instead of rewriting it as copy', async () => {
-		const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'csm-link-existing-submodule-'));
+		const workspaceRoot = fs.mkdtempSync(path.join(getTempRoot(), 'csm-link-existing-submodule-'));
 		fs.mkdirSync(path.join(workspaceRoot, 'csm', 'custom-module'), { recursive: true });
 		const controller = createController() as any;
 		const moduleToLink: CsmModuleEntry = {
@@ -3007,7 +3007,7 @@ suite('ModuleManagerController Regression Tests', () => {
 	});
 
 	test('linkLocalFolderRepositoryCommand reuses existing nested git repository metadata instead of remote head state', async () => {
-		const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'csm-link-existing-nested-repo-'));
+		const workspaceRoot = fs.mkdtempSync(path.join(getTempRoot(), 'csm-link-existing-nested-repo-'));
 		fs.mkdirSync(path.join(workspaceRoot, 'csm', 'custom-module'), { recursive: true });
 		const controller = createController() as any;
 		const moduleToLink: CsmModuleEntry = {
@@ -3094,7 +3094,7 @@ suite('ModuleManagerController Regression Tests', () => {
 	});
 
 	test('linkLocalFolderRepositoryCommand refuses to overwrite a different managed path for the same repository', async () => {
-		const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'csm-link-module-conflict-'));
+		const workspaceRoot = fs.mkdtempSync(path.join(getTempRoot(), 'csm-link-module-conflict-'));
 		fs.mkdirSync(path.join(workspaceRoot, 'csm', 'custom-module'), { recursive: true });
 		const controller = createController() as any;
 		const config: LocalModuleConfig = {

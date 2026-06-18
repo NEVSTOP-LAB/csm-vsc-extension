@@ -168,13 +168,15 @@ export function compileOnly(cwd) {
  */
 export function installVsix(version, cwd) {
 	const vsixFile = `csm-vsc-support-${version}.vsix`;
-	const vsixPath = path.join(cwd, vsixFile);
+	const vsixDir = path.join(cwd, 'tmp');
+	fs.mkdirSync(vsixDir, { recursive: true });
+	const vsixPath = path.join(vsixDir, vsixFile);
 	const extensionsDir = process.env.VSCODE_EXTENSIONS_DIR || path.join(os.homedir(), '.vscode', 'extensions');
 	const codeCommand = resolveCodeCommand();
 	const nodeCommand = process.execPath;
 
 	logPhase('VSIX Packaging');
-	runNpm(['exec', '--yes', '--package', '@vscode/vsce@3.7.1', '--', 'vsce', 'package', '--no-dependencies'], cwd);
+	runNpm(['exec', '--yes', '--package', '@vscode/vsce@3.7.1', '--', 'vsce', 'package', '--no-dependencies', '-o', vsixPath], cwd);
 
 	console.log(`[hook] VS Code CLI: ${codeCommand}`);
 	console.log(`[hook] Extensions dir: ${extensionsDir}`);
