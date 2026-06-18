@@ -626,11 +626,11 @@ export class WorkspaceModuleService {
 		if (!nestedRepoRoot) {
 			return undefined;
 		}
-		// path.resolve 标准化路径（处理 .. 和 .）并统一为正斜杠。
+		// path.resolve 标准化路径（处理 .. 和 .），toPosixPath 将反斜杠统一为正斜杠。
 		// Windows 上 git 返回的路径盘符可能为大写（如 D:/...），Node.js 用小写（如 d:\...），
 		// 因此需要做大小写不敏感的比较。
-		const normalizedNested = path.resolve(nestedRepoRoot).replace(/\\/g, '/');
-		const normalizedTarget = path.resolve(targetPath).replace(/\\/g, '/');
+		const normalizedNested = toPosixPath(path.resolve(nestedRepoRoot));
+		const normalizedTarget = toPosixPath(path.resolve(targetPath));
 		const pathsEqual = process.platform === 'win32'
 			? normalizedNested.toLowerCase() === normalizedTarget.toLowerCase()
 			: normalizedNested === normalizedTarget;
