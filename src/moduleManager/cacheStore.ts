@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { ModuleSortState } from './interfaces';
+import { ModuleSortState } from './types';
 import { normalizeModuleSortState } from './sort';
 import { CsmModuleEntry, ModuleAuthSnapshot, ModuleCacheSnapshot } from './types';
 import { STORAGE_KEYS } from './constants';

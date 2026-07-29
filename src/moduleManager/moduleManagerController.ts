@@ -7,7 +7,7 @@ import { ModuleCacheStore } from './cacheStore';
 import { CopyModuleUpdatePreview, CsmModuleEntry, GitHubRepoSummary, LocalManagedModuleEntry, LocalModuleConfig, LocalModuleConfigEntry, LocalUnmanagedFolderEntry, ModuleApplyMethod, ModuleAuthSnapshot, ModuleCacheSnapshot, ModuleUpdateResult } from './types';
 import { ModuleTreeItem } from './moduleTreeTypes';
 import { ModuleSidebarViewProvider } from './moduleSidebarViewProvider';
-import { IModuleViewProvider, ModuleSortField, ModuleSortState, SidebarWorkspaceContext } from './interfaces';
+import { IModuleViewProvider, ModuleSortField, ModuleSortState, SidebarWorkspaceContext } from './types';
 import { ReadmeAssetCache } from './readmeAssetCache';
 import { DEFAULT_LOCAL_MODULE_ROOT, GitIdentity, LEGACY_LOCAL_MODULE_CONFIG_FILE, LOCAL_MODULE_CONFIG_FILE, WorkspaceModuleService } from './workspaceModuleService';
 import { COMMAND_IDS, CONFIG_KEYS, CONFIG_SECTIONS, CONTEXT_KEYS, GITHUB, VIEW_IDS } from './constants';

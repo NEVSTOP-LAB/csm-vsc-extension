@@ -7,7 +7,7 @@ import {
     sortModules,
 } from '../moduleManager/sort';
 import type { CsmModuleEntry } from '../moduleManager/types';
-import type { ModuleSortField, ModuleSortDirection } from '../moduleManager/interfaces';
+import type { ModuleSortField, ModuleSortDirection } from '../moduleManager/types';
 
 function makeModule(overrides: Partial<CsmModuleEntry> = {}): CsmModuleEntry {
     return {

@@ -1,5 +1,5 @@
 import * as crypto from 'crypto';
-import { ModuleListScope, ModuleSortDirection, ModuleSortField, ModuleSortState } from './interfaces';
+import { ModuleListScope, ModuleSortDirection, ModuleSortField, ModuleSortState } from './types';
 import { getApplyMethodLabel, getHtmlLang, getVisibilityLabel, t } from './messages';
 import { truncate } from './utils';
 import { ViewState } from './moduleTreeTypes';

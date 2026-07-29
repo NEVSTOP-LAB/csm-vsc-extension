@@ -1,4 +1,4 @@
-import { ModuleSortDirection, ModuleSortField, ModuleSortState } from './interfaces';
+import { ModuleSortDirection, ModuleSortField, ModuleSortState } from './types';
 import { CsmModuleEntry } from './types';
 import { getModuleKey } from './utils';
 

@@ -20,7 +20,7 @@ export {
 	normalizeModuleSortState,
 	sortModules,
 } from './sort';
-export type { IModuleViewProvider, ModuleSortDirection, ModuleSortField, ModuleSortState, SidebarWorkspaceContext } from './interfaces';
+export type { IModuleViewProvider, ModuleSortDirection, ModuleSortField, ModuleSortState, SidebarWorkspaceContext } from './types';
 export type {
 	CsmModuleEntry,
 	GitHubRepoSummary,
