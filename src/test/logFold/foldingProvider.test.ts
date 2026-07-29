@@ -1,7 +1,9 @@
 /**
  * foldingProvider.test.ts — FoldingRangeProvider 逻辑测试（增强版）
  *
- * 在原有 mock 文档测试基础上，补充实际折叠逻辑测试。
+ * 同时兼容两种运行环境：
+ * - 独立 Mocha（通过 setup.ts 加载 vscode-mock）：使用 mock 函数设置配置
+ * - 真实 VS Code 宿主（extension-tests）：使用默认配置，mock 函数不可用时跳过
  */
 
 import * as assert from 'assert';
@@ -45,11 +47,12 @@ const mockToken: vscode.CancellationToken = {
 };
 
 type VscodeMock = typeof vscode & {
-    __setConfigurationValue: (key: string, value: unknown) => void;
-    __resetUiState: () => void;
+    __setConfigurationValue?: (key: string, value: unknown) => void;
+    __resetUiState?: () => void;
 };
 
 const mock = vscode as VscodeMock;
+const hasMock = typeof mock.__setConfigurationValue === 'function';
 
 // ---------------------------------------------------------------------------
 // 测试
@@ -60,16 +63,21 @@ suite('LogFold — FoldingRangeProvider', () => {
     let provider: CSMLogFoldingRangeProvider;
 
     setup(() => {
-        // 设置默认的折叠配置
-        mock.__setConfigurationValue('csmlog.folding.minRepeatCount', 3);
-        mock.__setConfigurationValue('csmlog.folding.maxBlockLines', 20);
-        mock.__setConfigurationValue('csmlog.folding.smartParams', true);
-        mock.__setConfigurationValue('csmlog.folding.decorationStyle', 'compact');
+        if (hasMock) {
+            // 独立 Mocha 环境：通过 mock 设置配置
+            mock.__setConfigurationValue!('csmlog.folding.minRepeatCount', 3);
+            mock.__setConfigurationValue!('csmlog.folding.maxBlockLines', 20);
+            mock.__setConfigurationValue!('csmlog.folding.smartParams', true);
+            mock.__setConfigurationValue!('csmlog.folding.decorationStyle', 'compact');
+        }
+        // 真实 VS Code 环境：使用默认配置（minRepeatCount=3 等）
         provider = new CSMLogFoldingRangeProvider();
     });
 
     teardown(() => {
-        mock.__resetUiState();
+        if (hasMock) {
+            mock.__resetUiState!();
+        }
     });
 
     // ----- Mock 文档基础测试 -----
@@ -118,18 +126,20 @@ suite('LogFold — FoldingRangeProvider', () => {
             mockContext,
             mockToken,
         );
-        // 各行都不相同，应无折叠区
         assert.ok(!ranges || ranges.length === 0,
             `不应有折叠区域，实际: ${ranges ? ranges.length : 0}`);
     });
 
-    test('少于 minRepeatCount 的重复不触发折叠', async () => {
+    test('少于 minRepeatCount 的重复不触发折叠', async function () {
+        if (!hasMock) {
+            this.skip();
+            return;
+        }
         // 设置 minRepeatCount=5
-        mock.__setConfigurationValue('csmlog.folding.minRepeatCount', 5);
+        mock.__setConfigurationValue!('csmlog.folding.minRepeatCount', 5);
         provider = new CSMLogFoldingRangeProvider();
 
         const lines: string[] = [];
-        // 只有 3 行相同
         for (let i = 0; i < 3; i++) {
             lines.push(`2025/01/01 00:00:0${i}.000 [State Change] ModuleA | Same`);
         }
@@ -145,7 +155,6 @@ suite('LogFold — FoldingRangeProvider', () => {
 
     test('折叠区域起止行号正确', async () => {
         const lines: string[] = [];
-        // 前2行 + 5行相同 + 后2行
         lines.push('2025/01/01 00:00:01.000 [State Change] A | Start');
         lines.push('2025/01/01 00:00:02.000 [State Change] A | Start');
         for (let i = 0; i < 5; i++) {
@@ -181,7 +190,6 @@ suite('LogFold — FoldingRangeProvider', () => {
         const ranges2 = await provider.provideFoldingRanges(
             doc as unknown as vscode.TextDocument, mockContext, mockToken,
         );
-        // 两次调用应返回相同结果
         assert.deepStrictEqual(ranges1, ranges2, '缓存应返回相同结果');
     });
 
