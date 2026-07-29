@@ -126,7 +126,7 @@ code --install-extension csm-vsc-support-*.vsix
 
 ## 代码风格约定
 
-- 源码位于 `src/`，TypeScript 严格模式开启。
+- 源码位于 `src/`，TypeScript 严格模式开启。主要目录：`src/language/`（语言功能）、`src/modules/`（模块管理）、`src/common/`（共享工具）。
 - `npm run lint` 仅检查 `src/`。
 - 模块管理相关逻辑优先通过依赖注入保持可测试性，避免在测试中直接覆写私有字段。
 - `CompletionDef.insertText` 需要使用 `vscode.SnippetString` 包装，保留占位符能力。
