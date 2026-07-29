@@ -148,6 +148,10 @@ jobs:
       artifact_name: csm-vsc-support-${{ steps.version.outputs.build_version }}-vsix
       is_prerelease: ${{ steps.version.outputs.is_prerelease }}
     steps:
+      # 获取仓库路径相关环境变量（用于 FTP 备份路径）
+      # https://github.com/marketplace/actions/github-environment-variables-action
+      - uses: FranzDiebold/github-env-vars-action@v2
+
       - uses: actions/checkout@v4
 
       - name: 安装 Node.js
@@ -195,6 +199,19 @@ jobs:
           name: csm-vsc-support-${{ steps.version.outputs.build_version }}-vsix
           path: '*.vsix'
           retention-days: 30
+
+      # 通过 FTP 备份构建产物
+      # https://github.com/marketplace/actions/simple-ftp-upload
+      - name: 通过 FTP 备份 VSIX
+        uses: dennisameling/ftp-upload-action@v1.0.9
+        with:
+          server: ${{ secrets.VIPM_FTP_IP }}
+          port: ${{ secrets.VIPM_FTP_PORT }}
+          username: ${{ secrets.VIPM_FTP_USER }}
+          password: ${{ secrets.VIPM_FTP_PASSWORD }}
+          secure: false
+          server_dir: /${{ env.CI_REPOSITORY_OWNER_SLUG }}/${{ env.CI_REPOSITORY_NAME }}/${{ env.CI_ACTION_REF_NAME }}/
+          local_dir: ./
 
   validate-vsix:
     name: 验证 VSIX 可正常被 VS Code 加载 (${{ matrix.os }})
