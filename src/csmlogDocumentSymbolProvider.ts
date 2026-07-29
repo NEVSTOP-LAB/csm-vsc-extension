@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { localizeBundle } from './i18n';
+import { localizeBundle } from './common/i18n';
 import {
     CONFIG_KEY_REGEX,
     MODULE_LIFECYCLE_REGEX,

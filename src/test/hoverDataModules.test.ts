@@ -4,7 +4,7 @@ import { timestampEntries } from '../hoverData/timestamps';
 import { configKeyEntries } from '../hoverData/config';
 import { markerEntries } from '../hoverData/markers';
 import { getHoverDb } from '../hoverData/db';
-import { __setLanguageOverrideForTests } from '../i18n';
+import { __setLanguageOverrideForTests } from '../common/i18n';
 
 suite('hoverData — 事件类型条目', () => {
 

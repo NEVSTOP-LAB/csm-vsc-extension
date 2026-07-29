@@ -1,5 +1,5 @@
 import type { ModuleApplyMethod } from './types';
-import { getHtmlLang as getHtmlLangValue, localizeBundle } from '../i18n';
+import { getHtmlLang as getHtmlLangValue, localizeBundle } from '../common/i18n';
 
 const messages = {
 	outputChannelName: {

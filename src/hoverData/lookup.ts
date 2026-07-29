@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { isChineseLanguage } from '../i18n';
+import { isChineseLanguage } from '../common/i18n';
 import type { HoverEntry } from './types';
 import { getHoverDb } from './db';
 

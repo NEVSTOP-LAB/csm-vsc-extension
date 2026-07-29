@@ -4,7 +4,7 @@
 
 import * as assert from 'assert';
 import { getUserFacingErrorMessage } from '../../moduleManager/userFacingErrors';
-import { __setLanguageOverrideForTests } from '../../i18n';
+import { __setLanguageOverrideForTests } from '../../common/i18n';
 
 suite('Modules — UserFacingErrors', () => {
 
