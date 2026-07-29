@@ -54,15 +54,13 @@ suite('FileDecorationProvider', () => {
         assert.strictEqual(provider.provideFileDecoration(uri), undefined);
     });
 
-    test('.CSMLOG 大写扩展名也识别', () => {
+    test('.CSMLOG 大写扩展名识别行为', () => {
         const uri = vscode.Uri.file('/test/file.CSMLOG');
         const decoration = provider.provideFileDecoration(uri);
-        // 实现使用 endsWith('.csmlog')，大小写敏感
-        // 在 Windows 上这可能导致不匹配
-        // 此测试验证当前行为
-        if (decoration) {
-            assert.strictEqual(decoration.badge, 'C');
-        }
+        // 当前实现使用 endsWith('.csmlog')，大小写敏感，
+        // 因此大写扩展名不返回装饰（已知行为，非本次重构目标）
+        assert.strictEqual(decoration, undefined,
+            '大写 .CSMLOG 在当前实现中不被识别（endsWith 大小写敏感）');
     });
 
 });

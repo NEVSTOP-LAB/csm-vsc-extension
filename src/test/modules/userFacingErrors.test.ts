@@ -8,7 +8,6 @@ import { __setLanguageOverrideForTests } from '../../common/i18n';
 
 suite('Modules — UserFacingErrors', () => {
 
-    // 错误上下文不复杂，主要测试各种错误类型的映射
     const ctx = 'refresh' as const;
 
     // ----- GitHub HTTP 状态码 -----
@@ -18,7 +17,7 @@ suite('Modules — UserFacingErrors', () => {
             new Error('GitHub API request failed: 401'),
             ctx
         );
-        assert.ok(msg.includes('登录') || msg.includes('401') || msg.includes('sign in') || msg.includes('认证'),
+        assert.ok(msg.includes('sign in') || msg.includes('认证') || msg.includes('login') || msg.includes('401'),
             `期望认证相关消息，实际: ${msg}`);
     });
 
@@ -27,7 +26,8 @@ suite('Modules — UserFacingErrors', () => {
             new Error('GitHub API request failed: 403'),
             ctx
         );
-        assert.ok(msg.length > 0, '应返回非空消息');
+        assert.ok(msg.includes('permissions') || msg.includes('rejected') || msg.includes('权限'),
+            `期望包含权限相关关键词，实际: "${msg}"`);
     });
 
     test('GitHub 404 在 refresh 上下文中映射为模块未找到', () => {
@@ -35,7 +35,8 @@ suite('Modules — UserFacingErrors', () => {
             new Error('GitHub API request failed: 404'),
             'refresh'
         );
-        assert.ok(msg.length > 0, '应返回非空消息');
+        assert.ok(msg.includes('could not find') || msg.includes('not found') || msg.includes('未找到'),
+            `期望包含未找到关键词，实际: "${msg}"`);
     });
 
     test('GitHub 429/500+ 映射为临时不可用', () => {
@@ -43,13 +44,19 @@ suite('Modules — UserFacingErrors', () => {
             new Error('GitHub API request failed: 503'),
             ctx
         );
-        assert.ok(msg503.length > 0, '503 应有错误消息');
+        assert.ok(
+            msg503.includes('unavailable') || msg503.includes('temporarily') || msg503.includes('不可用'),
+            `503 期望临时不可用，实际: "${msg503}"`
+        );
         
         const msg429 = getUserFacingErrorMessage(
             new Error('GitHub API request failed: 429'),
             ctx
         );
-        assert.ok(msg429.length > 0, '429 应有错误消息');
+        assert.ok(
+            msg429.includes('unavailable') || msg429.includes('temporarily') || msg429.includes('不可用'),
+            `429 期望临时不可用，实际: "${msg429}"`
+        );
     });
 
     // ----- Git 相关错误 -----
@@ -59,7 +66,8 @@ suite('Modules — UserFacingErrors', () => {
             new Error('spawn git ENOENT'),
             'apply'
         );
-        assert.ok(msg.length > 0, 'Git 缺失应有错误消息');
+        assert.ok(msg.includes('Git') || msg.includes('git'),
+            `期望包含 Git 关键词，实际: "${msg}"`);
     });
 
     test('Git 权限错误映射', () => {
@@ -67,7 +75,10 @@ suite('Modules — UserFacingErrors', () => {
             new Error('Authentication failed'),
             'apply'
         );
-        assert.ok(msg.length > 0, 'Git 权限错误应有消息');
+        assert.ok(
+            msg.includes('access') || msg.includes('Permission') || msg.includes('权限') || msg.includes('Repository'),
+            `期望包含权限相关关键词，实际: "${msg}"`
+        );
     });
 
     test('Repository not found 映射', () => {
@@ -75,7 +86,10 @@ suite('Modules — UserFacingErrors', () => {
             new Error('Repository not found'),
             'update'
         );
-        assert.ok(msg.length > 0, '仓库未找到应有消息');
+        assert.ok(
+            msg.includes('repository') || msg.includes('not found') || msg.includes('not find'),
+            `期望包含仓库相关关键词，实际: "${msg}"`
+        );
     });
 
     // ----- 网络错误 -----
@@ -85,7 +99,10 @@ suite('Modules — UserFacingErrors', () => {
             new Error('ENOTFOUND api.github.com'),
             'refresh'
         );
-        assert.ok(msg.length > 0, '网络错误应有消息');
+        assert.ok(
+            msg.includes('Network') || msg.includes('connection') || msg.includes('网络'),
+            `期望包含网络相关关键词，实际: "${msg}"`
+        );
     });
 
     test('ECONNREFUSED 映射', () => {
@@ -93,7 +110,10 @@ suite('Modules — UserFacingErrors', () => {
             new Error('ECONNREFUSED'),
             'refresh'
         );
-        assert.ok(msg.length > 0, '连接拒绝应有消息');
+        assert.ok(
+            msg.includes('Network') || msg.includes('connection') || msg.includes('网络'),
+            `期望包含网络相关关键词，实际: "${msg}"`
+        );
     });
 
     // ----- YAML 错误 -----
@@ -103,7 +123,10 @@ suite('Modules — UserFacingErrors', () => {
             new Error('Failed to parse YAML config: unexpected token'),
             'config'
         );
-        assert.ok(msg.length > 0, 'YAML 错误应有消息');
+        assert.ok(
+            msg.includes('YAML') || msg.includes('yaml') || msg.includes('配置'),
+            `期望包含 YAML 相关关键词，实际: "${msg}"`
+        );
     });
 
     // ----- 边界条件 -----

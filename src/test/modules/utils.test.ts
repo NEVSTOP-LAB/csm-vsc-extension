@@ -64,11 +64,10 @@ suite('Modules — Utils', () => {
         assert.strictEqual(truncate('', 5), '');
     });
 
-    test('truncate maxLength 为 0 时返回空', () => {
-        // maxLength=0 时，slice(0, -3) 会怎样？实现不对此做特殊处理
+    test('truncate maxLength 为 0 时使用负索引截断', () => {
+        // maxLength=0: text.length(5) > 0 → slice(0, -3) = 'he' → 返回 'he...'
         const result = truncate('hello', 0);
-        // 行为取决于实现，验证结果为字符串即可
-        assert.strictEqual(typeof result, 'string');
+        assert.strictEqual(result, 'he...');
     });
 
 });
