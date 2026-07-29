@@ -259,14 +259,12 @@ export class ModuleManagerController {
 			return;
 		}
 
-		const workspaceFolder = await this.resolveWorkspaceFolder();
-		if (!workspaceFolder) {
+		const ctx = await this.resolveWorkspaceContext();
+		if (!ctx) {
 			void vscode.window.showWarningMessage(t('openWorkspaceBeforeApply'));
 			return;
 		}
-
-		const repoRoot = await this.workspaceModuleService.resolveGitRepositoryRoot(workspaceFolder.uri.fsPath);
-		const applyRoot = repoRoot ?? workspaceFolder.uri.fsPath;
+		const { workspaceFolder, repoRoot, workspaceRoot: applyRoot } = ctx;
 
 		let authToken = await this.ensureToken(false);
 		if (!authToken && selectedEntries.some((moduleEntry) => moduleEntry.visibility === 'private')) {
@@ -424,13 +422,12 @@ export class ModuleManagerController {
 
 	public async removeModuleCommand(entry?: CsmModuleEntry | ModuleTreeItem): Promise<void> {
 		const resolvedEntry = this.resolveModuleEntry(entry);
-		const workspaceFolder = await this.resolveWorkspaceFolder();
-		if (!workspaceFolder) {
+		const ctx = await this.resolveWorkspaceContext();
+		if (!ctx) {
 			void vscode.window.showWarningMessage(t('openWorkspaceBeforeRemove'));
 			return;
 		}
-		const repoRoot = await this.workspaceModuleService.resolveGitRepositoryRoot(workspaceFolder.uri.fsPath);
-		const workspaceRoot = repoRoot ?? workspaceFolder.uri.fsPath;
+		const { workspaceFolder, repoRoot, workspaceRoot } = ctx;
 		let config = await this.tryLoadSidebarLocalModuleConfig(workspaceFolder, workspaceRoot);
 		if (!config) {
 			void vscode.window.showWarningMessage(t('noWorkspaceConfig'));
@@ -508,13 +505,12 @@ export class ModuleManagerController {
 
 	public async updateModuleCommand(entry?: CsmModuleEntry | ModuleTreeItem): Promise<void> {
 		const resolvedEntry = this.resolveModuleEntry(entry);
-		const workspaceFolder = await this.resolveWorkspaceFolder();
-		if (!workspaceFolder) {
+		const ctx = await this.resolveWorkspaceContext();
+		if (!ctx) {
 			void vscode.window.showWarningMessage(t('openWorkspaceBeforeUpdate'));
 			return;
 		}
-		const repoRoot = await this.workspaceModuleService.resolveGitRepositoryRoot(workspaceFolder.uri.fsPath);
-		const workspaceRoot = repoRoot ?? workspaceFolder.uri.fsPath;
+		const { workspaceFolder, repoRoot, workspaceRoot } = ctx;
 		let config = await this.tryLoadSidebarLocalModuleConfig(workspaceFolder, workspaceRoot);
 		if (!config) {
 			void vscode.window.showWarningMessage(t('noWorkspaceConfig'));
@@ -610,13 +606,12 @@ export class ModuleManagerController {
 	}
 
 	public async switchLocalModuleMethodCommand(entry: LocalManagedModuleEntry): Promise<void> {
-		const workspaceFolder = await this.resolveWorkspaceFolder();
-		if (!workspaceFolder) {
+		const ctx = await this.resolveWorkspaceContext();
+		if (!ctx) {
 			void vscode.window.showWarningMessage(t('openWorkspaceBeforeSwitchMethod'));
 			return;
 		}
-
-		const repoRoot = await this.workspaceModuleService.resolveGitRepositoryRoot(workspaceFolder.uri.fsPath);
+		const { workspaceFolder, repoRoot } = ctx;
 		if (!repoRoot) {
 			void vscode.window.showWarningMessage(t('switchMethodRequiresGitRepo'));
 			return;
@@ -713,14 +708,12 @@ export class ModuleManagerController {
 	}
 
 	public async toggleLocalModuleLockCommand(entry: LocalManagedModuleEntry): Promise<void> {
-		const workspaceFolder = await this.resolveWorkspaceFolder();
-		if (!workspaceFolder) {
+		const ctx = await this.resolveWorkspaceContext();
+		if (!ctx) {
 			void vscode.window.showWarningMessage(t('openWorkspaceBeforeToggleLock'));
 			return;
 		}
-
-		const repoRoot = await this.workspaceModuleService.resolveGitRepositoryRoot(workspaceFolder.uri.fsPath);
-		const workspaceRoot = repoRoot ?? workspaceFolder.uri.fsPath;
+		const { workspaceFolder, repoRoot, workspaceRoot } = ctx;
 		let config = await this.tryLoadSidebarLocalModuleConfig(workspaceFolder, workspaceRoot);
 		if (!config) {
 			void vscode.window.showWarningMessage(t('noWorkspaceConfig'));
@@ -779,13 +772,12 @@ export class ModuleManagerController {
 	}
 
 	public async createLocalFolderRepositoryCommand(folder: LocalUnmanagedFolderEntry): Promise<void> {
-		const workspaceFolder = await this.resolveWorkspaceFolder();
-		if (!workspaceFolder) {
+		const ctx = await this.resolveWorkspaceContext();
+		if (!ctx) {
 			void vscode.window.showWarningMessage(t('openWorkspaceBeforeCreateRepository'));
 			return;
 		}
-		const repoRoot = await this.workspaceModuleService.resolveGitRepositoryRoot(workspaceFolder.uri.fsPath);
-		const workspaceRoot = repoRoot ?? workspaceFolder.uri.fsPath;
+		const { workspaceFolder, repoRoot, workspaceRoot } = ctx;
 		const folderAbsolutePath = path.resolve(workspaceRoot, folder.path);
 		try {
 			const stat = await fs.stat(folderAbsolutePath);
@@ -901,13 +893,12 @@ export class ModuleManagerController {
 	}
 
 	public async linkLocalFolderRepositoryCommand(folder: LocalUnmanagedFolderEntry): Promise<void> {
-		const workspaceFolder = await this.resolveWorkspaceFolder();
-		if (!workspaceFolder) {
+		const ctx = await this.resolveWorkspaceContext();
+		if (!ctx) {
 			void vscode.window.showWarningMessage(t('openWorkspaceBeforeLinkRepository'));
 			return;
 		}
-		const repoRoot = await this.workspaceModuleService.resolveGitRepositoryRoot(workspaceFolder.uri.fsPath);
-		const workspaceRoot = repoRoot ?? workspaceFolder.uri.fsPath;
+		const { workspaceFolder, repoRoot, workspaceRoot } = ctx;
 		const folderAbsolutePath = path.resolve(workspaceRoot, folder.path);
 		try {
 			const stat = await fs.stat(folderAbsolutePath);
@@ -1795,12 +1786,11 @@ export class ModuleManagerController {
 	}
 
 	private async openLocalFolderByPath(relativePath: string): Promise<void> {
-		const workspaceFolder = await this.resolveWorkspaceFolder();
-		if (!workspaceFolder) {
+		const ctx = await this.resolveWorkspaceContext();
+		if (!ctx) {
 			return;
 		}
-		const repoRoot = await this.workspaceModuleService.resolveGitRepositoryRoot(workspaceFolder.uri.fsPath);
-		const workspaceRoot = repoRoot ?? workspaceFolder.uri.fsPath;
+		const { workspaceFolder, repoRoot, workspaceRoot } = ctx;
 		const folderPath = path.join(workspaceRoot, relativePath);
 		const folderUri = vscode.Uri.file(folderPath);
 		await vscode.commands.executeCommand('revealFileInOS', folderUri);
@@ -2395,6 +2385,17 @@ export class ModuleManagerController {
 			{ placeHolder: t('selectRepositoryPlaceholder') },
 		);
 		return pick?.folder;
+	}
+
+	private async resolveWorkspaceContext(): Promise<{
+		workspaceFolder: vscode.WorkspaceFolder;
+		repoRoot: string | undefined;
+		workspaceRoot: string;
+	} | undefined> {
+		const workspaceFolder = await this.resolveWorkspaceFolder();
+		if (!workspaceFolder) { return undefined; }
+		const repoRoot = await this.workspaceModuleService.resolveGitRepositoryRoot(workspaceFolder.uri.fsPath);
+		return { workspaceFolder, repoRoot, workspaceRoot: repoRoot ?? workspaceFolder.uri.fsPath };
 	}
 
 	private async resolveLocalModuleConfig(
