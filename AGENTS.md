@@ -13,7 +13,7 @@
 | 语法高亮 | `syntaxes/*.tmLanguage.json` | csmlog / lvcsm TextMate 语法 |
 | 语言功能 | `src/csmlogHoverProvider.ts`, `src/csmlogDocumentSymbolProvider.ts` | Hover 提示、Outline 大纲 |
 | 模块管理 | `src/moduleManager/` | 侧边栏 Webview、GitHub/Git 操作 |
-| 共享工具 | `src/common/`, `src/hoverData/`, `src/i18n.ts` | 常量、Hover 数据、国际化 |
+| 共享工具 | `src/common/`, `src/hoverData/` | 常量、Hover 数据、国际化（i18n） |
 
 ## 使用中文
 
