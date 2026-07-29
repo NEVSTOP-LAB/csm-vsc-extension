@@ -8,7 +8,7 @@
 
 import * as assert from 'assert';
 import * as vscode from 'vscode';
-import { CSMLogFoldingRangeProvider } from '../../logFold/foldingProvider';
+import { CSMLogFoldingRangeProvider } from '../../language/logFold/foldingProvider';
 
 // ---------------------------------------------------------------------------
 // helpers

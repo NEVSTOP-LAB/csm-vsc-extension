@@ -3,7 +3,7 @@
 // ---------------------------------------------------------------------------
 
 import { LineSignature, FoldRegion, RepeatPattern, FoldOptions, DEFAULT_FOLD_OPTIONS } from './types';
-import { CSMLOG_RELATIVE_TS_PATTERN } from '../common/constants';
+import { CSMLOG_RELATIVE_TS_PATTERN } from '../../common/constants';
 
 // ---------------------------------------------------------------------------
 // 工具：滚动哈希

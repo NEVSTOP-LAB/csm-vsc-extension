@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { buildHover, provideContentHover } from './hoverData';
 import { getHoverDb } from './hoverData/db';
-import { RE_DATE_TS, CONFIG_LINE_REGEX, RE_FILE_LOGGER } from './common/constants';
+import { RE_DATE_TS, CONFIG_LINE_REGEX, RE_FILE_LOGGER } from '../common/constants';
 
 // ---------------------------------------------------------------------------
 // Line zone detection

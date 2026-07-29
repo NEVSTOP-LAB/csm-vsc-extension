@@ -36,7 +36,7 @@ function pos(character: number): FakePosition {
 
 // Load the compiled provider (vscode is already intercepted by setup.js)
 const { CSMLogHoverProvider } = require(
-    path.resolve(__dirname, '../csmlogHoverProvider')
+    path.resolve(__dirname, '../language/csmlogHoverProvider')
 ) as { CSMLogHoverProvider: new () => { provideHover: (doc: FakeDocument, pos: FakePosition) => FakeHover | undefined } };
 
 // ---------------------------------------------------------------------------

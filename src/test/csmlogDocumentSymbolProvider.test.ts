@@ -14,7 +14,7 @@ import { __setLanguageOverrideForTests } from '../common/i18n';
 
 // Load the compiled provider (vscode is already intercepted by setup.js)
 const { CSMLogDocumentSymbolProvider } = require(
-    path.resolve(__dirname, '../csmlogDocumentSymbolProvider'),
+    path.resolve(__dirname, '../language/csmlogDocumentSymbolProvider'),
 ) as { CSMLogDocumentSymbolProvider: new () => { provideDocumentSymbols(doc: DocLike, token: null): SymbolLike[] } };
 
 // ---------------------------------------------------------------------------

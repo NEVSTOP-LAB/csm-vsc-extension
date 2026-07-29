@@ -1,10 +1,10 @@
 import * as vscode from 'vscode';
-import { CSMLogHoverProvider } from './csmlogHoverProvider';
-import { CSMLogDocumentSymbolProvider } from './csmlogDocumentSymbolProvider';
-import { LvcsmDocumentSymbolProvider } from './lvcsmDocumentSymbolProvider';
-import { clearAnchorCache } from './hoverData';
+import { CSMLogHoverProvider } from './language/csmlogHoverProvider';
+import { CSMLogDocumentSymbolProvider } from './language/csmlogDocumentSymbolProvider';
+import { LvcsmDocumentSymbolProvider } from './language/lvcsmDocumentSymbolProvider';
+import { clearAnchorCache } from './language/hoverData';
 import { ModuleManagerController } from './modules';
-import { CsmFileDecorationProvider } from './fileDecorationProvider';
+import { CsmFileDecorationProvider } from './language/fileDecorationProvider';
 import {
 	CSMLogFoldingRangeProvider,
 	createDecorationTypes,
@@ -14,8 +14,8 @@ import {
 	detectRepeatRegions,
 	normalizeLine,
 	DecorationTypes,
-} from './logFold';
-import { DEFAULT_FOLD_OPTIONS, FoldOptions } from './logFold/types';
+} from './language/logFold';
+import { DEFAULT_FOLD_OPTIONS, FoldOptions } from './language/logFold/types';
 
 // ---------------------------------------------------------------------------
 // 状态
@@ -280,7 +280,7 @@ async function restoreViewport(editor: vscode.TextEditor): Promise<void> {
 
 function detectFoldRegions(editor: vscode.TextEditor): Array<{ startLine: number; endLine: number }> {
 	const rawLines: string[] = [];
-	const signatures: Array<import('./logFold/types').LineSignature | null> = [];
+	const signatures: Array<import('./language/logFold/types').LineSignature | null> = [];
 	for (let i = 0; i < editor.document.lineCount; i++) {
 		const raw = editor.document.lineAt(i).text;
 		rawLines.push(raw);
@@ -351,7 +351,7 @@ function updateDecorationsForEditor(editor: vscode.TextEditor | undefined): void
 
 	const options = readFoldOptions();
 	const rawLines: string[] = [];
-	const signatures: Array<import('./logFold/types').LineSignature | null> = [];
+	const signatures: Array<import('./language/logFold/types').LineSignature | null> = [];
 	for (let i = 0; i < editor.document.lineCount; i++) {
 		const raw = editor.document.lineAt(i).text;
 		rawLines.push(raw);
@@ -378,7 +378,7 @@ interface FoldStats { regionCount: number; foldedLines: number; percentage: stri
 function computeFoldStats(editor: vscode.TextEditor): FoldStats {
 	const options = readFoldOptions();
 	const rawLines: string[] = [];
-	const signatures: Array<import('./logFold/types').LineSignature | null> = [];
+	const signatures: Array<import('./language/logFold/types').LineSignature | null> = [];
 	for (let i = 0; i < editor.document.lineCount; i++) {
 		const raw = editor.document.lineAt(i).text;
 		rawLines.push(raw);

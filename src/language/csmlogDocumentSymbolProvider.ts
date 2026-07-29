@@ -1,11 +1,11 @@
 import * as vscode from 'vscode';
-import { localizeBundle } from './common/i18n';
+import { localizeBundle } from '../common/i18n';
 import {
     CONFIG_KEY_REGEX,
     MODULE_LIFECYCLE_REGEX,
     LOGGER_MESSAGE_REGEX,
-} from './common/constants';
-import { SymbolEntry, buildDocumentSymbols } from './common/symbols';
+} from '../common/constants';
+import { SymbolEntry, buildDocumentSymbols } from '../common/symbols';
 const symbolMessages = {
     moduleCreated: {
         en: 'Module Created',

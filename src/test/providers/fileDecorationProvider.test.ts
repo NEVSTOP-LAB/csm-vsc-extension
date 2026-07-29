@@ -4,7 +4,7 @@
 
 import * as assert from 'assert';
 import * as vscode from 'vscode';
-import { CsmFileDecorationProvider } from '../../fileDecorationProvider';
+import { CsmFileDecorationProvider } from '../../language/fileDecorationProvider';
 
 suite('FileDecorationProvider', () => {
 

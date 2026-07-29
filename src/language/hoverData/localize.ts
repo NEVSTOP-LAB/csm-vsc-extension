@@ -1,4 +1,4 @@
-import { isChineseLanguage } from '../common/i18n';
+import { isChineseLanguage } from '../../common/i18n';
 import type { HoverEntry } from './types';
 
 export type HoverTranslations = Partial<Record<string, HoverEntry>>;

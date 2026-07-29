@@ -6,7 +6,7 @@ import { LineSignature } from './types';
 import {
     CSMLOG_DATETIME_PATTERN,
     CSMLOG_RELATIVE_TS_PATTERN,
-} from '../common/constants';
+} from '../../common/constants';
 
 // ---------------------------------------------------------------------------
 // 正则定义（无全局标志 — 在 replace 回调中使用 offset 参数定位）

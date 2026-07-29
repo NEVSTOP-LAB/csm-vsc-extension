@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
-import { INI_SECTION_REGEX } from './common/constants';
-import { SymbolEntry, buildDocumentSymbols } from './common/symbols';
+import { INI_SECTION_REGEX } from '../common/constants';
+import { SymbolEntry, buildDocumentSymbols } from '../common/symbols';
 
 /**
  * Provides document symbols (outline) for LVCSM files.

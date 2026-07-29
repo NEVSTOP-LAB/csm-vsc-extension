@@ -3,7 +3,7 @@
  */
 
 import * as assert from 'assert';
-import { normalizeLine } from '../../logFold/normalizer';
+import { normalizeLine } from '../../language/logFold/normalizer';
 
 suite('LogFold — Normalizer', () => {
 
