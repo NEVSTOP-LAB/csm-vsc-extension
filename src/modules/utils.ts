@@ -11,8 +11,12 @@ export function getModuleKey(entry: CsmModuleEntry): string {
 
 /** 按最大长度截断文本，超出部分用 "..." 替代。 */
 export function truncate(text: string, maxLength: number): string {
+	if (maxLength <= 0) { return ''; }
 	if (text.length <= maxLength) {
 		return text;
+	}
+	if (maxLength <= 3) {
+		return text.slice(0, maxLength);
 	}
 	return `${text.slice(0, maxLength - 3)}...`;
 }

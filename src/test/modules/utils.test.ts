@@ -64,10 +64,17 @@ suite('Modules — Utils', () => {
         assert.strictEqual(truncate('', 5), '');
     });
 
-    test('truncate maxLength 为 0 时使用负索引截断', () => {
-        // maxLength=0: text.length(5) > 0 → slice(0, -3) = 'he' → 返回 'he...'
-        const result = truncate('hello', 0);
-        assert.strictEqual(result, 'he...');
+    test('truncate maxLength 为 0 返回空字符串', () => {
+        assert.strictEqual(truncate('hello', 0), '');
+    });
+
+    test('truncate maxLength 为 1 截断为单字符（不加省略号）', () => {
+        assert.strictEqual(truncate('hello', 1), 'h');
+    });
+
+    test('truncate maxLength 为 3 截断并加省略号', () => {
+        // maxLength=3 → 不加省略号，返回前 3 字符
+        assert.strictEqual(truncate('hello', 3), 'hel');
     });
 
 });
