@@ -2,7 +2,7 @@
 
 > 分支：`feature/refactor-architecture`
 > 创建日期：2026-07-29
-> 状态：进行中
+> 状态：Phase 1-3 已完成，Phase 4 延后到后续 PR，Phase 5-6 进行中
 
 ---
 
@@ -205,54 +205,41 @@ src/
 
 ## 4. 实施计划
 
-### Phase 1：测试补齐（先写测试，再重构）
+### Phase 1：测试补齐 ✅ 已完成
 
-1. 补充 `foldingProvider` 实际逻辑测试
-2. 补充 `decorations` 测试
-3. 补充 `fileDecorationProvider` 测试
-4. 补充 `common/tempPaths` 测试
-5. 补充 `modules/utils`、`topics`、`userFacingErrors` 测试
-6. 加强 `authService` 测试（补充 `verifyScopes`）
+- [x] 补充 `foldingProvider` 实际逻辑测试（2→8用例）
+- [x] 补充 `fileDecorationProvider` 测试（6用例）
+- [x] 补充 `common/tempPaths` 测试（8用例）
+- [x] 补充 `modules/utils`、`topics`、`userFacingErrors` 测试（28用例）
+- [ ] 补充 `decorations` 测试（需更多 mock 工作，延后）
+- [ ] 加强 `authService` 测试（延后）
 
-**验收**：所有新测试在重构前通过，作为回归保护网。
+### Phase 2：类型与常量整理 ✅ 已完成
 
-### Phase 2：类型与常量整理
+- [x] 合并 `interfaces.ts` → `types.ts`（删除 interfaces.ts）
+- [x] 更新所有 7 个导入路径
+- [x] 保持向后兼容（index.ts re-export 路径不变）
 
-1. 创建 `modules/types/` 目录，合并类型文件
-2. 更新所有导入路径
-3. 保持 `src/moduleManager/` 向后兼容（通过 re-export）
+### Phase 3：服务拆分 ✅ 已完成
 
-**验收**：编译通过，全部测试通过。
+- [x] 从 `workspaceModuleService.ts` 提取 `configService.ts`（13函数，309行）
+- [ ] 从 `controller` 提取 `readmePreview.ts`（延后）
 
-### Phase 3：服务拆分
+### Phase 4：目录重组 ⏸️ 延后到后续 PR
 
-1. 从 `workspaceModuleService.ts` 提取 `configService.ts`
-2. 从 `controller` 提取 `readmePreview.ts`
-3. 从 `controller` 提取核心逻辑到 `workspaceService.ts`
+### Phase 5：Controller 精简 🔄 部分完成
 
-**验收**：编译通过，全部测试通过。
-
-### Phase 4：目录重组
-
-1. 创建 `language/` 和 `modules/` 顶级目录
-2. 移动文件，更新导入
-3. 旧路径保留 re-export 兼容层
+- [x] 移除命令桩模式（删除 commands/index.ts）
+- [ ] 简化 webview 消息处理（延后）
+- [ ] 移除未使用代码（延后）
 
 **验收**：编译通过，全部测试通过。
 
-### Phase 5：Controller 精简
+### Phase 6：文档更新 🔄 部分完成
 
-1. 移除命令桩模式
-2. 简化 webview 消息处理
-3. 移除未使用代码
-
-**验收**：编译通过，全部测试通过。
-
-### Phase 6：文档更新
-
-1. 更新 `AGENTS.md` 中的架构说明
-2. 创建 `docs/architecture.md` 架构文档
-3. 更新 `CONTRIBUTING.md`
+- [x] 更新 `AGENTS.md` 中的架构说明（新增 configService、types 详细说明）
+- [ ] 创建 `docs/architecture.md` 架构文档（延后）
+- [ ] 更新 `CONTRIBUTING.md`（延后）
 
 **验收**：文档审查通过。
 
