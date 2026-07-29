@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// src/logFold/detector.ts — 重复检测算法（三级递进）
+// src/language/logFold/detector.ts — 重复检测算法（三级递进）
 // ---------------------------------------------------------------------------
 
 import { LineSignature, FoldRegion, RepeatPattern, FoldOptions, DEFAULT_FOLD_OPTIONS } from './types';

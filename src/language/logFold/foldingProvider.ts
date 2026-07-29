@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// src/logFold/foldingProvider.ts — CSMLog 日志折叠 FoldingRangeProvider
+// src/language/logFold/foldingProvider.ts — CSMLog 日志折叠 FoldingRangeProvider
 // ---------------------------------------------------------------------------
 
 import * as vscode from 'vscode';
