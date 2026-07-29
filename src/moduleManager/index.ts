@@ -21,17 +21,6 @@ export {
 	sortModules,
 } from './sort';
 export type { IModuleViewProvider, ModuleSortDirection, ModuleSortField, ModuleSortState, SidebarWorkspaceContext } from './interfaces';
-export {
-	LoginCommand,
-	RefreshCommand,
-	InitializeWorkspaceCommand,
-	OpenReadmeCommand,
-	ApplyToWorkspaceCommand,
-	RemoveModuleCommand,
-	UpdateModuleCommand,
-	SetSortOrderCommand,
-} from './commands';
-export type { CommandTarget } from './commands';
 export type {
 	CsmModuleEntry,
 	GitHubRepoSummary,
