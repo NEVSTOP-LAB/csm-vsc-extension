@@ -1,31 +1,5 @@
-export { ModuleManagerController } from './moduleManagerController';
-export type { ModuleManagerControllerDeps } from './moduleManagerController';
-export { mapRepoToModuleEntry } from './githubModuleService';
-export { ModuleCacheStore } from './cacheStore';
-export {
-	WorkspaceModuleService,
-	DEFAULT_LOCAL_MODULE_ROOT,
-	LOCAL_MODULE_CONFIG_FILE,
-	LEGACY_LOCAL_MODULE_CONFIG_FILE,
-} from './workspaceModuleService';
-export { GitService } from './gitService';
-export { AuthService } from './authService';
-export { GitHubModuleService } from './githubModuleService';
-export {
-	DEFAULT_MODULE_SORT_STATE,
-	isModuleSortDirection,
-	isModuleSortField,
-	MODULE_SORT_DIRECTIONS,
-	MODULE_SORT_FIELDS,
-	normalizeModuleSortState,
-	sortModules,
-} from './sort';
-export type { IModuleViewProvider, ModuleSortDirection, ModuleSortField, ModuleSortState, SidebarWorkspaceContext } from './types';
-export type {
-	CsmModuleEntry,
-	GitHubRepoSummary,
-	LocalModuleConfig,
-	LocalModuleConfigEntry,
-	ModuleApplyMethod,
-	ModuleCacheSnapshot,
-} from './types';
+/**
+ * @deprecated 请使用 '../modules' 代替。
+ * 此文件保留以便平滑迁移，将在后续版本中移除。
+ */
+export * from '../modules';

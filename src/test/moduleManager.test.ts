@@ -4,15 +4,15 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import { getTempRoot } from '../common/tempPaths';
 import JSZip from 'jszip';
-import { ModuleCacheStore, mapRepoToModuleEntry } from '../moduleManager';
-import { GitExecOptions, IGitRunner } from '../moduleManager/gitService';
-import { ReadmeAssetCache } from '../moduleManager/readmeAssetCache';
-import { ModuleSidebarViewProvider } from '../moduleManager/moduleSidebarViewProvider';
-import { ModuleTreeItem } from '../moduleManager/moduleTreeTypes';
-import { GitHubRepoSummary } from '../moduleManager';
-import { getVisibleModuleTopics } from '../moduleManager/topics';
-import { CsmModuleEntry } from '../moduleManager/types';
-import { LEGACY_LOCAL_MODULE_CONFIG_FILE, LOCAL_MODULE_CONFIG_FILE, WorkspaceModuleService } from '../moduleManager/workspaceModuleService';
+import { ModuleCacheStore, mapRepoToModuleEntry } from '../modules';
+import { GitExecOptions, IGitRunner } from '../modules/gitService';
+import { ReadmeAssetCache } from '../modules/readmeAssetCache';
+import { ModuleSidebarViewProvider } from '../modules/moduleSidebarViewProvider';
+import { ModuleTreeItem } from '../modules/moduleTreeTypes';
+import { GitHubRepoSummary } from '../modules';
+import { getVisibleModuleTopics } from '../modules/topics';
+import { CsmModuleEntry } from '../modules/types';
+import { LEGACY_LOCAL_MODULE_CONFIG_FILE, LOCAL_MODULE_CONFIG_FILE, WorkspaceModuleService } from '../modules/workspaceModuleService';
 import * as vscode from 'vscode';
 
 type VscodeMock = typeof vscode & {

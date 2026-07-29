@@ -1,5 +1,5 @@
 import * as assert from 'assert';
-import { GitHubModuleService, mapRepoToModuleEntry } from '../moduleManager/githubModuleService';
+import { GitHubModuleService, mapRepoToModuleEntry } from '../modules/githubModuleService';
 
 type FetchFn = typeof globalThis.fetch;
 

@@ -3,10 +3,10 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { getTempRoot } from '../common/tempPaths';
 import * as vscode from 'vscode';
-import { DEFAULT_LOCAL_MODULE_ROOT, IModuleViewProvider, LEGACY_LOCAL_MODULE_CONFIG_FILE, LOCAL_MODULE_CONFIG_FILE } from '../moduleManager';
-import { ModuleManagerController, ModuleManagerControllerDeps } from '../moduleManager/moduleManagerController';
-import { ModuleTreeItem } from '../moduleManager/moduleTreeTypes';
-import { CsmModuleEntry, LocalModuleConfig, ModuleApplyMethod, ModuleCacheSnapshot } from '../moduleManager/types';
+import { DEFAULT_LOCAL_MODULE_ROOT, IModuleViewProvider, LEGACY_LOCAL_MODULE_CONFIG_FILE, LOCAL_MODULE_CONFIG_FILE } from '../modules';
+import { ModuleManagerController, ModuleManagerControllerDeps } from '../modules/moduleManagerController';
+import { ModuleTreeItem } from '../modules/moduleTreeTypes';
+import { CsmModuleEntry, LocalModuleConfig, ModuleApplyMethod, ModuleCacheSnapshot } from '../modules/types';
 
 type VscodeMock = typeof vscode & {
 	__getMessageLog: () => Array<{ level: 'info' | 'warn' | 'error'; text: string }>;

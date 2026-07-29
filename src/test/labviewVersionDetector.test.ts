@@ -12,7 +12,7 @@ import {
     parseDevEnvironmentFileName,
     detectLabviewVersion,
     LabviewVersionResult,
-} from '../moduleManager/labviewVersionDetector';
+} from '../modules/labviewVersionDetector';
 
 /**
  * 创建临时目录，返回路径和清理函数。

@@ -4,7 +4,7 @@
 
 import * as assert from 'assert';
 import * as vscode from 'vscode';
-import { getVisibleModuleTopics, DEFAULT_HIDDEN_MODULE_TOPICS } from '../../moduleManager/topics';
+import { getVisibleModuleTopics, DEFAULT_HIDDEN_MODULE_TOPICS } from '../../modules/topics';
 
 type VscodeMock = typeof vscode & {
     __setConfigurationValue: (key: string, value: unknown) => void;

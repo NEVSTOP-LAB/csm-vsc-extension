@@ -1,6 +1,6 @@
 import * as assert from 'assert';
 import * as vscode from 'vscode';
-import { AuthService } from '../moduleManager/authService';
+import { AuthService } from '../modules/authService';
 
 type VscodeAuthMock = typeof vscode & {
 	__setAuthenticationGetSession: (handler: (providerId: string, scopes: string[], options: { createIfNone: boolean }) => Promise<unknown>) => void;

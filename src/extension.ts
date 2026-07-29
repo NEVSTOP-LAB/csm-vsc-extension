@@ -3,7 +3,7 @@ import { CSMLogHoverProvider } from './csmlogHoverProvider';
 import { CSMLogDocumentSymbolProvider } from './csmlogDocumentSymbolProvider';
 import { LvcsmDocumentSymbolProvider } from './lvcsmDocumentSymbolProvider';
 import { clearAnchorCache } from './hoverData';
-import { ModuleManagerController } from './moduleManager';
+import { ModuleManagerController } from './modules';
 import { CsmFileDecorationProvider } from './fileDecorationProvider';
 import {
 	CSMLogFoldingRangeProvider,

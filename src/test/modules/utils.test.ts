@@ -3,8 +3,8 @@
  */
 
 import * as assert from 'assert';
-import { getModuleKey, truncate } from '../../moduleManager/utils';
-import type { CsmModuleEntry } from '../../moduleManager/types';
+import { getModuleKey, truncate } from '../../modules/utils';
+import type { CsmModuleEntry } from '../../modules/types';
 
 /** 创建最小测试用的 CsmModuleEntry */
 function makeEntry(owner: string, name: string): CsmModuleEntry {
