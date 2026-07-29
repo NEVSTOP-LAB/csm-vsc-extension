@@ -2,7 +2,7 @@
 
 > 分支：`feature/refactor-architecture`
 > 创建日期：2026-07-29
-> 状态：全部 6 个 Phase 已完成（Phase 1-4 ✅, Phase 5-6 🔄 部分）
+> 状态：Phase 1-4 ✅ 已完成，Phase 5-6 🔄 部分完成
 
 ---
 
