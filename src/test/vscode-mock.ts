@@ -59,6 +59,10 @@ export class SnippetString {
     constructor(public value: string) { }
 }
 
+export class ThemeColor {
+    constructor(public id: string) { }
+}
+
 export class CompletionItem {
     detail?: string;
     documentation?: MarkdownString | string;
