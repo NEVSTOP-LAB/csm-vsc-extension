@@ -3,24 +3,25 @@ import * as fs from 'fs/promises';
 import { getTempRoot } from '../common/tempPaths';
 import * as path from 'path';
 import JSZip from 'jszip';
-import * as yaml from 'js-yaml';
 import { CopyModuleUpdatePreview, CsmModuleEntry, LocalModuleConfig, LocalModuleConfigEntry, ModuleApplyMethod, ModuleUpdateResult } from './types';
 import { t } from './messages';
 import { GitService, IGitRunner } from './gitService';
+import {
+	isEntryLocked,
+	getConfigPath,
+	initializeConfig as configInitializeConfig,
+	loadConfig as configLoadConfig,
+	writeConfig as configWriteConfig,
+	withAppliedModule as configWithAppliedModule,
+	withoutModule as configWithoutModule,
+	normalizeRootPath as configNormalizeRootPath,
+	CONFIG_VERSION,
+	DEFAULT_LOCAL_MODULE_ROOT,
+	LOCAL_MODULE_CONFIG_FILE,
+	LEGACY_LOCAL_MODULE_CONFIG_FILE,
+} from './configService';
 
-const CONFIG_VERSION = '2';
-const SECTION_ROOT = 'csmModules';
-
-export const DEFAULT_LOCAL_MODULE_ROOT = 'csm';
-export const LOCAL_MODULE_CONFIG_FILE = 'csm-modules.yaml';
-export const LEGACY_LOCAL_MODULE_CONFIG_FILE = 'csm-modules.lvcsm';
-
-interface ParsedConfigShape {
-	version?: string;
-	root?: string;
-	modules: Record<string, LocalModuleConfigEntry>;
-	needsLockedMigration?: boolean;
-}
+export { DEFAULT_LOCAL_MODULE_ROOT, LOCAL_MODULE_CONFIG_FILE, LEGACY_LOCAL_MODULE_CONFIG_FILE } from './configService';
 
 interface GitSubmoduleDefinition {
 	name: string;
@@ -68,25 +69,7 @@ export class WorkspaceModuleService {
 	constructor(private readonly gitRunner: IGitRunner = new GitService()) { }
 
 	public normalizeRootPath(value: string): string {
-		const trimmed = value.trim();
-		if (!trimmed) {
-			throw new Error('A relative directory is required.');
-		}
-
-		const slashNormalized = trimmed.replace(/\\/g, '/');
-		if (path.posix.isAbsolute(slashNormalized) || path.win32.isAbsolute(trimmed)) {
-			throw new Error('Use a directory relative to the repository root.');
-		}
-
-		const normalized = path.posix.normalize(slashNormalized).replace(/^\.\//, '').replace(/^\/+|\/+$/g, '');
-		if (!normalized || normalized === '.') {
-			throw new Error('The directory cannot be the repository root.');
-		}
-		if (normalized.startsWith('..') || normalized.includes('/../')) {
-			throw new Error('The directory must stay inside the repository root.');
-		}
-
-		return normalized;
+		return configNormalizeRootPath(value);
 	}
 
 	public getModuleKey(entry: CsmModuleEntry): string {
@@ -234,7 +217,7 @@ export class WorkspaceModuleService {
 				throw new Error('Git repository root is required to convert a submodule to copy mode.');
 			}
 			const switchedEntry = await this.convertSubmoduleToCopy(workspaceRoot, normalizedEntry, repoRoot);
-			if (this.isEntryLocked(normalizedEntry)) {
+			if (isEntryLocked(normalizedEntry)) {
 				await this.ensureSwitchTargetExists(workspaceRoot, switchedEntry);
 				await this.applyEntryLockState(workspaceRoot, switchedEntry);
 			}
@@ -246,7 +229,7 @@ export class WorkspaceModuleService {
 		}
 
 		const result = await this.convertCopyToSubmodule(repoRoot, normalizedEntry, authToken);
-		if (this.isEntryLocked(normalizedEntry)) {
+		if (isEntryLocked(normalizedEntry)) {
 			await this.ensureSwitchTargetExists(workspaceRoot, result.entry);
 			await this.applyEntryLockState(workspaceRoot, result.entry);
 		}
@@ -254,34 +237,11 @@ export class WorkspaceModuleService {
 	}
 
 	public async initializeConfig(repoRoot: string, rootRelativePath: string): Promise<LocalModuleConfig> {
-		const root = this.normalizeRootPath(rootRelativePath);
-		const configPath = this.getConfigPath(repoRoot, root);
-		await fs.mkdir(path.dirname(configPath), { recursive: true });
-		const config: LocalModuleConfig = {
-			version: CONFIG_VERSION,
-			root,
-			configPath,
-			modules: {},
-		};
-		await this.writeConfig(config);
-		return config;
+		return configInitializeConfig(repoRoot, rootRelativePath);
 	}
 
 	public async loadConfig(repoRoot: string, configPath: string): Promise<LocalModuleConfig> {
-		const raw = await fs.readFile(configPath, 'utf8');
-		const parsed = this.isLegacyConfigPath(configPath) ? this.parseLegacyConfig(raw) : this.parseYamlConfig(raw);
-		const derivedRoot = toPosixPath(path.relative(repoRoot, path.dirname(configPath)));
-		const root = parsed.root ? this.normalizeRootPath(parsed.root) : this.normalizeRootPath(derivedRoot || DEFAULT_LOCAL_MODULE_ROOT);
-		const config: LocalModuleConfig = {
-			version: CONFIG_VERSION,
-			root,
-			configPath: this.getConfigPath(repoRoot, root),
-			modules: parsed.modules,
-		};
-		if (parsed.needsLockedMigration) {
-			await this.writeConfig(config);
-		}
-		return config;
+		return configLoadConfig(repoRoot, configPath);
 	}
 
 	public async recoverConfigFromExistingSubmodules(
@@ -297,7 +257,7 @@ export class WorkspaceModuleService {
 		const config: LocalModuleConfig = {
 			version: CONFIG_VERSION,
 			root,
-			configPath: this.getConfigPath(repoRoot, root),
+			configPath: getConfigPath(repoRoot, root),
 			modules: {},
 		};
 
@@ -357,14 +317,11 @@ export class WorkspaceModuleService {
 	}
 
 	public withAppliedModule(config: LocalModuleConfig, entry: LocalModuleConfigEntry): LocalModuleConfig {
-		const normalizedEntry = this.normalizeConfigEntry(entry);
-		return {
-			...config,
-			modules: {
-				...config.modules,
-				[normalizedEntry.key]: normalizedEntry,
-			},
-		};
+		return configWithAppliedModule(config, entry);
+	}
+
+	public async writeConfig(config: LocalModuleConfig): Promise<void> {
+		return configWriteConfig(config);
 	}
 
 	public async setModuleLocked(
@@ -388,8 +345,7 @@ export class WorkspaceModuleService {
 
 	/** Drop a module from the in-memory config (review item 7.1). */
 	public withoutModule(config: LocalModuleConfig, moduleKey: string): LocalModuleConfig {
-		const { [moduleKey]: _omitted, ...rest } = config.modules;
-		return { ...config, modules: rest };
+		return configWithoutModule(config, moduleKey);
 	}
 
 	/**
@@ -470,7 +426,7 @@ export class WorkspaceModuleService {
 		const normalizedEntry = this.normalizeConfigEntry(entry);
 		const targetRelativePath = this.normalizeRootPath(normalizedEntry.path);
 		const targetAbsolute = this.toAbsoluteTargetPath(workspaceRoot, targetRelativePath);
-		const wasLocked = this.isEntryLocked(normalizedEntry);
+		const wasLocked = isEntryLocked(normalizedEntry);
 		if (wasLocked && await this.pathExists(targetAbsolute)) {
 			await this.updatePathLockState(targetAbsolute, false);
 		}
@@ -560,19 +516,6 @@ export class WorkspaceModuleService {
 		const lockedEntry = this.normalizeConfigEntry(await appliedEntry);
 		await this.applyEntryLockState(repoRoot, lockedEntry);
 		return lockedEntry;
-	}
-
-	public async writeConfig(config: LocalModuleConfig): Promise<void> {
-		await fs.mkdir(path.dirname(config.configPath), { recursive: true });
-		await fs.writeFile(config.configPath, this.serializeConfig(config), 'utf8');
-	}
-
-	private getConfigPath(repoRoot: string, rootRelativePath: string): string {
-		return path.join(repoRoot, ...rootRelativePath.split('/'), LOCAL_MODULE_CONFIG_FILE);
-	}
-
-	private isLegacyConfigPath(configPath: string): boolean {
-		return path.basename(configPath).toLowerCase() === LEGACY_LOCAL_MODULE_CONFIG_FILE.toLowerCase();
 	}
 
 	private isMissingPathError(error: unknown): boolean {
@@ -922,14 +865,11 @@ export class WorkspaceModuleService {
 		};
 	}
 
-	private isEntryLocked(entry: Pick<LocalModuleConfigEntry, 'locked'>): boolean {
-		return entry.locked !== false;
-	}
 
 	private normalizeConfigEntry(entry: LocalModuleConfigEntry): LocalModuleConfigEntry {
 		return {
 			...entry,
-			locked: this.isEntryLocked(entry),
+			locked: isEntryLocked(entry),
 		};
 	}
 
@@ -939,7 +879,7 @@ export class WorkspaceModuleService {
 		if (!await this.pathExists(targetAbsolute)) {
 			return;
 		}
-		const failures = await this.updatePathLockState(targetAbsolute, this.isEntryLocked(entry));
+		const failures = await this.updatePathLockState(targetAbsolute, isEntryLocked(entry));
 		if (failures.length > 0) {
 			const preview = failures.slice(0, 3).join('; ');
 			const remainder = failures.length > 3 ? `; ... (+${failures.length - 3} more)` : '';
@@ -1242,153 +1182,5 @@ export class WorkspaceModuleService {
 
 	private createBackupTimestamp(): string {
 		return new Date().toISOString().replace(/[:.]/g, '-');
-	}
-
-	private parseLegacyConfig(raw: string): ParsedConfigShape {
-		const modules: Record<string, LocalModuleConfigEntry> = {};
-		let currentSection = '';
-		let root: string | undefined;
-		let version: string | undefined;
-		let currentModule: Partial<LocalModuleConfigEntry> | undefined;
-
-		for (const rawLine of raw.split(/\r?\n/)) {
-			const line = rawLine.trim();
-			if (!line || line.startsWith('#') || line.startsWith(';')) {
-				continue;
-			}
-			const sectionMatch = line.match(/^\[(.+)\]$/);
-			if (sectionMatch) {
-				if (currentModule?.key) {
-					modules[currentModule.key] = this.finalizeModuleSection(currentModule);
-				}
-				currentSection = sectionMatch[1] ?? '';
-				currentModule = currentSection.startsWith('module.') ? { key: currentSection.slice('module.'.length) } : undefined;
-				continue;
-			}
-
-			const separator = line.indexOf('=');
-			if (separator <= 0) {
-				continue;
-			}
-			const key = line.slice(0, separator).trim();
-			const value = line.slice(separator + 1).trim();
-
-			if (currentSection === SECTION_ROOT) {
-				if (key === 'root') {
-					root = value;
-				} else if (key === 'version') {
-					version = value;
-				}
-				continue;
-			}
-
-			if (currentModule) {
-				(currentModule as Record<string, string>)[key] = value;
-			}
-		}
-
-		if (currentModule?.key) {
-			modules[currentModule.key] = this.finalizeModuleSection(currentModule);
-		}
-
-		return { version, root, modules };
-	}
-
-	private parseYamlConfig(raw: string): ParsedConfigShape {
-		let parsed: unknown;
-		try {
-			parsed = yaml.load(raw, { schema: yaml.JSON_SCHEMA });
-		} catch (error) {
-			throw new Error(`Failed to parse YAML config: ${error instanceof Error ? error.message : String(error)}`);
-		}
-		if (!parsed || typeof parsed !== 'object') {
-			return { modules: {} };
-		}
-
-		const obj = parsed as Record<string, unknown>;
-		const version = typeof obj.version === 'string' ? obj.version : (obj.version !== undefined && obj.version !== null ? String(obj.version) : undefined);
-		const root = typeof obj.root === 'string' ? obj.root : undefined;
-		const modules: Record<string, LocalModuleConfigEntry> = {};
-		let needsLockedMigration = false;
-
-		const modulesRaw = obj.modules;
-		if (modulesRaw && typeof modulesRaw === 'object' && !Array.isArray(modulesRaw)) {
-			for (const [key, value] of Object.entries(modulesRaw as Record<string, unknown>)) {
-				if (!value || typeof value !== 'object' || Array.isArray(value)) {
-					continue;
-				}
-				const entry = value as Record<string, unknown>;
-				if (typeof entry.locked !== 'boolean') {
-					needsLockedMigration = true;
-				}
-				modules[key] = this.finalizeModuleSection({
-					key,
-					name: typeof entry.name === 'string' ? entry.name : undefined,
-					owner: typeof entry.owner === 'string' ? entry.owner : undefined,
-					source: typeof entry.source === 'string' ? entry.source : undefined,
-					method: entry.method === 'copy' ? 'copy' : 'submodule',
-					path: typeof entry.path === 'string' ? entry.path : undefined,
-					ref: typeof entry.ref === 'string' ? entry.ref : undefined,
-					branch: typeof entry.branch === 'string' ? entry.branch : undefined,
-					locked: typeof entry.locked === 'boolean' ? entry.locked : undefined,
-					labviewVersion: typeof entry.labviewVersion === 'string' ? entry.labviewVersion : undefined,
-				});
-			}
-		}
-
-		return { version, root, modules, needsLockedMigration };
-	}
-
-	private finalizeModuleSection(module: Partial<LocalModuleConfigEntry>): LocalModuleConfigEntry {
-		const entry: LocalModuleConfigEntry = {
-			key: module.key ?? '',
-			name: module.name ?? '',
-			owner: module.owner ?? '',
-			source: module.source ?? '',
-			method: module.method === 'copy' ? 'copy' : 'submodule',
-			path: module.path ?? '',
-			ref: module.ref ?? '',
-			branch: module.branch ?? '',
-			locked: this.isEntryLocked(module),
-		};
-		if (module.labviewVersion) {
-			entry.labviewVersion = module.labviewVersion;
-		}
-		return entry;
-	}
-
-	private serializeConfig(config: LocalModuleConfig): string {
-		const moduleEntries: Record<string, Record<string, unknown>> = {};
-		for (const key of Object.keys(config.modules).sort((left, right) => left.localeCompare(right))) {
-			const module = config.modules[key];
-			const entry: Record<string, unknown> = {
-				name: module.name,
-				owner: module.owner,
-				source: module.source,
-				method: module.method,
-				path: module.path,
-				ref: module.ref,
-				branch: module.branch,
-				locked: this.isEntryLocked(module),
-			};
-			// 仅在已检测到版本时才持久化，避免写入空值
-			if (module.labviewVersion) {
-				entry.labviewVersion = module.labviewVersion;
-			}
-			moduleEntries[key] = entry;
-		}
-		const document = {
-			version: config.version || CONFIG_VERSION,
-			root: config.root,
-			modules: moduleEntries,
-		};
-		return yaml.dump(document, {
-			schema: yaml.JSON_SCHEMA,
-			lineWidth: 120,
-			noRefs: true,
-			sortKeys: false,
-			quotingType: '"',
-			forceQuotes: true,
-		});
 	}
 }
