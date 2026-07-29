@@ -225,7 +225,11 @@ src/
 - [x] 从 `workspaceModuleService.ts` 提取 `configService.ts`（13函数，309行）
 - [ ] 从 `controller` 提取 `readmePreview.ts`（延后）
 
-### Phase 4：目录重组 ⏸️ 延后到后续 PR
+### Phase 4：目录重组 ✅ 已完成
+
+- [x] 创建 `modules/` 目录，迁移 moduleManager → modules（21 文件）
+- [x] 创建 `language/` 目录，迁移 csmlog/lvcsm/hoverData/logFold → language（16 文件）
+- [x] 旧路径保留 re-export 兼容层
 
 ### Phase 5：Controller 精简 🔄 部分完成
 

@@ -9,15 +9,15 @@
 | 模块 | 路径 | 职责 |
 |------|------|------|
 | 扩展入口 | `src/extension.ts` | 注册 Provider、命令、状态栏 |
-| 日志折叠 | `src/logFold/` | 归一化 → 检测 → FoldingRangeProvider → 装饰器 |
+| 语言功能 | `src/language/` | CSMLog/LVCSM 语法高亮、Hover、Outline、折叠、文件装饰 |
+| ┣ Hover 数据 | `src/language/hoverData/` | Hover 知识库（操作符、命令、控制流等） |
+| ┣ 日志折叠 | `src/language/logFold/` | 归一化 → 检测 → FoldingRangeProvider → 装饰器 |
+| 模块管理 | `src/modules/` | 侧边栏 Webview、GitHub/Git 操作、配置管理 |
+| ┣ 类型定义 | `src/modules/types.ts` | 所有核心类型 |
+| ┣ 配置服务 | `src/modules/configService.ts` | YAML 配置读写 |
+| ┣ 控制器 | `src/modules/moduleManagerController.ts` | 命令注册、状态管理、WebView 通信 |
+| 共享工具 | `src/common/` | 常量、国际化、临时路径、DocumentSymbol 构建 |
 | 语法高亮 | `syntaxes/*.tmLanguage.json` | csmlog / lvcsm TextMate 语法 |
-| 语言功能 | `src/csmlogHoverProvider.ts`, `src/csmlogDocumentSymbolProvider.ts` | Hover 提示、Outline 大纲 |
-| 模块管理 | `src/moduleManager/` | 侧边栏 Webview、GitHub/Git 操作、配置管理 |
-| ┣ 类型定义 | `src/moduleManager/types.ts` | 所有核心类型（CsmModuleEntry, IModuleViewProvider 等） |
-| ┣ 配置服务 | `src/moduleManager/configService.ts` | YAML 配置读写（v0.0.27 新增） |
-| ┣ 工作区服务 | `src/moduleManager/workspaceModuleService.ts` | 模块应用/更新/移除 + Git 操作 |
-| ┣ 控制器 | `src/moduleManager/moduleManagerController.ts` | 命令注册、状态管理、WebView 通信 |
-| 共享工具 | `src/common/`（含 i18n）, `src/hoverData/` | 常量、国际化、临时路径、Hover 数据 |
 
 ## 使用中文
 
