@@ -1,10 +1,10 @@
 import * as assert from 'assert';
-import { eventTypeEntries } from '../hoverData/events';
-import { timestampEntries } from '../hoverData/timestamps';
-import { configKeyEntries } from '../hoverData/config';
-import { markerEntries } from '../hoverData/markers';
-import { getHoverDb } from '../hoverData/db';
-import { __setLanguageOverrideForTests } from '../i18n';
+import { eventTypeEntries } from '../language/hoverData/events';
+import { timestampEntries } from '../language/hoverData/timestamps';
+import { configKeyEntries } from '../language/hoverData/config';
+import { markerEntries } from '../language/hoverData/markers';
+import { getHoverDb } from '../language/hoverData/db';
+import { __setLanguageOverrideForTests } from '../common/i18n';
 
 suite('hoverData — 事件类型条目', () => {
 

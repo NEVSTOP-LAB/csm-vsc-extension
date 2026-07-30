@@ -7,7 +7,7 @@
 
 import * as assert from 'assert';
 import * as path from 'path';
-import { __setLanguageOverrideForTests } from '../i18n';
+import { __setLanguageOverrideForTests } from '../common/i18n';
 
 // ---------------------------------------------------------------------------
 // Type stubs (matching vscode-mock.ts shapes)
@@ -33,7 +33,7 @@ function makeDoc(lines: string[], uriOverride?: string): FakeDocument {
 
 // Load the compiled module (vscode is already intercepted by setup.js)
 const hoverData = require(
-    path.resolve(__dirname, '../hoverData')
+    path.resolve(__dirname, '../language/hoverData')
 ) as {
     clearAnchorCache: (uri: string) => void;
     provideContentHover: (doc: FakeDocument, pos: any) => any;

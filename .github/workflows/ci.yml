@@ -111,7 +111,7 @@ jobs:
         run: npm run compile-tests
 
       - name: 运行无 VS Code 单元测试
-        run: npx mocha --ui tdd --timeout 10000 --require out/test/setup.js out/test/csmlogDocumentSymbolProvider.test.js out/test/csmlogHoverProvider.test.js out/test/hoverData.test.js out/test/hoverDataModules.test.js out/test/lvcsmDocumentSymbolProvider.test.js out/test/moduleManagerController.test.js out/test/moduleManager.test.js out/test/authService.test.js out/test/moduleManagerBoundary.test.js out/test/githubModuleService.test.js out/test/i18n.test.js out/test/sort.test.js out/test/csmlogDedup.test.js out/test/csmlogFoldingRangeProvider.test.js
+        run: npx mocha --ui tdd --timeout 10000 --require out/test/setup.js out/test/csmlogDocumentSymbolProvider.test.js out/test/csmlogHoverProvider.test.js out/test/hoverData.test.js out/test/hoverDataModules.test.js out/test/lvcsmDocumentSymbolProvider.test.js out/test/moduleManagerController.test.js out/test/moduleManager.test.js out/test/authService.test.js out/test/moduleManagerBoundary.test.js out/test/githubModuleService.test.js out/test/i18n.test.js out/test/sort.test.js out/test/logFold/detector.test.js out/test/logFold/foldingProvider.test.js out/test/logFold/normalizer.test.js out/test/logFold/performance.test.js out/test/labviewVersionDetector.test.js out/test/common/tempPaths.test.js out/test/modules/utils.test.js out/test/modules/topics.test.js out/test/modules/userFacingErrors.test.js out/test/providers/fileDecorationProvider.test.js
 
   extension-tests:
     name: 扩展集成测试
@@ -148,6 +148,10 @@ jobs:
       artifact_name: csm-vsc-support-${{ steps.version.outputs.build_version }}-vsix
       is_prerelease: ${{ steps.version.outputs.is_prerelease }}
     steps:
+      # 获取仓库路径相关环境变量（用于 FTP 备份路径）
+      # https://github.com/marketplace/actions/github-environment-variables-action
+      - uses: FranzDiebold/github-env-vars-action@v2
+
       - uses: actions/checkout@v4
 
       - name: 安装 Node.js
@@ -195,6 +199,24 @@ jobs:
           name: csm-vsc-support-${{ steps.version.outputs.build_version }}-vsix
           path: '*.vsix'
           retention-days: 30
+
+      # 通过 FTP 备份构建产物
+      # https://github.com/marketplace/actions/simple-ftp-upload
+      - name: 准备 VSIX 备份目录
+        run: |
+          mkdir -p vsix-backup
+          cp *.vsix vsix-backup/
+
+      - name: 通过 FTP 备份 VSIX
+        uses: dennisameling/ftp-upload-action@v1.0.9
+        with:
+          server: ${{ secrets.VIPM_FTP_IP }}
+          port: ${{ secrets.VIPM_FTP_PORT }}
+          username: ${{ secrets.VIPM_FTP_USER }}
+          password: ${{ secrets.VIPM_FTP_PASSWORD }}
+          secure: false
+          server_dir: /${{ env.CI_REPOSITORY_OWNER_SLUG }}/${{ env.CI_REPOSITORY_NAME }}/${{ env.CI_ACTION_REF_NAME }}/
+          local_dir: ./vsix-backup/
 
   validate-vsix:
     name: 验证 VSIX 可正常被 VS Code 加载 (${{ matrix.os }})

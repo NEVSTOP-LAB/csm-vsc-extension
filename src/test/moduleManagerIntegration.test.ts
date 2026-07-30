@@ -17,7 +17,7 @@ import * as fsPromises from 'fs/promises';
 import * as path from 'path';
 import { getTempRoot } from '../common/tempPaths';
 import { suite, test } from 'mocha';
-import { WorkspaceModuleService } from '../moduleManager';
+import { WorkspaceModuleService } from '../modules';
 
 // Lazy-require so this file is a no-op when executed without a real VS Code host
 // (e.g. by the standalone setup-shimmed mocha runner).

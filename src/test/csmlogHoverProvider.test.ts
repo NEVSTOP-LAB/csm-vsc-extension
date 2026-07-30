@@ -10,7 +10,7 @@
 
 import * as assert from 'assert';
 import * as path from 'path';
-import { __setLanguageOverrideForTests } from '../i18n';
+import { __setLanguageOverrideForTests } from '../common/i18n';
 
 // ---------------------------------------------------------------------------
 // Type stubs (matching vscode-mock.ts shapes)
@@ -36,7 +36,7 @@ function pos(character: number): FakePosition {
 
 // Load the compiled provider (vscode is already intercepted by setup.js)
 const { CSMLogHoverProvider } = require(
-    path.resolve(__dirname, '../csmlogHoverProvider')
+    path.resolve(__dirname, '../language/csmlogHoverProvider')
 ) as { CSMLogHoverProvider: new () => { provideHover: (doc: FakeDocument, pos: FakePosition) => FakeHover | undefined } };
 
 // ---------------------------------------------------------------------------

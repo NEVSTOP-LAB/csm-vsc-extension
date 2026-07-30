@@ -12,8 +12,8 @@ import * as path from 'path';
 import { getTempRoot } from '../common/tempPaths';
 import { suite, test } from 'mocha';
 
-import { WorkspaceModuleService } from '../moduleManager/workspaceModuleService';
-import { ModuleCacheStore } from '../moduleManager/cacheStore';
+import { WorkspaceModuleService } from '../modules/workspaceModuleService';
+import { ModuleCacheStore } from '../modules/cacheStore';
 
 class InMemoryGlobalState {
 	private readonly data = new Map<string, unknown>();

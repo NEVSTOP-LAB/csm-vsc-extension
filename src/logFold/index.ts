@@ -1,15 +1,5 @@
-// ---------------------------------------------------------------------------
-// src/logFold/index.ts — 日志折叠模块入口
-// ---------------------------------------------------------------------------
-
-export { LineSignature, FoldRegion, RepeatPattern, FoldOptions, DEFAULT_FOLD_OPTIONS } from './types';
-export { normalizeLine } from './normalizer';
-export { detectRepeatRegions } from './detector';
-export { CSMLogFoldingRangeProvider } from './foldingProvider';
-export {
-    createDecorationTypes,
-    disposeDecorationTypes,
-    applyDecorations,
-    clearDecorations,
-    DecorationTypes,
-} from './decorations';
+/**
+ * @deprecated 请使用 '../language/logFold' 代替。
+ * 此文件保留以便平滑迁移，将在后续版本中移除。
+ */
+export * from '../language/logFold';

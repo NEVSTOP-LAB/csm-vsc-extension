@@ -3,9 +3,9 @@
  */
 
 import * as assert from 'assert';
-import { detectRepeatRegions } from '../../logFold/detector';
-import { normalizeLine } from '../../logFold/normalizer';
-import { DEFAULT_FOLD_OPTIONS, LineSignature } from '../../logFold/types';
+import { detectRepeatRegions } from '../../language/logFold/detector';
+import { normalizeLine } from '../../language/logFold/normalizer';
+import { DEFAULT_FOLD_OPTIONS, LineSignature } from '../../language/logFold/types';
 
 suite('LogFold — Performance', () => {
 

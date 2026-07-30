@@ -13,7 +13,7 @@ import * as path from 'path';
 
 // Load the compiled provider (vscode is already intercepted by setup.js)
 const { LvcsmDocumentSymbolProvider } = require(
-    path.resolve(__dirname, '../lvcsmDocumentSymbolProvider'),
+    path.resolve(__dirname, '../language/lvcsmDocumentSymbolProvider'),
 ) as { LvcsmDocumentSymbolProvider: new () => { provideDocumentSymbols(doc: DocLike, token: null): SymbolLike[] } };
 
 // ---------------------------------------------------------------------------
