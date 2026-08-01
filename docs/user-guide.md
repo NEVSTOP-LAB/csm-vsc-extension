@@ -2,7 +2,7 @@
 
 ## 安装要求
 
-- Visual Studio Code 1.60.0 或更高版本
+- Visual Studio Code 1.63.0 或更高版本
 
 ## 支持内容
 
@@ -14,6 +14,7 @@
 ## 模块管理入口
 
 - 打开侧边栏 `CSM Modules` 即可浏览当前工作区模块、未管理文件夹和 GitHub 模块目录
+- 应用模块时可选择直接放入模块根目录，或放入已有/新的嵌套命名空间路径
 - 需要更完整的模块管理说明时，请参阅 [`module-management.md`](module-management.md)
 
 ## 扩展设置
@@ -21,6 +22,8 @@
 | 设置项 | 默认值 | 说明 |
 |---|---|---|
 | `csmModules.defaultModuleRoot` | `csm` | 首次引入模块时预填的默认目录名 |
+| `csmModules.moduleScanMaxDepth` | `3` | 递归发现本地模块候选目录时允许的最大深度 |
+| `csmModules.moduleScanIncludeReadmeWeakSignal` | `true` | 启用 README 弱信号后，包含 README 且至少有一个非文档文件的目录也可被识别为模块候选 |
 
 ## 文件装饰与标记
 

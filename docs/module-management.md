@@ -2,7 +2,7 @@
 
 ## 功能概述
 
-侧边栏 `CSM Modules` 容器现在只保留一个原生视图。当前工作区中的已管理模块、未管理文件夹与 GitHub 模块目录会在同一个 Webview 卡片列表中统一显示；本地项目条目固定排在前面，远端目录条目跟在后面。模块可通过 `submodule` 或 `copy` 方式引入本地仓库，并通过本地 YAML 配置文件记录已应用模块。
+侧边栏 `CSM Modules` 容器现在只保留一个原生视图。当前工作区中的已管理模块、未管理文件夹与 GitHub 模块目录会在同一个 Webview 卡片列表中统一显示；本地项目条目固定排在前面，远端目录条目跟在后面。模块可通过 `submodule` 或 `copy` 方式引入本地仓库，并通过本地 YAML 配置文件记录已应用模块。应用模块时，扩展会提示选择模块根目录下的放置位置：可直接落在根目录，也可使用已有或新建的嵌套命名空间路径。
 
 ## 功能特性
 
@@ -28,6 +28,7 @@
 ### 模块操作
 
 - 支持勾选多选模块；存在勾选模块时，可从视图标题栏执行 `Apply Selected` 批量应用
+- 应用模块时会提示选择命名空间位置：可直接使用模块根目录，也可选择最近使用的命名空间或手动输入新的嵌套路径；新建的命名空间会被记住，供后续复用
 - 模块卡片支持 VS Code 原生右键菜单，可直接执行 `Apply` / `Update` / `Remove` / `Open README` / 选择操作，并按模块当前状态自动启用、禁用或切换对应项
 - 首次应用时可初始化本地模块目录，默认生成 `csm/csm-modules.yaml`，也可指定仓库内自定义相对路径
 - 支持 `submodule` / `copy` 两种引入方式
@@ -57,6 +58,11 @@
 - 若仓库检测到 `csm/` 目录与 `*.lvproj`，但尚未存在本地模块配置，打开侧边栏时会主动提醒初始化，并在标题栏显示 `Initialize Workspace Management` 工具按钮
 - 若仓库内已存在 `csm/` 目录且包含已初始化的 submodule，但尚未存在配置文件，扩展会自动反向生成 `csm/csm-modules.yaml`
 
+## 模块扫描与发现
+
+- 默认会递归扫描模块根目录下的候选目录，最大深度由 `csmModules.moduleScanMaxDepth` 控制（默认 `3`）
+- 若启用 `csmModules.moduleScanIncludeReadmeWeakSignal`，包含 README 且至少有一个非文档文件的目录也会被视为模块候选，便于识别更宽松的本地模块布局
+
 ## 本地模块配置
 
 - **默认初始化目录**：`csm/`（可通过 `csmModules.defaultModuleRoot` 修改新仓库首次初始化时的默认值）
@@ -72,6 +78,8 @@
 | 设置项 | 默认值 | 说明 |
 |---|---|---|
 | `csmModules.defaultModuleRoot` | `csm` | 用于新仓库首次初始化 / 首次应用模块时预填模块根目录 |
+| `csmModules.moduleScanMaxDepth` | `3` | 控制递归发现本地模块候选目录时允许的最大深度 |
+| `csmModules.moduleScanIncludeReadmeWeakSignal` | `true` | 启用后，包含 README 且至少有一个非文档文件的目录也会被识别为模块候选 |
 
 ## 缓存策略
 
