@@ -326,18 +326,33 @@
           "order": 1,
           "description": "%configuration.csmModules.defaultModuleRoot.description%"
         },
+        "csmModules.moduleScanMaxDepth": {
+          "type": "number",
+          "default": 3,
+          "minimum": 1,
+          "scope": "resource",
+          "order": 2,
+          "description": "%configuration.csmModules.moduleScanMaxDepth.description%"
+        },
+        "csmModules.moduleScanIncludeReadmeWeakSignal": {
+          "type": "boolean",
+          "default": true,
+          "scope": "resource",
+          "order": 3,
+          "description": "%configuration.csmModules.moduleScanIncludeReadmeWeakSignal.description%"
+        },
         "csmModules.autoStarCsmCore": {
           "type": "boolean",
           "default": true,
           "scope": "window",
-          "order": 2,
+          "order": 4,
           "description": "%configuration.csmModules.autoStarCsmCore.description%"
         },
         "csmModules.autoStarModuleRepo": {
           "type": "boolean",
           "default": true,
           "scope": "window",
-          "order": 3,
+          "order": 5,
           "description": "%configuration.csmModules.autoStarModuleRepo.description%"
         },
         "csmModules.hiddenTopics": {

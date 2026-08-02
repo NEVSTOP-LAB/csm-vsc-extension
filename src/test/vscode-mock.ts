@@ -347,7 +347,7 @@ type MessageLevel = 'info' | 'warn' | 'error';
 const messageLog: Array<{ level: MessageLevel; text: string }> = [];
 let warningResponse: string | undefined;
 let informationResponse: unknown;
-let quickPickResponse: unknown;
+let quickPickResponses: unknown[] = [];
 let inputBoxResponse: string | undefined;
 let inputBoxResponses: Array<string | undefined> = [];
 let findFilesResult: Uri[] = [];
@@ -438,7 +438,8 @@ export const window = {
     async showQuickPick<T>(_items: readonly T[] | Promise<readonly T[]>, _options?: unknown): Promise<T | undefined> {
         const items = await Promise.resolve(_items);
         lastQuickPick = { items: [...items], options: _options };
-        return quickPickResponse as T | undefined;
+        const nextResponse = quickPickResponses.shift();
+        return nextResponse as T | undefined;
     },
     async showInputBox(_options?: unknown): Promise<string | undefined> {
         if (inputBoxResponses.length > 0) {
@@ -558,7 +559,7 @@ export function __setInformationMessageResponse(response: unknown): void {
 }
 
 export function __setQuickPickResponse(response: unknown): void {
-    quickPickResponse = response;
+    quickPickResponses.push(response);
 }
 
 export function __setInputBoxResponse(response: string | undefined): void {
@@ -647,7 +648,7 @@ export function __getExecutedCommands(): Array<{ command: string; args: unknown[
 export function __resetUiState(): void {
     warningResponse = undefined;
     informationResponse = undefined;
-    quickPickResponse = undefined;
+    quickPickResponses = [];
     inputBoxResponse = undefined;
     inputBoxResponses = [];
     findFilesResult = [];

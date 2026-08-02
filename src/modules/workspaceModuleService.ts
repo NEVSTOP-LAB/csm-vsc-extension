@@ -53,6 +53,12 @@ export interface PublishLocalFolderResult {
 	createdCommit: boolean;
 }
 
+export interface ModuleDirectoryScanOptions {
+	maxDepth?: number;
+	includeReadmeWeakSignal?: boolean;
+	excludedDirectoryNames?: string[];
+}
+
 function toPosixPath(value: string): string {
 	return value.replace(/\\/g, '/');
 }
@@ -65,6 +71,10 @@ function stripGitSuffix(value: string): string {
 	return value.replace(/\.git$/i, '');
 }
 
+const DEFAULT_SCAN_MAX_DEPTH = 3;
+const DEFAULT_EXCLUDED_DIRECTORY_NAMES = ['.git', 'node_modules', 'dist', 'build', 'out', 'tmp', 'docs', 'images'];
+const DOCUMENT_OR_IMAGE_FILE_PATTERN = /^(readme(\..*)?|license(\..*)?|changelog(\..*)?|notice(\..*)?|copying(\..*)?|authors(\..*)?|contributing(\..*)?|.*\.(md|txt|rst|png|jpe?g|gif|bmp|webp|svg))$/i;
+
 export class WorkspaceModuleService {
 	constructor(private readonly gitRunner: IGitRunner = new GitService()) { }
 
@@ -76,8 +86,35 @@ export class WorkspaceModuleService {
 		return `${sanitizeModuleKeyPart(entry.owner)}__${sanitizeModuleKeyPart(entry.name)}`;
 	}
 
-	public getTargetRelativePath(config: LocalModuleConfig, entry: CsmModuleEntry): string {
-		return path.posix.join(config.root, entry.name);
+	public normalizeNamespacePath(value: string): string {
+		const trimmed = value.trim();
+		if (!trimmed) {
+			return '';
+		}
+
+		const slashNormalized = trimmed.replace(/\\/g, '/');
+		if (path.posix.isAbsolute(slashNormalized) || path.win32.isAbsolute(trimmed)) {
+			throw new Error('Use a namespace path relative to the module root.');
+		}
+
+		const normalized = path.posix.normalize(slashNormalized).replace(/^\.\//, '').replace(/^\/+|\/+$/g, '');
+		if (normalized === '.') {
+			return '';
+		}
+		if (!normalized || normalized.startsWith('..') || normalized.includes('/../')) {
+			throw new Error('The namespace path must stay inside the module root.');
+		}
+
+		return normalized;
+	}
+
+	public getTargetRelativePath(config: LocalModuleConfig, entry: CsmModuleEntry, namespaceRelativePath?: string): string {
+		const namespace = typeof namespaceRelativePath === 'string'
+			? this.normalizeNamespacePath(namespaceRelativePath)
+			: '';
+		return namespace
+			? path.posix.join(config.root, namespace, entry.name)
+			: path.posix.join(config.root, entry.name);
 	}
 
 	public async resolveGitRepositoryRoot(workspacePath: string): Promise<string | undefined> {
@@ -475,9 +512,20 @@ export class WorkspaceModuleService {
 		}
 	}
 
-	public async listModuleDirectories(repoRoot: string, rootRelativePath: string): Promise<string[]> {
+	public async listModuleDirectories(
+		repoRoot: string,
+		rootRelativePath: string,
+		options: ModuleDirectoryScanOptions = {},
+	): Promise<string[]> {
 		const root = this.normalizeRootPath(rootRelativePath);
 		const rootAbsolute = this.toAbsoluteTargetPath(repoRoot, root);
+		const maxDepth = Math.max(1, Math.floor(options.maxDepth ?? DEFAULT_SCAN_MAX_DEPTH));
+		const includeReadmeWeakSignal = options.includeReadmeWeakSignal !== false;
+		const excludedDirectoryNames = new Set(
+			(options.excludedDirectoryNames ?? DEFAULT_EXCLUDED_DIRECTORY_NAMES)
+				.map((name) => name.trim().toLowerCase())
+				.filter((name) => name.length > 0),
+		);
 		let entries: Dirent[];
 		try {
 			entries = await fs.readdir(rootAbsolute, { withFileTypes: true });
@@ -487,10 +535,58 @@ export class WorkspaceModuleService {
 			}
 			throw error;
 		}
-		return entries
-			.filter((entry) => entry.isDirectory() && !entry.name.startsWith('.'))
-			.map((entry) => entry.name)
-			.sort((left, right) => left.localeCompare(right));
+
+		const discovered = new Set<string>();
+		const walk = async (relativePathFromRoot: string, depth: number): Promise<void> => {
+			const absolutePath = this.toAbsoluteTargetPath(repoRoot, path.posix.join(root, relativePathFromRoot));
+			let children: Dirent[];
+			try {
+				children = await fs.readdir(absolutePath, { withFileTypes: true });
+			} catch (error) {
+				if (this.isMissingPathError(error)) {
+					return;
+				}
+				throw error;
+			}
+
+			if (this.isModuleCandidateDirectory(children, includeReadmeWeakSignal)) {
+				discovered.add(relativePathFromRoot);
+			}
+
+			if (depth >= maxDepth) {
+				return;
+			}
+
+			const nextDirectories = children.filter((entry) => {
+				if (!entry.isDirectory()) {
+					return false;
+				}
+				if (entry.name.startsWith('.')) {
+					return false;
+				}
+				return !excludedDirectoryNames.has(entry.name.toLowerCase());
+			});
+
+			for (const child of nextDirectories) {
+				await walk(path.posix.join(relativePathFromRoot, child.name), depth + 1);
+			}
+		};
+
+		const topDirectories = entries.filter((entry) => {
+			if (!entry.isDirectory()) {
+				return false;
+			}
+			if (entry.name.startsWith('.')) {
+				return false;
+			}
+			return !excludedDirectoryNames.has(entry.name.toLowerCase());
+		});
+
+		for (const entry of topDirectories) {
+			await walk(entry.name, 1);
+		}
+
+		return [...discovered].sort((left, right) => left.localeCompare(right));
 	}
 
 	public async applyModule(
@@ -500,8 +596,11 @@ export class WorkspaceModuleService {
 		method: ModuleApplyMethod,
 		authToken?: string,
 		onProgress?: (message: string) => void,
+		explicitTargetRelativePath?: string,
 	): Promise<LocalModuleConfigEntry> {
-		const targetRelativePath = this.getTargetRelativePath(config, entry);
+		const targetRelativePath = explicitTargetRelativePath
+			? this.normalizeRootPath(explicitTargetRelativePath)
+			: this.getTargetRelativePath(config, entry);
 		const targetPath = this.toAbsoluteTargetPath(repoRoot, targetRelativePath);
 		if (await this.targetExists(repoRoot, targetRelativePath)) {
 			if (method === 'copy') {
@@ -692,6 +791,38 @@ export class WorkspaceModuleService {
 		} finally {
 			await fs.rm(tempRoot, { recursive: true, force: true });
 		}
+	}
+
+	private isModuleCandidateDirectory(entries: Dirent[], includeReadmeWeakSignal: boolean): boolean {
+		const hasStrongSignal = entries.some((entry) => {
+			if (entry.name === '.git') {
+				return true;
+			}
+			if (!entry.isFile()) {
+				return false;
+			}
+			return /^DEV ENVIRONMENT/i.test(entry.name) || /\.(lvproj|lvlib)$/i.test(entry.name);
+		});
+		if (hasStrongSignal) {
+			return true;
+		}
+
+		if (!includeReadmeWeakSignal) {
+			return false;
+		}
+
+		const hasReadme = entries.some((entry) => entry.isFile() && /^readme(\..*)?$/i.test(entry.name));
+		if (!hasReadme) {
+			return false;
+		}
+
+		const hasNonDocumentationFile = entries.some((entry) => {
+			if (!entry.isFile()) {
+				return false;
+			}
+			return !DOCUMENT_OR_IMAGE_FILE_PATTERN.test(entry.name);
+		});
+		return hasNonDocumentationFile;
 	}
 
 	private async convertSubmoduleToCopy(

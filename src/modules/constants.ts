@@ -36,6 +36,8 @@ export const CONFIG_SECTIONS = {
 
 export const CONFIG_KEYS = {
 	defaultModuleRoot: 'defaultModuleRoot',
+	moduleScanMaxDepth: 'moduleScanMaxDepth',
+	moduleScanIncludeReadmeWeakSignal: 'moduleScanIncludeReadmeWeakSignal',
 	hiddenTopics: 'hiddenTopics',
 	autoStarCsmCore: 'autoStarCsmCore',
 	autoStarModuleRepo: 'autoStarModuleRepo',
@@ -52,6 +54,7 @@ export const STORAGE_KEYS = {
 	moduleAuth: 'csmModules.auth.lastKnown',
 	moduleSortState: 'csmModules.sort.state',
 	moduleLvVersion: 'csmModules.cache.lvVersions',
+	recentNamespaceByWorkspace: 'csmModules.cache.recentNamespaceByWorkspace',
 } as const;
 
 export const CONTEXT_KEYS = {

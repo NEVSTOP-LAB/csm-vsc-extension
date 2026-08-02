@@ -26,6 +26,7 @@ const HAS_APPLIED_SELECTION_CONTEXT_KEY = CONTEXT_KEYS.selectionHasApplied;
 const HAS_UNAPPLIED_SELECTION_CONTEXT_KEY = CONTEXT_KEYS.selectionHasUnapplied;
 const LVPROJ_GLOB = '**/*.lvproj';
 const DEFAULT_SHARED_MODULE_TOPICS = ['labview-csm', 'csm-modsets'] as const;
+const ROOT_NAMESPACE_VALUE = '';
 
 function getWorkspaceInitPrompt(rootPath: string): string {
 	return t('workspaceInitPrompt', { rootPath });
@@ -49,6 +50,11 @@ type WebviewModuleContext = {
 
 type ApplyMethodQuickPickItem = vscode.QuickPickItem & {
 	method?: ModuleApplyMethod;
+};
+
+type NamespaceQuickPickItem = vscode.QuickPickItem & {
+	namespacePath?: string;
+	action?: 'manual';
 };
 
 type RepositoryVisibility = 'private' | 'public';
@@ -151,6 +157,7 @@ export class ModuleManagerController {
 	private currentAccountId: string | undefined;
 	private currentAccountLabel: string | undefined;
 	private lastTokenVerifiedAt = 0;
+	private recentNamespaceByWorkspace: Record<string, string>;
 	private static readonly TOKEN_VERIFY_INTERVAL_MS = 10 * 60 * 1000; // 10 minutes
 
 	constructor(private readonly context: vscode.ExtensionContext, deps: ModuleManagerControllerDeps = {}) {
@@ -162,6 +169,7 @@ export class ModuleManagerController {
 		this.cacheStore = new ModuleCacheStore(context.globalState);
 		this.readmeAssetCache = new ReadmeAssetCache(context.globalStorageUri);
 		this.currentSortState = this.cacheStore.getModuleSortState();
+		this.recentNamespaceByWorkspace = this.cacheStore.getRecentNamespaceByWorkspace();
 		// Pull any legacy in-memory copy from GlobalState (for backward compat),
 		// but do NOT persist new entries there going forward — the filesystem
 		// asset cache is the single source of truth (review item 3.5).
@@ -287,13 +295,25 @@ export class ModuleManagerController {
 			return;
 		}
 
-		const duplicateTargets = this.findDuplicateTargetPaths(config, selectedEntries);
+		const targetNamespace = await this.promptApplyTargetNamespace(workspaceFolder, applyRoot, config);
+		if (typeof targetNamespace === 'undefined') {
+			return;
+		}
+		const explicitTargetPathsByModuleKey = new Map<string, string>();
+		for (const moduleEntry of selectedEntries) {
+			explicitTargetPathsByModuleKey.set(
+				this.getModuleKey(moduleEntry),
+				this.workspaceModuleService.getTargetRelativePath(config, moduleEntry, targetNamespace),
+			);
+		}
+
+		const duplicateTargets = this.findDuplicateTargetPaths(config, selectedEntries, explicitTargetPathsByModuleKey);
 		if (duplicateTargets.length > 0) {
 			void vscode.window.showErrorMessage(t('duplicateTargetPaths', { paths: duplicateTargets.join(', ') }));
 			return;
 		}
 
-		const occupiedTargets = await this.findOccupiedTargetPaths(applyRoot, config, selectedEntries);
+		const occupiedTargets = await this.findOccupiedTargetPaths(applyRoot, config, selectedEntries, explicitTargetPathsByModuleKey);
 		if (occupiedTargets.length > 0) {
 			const prefix = applyMethod === 'copy' ? t('copyTargetExists') : t('targetPathExists');
 			void vscode.window.showWarningMessage(`${prefix}: ${occupiedTargets.join(', ')}`);
@@ -334,6 +354,7 @@ export class ModuleManagerController {
 						// then atomically merge into config in one write (review item 2.4).
 						const settled = await Promise.allSettled(
 							selectedEntries.map(async (moduleEntry) => {
+								const explicitTargetPath = explicitTargetPathsByModuleKey.get(this.getModuleKey(moduleEntry));
 								try {
 									const applied = await this.workspaceModuleService.applyModule(
 										applyRoot,
@@ -342,6 +363,7 @@ export class ModuleManagerController {
 										applyMethod,
 										authToken,
 										(msg) => progress.report({ message: msg }),
+										explicitTargetPath,
 									);
 									return applied;
 								} finally {
@@ -377,6 +399,7 @@ export class ModuleManagerController {
 					} else {
 						// Submodule mode must run serially because git submodule add can race.
 						for (const moduleEntry of selectedEntries) {
+							const explicitTargetPath = explicitTargetPathsByModuleKey.get(this.getModuleKey(moduleEntry));
 							const applied = await this.workspaceModuleService.applyModule(
 								applyRoot,
 								config,
@@ -384,6 +407,7 @@ export class ModuleManagerController {
 								applyMethod,
 								authToken,
 								(msg) => progress.report({ message: msg }),
+								explicitTargetPath,
 							);
 							config = this.workspaceModuleService.withAppliedModule(config, applied);
 							await writeConfigSafely(config);
@@ -1065,11 +1089,12 @@ export class ModuleManagerController {
 		workspaceRoot: string,
 		folder: LocalUnmanagedFolderEntry,
 	): Promise<LocalModuleConfig> {
+		const defaultRoot = this.getConfiguredDefaultModuleRoot();
 		const normalizedFolderPath = this.workspaceModuleService.normalizeRootPath(folder.path);
 		const inferredRoot = path.posix.dirname(normalizedFolderPath);
-		const configRoot = inferredRoot === '.'
-			? this.getConfiguredDefaultModuleRoot()
-			: this.workspaceModuleService.normalizeRootPath(inferredRoot);
+		const configRoot = inferredRoot && inferredRoot !== '.' && inferredRoot !== '/'
+			? this.workspaceModuleService.normalizeRootPath(inferredRoot)
+			: this.workspaceModuleService.normalizeRootPath(defaultRoot);
 		const config = await this.workspaceModuleService.initializeConfig(workspaceRoot, configRoot);
 		await this.setWorkspaceInitializationContext(false);
 		return config;
@@ -2290,14 +2315,16 @@ export class ModuleManagerController {
 		const managedPaths = new Set(
 			Object.values(config?.modules ?? {}).map((entry) => entry.path.replace(/\\/g, '/').toLowerCase()),
 		);
-		const directories = await this.workspaceModuleService.listModuleDirectories(workspaceRoot, moduleRoot);
+		const directories = await this.listModuleDirectoriesForNamespaceScan(workspaceRoot, moduleRoot, this.getModuleDirectoryScanOptions());
 		const entries: LocalUnmanagedFolderEntry[] = directories
-			.map((directoryName) => {
-				const relativePath = path.posix.join(moduleRoot, directoryName);
+			.map((relativePathFromRoot) => {
+				const relativePath = path.posix.join(moduleRoot, relativePathFromRoot);
+				const normalizedRelativePathFromRoot = this.normalizeNamespacePathValue(relativePathFromRoot);
+				const folderName = path.posix.basename(normalizedRelativePathFromRoot || relativePathFromRoot);
 				const result: LocalUnmanagedFolderEntry = {
 					id: relativePath,
 					kind: 'unmanaged',
-					name: directoryName,
+					name: folderName,
 					path: relativePath,
 				};
 				return result;
@@ -2803,6 +2830,207 @@ export class ModuleManagerController {
 		}
 	}
 
+	private normalizeNamespacePathValue(value: string): string {
+		const service = this.workspaceModuleService as WorkspaceModuleService & { normalizeNamespacePath?: (value: string) => string };
+		if (typeof service.normalizeNamespacePath === 'function') {
+			return service.normalizeNamespacePath(value);
+		}
+		const trimmed = value.trim();
+		if (!trimmed) {
+			return '';
+		}
+		const slashNormalized = trimmed.replace(/\\/g, '/');
+		const normalized = slashNormalized.replace(/^\.\//, '').replace(/^\/+|\/+$/g, '');
+		return normalized === '.' ? '' : normalized;
+	}
+
+	private async listModuleDirectoriesForNamespaceScan(
+		workspaceRoot: string,
+		moduleRoot: string,
+		options: { maxDepth?: number; includeReadmeWeakSignal?: boolean } = {},
+	): Promise<string[]> {
+		const service = this.workspaceModuleService as WorkspaceModuleService & { listModuleDirectories?: (repoRoot: string, rootRelativePath: string, scanOptions?: { maxDepth?: number; includeReadmeWeakSignal?: boolean }) => Promise<string[]> };
+		if (typeof service.listModuleDirectories === 'function') {
+			return service.listModuleDirectories(workspaceRoot, moduleRoot, options);
+		}
+		return [];
+	}
+
+	private getModuleDirectoryScanOptions(): { maxDepth: number; includeReadmeWeakSignal: boolean } {
+		const configuration = vscode.workspace.getConfiguration(CONFIG_SECTIONS.moduleManager);
+		const configuredDepth = configuration.get<number>(CONFIG_KEYS.moduleScanMaxDepth, 3);
+		const maxDepth = Math.max(1, Math.floor(Number.isFinite(configuredDepth) ? configuredDepth : 3));
+		const includeReadmeWeakSignal = configuration.get<boolean>(CONFIG_KEYS.moduleScanIncludeReadmeWeakSignal, true);
+		return {
+			maxDepth,
+			includeReadmeWeakSignal,
+		};
+	}
+
+	private getWorkspaceRecentNamespaceKey(workspaceFolder: vscode.WorkspaceFolder): string {
+		return workspaceFolder.uri.fsPath.toLowerCase();
+	}
+
+	private getRecentNamespaceForWorkspace(workspaceFolder: vscode.WorkspaceFolder): string {
+		const key = this.getWorkspaceRecentNamespaceKey(workspaceFolder);
+		const stored = this.recentNamespaceByWorkspace[key];
+		if (!stored) {
+			return ROOT_NAMESPACE_VALUE;
+		}
+		try {
+			return this.normalizeNamespacePathValue(stored);
+		} catch {
+			return ROOT_NAMESPACE_VALUE;
+		}
+	}
+
+	private async setRecentNamespaceForWorkspace(workspaceFolder: vscode.WorkspaceFolder, namespacePath: string): Promise<void> {
+		const key = this.getWorkspaceRecentNamespaceKey(workspaceFolder);
+		this.recentNamespaceByWorkspace = {
+			...this.recentNamespaceByWorkspace,
+			[key]: namespacePath,
+		};
+		await this.cacheStore.setRecentNamespaceByWorkspace(this.recentNamespaceByWorkspace);
+	}
+
+	private collectNamespaceCandidates(config: LocalModuleConfig): string[] {
+		const namespaceSet = new Set<string>();
+		namespaceSet.add(ROOT_NAMESPACE_VALUE);
+
+		const collectFromPath = (fullPath: string): void => {
+			let normalized: string;
+			try {
+				normalized = this.workspaceModuleService.normalizeRootPath(fullPath);
+			} catch {
+				return;
+			}
+			if (!(normalized === config.root || normalized.startsWith(`${config.root}/`))) {
+				return;
+			}
+			const relativeToRoot = normalized === config.root ? '' : normalized.slice(config.root.length + 1);
+			if (!relativeToRoot) {
+				return;
+			}
+			const segments = relativeToRoot.split('/').filter((segment) => segment.length > 0);
+			for (let depth = 1; depth < segments.length; depth += 1) {
+				namespaceSet.add(segments.slice(0, depth).join('/'));
+			}
+		};
+
+		for (const managed of Object.values(config.modules)) {
+			collectFromPath(managed.path);
+		}
+
+		return [...namespaceSet].sort((left, right) => left.localeCompare(right));
+	}
+
+	private async promptApplyTargetNamespace(
+		workspaceFolder: vscode.WorkspaceFolder,
+		workspaceRoot: string,
+		config: LocalModuleConfig,
+	): Promise<string | undefined> {
+		const managedAndUnmanagedNamespace = new Set(this.collectNamespaceCandidates(config));
+		const managedPaths = new Set(
+			Object.values(config.modules).map((entry) => entry.path.replace(/\\/g, '/').toLowerCase()),
+		);
+		const scanCandidates = await this.listModuleDirectoriesForNamespaceScan(
+			workspaceRoot,
+			config.root,
+			this.getModuleDirectoryScanOptions(),
+		);
+		for (const relativePathFromRoot of scanCandidates) {
+			const fullPath = path.posix.join(config.root, relativePathFromRoot);
+			if (managedPaths.has(fullPath.toLowerCase())) {
+				continue;
+			}
+			const relativeToRoot = relativePathFromRoot;
+			if (!relativeToRoot) {
+				continue;
+			}
+			const segments = relativeToRoot.split('/').filter((segment) => segment.length > 0);
+			for (let depth = 1; depth < segments.length; depth += 1) {
+				managedAndUnmanagedNamespace.add(segments.slice(0, depth).join('/'));
+			}
+		}
+
+		const sortedNamespaces = [...managedAndUnmanagedNamespace].sort((left, right) => left.localeCompare(right));
+		const recentNamespace = this.getRecentNamespaceForWorkspace(workspaceFolder);
+		const nonRootNamespaces = sortedNamespaces.filter((namespacePath) => namespacePath.length > 0);
+		if (nonRootNamespaces.length === 0 && recentNamespace === ROOT_NAMESPACE_VALUE) {
+			return ROOT_NAMESPACE_VALUE;
+		}
+		const rootOptionLabel = t('applyNamespaceRootOption', { root: config.root });
+		const items: NamespaceQuickPickItem[] = [
+			{
+				label: rootOptionLabel,
+				detail: t('applyNamespaceRootDetail', { root: config.root }),
+				namespacePath: ROOT_NAMESPACE_VALUE,
+				picked: recentNamespace === ROOT_NAMESPACE_VALUE,
+			},
+			...sortedNamespaces
+				.filter((namespacePath) => namespacePath.length > 0)
+				.map((namespacePath) => ({
+					label: namespacePath,
+					detail: t('applyNamespacePathDetail', { path: path.posix.join(config.root, namespacePath) }),
+					namespacePath,
+					picked: recentNamespace === namespacePath,
+				})),
+			{
+				label: t('applyNamespaceManualInput'),
+				detail: t('applyNamespaceManualInputDetail'),
+				action: 'manual',
+			},
+		];
+
+		const picked = await vscode.window.showQuickPick(items, {
+			placeHolder: t('applyNamespacePlaceholder'),
+			matchOnDetail: true,
+		});
+		if (!picked) {
+			return undefined;
+		}
+
+		let chosenNamespace = picked.namespacePath ?? ROOT_NAMESPACE_VALUE;
+		if (picked.action === 'manual') {
+			const input = await vscode.window.showInputBox({
+				prompt: t('applyNamespaceInputPrompt', { root: config.root }),
+				placeHolder: 'HAL/niDMM',
+				validateInput: (value) => {
+					try {
+						this.normalizeNamespacePathValue(value);
+						return undefined;
+					} catch (error) {
+						return error instanceof Error ? error.message : t('invalidDirectory');
+					}
+				},
+			});
+			if (typeof input === 'undefined') {
+				return undefined;
+			}
+			chosenNamespace = this.normalizeNamespacePathValue(input);
+
+			const targetDirectory = chosenNamespace
+				? path.posix.join(config.root, chosenNamespace)
+				: config.root;
+			const exists = await this.workspaceModuleService.targetExists(workspaceRoot, targetDirectory);
+			if (!exists) {
+				const confirmation = await vscode.window.showWarningMessage(
+					t('applyNamespaceCreateConfirm', { path: targetDirectory }),
+					{ modal: true },
+					t('applyNamespaceCreateAction'),
+				);
+				if (confirmation !== t('applyNamespaceCreateAction')) {
+					return undefined;
+				}
+				await fs.mkdir(path.join(workspaceRoot, ...targetDirectory.split('/')), { recursive: true });
+				void vscode.window.showInformationMessage(t('applyNamespaceTip', { path: targetDirectory }));
+			}
+		}
+
+		await this.setRecentNamespaceForWorkspace(workspaceFolder, chosenNamespace);
+		return chosenNamespace;
+	}
+
 	private async hasLvprojFile(workspaceFolder: vscode.WorkspaceFolder): Promise<boolean> {
 		const matches = await vscode.workspace.findFiles(
 			new vscode.RelativePattern(workspaceFolder, LVPROJ_GLOB),
@@ -2861,11 +3089,16 @@ export class ModuleManagerController {
 		return pick?.method;
 	}
 
-	private findDuplicateTargetPaths(config: LocalModuleConfig, entries: CsmModuleEntry[]): string[] {
+	private findDuplicateTargetPaths(
+		config: LocalModuleConfig,
+		entries: CsmModuleEntry[],
+		explicitTargetPathsByModuleKey?: Map<string, string>,
+	): string[] {
 		const seen = new Set<string>();
 		const duplicates = new Set<string>();
 		for (const entry of entries) {
-			const targetPath = this.workspaceModuleService.getTargetRelativePath(config, entry);
+			const targetPath = explicitTargetPathsByModuleKey?.get(this.getModuleKey(entry))
+				?? this.workspaceModuleService.getTargetRelativePath(config, entry);
 			if (seen.has(targetPath)) {
 				duplicates.add(targetPath);
 				continue;
@@ -2879,10 +3112,12 @@ export class ModuleManagerController {
 		repoRoot: string,
 		config: LocalModuleConfig,
 		entries: CsmModuleEntry[],
+		explicitTargetPathsByModuleKey?: Map<string, string>,
 	): Promise<string[]> {
 		const occupied: string[] = [];
 		for (const entry of entries) {
-			const targetPath = this.workspaceModuleService.getTargetRelativePath(config, entry);
+			const targetPath = explicitTargetPathsByModuleKey?.get(this.getModuleKey(entry))
+				?? this.workspaceModuleService.getTargetRelativePath(config, entry);
 			if (await this.workspaceModuleService.targetExists(repoRoot, targetPath)) {
 				occupied.push(targetPath);
 			}

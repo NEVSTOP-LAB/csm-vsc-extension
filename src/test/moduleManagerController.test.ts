@@ -2120,6 +2120,71 @@ suite('ModuleManagerController Regression Tests', () => {
 		assert.ok(infos.some((text) => text.includes('Applied 1 module(s) via copy')));
 	});
 
+	test('apply uses the selected namespace when computing the module target path', async () => {
+		const controller = createController() as any;
+		const entry: CsmModuleEntry = {
+			id: 2,
+			owner: 'org',
+			name: 'module-b',
+			description: 'demo',
+			topics: ['csm-modsets'],
+			visibility: 'public',
+			defaultBranch: 'main',
+			repoUrl: 'https://github.com/org/module-b',
+		};
+		const config: LocalModuleConfig = {
+			version: '2',
+			root: 'csm',
+			configPath: 'd:/repo/csm/csm-modules.yaml',
+			modules: {},
+		};
+		let appliedTargetPath: string | undefined;
+
+		controller.workspaceModuleService = {
+			resolveGitRepositoryRoot: async () => 'd:/repo',
+			normalizeRootPath: (value: string) => value.replace(/\\/g, '/').replace(/^\.\//, '').replace(/^\/+|\/+$/g, ''),
+			normalizeNamespacePath: (value: string) => value.trim().replace(/\\/g, '/').replace(/^\/+|\/+$/g, '').replace(/^\.\//, ''),
+			recoverConfigFromExistingSubmodules: async () => undefined,
+			loadConfig: async () => config,
+			listModuleDirectories: async () => ['shared/feature'],
+			getTargetRelativePath: (_config: LocalModuleConfig, _moduleEntry: CsmModuleEntry, namespaceRelativePath?: string) => {
+				const namespace = namespaceRelativePath ? `/${namespaceRelativePath}` : '';
+				return `csm${namespace}/module-b`;
+			},
+			targetExists: async () => false,
+			applyModule: async (_repoRoot: string, _config: LocalModuleConfig, _moduleEntry: CsmModuleEntry, _method: ModuleApplyMethod, _authToken?: string, _onProgress?: (message: string) => void, explicitTargetRelativePath?: string) => {
+				appliedTargetPath = explicitTargetRelativePath;
+				return {
+					key: 'org__module_b',
+					name: 'module-b',
+					owner: 'org',
+					source: entry.repoUrl,
+					method: 'copy',
+					path: explicitTargetRelativePath ?? 'csm/module-b',
+					ref: 'abc123',
+					branch: entry.defaultBranch,
+				};
+			},
+			withAppliedModule: (currentConfig: LocalModuleConfig, moduleEntry: LocalModuleConfig['modules'][string]) => ({
+				...currentConfig,
+				modules: {
+					...currentConfig.modules,
+					[moduleEntry.key]: moduleEntry,
+				},
+			}),
+			writeConfig: async () => undefined,
+		};
+		mocked.__setWorkspaceFolders([{ name: 'repo', uri: vscode.Uri.file('d:/repo') }]);
+		mocked.__setFindFilesResult([vscode.Uri.file('d:/repo/csm/csm-modules.yaml')]);
+		mocked.__setQuickPickResponse({ method: 'copy' });
+		mocked.__setQuickPickResponse({ namespacePath: 'shared/feature' });
+		mocked.__setWarningMessageResponse('Apply');
+
+		await controller.applyToWorkspaceCommand(entry);
+
+		assert.strictEqual(appliedTargetPath, 'csm/shared/feature/module-b');
+	});
+
 	test('apply keeps existing config root when default root setting differs', async () => {
 		const controller = createController() as any;
 		const entry: CsmModuleEntry = {
