@@ -26,8 +26,7 @@
   "configuration.csmModules.defaultModuleRoot.description": "当仓库中尚不存在 csm-modules.yaml 文件时，用于初始化本地 CSM 模块管理的默认相对目录。",
   "configuration.csmModules.moduleScanMaxDepth.description": "在本地工作区递归发现模块候选目录时使用的最大扫描深度（相对于模块根目录）。",
   "configuration.csmModules.moduleScanIncludeReadmeWeakSignal.description": "是否在递归发现时启用 README 弱信号。启用后，包含 README 且至少有一个非文档文件的目录可被识别为模块候选。",
-  "configuration.csmModules.moduleScanExcludedDirectories.description": "在本地工作区递归发现模块候选目录时跳过的目录名（大小写不敏感，任意层级匹配）。已管理的模块目录始终会被跳过，不受此设置影响。"
-  "configuration.csmModules.hiddenTopics.description": "用于配置在 CSM Modules 侧边栏徽标、树视图提示和本地搜索文本中隐藏的模块仓库 topics。",
+  "configuration.csmModules.moduleScanExcludedDirectories.description": "在本地工作区递归发现模块候选目录时跳过的目录名（大小写不敏感，任意层级匹配）。已管理的模块目录始终会被跳过，不受此设置影响。""configuration.csmModules.hiddenTopics.description": "用于配置在 CSM Modules 侧边栏徽标、树视图提示和本地搜索文本中隐藏的模块仓库 topics。",
   "configuration.csmModules.autoStarCsmCore.description": "将模块应用到本地工作区时，自动在 GitHub 上 Star CSM Core 仓库（NEVSTOP-LAB/Communicable-State-Machine）。",
   "configuration.csmModules.autoStarModuleRepo.description": "将模块应用到本地工作区时，自动在 GitHub 上 Star 所下载模块对应的仓库。",
   "configuration.csmModules.hideArchivedRepos.description": "在可用模块列表中隐藏已归档的模块仓库。关闭后，已归档的仓库将与活跃仓库一同显示。",

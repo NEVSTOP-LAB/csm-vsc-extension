@@ -77,12 +77,12 @@
 
 ## 扩展设置
 
-| 设置项                                         | 默认值 | 说明                                                                |
-|------------------------------------------------|--------|---------------------------------------------------------------------|
-| `csmModules.defaultModuleRoot`                 | `csm`  | 用于新仓库首次初始化 / 首次应用模块时预填模块根目录                 |
-| `csmModules.moduleScanMaxDepth`                | `3`    | 控制递归发现本地模块候选目录时允许的最大深度                        |
-| `csmModules.moduleScanIncludeReadmeWeakSignal` | `true` | 启用后，包含 README 且至少有一个非文档文件的目录也会被识别为模块候选 |
-| `csmModules.moduleScanExcludedDirectories`     | `.git`, `node_modules`, `dist`, `build`, `out`, `tmp`, `docs`, `images` | 递归发现本地模块候选时跳过的目录名（大小写不敏感） |
+| 设置项                                         | 默认值                                                                  | 说明                                                                |
+|------------------------------------------------|-------------------------------------------------------------------------|---------------------------------------------------------------------|
+| `csmModules.defaultModuleRoot`                 | `csm`                                                                   | 用于新仓库首次初始化 / 首次应用模块时预填模块根目录                 |
+| `csmModules.moduleScanMaxDepth`                | `3`                                                                     | 控制递归发现本地模块候选目录时允许的最大深度                        |
+| `csmModules.moduleScanIncludeReadmeWeakSignal` | `true`                                                                  | 启用后，包含 README 且至少有一个非文档文件的目录也会被识别为模块候选 |
+| `csmModules.moduleScanExcludedDirectories`     | `.git`, `node_modules`, `dist`, `build`, `out`, `tmp`, `docs`, `images` | 递归发现本地模块候选时跳过的目录名（大小写不敏感）                    |
 
 ## 缓存策略
 

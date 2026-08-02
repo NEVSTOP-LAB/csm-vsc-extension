@@ -20,12 +20,12 @@
 
 ## 扩展设置
 
-| 设置项                                         | 默认值 | 说明                                                                              |
-|------------------------------------------------|--------|-----------------------------------------------------------------------------------|
-| `csmModules.defaultModuleRoot`                 | `csm`  | 首次引入模块时预填的默认目录名                                                    |
-| `csmModules.moduleScanMaxDepth`                | `3`    | 递归发现本地模块候选目录时允许的最大深度                                          |
-| `csmModules.moduleScanIncludeReadmeWeakSignal` | `true` | 启用 README 弱信号后，包含 README 且至少有一个非文档文件的目录也可被识别为模块候选 |
-| `csmModules.moduleScanExcludedDirectories`     | `.git`, `node_modules`, `dist`, `build`, `out`, `tmp`, `docs`, `images` | 递归发现本地模块候选时跳过的目录名（大小写不敏感） |
+| 设置项                                         | 默认值                                                                  | 说明                                                                              |
+|------------------------------------------------|-------------------------------------------------------------------------|-----------------------------------------------------------------------------------|
+| `csmModules.defaultModuleRoot`                 | `csm`                                                                   | 首次引入模块时预填的默认目录名                                                    |
+| `csmModules.moduleScanMaxDepth`                | `3`                                                                     | 递归发现本地模块候选目录时允许的最大深度                                          |
+| `csmModules.moduleScanIncludeReadmeWeakSignal` | `true`                                                                  | 启用 README 弱信号后，包含 README 且至少有一个非文档文件的目录也可被识别为模块候选 |
+| `csmModules.moduleScanExcludedDirectories`     | `.git`, `node_modules`, `dist`, `build`, `out`, `tmp`, `docs`, `images` | 递归发现本地模块候选时跳过的目录名（大小写不敏感）                                  |
 
 ## 文件装饰与标记
 
