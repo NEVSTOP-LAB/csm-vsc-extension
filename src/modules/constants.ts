@@ -37,8 +37,7 @@ export const CONFIG_SECTIONS = {
 export const CONFIG_KEYS = {
 	defaultModuleRoot: 'defaultModuleRoot',
 	moduleScanMaxDepth: 'moduleScanMaxDepth',
-	moduleScanIncludeReadmeWeakSignal: 'moduleScanIncludeReadmeWeakSignal',
-	hiddenTopics: 'hiddenTopics',
+	moduleScanIncludeReadmeWeakSignal: 'moduleScanIncludeReadmeWeakSignal',	moduleScanExcludedDirectories: 'moduleScanExcludedDirectories',	hiddenTopics: 'hiddenTopics',
 	autoStarCsmCore: 'autoStarCsmCore',
 	autoStarModuleRepo: 'autoStarModuleRepo',
 	hideArchivedRepos: 'hideArchivedRepos',

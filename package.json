@@ -341,18 +341,37 @@
           "order": 3,
           "description": "%configuration.csmModules.moduleScanIncludeReadmeWeakSignal.description%"
         },
+        "csmModules.moduleScanExcludedDirectories": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            ".git",
+            "node_modules",
+            "dist",
+            "build",
+            "out",
+            "tmp",
+            "docs",
+            "images"
+          ],
+          "scope": "resource",
+          "order": 4,
+          "description": "%configuration.csmModules.moduleScanExcludedDirectories.description%"
+        },
         "csmModules.autoStarCsmCore": {
           "type": "boolean",
           "default": true,
           "scope": "window",
-          "order": 4,
+          "order": 5,
           "description": "%configuration.csmModules.autoStarCsmCore.description%"
         },
         "csmModules.autoStarModuleRepo": {
           "type": "boolean",
           "default": true,
           "scope": "window",
-          "order": 5,
+          "order": 6,
           "description": "%configuration.csmModules.autoStarModuleRepo.description%"
         },
         "csmModules.hiddenTopics": {

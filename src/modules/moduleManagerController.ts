@@ -9,7 +9,7 @@ import { ModuleTreeItem } from './moduleTreeTypes';
 import { ModuleSidebarViewProvider } from './moduleSidebarViewProvider';
 import { IModuleViewProvider, ModuleSortField, ModuleSortState, SidebarWorkspaceContext } from './types';
 import { ReadmeAssetCache } from './readmeAssetCache';
-import { DEFAULT_LOCAL_MODULE_ROOT, GitIdentity, LEGACY_LOCAL_MODULE_CONFIG_FILE, LOCAL_MODULE_CONFIG_FILE, WorkspaceModuleService } from './workspaceModuleService';
+import { DEFAULT_EXCLUDED_DIRECTORY_NAMES, DEFAULT_LOCAL_MODULE_ROOT, GitIdentity, LEGACY_LOCAL_MODULE_CONFIG_FILE, LOCAL_MODULE_CONFIG_FILE, WorkspaceModuleService } from './workspaceModuleService';
 import { COMMAND_IDS, CONFIG_KEYS, CONFIG_SECTIONS, CONTEXT_KEYS, GITHUB, VIEW_IDS } from './constants';
 import { Logger, getLogger, wrapCommand } from './logger';
 import { getApplyMethodLabel, t } from './messages';
@@ -2312,10 +2312,14 @@ export class ModuleManagerController {
 		moduleRoot: string,
 		config: LocalModuleConfig | undefined,
 	): Promise<LocalUnmanagedFolderEntry[]> {
+		const managedEntries = Object.values(config?.modules ?? {});
 		const managedPaths = new Set(
-			Object.values(config?.modules ?? {}).map((entry) => entry.path.replace(/\\/g, '/').toLowerCase()),
+			managedEntries.map((entry) => entry.path.replace(/\\/g, '/').toLowerCase()),
 		);
-		const directories = await this.listModuleDirectoriesForNamespaceScan(workspaceRoot, moduleRoot, this.getModuleDirectoryScanOptions());
+		const directories = await this.listModuleDirectoriesForNamespaceScan(workspaceRoot, moduleRoot, {
+			...this.getModuleDirectoryScanOptions(),
+			excludedRelativePaths: this.toManagedRelativePaths(managedEntries, moduleRoot),
+		});
 		const entries: LocalUnmanagedFolderEntry[] = directories
 			.map((relativePathFromRoot) => {
 				const relativePath = path.posix.join(moduleRoot, relativePathFromRoot);
@@ -2847,24 +2851,45 @@ export class ModuleManagerController {
 	private async listModuleDirectoriesForNamespaceScan(
 		workspaceRoot: string,
 		moduleRoot: string,
-		options: { maxDepth?: number; includeReadmeWeakSignal?: boolean } = {},
+		options: { maxDepth?: number; includeReadmeWeakSignal?: boolean; excludedDirectoryNames?: string[]; excludedRelativePaths?: string[] } = {},
 	): Promise<string[]> {
-		const service = this.workspaceModuleService as WorkspaceModuleService & { listModuleDirectories?: (repoRoot: string, rootRelativePath: string, scanOptions?: { maxDepth?: number; includeReadmeWeakSignal?: boolean }) => Promise<string[]> };
+		const service = this.workspaceModuleService as WorkspaceModuleService & { listModuleDirectories?: (repoRoot: string, rootRelativePath: string, scanOptions?: { maxDepth?: number; includeReadmeWeakSignal?: boolean; excludedDirectoryNames?: string[]; excludedRelativePaths?: string[] }) => Promise<string[]> };
 		if (typeof service.listModuleDirectories === 'function') {
 			return service.listModuleDirectories(workspaceRoot, moduleRoot, options);
 		}
 		return [];
 	}
 
-	private getModuleDirectoryScanOptions(): { maxDepth: number; includeReadmeWeakSignal: boolean } {
+	private getModuleDirectoryScanOptions(): { maxDepth: number; includeReadmeWeakSignal: boolean; excludedDirectoryNames: string[] } {
 		const configuration = vscode.workspace.getConfiguration(CONFIG_SECTIONS.moduleManager);
 		const configuredDepth = configuration.get<number>(CONFIG_KEYS.moduleScanMaxDepth, 3);
 		const maxDepth = Math.max(1, Math.floor(Number.isFinite(configuredDepth) ? configuredDepth : 3));
 		const includeReadmeWeakSignal = configuration.get<boolean>(CONFIG_KEYS.moduleScanIncludeReadmeWeakSignal, true);
+		const configuredExcluded = configuration.get<string[]>(CONFIG_KEYS.moduleScanExcludedDirectories, DEFAULT_EXCLUDED_DIRECTORY_NAMES);
+		const excludedDirectoryNames = Array.isArray(configuredExcluded)
+			? configuredExcluded.map((name) => String(name).trim()).filter((name) => name.length > 0)
+			: [];
 		return {
 			maxDepth,
 			includeReadmeWeakSignal,
+			excludedDirectoryNames,
 		};
+	}
+
+	private toManagedRelativePaths(entries: Array<{ path: string }>, moduleRoot: string): string[] {
+		const rootPrefix = `${moduleRoot}/`;
+		const relativePaths: string[] = [];
+		for (const entry of entries) {
+			const normalized = entry.path.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');
+			if (normalized === moduleRoot) {
+				continue;
+			}
+			if (!normalized.startsWith(rootPrefix)) {
+				continue;
+			}
+			relativePaths.push(normalized.slice(rootPrefix.length));
+		}
+		return relativePaths;
 	}
 
 	private getWorkspaceRecentNamespaceKey(workspaceFolder: vscode.WorkspaceFolder): string {
@@ -2930,13 +2955,17 @@ export class ModuleManagerController {
 		config: LocalModuleConfig,
 	): Promise<string | undefined> {
 		const managedAndUnmanagedNamespace = new Set(this.collectNamespaceCandidates(config));
+		const managedEntries = Object.values(config.modules);
 		const managedPaths = new Set(
-			Object.values(config.modules).map((entry) => entry.path.replace(/\\/g, '/').toLowerCase()),
+			managedEntries.map((entry) => entry.path.replace(/\\/g, '/').toLowerCase()),
 		);
 		const scanCandidates = await this.listModuleDirectoriesForNamespaceScan(
 			workspaceRoot,
 			config.root,
-			this.getModuleDirectoryScanOptions(),
+			{
+				...this.getModuleDirectoryScanOptions(),
+				excludedRelativePaths: this.toManagedRelativePaths(managedEntries, config.root),
+			},
 		);
 		for (const relativePathFromRoot of scanCandidates) {
 			const fullPath = path.posix.join(config.root, relativePathFromRoot);

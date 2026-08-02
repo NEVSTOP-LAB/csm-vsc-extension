@@ -57,6 +57,11 @@ export interface ModuleDirectoryScanOptions {
 	maxDepth?: number;
 	includeReadmeWeakSignal?: boolean;
 	excludedDirectoryNames?: string[];
+	/**
+	 * 相对模块根目录的路径，扫描时整体跳过（不报告为候选、不深入其子目录）。
+	 * 用于已管理模块目录，避免继续向下扫描其内部内容。
+	 */
+	excludedRelativePaths?: string[];
 }
 
 function toPosixPath(value: string): string {
@@ -71,8 +76,8 @@ function stripGitSuffix(value: string): string {
 	return value.replace(/\.git$/i, '');
 }
 
-const DEFAULT_SCAN_MAX_DEPTH = 3;
-const DEFAULT_EXCLUDED_DIRECTORY_NAMES = ['.git', 'node_modules', 'dist', 'build', 'out', 'tmp', 'docs', 'images'];
+export const DEFAULT_SCAN_MAX_DEPTH = 3;
+export const DEFAULT_EXCLUDED_DIRECTORY_NAMES = ['.git', 'node_modules', 'dist', 'build', 'out', 'tmp', 'docs', 'images'];
 const DOCUMENT_OR_IMAGE_FILE_PATTERN = /^(readme(\..*)?|license(\..*)?|changelog(\..*)?|notice(\..*)?|copying(\..*)?|authors(\..*)?|contributing(\..*)?|.*\.(md|txt|rst|png|jpe?g|gif|bmp|webp|svg))$/i;
 
 export class WorkspaceModuleService {
@@ -526,6 +531,11 @@ export class WorkspaceModuleService {
 				.map((name) => name.trim().toLowerCase())
 				.filter((name) => name.length > 0),
 		);
+		const excludedRelativePaths = new Set(
+			(options.excludedRelativePaths ?? [])
+				.map((value) => value.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '').toLowerCase())
+				.filter((value) => value.length > 0),
+		);
 		let entries: Dirent[];
 		try {
 			entries = await fs.readdir(rootAbsolute, { withFileTypes: true });
@@ -538,6 +548,10 @@ export class WorkspaceModuleService {
 
 		const discovered = new Set<string>();
 		const walk = async (relativePathFromRoot: string, depth: number): Promise<void> => {
+			const relativePathKey = relativePathFromRoot.replace(/\\/g, '/').toLowerCase();
+			if (relativePathKey && excludedRelativePaths.has(relativePathKey)) {
+				return;
+			}
 			const absolutePath = this.toAbsoluteTargetPath(repoRoot, path.posix.join(root, relativePathFromRoot));
 			let children: Dirent[];
 			try {
@@ -577,6 +591,9 @@ export class WorkspaceModuleService {
 				return false;
 			}
 			if (entry.name.startsWith('.')) {
+				return false;
+			}
+			if (excludedRelativePaths.has(entry.name.toLowerCase())) {
 				return false;
 			}
 			return !excludedDirectoryNames.has(entry.name.toLowerCase());

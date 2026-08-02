@@ -62,6 +62,8 @@
 
 - 默认会递归扫描模块根目录下的候选目录，最大深度由 `csmModules.moduleScanMaxDepth` 控制（默认 `3`）
 - 若启用 `csmModules.moduleScanIncludeReadmeWeakSignal`，包含 README 且至少有一个非文档文件的目录也会被视为模块候选，便于识别更宽松的本地模块布局
+- 已管理模块目录会被整体跳过：扫描不会深入已确认管理的模块内部，避免把模块内部内容误识别为候选
+- 默认跳过一组常见构建/依赖目录（`.git`、`node_modules`、`dist`、`build`、`out`、`tmp`、`docs`、`images`），可通过 `csmModules.moduleScanExcludedDirectories` 调整
 
 ## 本地模块配置
 
@@ -80,6 +82,7 @@
 | `csmModules.defaultModuleRoot`                 | `csm`  | 用于新仓库首次初始化 / 首次应用模块时预填模块根目录                 |
 | `csmModules.moduleScanMaxDepth`                | `3`    | 控制递归发现本地模块候选目录时允许的最大深度                        |
 | `csmModules.moduleScanIncludeReadmeWeakSignal` | `true` | 启用后，包含 README 且至少有一个非文档文件的目录也会被识别为模块候选 |
+| `csmModules.moduleScanExcludedDirectories`     | `.git`, `node_modules`, `dist`, `build`, `out`, `tmp`, `docs`, `images` | 递归发现本地模块候选时跳过的目录名（大小写不敏感） |
 
 ## 缓存策略
 

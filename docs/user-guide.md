@@ -15,6 +15,7 @@
 
 - 打开侧边栏 `CSM Modules` 即可浏览当前工作区模块、未管理文件夹和 GitHub 模块目录
 - 应用模块时可选择直接放入模块根目录，或放入已有/新的嵌套命名空间路径
+- 已确认管理的模块目录不会参与后续递归扫描，避免其内部内容被误识别为候选
 - 需要更完整的模块管理说明时，请参阅 [`module-management.md`](module-management.md)
 
 ## 扩展设置
@@ -24,6 +25,7 @@
 | `csmModules.defaultModuleRoot`                 | `csm`  | 首次引入模块时预填的默认目录名                                                    |
 | `csmModules.moduleScanMaxDepth`                | `3`    | 递归发现本地模块候选目录时允许的最大深度                                          |
 | `csmModules.moduleScanIncludeReadmeWeakSignal` | `true` | 启用 README 弱信号后，包含 README 且至少有一个非文档文件的目录也可被识别为模块候选 |
+| `csmModules.moduleScanExcludedDirectories`     | `.git`, `node_modules`, `dist`, `build`, `out`, `tmp`, `docs`, `images` | 递归发现本地模块候选时跳过的目录名（大小写不敏感） |
 
 ## 文件装饰与标记
 
