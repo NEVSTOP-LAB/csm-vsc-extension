@@ -87,42 +87,20 @@ npm test
 
 `npm test` 会启动 VS Code 进程。在 Linux 无头环境中，可配合 `xvfb-run -a npm test`。
 
-## VSIX 构建与本地验证
+## VSIX 构建与发布
 
-```bash
-# 仅打包 VSIX
-npm run vsix:package
-
-# 校验本地已安装版本
-npm run vsix:verify-local
-
-# 本地收尾流程：同步文档、编译、打包、安装、校验
-npm run hook:finish
-```
-
-如果需要手动安装 VSIX：
+本地不再打包 VSIX。打包、校验与发布统一由 CI（`.github/workflows/ci.yml`）完成：`main` 分支 / Tag 推送自动触发构建，产物以 Artifact 形式提供，可从 Actions 页面下载后手动安装：
 
 ```bash
 code --install-extension csm-vsc-support-*.vsix
 ```
 
-### 本地结束 Hook 说明
-
-- **命令**：`npm run hook:finish`
-- **执行动作**：自动 patch 递增版本、同步 `README.md` / `CHANGELOG.md`、执行编译，并默认始终打包 + 安装 + 校验 VSIX，最后继续测试流程
-- **可选跳过**：`npm run hook:finish -- --skip-vsix`（仅在确实不需要本地加载时显式跳过 VSIX 打包与安装）
-- **安装校验**：`npm run vsix:verify-local`（检查本地扩展目录是否存在目标版本）
-- **说明**：脚本会优先解析本机 VS Code CLI 与 Node/NPM 可执行路径，规避 Windows 下空格路径与 shell 引号导致的安装失败；如仍无法定位 CLI，可通过环境变量 `VSCODE_CLI` 显式指定
-
 ### Copilot 结束时自动 Hook
 
-- **配置文件**：`.github/hooks/local-finish-stop.json`
-- **触发时机**：Copilot agent `Stop` 事件，也就是一次对话准备结束时
-- **前置标记**：同一配置文件里的 `PostToolUse` 会在本次会话成功调用编辑类工具后执行 `node scripts/copilot-post-tool-hook.mjs`，按 `sessionId` 写入“本会话已改代码”标记
-- **实际执行**：`node scripts/copilot-stop-hook.mjs` 只有在检测到当前 `sessionId` 存在上述标记时，才会继续调用 `node scripts/local-finish-hook.mjs --stop-hook`
-- **执行动作**：仅在本次会话发生代码编辑后执行 `npm run compile` 与 VSIX 打包 / 安装 / 校验；不会自动升版本，也不会改写 `README.md` / `CHANGELOG.md`，纯问答会话会直接跳过
-- **失败行为**：首次失败会阻止 agent 直接结束，并把编译 / 加载失败原因回传给 agent；若再次进入 stop hook 仍失败，则改为放行结束以避免无限循环
-- **排查点**：如发现 hook 没触发，先确认 VS Code 已启用 workspace hooks，并检查 `GitHub Copilot Chat Hooks` 输出面板，以及 `chat.hookFilesLocations` 未禁用 `.github/hooks`
+- **配置**：`.github/hooks/local-finish-stop.json` 注册 `Stop` hook
+- **行为**：每次会话结束执行 `scripts/copilot-stop-hook.mjs`，运行 `npm run compile`（类型检查 + lint + esbuild）验证代码可编译
+- **失败**：编译失败阻止会话结束并回传原因；再次失败则放行，避免死循环
+- **排查**：hook 未触发时检查 VS Code workspace hooks 是否启用、`GitHub Copilot Chat Hooks` 输出面板、`chat.hookFilesLocations` 未禁用 `.github/hooks`
 
 ## 代码风格约定
 
