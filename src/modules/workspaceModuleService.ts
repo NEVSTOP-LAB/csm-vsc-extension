@@ -79,6 +79,20 @@ function stripGitSuffix(value: string): string {
 export const DEFAULT_SCAN_MAX_DEPTH = 3;
 export const DEFAULT_EXCLUDED_DIRECTORY_NAMES = ['.git', 'node_modules', 'dist', 'build', 'out', 'tmp', 'docs', 'images'];
 const DOCUMENT_OR_IMAGE_FILE_PATTERN = /^(readme(\..*)?|license(\..*)?|changelog(\..*)?|notice(\..*)?|copying(\..*)?|authors(\..*)?|contributing(\..*)?|.*\.(md|txt|rst|png|jpe?g|gif|bmp|webp|svg))$/i;
+/**
+ * 以空格、连字符、下划线或点开头的文件夹，肯定不是子模块（issue #77）：
+ * 既不会被报告为候选模块，也不会继续递归深入检查。
+ */
+const SPECIAL_CHARACTER_PREFIXED_DIRECTORY_PATTERN = /^[ \-_.]/;
+/**
+ * 标记"本文件夹就是一个模块"的 LabVIEW 特殊文件（issue #77）。
+ * 一旦目录内存在这些文件，该目录即为模块根，无需再向下搜索其内部内容。
+ */
+const MODULE_SIGNAL_FILE_PATTERN = /\.(vi|vit|ctl|ctt|lvlib|lvproj|lvclass)$/i;
+
+function isSpecialCharacterPrefixedDirectoryName(name: string): boolean {
+	return SPECIAL_CHARACTER_PREFIXED_DIRECTORY_PATTERN.test(name);
+}
 
 export class WorkspaceModuleService {
 	constructor(private readonly gitRunner: IGitRunner = new GitService()) { }
@@ -565,6 +579,8 @@ export class WorkspaceModuleService {
 
 			if (this.isModuleCandidateDirectory(children, includeReadmeWeakSignal)) {
 				discovered.add(relativePathFromRoot);
+				// 本目录已确认是一个模块，其内部内容不属于其他模块，无需再向下搜索（issue #77）。
+				return;
 			}
 
 			if (depth >= maxDepth) {
@@ -575,7 +591,7 @@ export class WorkspaceModuleService {
 				if (!entry.isDirectory()) {
 					return false;
 				}
-				if (entry.name.startsWith('.')) {
+				if (isSpecialCharacterPrefixedDirectoryName(entry.name)) {
 					return false;
 				}
 				return !excludedDirectoryNames.has(entry.name.toLowerCase());
@@ -590,7 +606,7 @@ export class WorkspaceModuleService {
 			if (!entry.isDirectory()) {
 				return false;
 			}
-			if (entry.name.startsWith('.')) {
+			if (isSpecialCharacterPrefixedDirectoryName(entry.name)) {
 				return false;
 			}
 			if (excludedRelativePaths.has(entry.name.toLowerCase())) {
@@ -818,7 +834,7 @@ export class WorkspaceModuleService {
 			if (!entry.isFile()) {
 				return false;
 			}
-			return /^DEV ENVIRONMENT/i.test(entry.name) || /\.(lvproj|lvlib)$/i.test(entry.name);
+			return /^DEV ENVIRONMENT/i.test(entry.name) || MODULE_SIGNAL_FILE_PATTERN.test(entry.name);
 		});
 		if (hasStrongSignal) {
 			return true;
