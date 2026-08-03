@@ -2588,6 +2588,83 @@ suite('ModuleManagerController Regression Tests', () => {
 		assert.ok(!errors.some((text) => text.includes('not a Git repository')));
 	});
 
+	test('apply clears the module selection after a successful apply', async () => {
+		const selectionUpdates: string[][] = [];
+		const viewProvider = createViewProvider({
+			setSelection: (moduleKeys: string[]) => {
+				selectionUpdates.push([...moduleKeys]);
+			},
+		});
+		const controller = createController(undefined, { viewProvider }) as any;
+		const entry: CsmModuleEntry = {
+			id: 1,
+			owner: 'org',
+			name: 'module-a',
+			description: 'demo',
+			topics: ['csm-modsets'],
+			visibility: 'public',
+			defaultBranch: 'main',
+			repoUrl: 'https://github.com/org/module-a',
+		};
+		const initialConfig: LocalModuleConfig = {
+			version: '2',
+			root: 'csm',
+			configPath: 'd:/repo/csm/csm-modules.yaml',
+			modules: {},
+		};
+		let writtenConfig: LocalModuleConfig | undefined;
+
+		controller.availableModules = [entry];
+		// 预先勾选模块 A（模拟用户选择了一个在线模块）
+		controller.setSelectedModuleKeys(['org/module-a']);
+		assert.strictEqual(controller.selectedModuleKeys.size, 1);
+		assert.deepStrictEqual(selectionUpdates[selectionUpdates.length - 1], ['org/module-a']);
+
+		controller.workspaceModuleService = {
+			resolveGitRepositoryRoot: async () => 'd:/repo',
+			normalizeRootPath: (value: string) => value,
+			recoverConfigFromExistingSubmodules: async () => undefined,
+			initializeConfig: async () => initialConfig,
+			loadConfig: async () => initialConfig,
+			getTargetRelativePath: (config: LocalModuleConfig, moduleEntry: CsmModuleEntry) => `${config.root}/${moduleEntry.name}`,
+			targetExists: async () => false,
+			applyModule: async (_repoRoot: string, _config: LocalModuleConfig, moduleEntry: CsmModuleEntry) => ({
+				key: 'org__module_a',
+				name: moduleEntry.name,
+				owner: moduleEntry.owner,
+				source: moduleEntry.repoUrl,
+				method: 'copy' as const,
+				path: `csm/${moduleEntry.name}`,
+				ref: 'abc123',
+				branch: moduleEntry.defaultBranch,
+			}),
+			withAppliedModule: (config: LocalModuleConfig, moduleEntry: LocalModuleConfig['modules'][string]) => ({
+				...config,
+				modules: {
+					...config.modules,
+					[moduleEntry.key]: moduleEntry,
+				},
+			}),
+			writeConfig: async (config: LocalModuleConfig) => {
+				writtenConfig = config;
+			},
+		};
+		mocked.__setWorkspaceFolders([{ name: 'repo', uri: vscode.Uri.file('d:/repo') }]);
+		mocked.__setFindFilesResult([]);
+		mocked.__setConfigurationValue('csmModules.defaultModuleRoot', 'csm');
+		mocked.__setInformationMessageResponse('Use csm/');
+		mocked.__setQuickPickResponse({ method: 'copy' });
+		mocked.__setWarningMessageResponse('Apply');
+
+		await controller.applyToWorkspaceCommand();
+
+		assert.ok(writtenConfig);
+		assert.strictEqual(writtenConfig?.modules.org__module_a?.method, 'copy');
+		// 应用成功后选择被清除：已应用模块不再显示为选中
+		assert.strictEqual(controller.selectedModuleKeys.size, 0);
+		assert.deepStrictEqual(selectionUpdates[selectionUpdates.length - 1], []);
+	});
+
 	test('apply auto-stars imported community modules for signed-in users', async () => {
 		const renderedModules: CsmModuleEntry[][] = [];
 		const starRequests: Array<{ owner: string; repo: string; token: string; starred: boolean }> = [];

@@ -447,6 +447,9 @@ export class ModuleManagerController {
 				configPath: path.relative(applyRoot, config.configPath).replace(/\\/g, '/'),
 			}),
 		);
+		// 应用成功后清除勾选状态：残留选择会让已应用模块仍显示为选中，
+		// 且会连带影响下一次批量应用（把已应用模块再次纳入目标集合）。
+		this.setSelectedModuleKeys([]);
 		await this.refreshSidebarWorkspaceState();
 	}
 
