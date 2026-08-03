@@ -19,15 +19,5 @@
         "dist": true
     },
     // Turn off tsc task auto detection since we have the necessary tasks as npm scripts
-    "typescript.tsc.autoDetect": "off",
-    "chat.tools.terminal.autoApprove": {
-        "/^cd /workspaces/CSMSript-vsc-Support && git status -sb && git rev-parse --abbrev-ref HEAD && git log --oneline -n 3 --decorate$/": {
-            "approve": true,
-            "matchCommandLine": true
-        },
-        "/^cd /workspaces/CSMSript-vsc-Support && git pull --ff-only origin main$/": {
-            "approve": true,
-            "matchCommandLine": true
-        }
-    }
+    "typescript.tsc.autoDetect": "off"
 }
