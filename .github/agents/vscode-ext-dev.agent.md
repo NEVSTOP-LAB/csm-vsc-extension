@@ -177,6 +177,6 @@ context.subscriptions.push(
 
 1. 阅读相关文件，理解现有实现
 2. 实现变更，只修改必要的代码（如改 manifest，同步更新 `package.nls.json` / `package.nls.zh-cn.json`；如改语法，确保 `scopeName` 与 `contributes.grammars` 一致）
-3. 运行 `npm run compile` 验证编译通过
-4. 如有相关测试，运行 `npm run compile-tests` 后执行测试
-5. 涉及文档同步时，最后调用 `vscode-ext-review` 检查 README/CHANGELOG 一致性
+3. 运行 `npm run compile` 验证编译通过。如果编译失败，请读取终端输出的错误信息并自动尝试修复，修复后再重复此步骤直至通过
+4. 如有相关测试，运行 `npm run compile-tests` 后执行测试。如果测试失败，请读取终端输出的错误信息并自动修复，修复后重新运行直至通过
+5. 涉及文档同步时，最后检查 README/CHANGELOG 与代码变更的一致性（版本号、功能列表、设置项、变更记录等），不一致时同步更新
