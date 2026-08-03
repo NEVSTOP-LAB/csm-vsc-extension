@@ -8,96 +8,76 @@
 
 ### 新增
 
-- **CSMLog 日志重复折叠**：`.csmlog` 文件中重复的日志行自动检测并折叠显示，支持 4 种重复模式（精确重复、参数变化重复、多行块重复、交错重复）。通过三级递进算法（L1 连续行匹配 → L2 Rabin-Karp 滚动哈希块匹配 → L3 token 级参数确认）实现高效检测（100K 行约 265ms）。提供 `csmlog.folding.*` 配置项（阈值/块大小/智能参数/装饰样式）和命令（`toggleAllFolds` / `showStats`）。通过编辑器工具栏 👁 按钮按文件激活。
-- 折叠区域以四种底色区分重复类型（灰蓝精确/灰紫参数/灰绿块/灰橙交错），概要标签显示重复次数、时间跨度和频率
-- 新增 `src/logFold/` 模块：`types.ts` 核心类型、`normalizer.ts` 归一化引擎、`detector.ts` 检测算法、`foldingProvider.ts` FoldingRangeProvider、`decorations.ts` 装饰器
-- 新增 `src/test/logFold/` 测试模块：28 项测试覆盖归一化、检测、Provider、性能
-
-- 本地模块卡片新增 LabVIEW 开发版本徽章，自动检测模块的开发版本并以 `lv2020` / `lv2020(64bit)` 格式展示
-- 版本检测支持四种优先级来源：`DEV ENVIRONMENT` 目录标记文件、`.lvproj` 项目文件、`.lvlib` 库文件、`.vi` 二进制文件头（保底方案）
-- 新增 `src/moduleManager/labviewVersionDetector.ts` 版本检测模块，含完整 BCD 编码解码和版本映射表（8.0~2025）
+- **CSMLog 日志重复折叠**：自动检测并折叠 `.csmlog` 中重复日志行，支持精确 / 参数变化 / 多行块 / 交错 4 种重复模式；三级递进算法（连续匹配 → Rabin-Karp 哈希 → token 确认）实现 100K 行约 265ms 检测。提供 `csmlog.folding.*` 配置与 `toggleAllFolds` / `showStats` 命令，通过编辑器工具栏 👁 按钮按文件激活
+- 折叠区以 4 种底色区分重复类型（灰蓝精确 / 灰紫参数 / 灰绿块 / 灰橙交错），概要标签显示重复次数、时间跨度与频率
+- 新增 `src/logFold/`（types / normalizer / detector / foldingProvider / decorations）与 `src/test/logFold/`（28 项测试覆盖归一化、检测、Provider、性能）
+- 本地模块卡片新增 LabVIEW 开发版本徽章（如 `lv2020` / `lv2020(64bit)`）；版本来源优先级：`DEV ENVIRONMENT` 标记 → `.lvproj` → `.lvlib` → `.vi` 文件头
+- 新增 `src/moduleManager/labviewVersionDetector.ts`（BCD 解码 + 8.0~2025 版本映射）
 
 ### 变更
 
-- 升级 `engines.vscode` 最低版本要求从 `^1.60.0` 至 `^1.63.0`，以支持 pre-release 版本发布
+- 升级 `engines.vscode` 最低版本至 `^1.63.0`，以支持 pre-release 发布
 
 ### 重构
 
-- 移除 `CSM File Icons` 图标主题贡献，改为使用 `FileDecorationProvider` 提供文件 Badge 装饰（`C` / `L`），确保与用户自定义图标主题兼容
-- 提取共享 CSM 正则常量到 `src/common/constants.ts`，消除 `csmlogHoverProvider`、`csmlogDocumentSymbolProvider`、`lvcsmDocumentSymbolProvider` 之间的正则重复
-- 抽象 `src/common/symbols.ts` 通用 DocumentSymbol 构建工具（`SymbolEntry` 接口 + `buildDocumentSymbols()`），统一两个 Provider 的 Range 计算逻辑，消除 ~30 行重复代码
-- 统一 Hover 数据系统：将 `csmlogHoverProvider` 中 ~280 行硬编码 DB（事件类型、时间戳、配置项、日志标记）迁移到 `hoverData/` 模块化目录（新增 `events.ts`、`timestamps.ts`、`config.ts`、`markers.ts`），消除与 `hoverData/` 系统的数据重复
-- 清理废弃代码：删除已废弃的 `moduleTreeDataProvider.ts`（提取 `ViewState` 和 `ModuleTreeItem` 到 `moduleTreeTypes.ts`）和死代码 `csmlogHoverTranslations.ts`
-- 测试：新增 `i18n.test.ts`（13 个测试）、`hoverDataModules.test.ts`（12 个测试）、`sort.test.ts`（16 个测试），测试总数从 76 增至 119
-- CI：将新增测试文件纳入 CI 流程
-- 简化 AI 开发设施：Copilot 自动 hook 收敛为单个 `Stop` hook（每次会话结束执行 `npm run compile`，不再自动打包安装 VSIX），删除 `hook:finish`、`vsix:package`、`vsix:verify-local` 等手动脚本
-- 重构：5 个 custom agent 合并为 2 个（`vscode-ext-dev` 负责全部开发、`vscode-ext-review` 负责文档同步审查），并精简 `AGENTS.md`
-- 维护：清理 `.vscode/settings.json` 中失效的 `chat.tools.terminal.autoApprove` 配置
+- 移除 `CSM File Icons` 图标主题，改用 `FileDecorationProvider` 文件 Badge（`C` / `L`），兼容用户自定义图标主题
+- 共享 CSM 正则提取到 `src/common/constants.ts`，消除三个 Provider 的正则重复
+- 新增 `src/common/symbols.ts` 通用 DocumentSymbol 构建工具，统一两个 Provider 的 Range 逻辑（-30 行）
+- Hover 数据迁至 `hoverData/` 模块化目录（events / timestamps / config / markers），消除 ~280 行硬编码重复
+- 清理废弃代码：删除 `moduleTreeDataProvider.ts`（`ViewState` / `ModuleTreeItem` 移至 `moduleTreeTypes.ts`）与死代码 `csmlogHoverTranslations.ts`
+- 测试：新增 `i18n` / `hoverDataModules` / `sort` 测试（13 / 12 / 16 项），总数 76 → 119，并纳入 CI
+- 简化 AI 开发设施：Copilot 自动 hook 收敛为单个 `Stop` hook（会话结束执行 `npm run compile`，不再自动打包安装 VSIX），删除 `hook:finish`、`vsix:package`、`vsix:verify-local` 等手动脚本
+- custom agents 5 → 2 个（`vscode-ext-dev` 开发、`vscode-ext-review` 审查），并精简 `AGENTS.md`
+- 清理 `.vscode/settings.json` 中失效的 `chat.tools.terminal.autoApprove` 配置
 
 ### 新增
 
-- 阶段二：`CSM Modules` 视图支持多选模块，并新增 `Apply to Current Repository` 入口
-- 阶段二：首次应用模块时可初始化本地模块目录，默认生成 `csm/csm-modules.yaml`，也支持仓库内自定义相对目录
-- 阶段二：支持 `submodule` / `copy` 两种模块引入方式，并将模块名、源仓库地址、锁定版本、默认分支与本地路径写入本地 YAML 配置文件
-- 阶段二：当仓库已存在 `csm/` 目录及其中的 submodule，但缺少配置文件时，可自动反向生成 `csm/csm-modules.yaml`
-- 阶段四：新增设置项 `csmModules.defaultModuleRoot`，用于为首次初始化 / 首次应用预设默认模块根目录
-- 阶段四：新增设置项 `csmModules.hiddenTopics`，用于配置在模块侧边栏 topic 徽标、树视图提示与本地搜索中默认隐藏的 topic；默认值为 `csm-modsets`、`lv-csm-app`、`labview-csm`、`labview`
-- 本地化：扩展全部用户可见字符串现已支持中英文切换，覆盖 package 清单文案、模块管理 UI/提示与 `.csmlog` / `.lvcsm` Hover 内容
-- 阶段四：`CSM Modules` 现收敛为单一原生视图，本地模块状态与 GitHub 模块目录合并到同一 Webview 列表中，并新增 `All / Workspace / Catalog` 范围切换来承接原先的双视图浏览方式
-- UI：`Catalog` 模块卡片新增 GitHub 仓库直达按钮，可直接在浏览器打开对应仓库页面
-- 阶段四：已登录 GitHub 时，未管理本地模块文件夹可通过向导一键创建并发布 GitHub 仓库，默认使用 private 可见性并附带 `labview-csm`、`csm-modsets` topics；若本机缺少 Git 作者信息，会在首次发布前补充询问
-- 交互：工作区模块卡片（已管理/未管理）现支持 VS Code 原生右键上下文菜单；已管理模块提供 Open Folder（Reveal in OS）、Open README、Update 和 Remove 操作（后三项仅在模块存在于在线目录时显示），未管理文件夹提供 Open Folder 操作
+- `CSM Modules` 支持多选与批量 `Apply to Current Repository`；首次应用可初始化本地模块目录（默认 `csm/csm-modules.yaml`，支持自定义相对目录）
+- 支持 `submodule` / `copy` 两种引入方式，模块名、源仓库、锁定版本、默认分支与本地路径写入 YAML；已有 `csm/` + submodule 但缺配置时可自动反向生成 `csm-modules.yaml`
+- 新增设置：`csmModules.defaultModuleRoot`（默认模块根目录）、`csmModules.hiddenTopics`（默认隐藏 `csm-modsets`、`lv-csm-app`、`labview-csm`、`labview`）
+- 全部用户可见字符串支持中英文切换（package 清单、模块 UI、`.csmlog` / `.lvcsm` Hover）
+- 视图收敛为单一原生视图，本地与 GitHub 模块目录合并，提供 `All / Workspace / Catalog` 范围切换
+- `Catalog` 卡片新增 GitHub 仓库直达按钮
+- 未管理模块文件夹可通过向导一键创建并发布 GitHub 仓库（默认 private，附 `labview-csm` / `csm-modsets` topics；缺 Git 作者信息时先询问）
+- 模块卡片支持原生右键菜单：已管理模块提供 Open Folder / Open README / Update / Remove（后三项仅在在线目录存在时显示），未管理提供 Open Folder
 
 ### 变更
 
-- 构建：`.github/hooks/local-finish-stop.json` 现同时注册 `PostToolUse` 与 `Stop` hook，只有当当前 Copilot 会话成功执行过编辑类工具后，结束对话时才会触发编译、VSIX 打包、安装与本地校验；纯问答会话会直接跳过，自动 hook 仍复用 `scripts/local-finish-hook.mjs --stop-hook`，不会像手动 `hook:finish` 那样递增版本或改写文档
-- 交互：从统一侧边栏中的本地未管理文件夹创建并发布 GitHub 仓库后，Git 工作区会继续把该目录接管为 Git submodule 并立即写回本地 `csm-modules.yaml`；非 Git 工作区则保持 `copy` 模式，侧边栏也会立刻刷新为已管理状态
-- 交互：未管理的本地模块文件夹现在可直接关联到当前已加载的在线 GitHub 模块仓库，先以 `copy` 模式登记为受跟踪目录，后续再按需更新、移除或切换到 `submodule`
-- 交互：当被关联的本地目录本身已经是现有 Git submodule 时，关联流程现在会保留 `submodule` 模式、复用该 submodule 当前记录的远端地址/分支/锁定提交，并修正同路径旧配置项，避免误写成 `copy`
-- 交互：当 `csm/` 下已有模块目录其实是从外部拷入的嵌套 Git 仓库且目录内自带 `.git` 时，初始化恢复、侧边栏自动同步和手动关联现在会把该目录接管并补登记为真实 Git `submodule`，复用其现有远端地址/分支/锁定提交
-- 交互：从未管理文件夹创建并发布 GitHub 仓库后，命令现在会等待在线模块目录刷新完成，确保新仓库在后续关联/浏览流程中可立即看到
-- 交互：已管理的本地模块现在可在 Git 工作区内直接在 `copy` 与 `submodule` 模式之间切换；非 Git 工作区会禁用该切换入口
-- 交互：本地已管理模块现在默认进入 lock 状态，下载或接管后的模块文件会递归设为只读；侧边栏新增锁定/解锁按钮，解锁前会要求确认，锁状态也会写回本地 `csm-modules.yaml`
-- 错误处理：侧边栏刷新时若本地模块 lock 状态同步失败，现改为记录 warning 并继续刷新工作区状态，避免 `Apply`、`Remove`、`Update` 等后续命令被附带中断
-- 维护：`ModuleManagerController` 现直接调用 `WorkspaceModuleService` 的锁定接口，移除运行时 `Partial` / `typeof` 兜底，避免方法重命名后静默退化为仅更新内存状态
-- 配置：加载缺少 `locked` 字段的旧版 YAML 模块配置时，现会自动补写显式布尔值，避免后续锁状态判断长期依赖隐式默认值
-- 锁定：递归切换本地模块只读状态时，单个文件的 `chmod` 失败不再提前中断整个目录处理，错误会在继续处理其余路径后统一汇总
-- 兼容：Windows 下锁定/解锁本地模块文件时，现只显式切换 write bit，不再假定完整的 Unix `chmod` 语义
-- 性能：重复同步本地模块 lock 状态时，若当前权限位已符合目标状态，现会跳过无意义的 `chmod` 写操作
-- 交互：已锁定模块在 `submodule → copy` / `copy → submodule` 切换后，现会先确认新目标目录仍然存在，再执行重新加锁，避免边界情况下静默跳过 lock 继承
-- 交互：标题栏 `Refresh` 在完成远端刷新流程后，也会重新评估当前工作区的本地模块 / 未管理文件夹状态；即使本次远端刷新失败，仍会更新本地显示
-- 阶段一：模块发现继续基于 GitHub 全局 `topic:csm-modsets` 搜索；侧边栏启动时改为只显示本地缓存，登录成功后会自动执行一次网络刷新，之后仍通过手动刷新同步当前账号可访问的 public / private 模块
-- 阶段四：public 模块 README 支持未登录时匿名加载，避免公共模块浏览流程被 GitHub 登录前置阻断
-- 构建：`@types/js-yaml` 已移入 `devDependencies`，`tsconfig.json` 明确 `outDir = out`，并清理过时的 `skipLibCheck` 注释
-- CI：VSIX 校验步骤改为在 Linux / Windows 上统一使用 PowerShell `Expand-Archive`，并在发布到 Marketplace 前显式检查 `VSCE_PAT`
-- 维护：拆分 module manager 的 README 预览 / 用户可见错误转换服务，以及侧边栏 webview HTML 渲染模块；`moduleManagerController` 测试开始迁移到依赖注入式 mock，减少 `as any`
-- 文档：补充 `CONTRIBUTING.md` 的本地开发、调试、VSIX 验证与 PR 规范，并完善工作区 `.vscode/settings.json`
-- UI：`CSM Modules` 侧边栏样式收敛为更接近扩展列表的扁平卡片布局，移除左侧头像图标；单卡 `Apply` 按钮已移除，`README` 保留在卡片右上角，checkbox 仅在 hover 或已选中时显示
-- UI：顶部搜索框固定在最上方，原有头部摘要内容下移到搜索框下方；批量 `Apply Selected` 改由视图标题栏在存在勾选模块时提供，Webview 内不再重复放置登录 / 刷新 / 批量 Apply 按钮
-- UI：模块卡片重新整理为“顶行标题/provider + 工具条、全宽摘要、底部全宽 tags”布局，减少左右分栏造成的压缩感
-- UI：统一后的模块列表会以内联分组标题区分 `Workspace` 与 `Catalog` 内容，在保留单视图结构的同时提升本地项和远端目录项的可扫读性
-- UI：侧边栏整体字号与图标尺寸上调一档；模块卡片与 fallback tree 中会自动隐藏可配置的内部发现用 topic（默认包括 `csm-modsets`、`lv-csm-app`、`labview-csm`、`labview`），并且这些 topic 不再参与侧边栏前端搜索
-- UI：侧边栏继续显示当前工作区摘要，已应用到当前仓库配置的模块会显示 `Applied` 状态徽标
-- UI：多选模块时，标题栏批量操作会按所选模块的当前状态拆分显示；混合选择同时显示 `Apply to Current Repository` 与 `Remove from Current Repository`，全未安装仅显示 `Apply`，全已安装仅显示 `Remove`
-- UI：模块卡片右键菜单改为 VS Code 原生 `webview/context` 菜单，`Apply` / `Update` / `Remove` / `Open README` / 选择操作会按当前模块状态自动启用、禁用或切换
-- UI：侧边栏顶部搜索框改为更接近扩展市场的搜索栏样式，末尾集成 `Filter` 菜单；菜单内拆分 `Type` 与 `Order` 两组排序选项，并将 `applied / available / selected` 状态信息合并到同一行展示
-- UI：点击模块卡片正文可在侧边栏内展开 README Markdown 预览，右上角 `README` 按钮继续保留完整 README 面板入口
-- UI：修复侧边栏 README Markdown 预览中的图片资源加载，仓库内相对图片以及 GitHub `user-attachments` 这类原生 `<img>` 图片现在都可正常显示
-- UI：已登录时将账号摘要上移到顶部摘要行，并将模块总数改为 `public / private` 拆分，移除冗长的 `Loaded ...` 文案
-- UI：已登录时，原生侧边栏视图标题会从 `Available Modules` 动态切换为 `Signed in as ...`
-- UI：已登录 GitHub 时，模块卡片会在 `README` 按钮旁显示仓库 `Star` 状态，并支持直接 `Star` / `Unstar`；取消 Star 前会要求二次确认
-- UI：已登录 GitHub 时，`CSM Modules` 标题栏会显示 `Sign Out` 入口，便于从扩展内直接切换账号；侧边栏摘要继续显示当前账号
-- 交互：当仓库存在 `csm/` 目录与 `*.lvproj` 但尚未初始化本地模块管理时，打开侧边栏会主动弹出初始化提示，并显示专用标题栏初始化按钮
-- 交互：工作区初始化、首次应用与主动初始化提示会遵循 `csmModules.defaultModuleRoot` 作为默认目录；若仓库内已存在 `csm-modules.yaml`，仍以配置文件中的 `root` 为准
-- 交互：已登录 GitHub 时，通过模块管理器把社区模块引入当前仓库后，会自动为对应 GitHub 仓库补 Star
-- 缓存：启动时仅复用本地模块列表与 README 缓存，不再在后台偷偷刷新；若本地记录仍是同一 GitHub 账号，会直接展示对应 private 缓存；`Cached list` 横幅已移除，仅在标题栏显示上次刷新时间
-- 兼容：旧版 `csm-modules.lvcsm` 配置可继续读取，并在后续写回时迁移到 YAML
-- 交互：应用模块前增加方式选择与二次确认，并补齐非 Git 仓库、重复目标路径、copy 目标已存在等基础错误提示
-- 交互：非 Git 工作区应用模块时不再直接报错，而是保留 `submodule` 模式为不可用提示，并仅允许继续使用 `copy` 模式
-- 交互：非 Git 工作区现在也可移除以 `copy` 模式引入的模块；仅在目标模块为 `submodule` 时才强制要求 Git 仓库，并继续保留移除前二次确认
-- 交互：非 Git 工作区现在也可更新以 `copy` 模式引入的模块；更新前会先比较远端分支最新提交，确认后把当前模块目录打包到备份文件夹中的 zip，再重新下载替换整个目录
-- UI：非 Git 工作区的模块列表现在会优先根据本地 `csm-modules.yaml` 配置文件标记已应用模块，不再错误依赖 Git submodule 状态
-- 错误处理：刷新 / 应用 / 更新 / 删除模块时，会把常见 GitHub HTTP 状态、Git 权限失败、Git 缺失、网络错误与 YAML 解析错误转换为更可操作的提示
+- 构建：`.github/hooks/local-finish-stop.json` 注册 `PostToolUse` 与 `Stop` hook，仅当会话执行过编辑类工具后触发编译、VSIX 打包安装与校验；纯问答会话跳过；自动 hook 复用 `local-finish-hook.mjs --stop-hook`，不递增版本或改写文档
+- 交互：从未管理文件夹发布仓库后接管为 Git submodule 并写回 YAML；非 Git 工作区保持 `copy` 并刷新
+- 交互：未管理文件夹可直接关联在线模块仓库（先 `copy` 登记，后续可更新 / 移除 / 切 `submodule`）；已关联目录为现有 submodule 时保留其远端 / 分支 / 锁定提交
+- 交互：`csm/` 下的嵌套 Git 仓库（自带 `.git`）会被接管并补登记为真实 submodule；发布仓库后等待在线目录刷新完成
+- 交互：已管理模块可在 Git 工作区内切换 `copy` / `submodule`，非 Git 工作区禁用切换
+- 交互：已管理模块默认进入 lock 状态（递归只读），侧边栏提供锁定 / 解锁（需确认），状态写回 YAML
+- 错误处理：lock 同步失败改为 warning 并继续刷新，不中断 Apply / Remove / Update
+- 维护：`ModuleManagerController` 直接调用锁定接口，移除运行时 `Partial` / `typeof` 兜底
+- 配置：缺 `locked` 字段的旧 YAML 自动补写显式布尔值
+- 锁定：单文件 `chmod` 失败不中断整目录处理；Windows 仅切换 write bit；权限位已符合时跳过写入
+- 交互：`submodule ↔ copy` 切换后先确认目标目录存在再重新加锁
+- 交互：标题栏 `Refresh` 完成后重新评估工作区状态，远端失败也更新本地显示
+- 阶段一：模块发现基于 `topic:csm-modsets`；启动只显示本地缓存，登录后自动刷新一次，之后手动刷新
+- 阶段四：public 模块 README 支持未登录匿名加载
+- 构建：`@types/js-yaml` 移入 devDependencies，`tsconfig.json` 明确 `outDir = out`，清理过时 `skipLibCheck` 注释
+- CI：VSIX 校验统一用 PowerShell `Expand-Archive`，发布前显式检查 `VSCE_PAT`
+- 维护：拆分 README 预览 / 错误转换 / webview 渲染模块；controller 测试迁移到依赖注入 mock
+- 文档：补充 `CONTRIBUTING.md` 本地开发 / 调试 / VSIX 验证 / PR 规范，完善 `.vscode/settings.json`
+- UI：侧边栏收敛为扁平卡片布局，移除头像与单卡 `Apply`，README 保留右上角，checkbox 仅 hover / 选中显示；搜索框固定顶部，批量 `Apply Selected` 移至标题栏
+- UI：卡片改为顶行标题 / 工具条 + 全宽摘要 + 底部 tags；列表以内联分组区分 `Workspace` / `Catalog`；字号与图标上调一档
+- UI：内部发现 topic 自动隐藏且不参与搜索；已应用模块显示 `Applied` 徽标
+- UI：多选时标题栏按状态拆分操作（混合 = Apply + Remove，全未装 = Apply，全已装 = Remove）
+- UI：卡片右键菜单改为原生 `webview/context` 菜单，按状态启用 / 禁用操作
+- UI：搜索框改为市场风格并集成 `Filter` 菜单（Type / Order 排序，状态信息合并展示）
+- UI：卡片正文可展开 README 预览；修复预览中仓库相对图片与 `user-attachments` 图片加载
+- UI：已登录时账号摘要上移，模块数改为 `public / private` 拆分，移除 `Loaded ...` 文案；标题动态显示 `Signed in as ...`
+- UI：已登录时卡片支持 `Star` / `Unstar`（取消需二次确认），标题栏提供 `Sign Out`
+- 交互：存在 `csm/` 与 `*.lvproj` 但未初始化时弹出初始化提示 + 标题栏按钮；默认目录遵循 `defaultModuleRoot`，已有配置以 `root` 为准
+- 交互：引入社区模块后自动为对应仓库补 Star
+- 缓存：启动只复用本地列表与 README 缓存（不后台刷新），同账号直接展示 private 缓存；移除 `Cached list` 横幅，标题栏显示上次刷新时间
+- 兼容：旧版 `csm-modules.lvcsm` 配置可读并在写回时迁移到 YAML
+- 交互：应用模块前增加方式选择与二次确认，补齐非 Git / 重复路径 / copy 目标已存在等错误提示；非 Git 工作区仅允许 `copy` 模式
+- 交互：非 Git 工作区也可移除 / 更新 `copy` 模块（更新前比较远端提交，确认后 zip 备份再替换）
+- UI：非 Git 工作区按 `csm-modules.yaml` 标记已应用模块，不依赖 submodule 状态
+- 错误处理：刷新 / 应用 / 更新 / 删除时把 GitHub HTTP、Git 权限 / 缺失、网络与 YAML 错误转为可操作提示
 
 ## [0.0.25] - 2026-05-20
 
