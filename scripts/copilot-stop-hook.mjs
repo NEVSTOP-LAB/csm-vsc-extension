@@ -39,7 +39,7 @@ function runCompile(cwd) {
     // Windows 下 npm 为 npm.cmd，经 cmd.exe 执行，避免直接 spawn npm.cmd 报 EINVAL
     const command = process.platform === 'win32' ? 'cmd.exe' : 'npm';
     const args = process.platform === 'win32' ? ['/d', '/s', '/c', 'npm run compile'] : ['run', 'compile'];
-    const output = execFileSync(command, args, { stdio: 'pipe', encoding: 'utf8', cwd });
+    const output = execFileSync(command, args, { stdio: 'pipe', encoding: 'utf8', cwd, maxBuffer: 10 * 1024 * 1024 });
     if (output) {
         process.stdout.write(output);
     }
@@ -74,7 +74,7 @@ function main() {
         runCompile(cwd);
         emitJson({ continue: true });
     } catch (error) {
-        const reason = toReason(extractFailureDetail(error) ?? error.message);
+        const reason = toReason(extractFailureDetail(error) ?? (error instanceof Error ? error.message : String(error)));
         if (isStopHookActive(hookInput)) {
             emitJson({
                 continue: true,

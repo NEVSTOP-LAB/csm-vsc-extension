@@ -43,7 +43,7 @@
 
 ### 变更
 
-- 构建：`.github/hooks/local-finish-stop.json` 注册 `PostToolUse` 与 `Stop` hook，仅当会话执行过编辑类工具后触发编译、VSIX 打包安装与校验；纯问答会话跳过；自动 hook 复用 `local-finish-hook.mjs --stop-hook`，不递增版本或改写文档
+- 构建：`.github/hooks/local-finish-stop.json` 仅注册 `Stop` hook，会话结束时执行 `npm run compile`（check-types + lint + esbuild）；编译失败首次阻止结束并回传原因，重复失败时放行避免死循环
 - 交互：从未管理文件夹发布仓库后接管为 Git submodule 并写回 YAML；非 Git 工作区保持 `copy` 并刷新
 - 交互：未管理文件夹可直接关联在线模块仓库（先 `copy` 登记，后续可更新 / 移除 / 切 `submodule`）；已关联目录为现有 submodule 时保留其远端 / 分支 / 锁定提交
 - 交互：`csm/` 下的嵌套 Git 仓库（自带 `.git`）会被接管并补登记为真实 submodule；发布仓库后等待在线目录刷新完成
