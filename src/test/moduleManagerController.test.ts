@@ -1106,6 +1106,166 @@ suite('ModuleManagerController Regression Tests', () => {
 		assert.strictEqual(updateCalled, false);
 	});
 
+	test('update command picks a tag version via two-step quickpick', async () => {
+		const controller = createController() as any;
+		let config: LocalModuleConfig = {
+			version: '2',
+			root: 'csm',
+			configPath: 'd:/plain-workspace/csm/csm-modules.yaml',
+			modules: {
+				org__module_copy: {
+					key: 'org__module_copy',
+					name: 'module-copy',
+					owner: 'org',
+					source: 'https://github.com/org/module-copy',
+					method: 'copy',
+					path: 'csm/module-copy',
+					ref: 'abc1234567890',
+					branch: 'main',
+				},
+			},
+		};
+		let updateSelection: { kind: string; versionRef?: string; ref?: string } | undefined;
+
+		controller.availableModules = [
+			{
+				id: 1,
+				owner: 'org',
+				name: 'module-copy',
+				description: 'demo',
+				topics: ['csm-modsets'],
+				visibility: 'public',
+				defaultBranch: 'main',
+				repoUrl: 'https://github.com/org/module-copy',
+			},
+		];
+		controller.versionService = {
+			listBranches: async () => [],
+			listTags: async () => [{ name: 'v1.0', sha: 'def4567890123' }, { name: 'v2.0', sha: 'aaa1112223334' }],
+			listReleases: async () => [],
+			listCommits: async () => [],
+			resolveCommitInfo: async () => ({}),
+		};
+		controller.workspaceModuleService = {
+			resolveGitRepositoryRoot: async () => undefined,
+			previewCopyModuleUpdate: async () => undefined as never,
+			updateModule: async (
+				_workspaceRoot: string,
+				entry: LocalModuleConfig['modules'][string],
+				_moduleEntry: CsmModuleEntry,
+				options: { selection: { kind: string; versionRef?: string; ref?: string } },
+			) => {
+				updateSelection = { kind: options.selection.kind, versionRef: options.selection.versionRef, ref: options.selection.ref };
+				return {
+					entry: { ...entry, ref: 'def4567890123', versionKind: 'tag', versionRef: 'v1.0' },
+					backupPath: 'd:/plain-workspace/.csm-module-backups/org__module-copy.zip',
+				};
+			},
+			withAppliedModule: (currentConfig: LocalModuleConfig, entry: LocalModuleConfig['modules'][string]) => {
+				config = {
+					...currentConfig,
+					modules: { ...currentConfig.modules, [entry.key]: entry },
+				};
+				return config;
+			},
+			writeConfig: async () => undefined,
+		};
+		controller.resolveWorkspaceFolder = async () => ({ name: 'plain-workspace', uri: vscode.Uri.file('d:/plain-workspace') });
+		controller.tryLoadSidebarLocalModuleConfig = async () => config;
+		controller.refreshSidebarWorkspaceState = async () => undefined;
+		mocked.__setQuickPickResponse({ versionSource: 'tags', label: 'Tags' });
+		mocked.__setQuickPickResponse({ label: 'v1.0 · def4567', tag: { name: 'v1.0', sha: 'def4567890123' } });
+		mocked.__setWarningMessageResponse('Update');
+
+		await controller.updateModuleCommand();
+
+		assert.deepStrictEqual(updateSelection, { kind: 'tag', versionRef: 'v1.0', ref: 'def4567890123' });
+		// 确认对话框展示 当前版本 → 目标版本
+		assert.ok(mocked.__getLastWarningPrompt()?.message.includes('from abc1234 to v1.0'));
+	});
+
+	test('update command picks a commit from a chosen branch via three-step quickpick', async () => {
+		const controller = createController() as any;
+		let config: LocalModuleConfig = {
+			version: '2',
+			root: 'csm',
+			configPath: 'd:/plain-workspace/csm/csm-modules.yaml',
+			modules: {
+				org__module_copy: {
+					key: 'org__module_copy',
+					name: 'module-copy',
+					owner: 'org',
+					source: 'https://github.com/org/module-copy',
+					method: 'copy',
+					path: 'csm/module-copy',
+					ref: 'abc1234567890',
+					branch: 'main',
+				},
+			},
+		};
+		let updateSelection: { kind: string; ref?: string; branch?: string } | undefined;
+		let requestedCommitsBranch = '';
+
+		controller.availableModules = [
+			{
+				id: 1,
+				owner: 'org',
+				name: 'module-copy',
+				description: 'demo',
+				topics: ['csm-modsets'],
+				visibility: 'public',
+				defaultBranch: 'main',
+				repoUrl: 'https://github.com/org/module-copy',
+			},
+		];
+		controller.versionService = {
+			listBranches: async () => [{ name: 'dev', sha: 'eee5551112223' }, { name: 'main', sha: 'abc1234567890' }],
+			listTags: async () => [],
+			listReleases: async () => [],
+			listCommits: async (_owner: string, _repo: string, branch: string) => {
+				requestedCommitsBranch = branch;
+				return [{ sha: 'fff6667778889', message: 'fix dev', date: undefined }];
+			},
+			resolveCommitInfo: async () => ({}),
+		};
+		controller.workspaceModuleService = {
+			resolveGitRepositoryRoot: async () => undefined,
+			previewCopyModuleUpdate: async () => undefined as never,
+			updateModule: async (
+				_workspaceRoot: string,
+				entry: LocalModuleConfig['modules'][string],
+				_moduleEntry: CsmModuleEntry,
+				options: { selection: { kind: string; ref?: string; branch?: string } },
+			) => {
+				updateSelection = { kind: options.selection.kind, ref: options.selection.ref, branch: options.selection.branch };
+				return {
+					entry: { ...entry, ref: options.selection.ref, versionKind: 'commit', versionRef: options.selection.ref },
+					backupPath: 'd:/plain-workspace/.csm-module-backups/org__module-copy.zip',
+				};
+			},
+			withAppliedModule: (currentConfig: LocalModuleConfig, entry: LocalModuleConfig['modules'][string]) => {
+				config = {
+					...currentConfig,
+					modules: { ...currentConfig.modules, [entry.key]: entry },
+				};
+				return config;
+			},
+			writeConfig: async () => undefined,
+		};
+		controller.resolveWorkspaceFolder = async () => ({ name: 'plain-workspace', uri: vscode.Uri.file('d:/plain-workspace') });
+		controller.tryLoadSidebarLocalModuleConfig = async () => config;
+		controller.refreshSidebarWorkspaceState = async () => undefined;
+		mocked.__setQuickPickResponse({ versionSource: 'branches', label: 'Branches' });
+		mocked.__setQuickPickResponse({ label: 'dev', branch: { name: 'dev', sha: 'eee5551112223' } });
+		mocked.__setQuickPickResponse({ label: 'fff6667 · fix dev', commit: { sha: 'fff6667778889', message: 'fix dev', date: undefined } });
+		mocked.__setWarningMessageResponse('Update');
+
+		await controller.updateModuleCommand();
+
+		assert.deepStrictEqual(updateSelection, { kind: 'commit', ref: 'fff6667778889', branch: 'dev' });
+		assert.strictEqual(requestedCommitsBranch, 'dev');
+	});
+
 	test('switchLocalModuleMethodCommand switches a managed local module to submodule mode in a git workspace', async () => {
 		const controller = createController() as any;
 		let config: LocalModuleConfig = {
