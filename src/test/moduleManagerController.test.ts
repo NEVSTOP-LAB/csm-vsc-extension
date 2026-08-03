@@ -1401,6 +1401,52 @@ suite('ModuleManagerController Regression Tests', () => {
 		assert.strictEqual(sidebarRefreshCount, 0);
 	});
 
+	test('refreshCommand local mode reports the discovered unmanaged module count', async () => {
+		const controller = createController(undefined, {
+			authService: {
+				getSessionSilently: async () => createSession(),
+				getSessionInteractively: async () => undefined,
+			},
+			githubService: {
+				fetchModules: async () => ({ modules: [] }),
+				fetchReadme: async () => '',
+			},
+			viewProvider: createViewProvider(),
+		}) as any;
+		controller.refreshSidebarWorkspaceState = async () => 2;
+		controller.refreshWorkspaceInitializationState = async () => undefined;
+		mocked.__resetMessageLog();
+		mocked.__setQuickPickResponse({ mode: 'local' });
+
+		await controller.refreshCommand();
+
+		const infos = mocked.__getMessageLog().filter((message) => message.level === 'info').map((message) => message.text);
+		assert.ok(infos.some((text) => text.includes('Found 2 unmanaged module(s)')));
+	});
+
+	test('refreshCommand local mode reports when no unmanaged modules are found', async () => {
+		const controller = createController(undefined, {
+			authService: {
+				getSessionSilently: async () => createSession(),
+				getSessionInteractively: async () => undefined,
+			},
+			githubService: {
+				fetchModules: async () => ({ modules: [] }),
+				fetchReadme: async () => '',
+			},
+			viewProvider: createViewProvider(),
+		}) as any;
+		controller.refreshSidebarWorkspaceState = async () => 0;
+		controller.refreshWorkspaceInitializationState = async () => undefined;
+		mocked.__resetMessageLog();
+		mocked.__setQuickPickResponse({ mode: 'local' });
+
+		await controller.refreshCommand();
+
+		const infos = mocked.__getMessageLog().filter((message) => message.level === 'info').map((message) => message.text);
+		assert.ok(infos.some((text) => text.includes('No unmanaged modules found')));
+	});
+
 	test('register keeps fresh cache without immediate background refresh', async () => {
 		const memento = new FakeMemento();
 		await memento.update('csmModules.cache.modules', createCachedSnapshot([
