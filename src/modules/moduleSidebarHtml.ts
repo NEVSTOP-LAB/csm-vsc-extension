@@ -2070,10 +2070,10 @@ function formatShortSha(sha: string | undefined): string {
  * tag / release 优先显示来源名称，否则显示 短SHA · 提交信息 · 相对日期（读本地缓存）。
  */
 function getLocalManagedVersionLabel(entry: LocalManagedModuleEntry): string {
-	if (entry.versionKind === 'tag' && entry.versionRef) {
-		return entry.versionRef;
+	if (entry.versionKind === 'release') {
+		return entry.releaseName || entry.versionRef || formatShortSha(entry.ref);
 	}
-	if (entry.versionKind === 'release' && entry.versionRef) {
+	if (entry.versionKind === 'tag' && entry.versionRef) {
 		return entry.versionRef;
 	}
 	const ref = formatShortSha(entry.ref);

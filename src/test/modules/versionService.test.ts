@@ -96,6 +96,35 @@ suite('ModuleVersionService Tests', () => {
 		assert.deepStrictEqual(releases, []);
 	});
 
+	test('listReleases maps assets and excludes Source code attachments', async () => {
+		const githubService: ModuleVersionGitHubService = {
+			fetchCommits: async () => [],
+			fetchTags: async () => [],
+			fetchReleases: async () => [
+				{
+					id: 1,
+					name: 'Release v1.0',
+					tag_name: 'v1.0',
+					published_at: '2026-06-01T00:00:00Z',
+					assets: [
+						{ name: 'module-v1.0.zip', browser_download_url: 'https://github.com/org/repo/releases/download/v1.0/module-v1.0.zip', size: 100 },
+						{ name: 'Source code (zip)', browser_download_url: 'https://codeload.github.com/org/repo/zip/v1.0' },
+						{ name: 'Source code (tar.gz)', browser_download_url: 'https://codeload.github.com/org/repo/tar.gz/v1.0' },
+					],
+				},
+			],
+			fetchBranches: async () => [],
+			fetchCommit: async () => undefined,
+		};
+		const service = new ModuleVersionService(githubService);
+		const releases = await service.listReleases('org', 'repo');
+		assert.strictEqual(releases.length, 1);
+		// 只保留非 Source code 附件，并映射为浏览器下载 URL
+		assert.deepStrictEqual(releases[0]?.assets, [
+			{ name: 'module-v1.0.zip', browserDownloadUrl: 'https://github.com/org/repo/releases/download/v1.0/module-v1.0.zip', size: 100 },
+		]);
+	});
+
 	test('listCommits falls back to temporary fetch + git log', async () => {
 		const tempRoot = await fs.mkdtemp(path.join(getTempRoot(), 'csm-version-commits-'));
 		const repoPath = path.join(tempRoot, 'repo');

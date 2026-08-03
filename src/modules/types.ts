@@ -41,6 +41,8 @@ export interface LocalModuleConfigEntry {
 	versionKind?: ModuleVersionKind;
 	/** 版本来源引用：分支名 / tag 名 / release 名（commit 类型时为提交 SHA） */
 	versionRef?: string;
+	/** release 来源：release 标题（确认框/成功提示/侧边栏展示用） */
+	releaseName?: string;
 	locked?: boolean;
 	/** LabVIEW 开发版本显示名（如 "lv2020"），持久化到 YAML 配置 */
 	labviewVersion?: string;
@@ -67,6 +69,8 @@ export interface LocalManagedModuleEntry {
 	versionKind?: ModuleVersionKind;
 	/** 版本来源引用：分支名 / tag 名 / release 名 */
 	versionRef?: string;
+	/** release 来源：release 标题（侧边栏展示用） */
+	releaseName?: string;
 	/** 当前版本提交信息（来自本地缓存，避免每次在线查询） */
 	commitInfo?: string;
 	/** 当前版本提交日期（ISO 字符串，来自本地缓存） */
@@ -121,12 +125,22 @@ export interface ModuleTagInfo {
 	date?: string;
 }
 
+/** 一个 GitHub Release 附件的展示信息 */
+export interface ModuleReleaseAssetInfo {
+	name: string;
+	/** 可直接下载的 URL（GitHub browser_download_url） */
+	browserDownloadUrl: string;
+	size?: number;
+}
+
 /** 一个 GitHub Release 的展示信息 */
 export interface ModuleReleaseInfo {
 	name: string;
 	tagName: string;
 	/** ISO 发布时间字符串 */
 	publishedAt?: string;
+	/** 附件列表（不含 GitHub 自动生成的 Source code 附件） */
+	assets?: ModuleReleaseAssetInfo[];
 }
 
 /** 一个远端分支的展示信息 */
@@ -139,6 +153,7 @@ export interface ModuleBranchInfo {
 /**
  * 用户选择的更新目标版本。`kind === 'latest'` 表示更新到分支最新提交（与现状一致）；
  * 其余为具体版本来源（branch/commit/tag/release），更新时通过 `versionRef`/`ref` 定位。
+ * release 来源：下载其附件（assets），而非 checkout 对应 commit/tag。
  */
 export interface ModuleVersionSelection {
 	kind: 'latest' | ModuleVersionKind;
@@ -150,6 +165,10 @@ export interface ModuleVersionSelection {
 	branch: string;
 	/** 目标版本展示文本（确认对话框与成功提示） */
 	label: string;
+	/** release 来源：release 标题（确认框/成功提示/侧边栏展示用） */
+	releaseName?: string;
+	/** release 来源：待下载的附件列表 */
+	releaseAssets?: ModuleReleaseAssetInfo[];
 	/** 目标提交信息（更新成功后写入本地缓存） */
 	commitInfo?: string;
 	/** 目标提交日期（ISO，更新成功后写入本地缓存） */

@@ -15,6 +15,11 @@ import { GitService, IGitRunner } from './gitService';
 import { Logger, getLogger } from './logger';
 import { ModuleBranchInfo, ModuleCommitInfo, ModuleReleaseInfo, ModuleTagInfo } from './types';
 
+/** GitHub 自动生成的源码附件名（排除用） */
+function isSourceCodeAsset(name: string): boolean {
+	return name.toLowerCase().includes('source code');
+}
+
 /**
  * ModuleVersionService 所需的 GitHub API 子集（便于测试注入 mock）。
  */
@@ -61,6 +66,7 @@ export class ModuleVersionService {
 
 	/**
 	 * 获取仓库最近 GitHub Release 列表（仅 API，失败返回空列表）。
+	 * 附件列表会排除 GitHub 自动生成的 `Source code (zip)` / `Source code (tar.gz)`。
 	 */
 	public async listReleases(owner: string, repo: string, token?: string): Promise<ModuleReleaseInfo[]> {
 		try {
@@ -69,6 +75,13 @@ export class ModuleVersionService {
 				name: release.name ?? release.tag_name,
 				tagName: release.tag_name,
 				publishedAt: release.published_at ?? undefined,
+				assets: (release.assets ?? [])
+					.filter((asset) => !isSourceCodeAsset(asset.name))
+					.map((asset) => ({
+						name: asset.name,
+						browserDownloadUrl: asset.browser_download_url,
+						size: asset.size,
+					})),
 			}));
 		} catch (error) {
 			this.logger.warn(`GitHub releases API failed for ${owner}/${repo}, no git fallback available: ${error instanceof Error ? error.message : String(error)}`);

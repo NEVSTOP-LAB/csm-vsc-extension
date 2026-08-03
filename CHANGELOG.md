@@ -10,6 +10,7 @@
 
 - **模块版本概念**（issue #37）：更新模块时支持选择具体版本——更新到分支最新，或从提交记录 / git 标签 / GitHub Release / 分支中选择目标版本（含回退到旧版本）；版本来源数据优先走 GitHub REST API，未登录或网络受限时用 git CLI 兜底
 - **应用模块时（单选）支持选择具体版本**（issue #37）：应用单个模块时可选择版本来源（置顶「使用默认分支」，与更新一致）；多选批量应用沿用默认分支；确认框展示目标版本；`submodule` / `copy` 均支持指定分支 / 提交 / 标签 / Release 应用
+- **使用 GitHub Release = 下载其附件**（issue #37）：选择 Release 后下载该 Release 的全部附件（排除 `Source code` 自动附件）；zip / tar.gz 自动解压（剥离顶层单目录），其它格式直接复制；单附件放模块根、多附件各自放独立子目录；submodule 方式回退为 git tag 检出
 - 每个已管理模块记录 `versionKind`（`branch` / `commit` / `tag` / `release`）与 `versionRef`，`ref` 始终指向实际应用的提交 SHA；旧配置自动兼容
 - 本地模块卡片展示当前版本（`短SHA · 提交信息 · 相对日期`，tag / Release 优先显示名称），提交信息在更新/应用成功时缓存，避免每次在线查询
 - 新增 `src/modules/versionService.ts`（版本来源列表 + git 兜底）与对应单元测试

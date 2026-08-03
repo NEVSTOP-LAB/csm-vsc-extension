@@ -786,6 +786,7 @@
     "@types/js-yaml": "^4.0.9",
     "@types/mocha": "^10.0.10",
     "@types/node": "22.x",
+    "@types/tar": "^6.1.13",
     "@types/vscode": "^1.60.0",
     "@vscode/test-cli": "^0.0.12",
     "@vscode/test-electron": "^2.5.2",
@@ -799,6 +800,7 @@
   },
   "dependencies": {
     "js-yaml": "^4.1.0",
-    "jszip": "^3.10.1"
+    "jszip": "^3.10.1",
+    "tar": "^7.5.22"
   }
 }

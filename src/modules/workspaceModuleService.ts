@@ -3,7 +3,8 @@ import * as fs from 'fs/promises';
 import { getTempRoot } from '../common/tempPaths';
 import * as path from 'path';
 import JSZip from 'jszip';
-import { CopyModuleUpdatePreview, CsmModuleEntry, LocalModuleConfig, LocalModuleConfigEntry, ModuleApplyMethod, ModuleUpdateResult, ModuleVersionSelection } from './types';
+import * as tar from 'tar';
+import { CopyModuleUpdatePreview, CsmModuleEntry, LocalModuleConfig, LocalModuleConfigEntry, ModuleApplyMethod, ModuleReleaseAssetInfo, ModuleUpdateResult, ModuleVersionSelection } from './types';
 import { t } from './messages';
 import { GitService, IGitRunner } from './gitService';
 import {
@@ -86,6 +87,20 @@ function sanitizeModuleKeyPart(value: string): string {
 
 function stripGitSuffix(value: string): string {
 	return value.replace(/\.git$/i, '');
+}
+
+/** GitHub 自动生成的源码附件名（防御性过滤，正常已在 versionService 排除） */
+const SOURCE_CODE_ASSET_PATTERN = /source\s*code/i;
+
+/** 附件文件名去扩展名：module-v1.0.zip → module-v1.0；module.tar.gz → module */
+function stripAssetExtension(name: string): string {
+	return name
+		.replace(/\.tar\.gz$/i, '')
+		.replace(/\.tgz$/i, '')
+		.replace(/\.zip$/i, '')
+		.replace(/\.(tar|gz|7z|rar)$/i, '')
+		.replace(/[^a-zA-Z0-9_.\- ]+/g, '_')
+		.trim();
 }
 
 export const DEFAULT_SCAN_MAX_DEPTH = 3;
@@ -520,6 +535,24 @@ export class WorkspaceModuleService {
 
 			const tmpDir = await fs.mkdtemp(path.join(getTempRoot(), 'csm-update-'));
 			try {
+				// Release：下载其附件并整体替换模块目录（不做 zip 备份，issue #37）
+				if (selection.kind === 'release') {
+					const assets = selection.releaseAssets ?? [];
+					if (assets.length === 0) {
+						throw new Error('The release has no downloadable assets.');
+					}
+					await this.downloadReleaseAssets(assets, authToken, tmpDir);
+					await fs.rm(targetAbsolute, { recursive: true, force: true });
+					await fs.mkdir(path.dirname(targetAbsolute), { recursive: true });
+					await this.placeReleaseAssets(tmpDir, assets, targetAbsolute);
+					return {
+						entry: this.normalizeConfigEntry(this.withVersionInfo({
+							...normalizedEntry,
+							ref: '',
+							branch: selection.branch,
+						}, selection)),
+					};
+				}
 				const cloneRoot = await this.cloneModuleVersion(
 					tmpDir,
 					selection,
@@ -858,6 +891,19 @@ export class WorkspaceModuleService {
 			? versionSelection.branch
 			: defaultBranch;
 		try {
+			// Release：下载其附件并放置到模块目录（不做 git clone，issue #37）
+			if (versionSelection && versionSelection.kind === 'release') {
+				const assets = versionSelection.releaseAssets ?? [];
+				if (assets.length === 0) {
+					throw new Error('The release has no downloadable assets.');
+				}
+				onProgress?.(t('applyingReleaseDownloading', { repo: `${entry.owner}/${entry.name}` }));
+				await this.downloadReleaseAssets(assets, authToken, tempRoot, (msg) => onProgress?.(msg));
+				onProgress?.(t('applyingCopyFiles', { repo: `${entry.owner}/${entry.name}` }));
+				await fs.mkdir(path.dirname(targetPath), { recursive: true });
+				await this.placeReleaseAssets(tempRoot, assets, targetPath);
+				return this.createConfigEntry(entry, 'copy', targetRelativePath, '', branch, versionSelection);
+			}
 			onProgress?.(t('applyingCopyCloning', { repo: `${entry.owner}/${entry.name}` }));
 			let cloneRoot: string;
 			if (versionSelection && versionSelection.kind !== 'latest') {
@@ -1375,7 +1421,151 @@ export class WorkspaceModuleService {
 			next.versionKind = selection.kind;
 			next.versionRef = selection.versionRef ?? (selection.kind === 'commit' ? entry.ref : undefined);
 		}
+		if (selection.kind === 'release' && selection.releaseName) {
+			next.releaseName = selection.releaseName;
+		}
 		return next;
+	}
+
+	// ---------------------------------------------------------------------
+	// GitHub Release 附件（issue #37）：下载 → 解压/复制 → 放置
+	// ---------------------------------------------------------------------
+
+	/**
+	 * 下载 release 附件到指定目录（私有仓库复用登录 token）。
+	 * 文件名统一做安全化处理，避免空格/特殊字符导致路径问题。
+	 */
+	private async downloadReleaseAssets(
+		assets: ModuleReleaseAssetInfo[],
+		token: string | undefined,
+		destinationDir: string,
+		onProgress?: (message: string) => void,
+	): Promise<void> {
+		await fs.mkdir(destinationDir, { recursive: true });
+		for (const asset of assets) {
+			onProgress?.(`${asset.name}`);
+			const response = await fetch(asset.browserDownloadUrl, {
+				headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+			});
+			if (!response.ok) {
+				throw new Error(`Failed to download release asset ${asset.name}: HTTP ${response.status}`);
+			}
+			const buffer = Buffer.from(await response.arrayBuffer());
+			const safeName = this.sanitizeDownloadFileName(asset.name);
+			await fs.writeFile(path.join(destinationDir, safeName), buffer);
+		}
+	}
+
+	/**
+	 * 将下载好的附件放置到模块目录：
+	 * - 单个附件：内容直接放模块根（zip/tar.gz 解压并剥离顶层单目录）
+	 * - 多个附件：每个附件放 `模块目录/<附件名去扩展名>/`（内部同样剥离顶层单目录）
+	 */
+	private async placeReleaseAssets(
+		downloadDir: string,
+		assets: ModuleReleaseAssetInfo[],
+		targetPath: string,
+	): Promise<void> {
+		const effectiveAssets = assets.filter((asset) => !SOURCE_CODE_ASSET_PATTERN.test(asset.name));
+		if (effectiveAssets.length === 0) {
+			throw new Error('The release has no downloadable assets.');
+		}
+		await fs.mkdir(targetPath, { recursive: true });
+		if (effectiveAssets.length === 1) {
+			const asset = effectiveAssets[0];
+			await this.placeSingleAsset(path.join(downloadDir, this.sanitizeDownloadFileName(asset.name)), targetPath);
+			return;
+		}
+		for (const asset of effectiveAssets) {
+			const subDirName = stripAssetExtension(asset.name) || 'asset';
+			const subDir = path.join(targetPath, subDirName);
+			await fs.mkdir(subDir, { recursive: true });
+			await this.placeSingleAsset(path.join(downloadDir, this.sanitizeDownloadFileName(asset.name)), subDir);
+		}
+	}
+
+	/**
+	 * 放置单个附件到目标目录：
+	 * - zip：JSZip 解压 → 剥离顶层单目录后拷贝内容
+	 * - tar.gz / tgz：tar 解压 → 剥离顶层单目录后拷贝内容
+	 * - 其它格式：直接复制到目标目录
+	 */
+	private async placeSingleAsset(downloadedPath: string, targetDir: string): Promise<void> {
+		let stat;
+		try {
+			stat = await fs.stat(downloadedPath);
+		} catch {
+			throw new Error(`Downloaded release asset is missing: ${path.basename(downloadedPath)}`);
+		}
+		if (stat.isDirectory()) {
+			await this.copyDirectory(downloadedPath, targetDir);
+			return;
+		}
+		if (/\.zip$/i.test(downloadedPath)) {
+			const staging = await fs.mkdtemp(path.join(getTempRoot(), 'csm-release-zip-'));
+			try {
+				await this.extractZip(downloadedPath, staging);
+				await this.copyStagingWithTopLevelStrip(staging, targetDir);
+			} finally {
+				await fs.rm(staging, { recursive: true, force: true });
+			}
+			return;
+		}
+		if (/\.(tar\.gz|tgz)$/i.test(downloadedPath)) {
+			const staging = await fs.mkdtemp(path.join(getTempRoot(), 'csm-release-tar-'));
+			try {
+				await tar.x({ file: downloadedPath, cwd: staging });
+				await this.copyStagingWithTopLevelStrip(staging, targetDir);
+			} finally {
+				await fs.rm(staging, { recursive: true, force: true });
+			}
+			return;
+		}
+		// 其它格式：直接复制
+		await fs.copyFile(downloadedPath, path.join(targetDir, path.basename(downloadedPath)));
+	}
+
+	/** 解压 zip 到 staging 目录（防护路径穿越）。 */
+	private async extractZip(zipPath: string, stagingDir: string): Promise<void> {
+		const data = await fs.readFile(zipPath);
+		const zip = await JSZip.loadAsync(data);
+		for (const entry of Object.values(zip.files)) {
+			const relativePath = path.posix.normalize(entry.name.replace(/\\/g, '/')).replace(/^\/+/, '');
+			if (!relativePath || relativePath === '..' || relativePath.startsWith('../') || path.posix.isAbsolute(relativePath)) {
+				continue;
+			}
+			const entryPath = path.join(stagingDir, relativePath);
+			if (entry.dir) {
+				await fs.mkdir(entryPath, { recursive: true });
+				continue;
+			}
+			await fs.mkdir(path.dirname(entryPath), { recursive: true });
+			const content = await entry.async('nodebuffer');
+			await fs.writeFile(entryPath, content);
+		}
+	}
+
+	/** 解压结果：若顶层只有一个目录则剥离之，再把内容拷贝到目标目录。 */
+	private async copyStagingWithTopLevelStrip(stagingDir: string, targetDir: string): Promise<void> {
+		let entries: string[] = [];
+		try {
+			entries = await fs.readdir(stagingDir);
+		} catch {
+			return;
+		}
+		if (entries.length === 1) {
+			const onlyEntry = path.join(stagingDir, entries[0]!);
+			const stat = await fs.stat(onlyEntry);
+			if (stat.isDirectory()) {
+				await this.copyDirectory(onlyEntry, targetDir);
+				return;
+			}
+		}
+		await this.copyDirectory(stagingDir, targetDir);
+	}
+
+	private sanitizeDownloadFileName(name: string): string {
+		return name.replace(/[\\/:*?"<>|\u0000-\u001F]/g, '_').trim();
 	}
 
 	private getBackupDirectory(workspaceRoot: string): string {

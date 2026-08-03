@@ -442,6 +442,14 @@ export interface GitHubReleaseInfo {
 	tag_name: string;
 	published_at?: string | null;
 	target_commitish?: string;
+	assets?: GitHubReleaseAssetInfo[];
+}
+
+/** GET /repos/{owner}/{repo}/releases 响应中的附件条目 */
+export interface GitHubReleaseAssetInfo {
+	name: string;
+	browser_download_url: string;
+	size?: number;
 }
 
 /** GET /repos/{owner}/{repo}/branches 响应条目 */

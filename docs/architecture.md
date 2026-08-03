@@ -9,11 +9,11 @@
 
 `csm-vsc-support` 是一个 VS Code 扩展，为 Communicable State Machine (CSM) 框架提供编辑器支持。核心功能分为两大域：
 
-| 域 | 路径 | 职责 |
-|----|------|------|
+| 域           | 路径            | 职责                                                   |
+|--------------|-----------------|--------------------------------------------------------|
 | **语言功能** | `src/language/` | `.csmlog` / `.lvcsm` 文件的语法高亮、Hover、Outline、折叠 |
-| **模块管理** | `src/modules/` | 侧边栏 Webview 浏览/搜索/引入/更新 CSM 模块 |
-| **共享工具** | `src/common/` | 国际化、常量、临时路径、DocumentSymbol 构建 |
+| **模块管理** | `src/modules/`  | 侧边栏 Webview 浏览/搜索/引入/更新 CSM 模块            |
+| **共享工具** | `src/common/`   | 国际化、常量、临时路径、DocumentSymbol 构建               |
 
 ---
 
@@ -186,14 +186,14 @@ extension.ts activate()
 
 ## 5. 构建与测试
 
-| 命令 | 说明 |
-|------|------|
-| `npm run check-types` | TypeScript 类型检查 |
-| `npm run lint` | ESLint 代码规范 |
-| `npm run compile` | esbuild 打包 → `dist/extension.js` |
-| `npm run compile-tests` | 编译测试 → `out/test/` |
-| `npx mocha --ui tdd ...` | 独立单元测试（无需 VS Code） |
-| `npm test` | 完整扩展测试（需 VS Code 宿主） |
+| 命令                     | 说明                               |
+|--------------------------|------------------------------------|
+| `npm run check-types`    | TypeScript 类型检查                |
+| `npm run lint`           | ESLint 代码规范                    |
+| `npm run compile`        | esbuild 打包 → `dist/extension.js` |
+| `npm run compile-tests`  | 编译测试 → `out/test/`             |
+| `npx mocha --ui tdd ...` | 独立单元测试（无需 VS Code）         |
+| `npm test`               | 完整扩展测试（需 VS Code 宿主）      |
 
 ### 测试统计
 

@@ -1920,6 +1920,269 @@ suite('Module Manager Tests', () => {
 		}
 	});
 
+	test('WorkspaceModuleService applies a copy module from a single release zip (top-level stripped)', async function () {
+		this.timeout(20000);
+		const originalFetch = globalThis.fetch;
+		const tempRoot = await fs.mkdtemp(path.join(getTempRoot(), 'csm-modules-apply-release-single-'));
+		const workspaceRoot = path.join(tempRoot, 'plain-workspace');
+		const service = new WorkspaceModuleService();
+		try {
+			// 构造 zip：顶层单目录 module-xyz/
+			const zip = new JSZip();
+			zip.file('module-xyz/README.md', '# module\n');
+			zip.file('module-xyz/Foo.vi', 'vi-bytes');
+			const zipBuffer = await zip.generateAsync({ type: 'nodebuffer' });
+			globalThis.fetch = (async () => ({
+				ok: true,
+				status: 200,
+				arrayBuffer: async () => zipBuffer.buffer.slice(zipBuffer.byteOffset, zipBuffer.byteOffset + zipBuffer.byteLength),
+			}) as Response) as typeof fetch;
+
+			await fs.mkdir(workspaceRoot, { recursive: true });
+			const config = await service.initializeConfig(workspaceRoot, 'csm');
+			const moduleEntry: CsmModuleEntry = {
+				id: 1,
+				owner: 'org',
+				name: 'module-rel',
+				description: 'demo',
+				topics: ['csm-modsets'],
+				visibility: 'public',
+				defaultBranch: 'main',
+				repoUrl: 'https://github.com/org/module-rel',
+			};
+			const applied = await service.applyModule(workspaceRoot, config, moduleEntry, 'copy', undefined, undefined, undefined, {
+				kind: 'release',
+				versionRef: 'v1.0',
+				releaseName: 'Release v1.0',
+				releaseAssets: [
+					{ name: 'module-v1.0.zip', browserDownloadUrl: 'https://github.com/org/module-rel/releases/download/v1.0/module-v1.0.zip' },
+				],
+				branch: 'main',
+				label: 'Release v1.0',
+			});
+			assert.strictEqual(applied.versionKind, 'release');
+			assert.strictEqual(applied.versionRef, 'v1.0');
+			assert.strictEqual(applied.releaseName, 'Release v1.0');
+			assert.strictEqual(applied.ref, '');
+			assert.strictEqual(applied.locked, true);
+			const moduleDir = path.join(workspaceRoot, 'csm', 'module-rel');
+			// 顶层单目录已剥离，内容直接放模块根
+			assert.ok((await fs.readFile(path.join(moduleDir, 'README.md'), 'utf8')).includes('# module'));
+			assert.strictEqual((await fs.readFile(path.join(moduleDir, 'Foo.vi'), 'utf8')), 'vi-bytes');
+			const topEntries = await fs.readdir(moduleDir);
+			assert.ok(!topEntries.includes('module-xyz'));
+		} finally {
+			globalThis.fetch = originalFetch;
+			await removeWritableTree(tempRoot);
+		}
+	});
+
+	test('WorkspaceModuleService applies a copy module from multiple release assets into per-asset subdirectories', async function () {
+		this.timeout(20000);
+		const originalFetch = globalThis.fetch;
+		const tempRoot = await fs.mkdtemp(path.join(getTempRoot(), 'csm-modules-apply-release-multi-'));
+		const workspaceRoot = path.join(tempRoot, 'plain-workspace');
+		const service = new WorkspaceModuleService();
+		try {
+			const zipA = new JSZip();
+			zipA.file('a-pkg/README.md', '# A\n');
+			const bufA = await zipA.generateAsync({ type: 'nodebuffer' });
+			const zipB = new JSZip();
+			zipB.file('b-pkg/Foo.vi', 'b-vi');
+			const bufB = await zipB.generateAsync({ type: 'nodebuffer' });
+			globalThis.fetch = (async (input) => {
+				const url = String(input);
+				const buffer = url.includes('a-pkg') ? bufA : bufB;
+				return {
+					ok: true,
+					status: 200,
+					arrayBuffer: async () => buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength),
+				} as Response;
+			}) as typeof fetch;
+
+			await fs.mkdir(workspaceRoot, { recursive: true });
+			const config = await service.initializeConfig(workspaceRoot, 'csm');
+			const moduleEntry: CsmModuleEntry = {
+				id: 2,
+				owner: 'org',
+				name: 'module-rel-multi',
+				description: 'demo',
+				topics: ['csm-modsets'],
+				visibility: 'public',
+				defaultBranch: 'main',
+				repoUrl: 'https://github.com/org/module-rel-multi',
+			};
+			const applied = await service.applyModule(workspaceRoot, config, moduleEntry, 'copy', undefined, undefined, undefined, {
+				kind: 'release',
+				versionRef: 'v1.0',
+				releaseName: 'Release multi',
+				releaseAssets: [
+					{ name: 'a-pkg.zip', browserDownloadUrl: 'https://example.com/a-pkg.zip' },
+					{ name: 'b-pkg.zip', browserDownloadUrl: 'https://example.com/b-pkg.zip' },
+				],
+				branch: 'main',
+				label: 'Release multi',
+			});
+			const moduleDir = path.join(workspaceRoot, 'csm', 'module-rel-multi');
+			// 每个附件一个独立子目录（文件名去扩展名），内部剥离顶层单目录
+			assert.ok((await fs.readFile(path.join(moduleDir, 'a-pkg', 'README.md'), 'utf8')).includes('# A'));
+			assert.strictEqual((await fs.readFile(path.join(moduleDir, 'b-pkg', 'Foo.vi'), 'utf8')), 'b-vi');
+			const topEntries = await fs.readdir(moduleDir);
+			assert.deepStrictEqual(topEntries.sort(), ['a-pkg', 'b-pkg']);
+			assert.strictEqual(applied.versionKind, 'release');
+		} finally {
+			globalThis.fetch = originalFetch;
+			await removeWritableTree(tempRoot);
+		}
+	});
+
+	test('WorkspaceModuleService applies a copy module from a non-archive release asset by direct copy', async function () {
+		this.timeout(20000);
+		const originalFetch = globalThis.fetch;
+		const tempRoot = await fs.mkdtemp(path.join(getTempRoot(), 'csm-modules-apply-release-flat-'));
+		const workspaceRoot = path.join(tempRoot, 'plain-workspace');
+		const service = new WorkspaceModuleService();
+		try {
+			const assetBytes = Buffer.from('readme-content');
+			globalThis.fetch = (async () => ({
+				ok: true,
+				status: 200,
+				arrayBuffer: async () => assetBytes.buffer.slice(assetBytes.byteOffset, assetBytes.byteOffset + assetBytes.byteLength),
+			}) as Response) as typeof fetch;
+
+			await fs.mkdir(workspaceRoot, { recursive: true });
+			const config = await service.initializeConfig(workspaceRoot, 'csm');
+			const moduleEntry: CsmModuleEntry = {
+				id: 3,
+				owner: 'org',
+				name: 'module-rel-flat',
+				description: 'demo',
+				topics: ['csm-modsets'],
+				visibility: 'public',
+				defaultBranch: 'main',
+				repoUrl: 'https://github.com/org/module-rel-flat',
+			};
+			await service.applyModule(workspaceRoot, config, moduleEntry, 'copy', undefined, undefined, undefined, {
+				kind: 'release',
+				versionRef: 'v1.0',
+				releaseName: 'Release flat',
+				releaseAssets: [
+					{ name: 'README.md', browserDownloadUrl: 'https://example.com/README.md' },
+				],
+				branch: 'main',
+				label: 'Release flat',
+			});
+			const moduleDir = path.join(workspaceRoot, 'csm', 'module-rel-flat');
+			assert.strictEqual((await fs.readFile(path.join(moduleDir, 'README.md'), 'utf8')), 'readme-content');
+		} finally {
+			globalThis.fetch = originalFetch;
+			await removeWritableTree(tempRoot);
+		}
+	});
+
+	test('WorkspaceModuleService rejects a release without downloadable assets', async function () {
+		this.timeout(20000);
+		const tempRoot = await fs.mkdtemp(path.join(getTempRoot(), 'csm-modules-apply-release-none-'));
+		const workspaceRoot = path.join(tempRoot, 'plain-workspace');
+		const service = new WorkspaceModuleService();
+		try {
+			await fs.mkdir(workspaceRoot, { recursive: true });
+			const config = await service.initializeConfig(workspaceRoot, 'csm');
+			const moduleEntry: CsmModuleEntry = {
+				id: 4,
+				owner: 'org',
+				name: 'module-rel-none',
+				description: 'demo',
+				topics: ['csm-modsets'],
+				visibility: 'public',
+				defaultBranch: 'main',
+				repoUrl: 'https://github.com/org/module-rel-none',
+			};
+			await assert.rejects(
+				() => service.applyModule(workspaceRoot, config, moduleEntry, 'copy', undefined, undefined, undefined, {
+					kind: 'release',
+					versionRef: 'v1.0',
+					releaseName: 'Release none',
+					releaseAssets: [],
+					branch: 'main',
+					label: 'Release none',
+				}),
+				/no downloadable assets/,
+			);
+		} finally {
+			await removeWritableTree(tempRoot);
+		}
+	});
+
+	test('WorkspaceModuleService updates a copy module to a release by replacing the directory (no zip backup)', async function () {
+		this.timeout(20000);
+		const originalFetch = globalThis.fetch;
+		const tempRoot = await fs.mkdtemp(path.join(getTempRoot(), 'csm-modules-update-release-'));
+		const workspaceRoot = path.join(tempRoot, 'plain-workspace');
+		const service = new WorkspaceModuleService();
+		try {
+			// 先以默认分支应用（模拟已有模块目录）
+			const moduleRepo = path.join(tempRoot, 'module-repo');
+			await fs.mkdir(moduleRepo, { recursive: true });
+			runGit(moduleRepo, ['init', '--initial-branch=main']);
+			runGit(moduleRepo, ['config', 'user.name', 'Test User']);
+			runGit(moduleRepo, ['config', 'user.email', 'test@example.com']);
+			await fs.writeFile(path.join(moduleRepo, 'README.md'), '# v1\n', 'utf8');
+			runGit(moduleRepo, ['add', 'README.md']);
+			runGit(moduleRepo, ['commit', '-m', 'init', '-q']);
+
+			await fs.mkdir(workspaceRoot, { recursive: true });
+			const config = await service.initializeConfig(workspaceRoot, 'csm');
+			const moduleEntry: CsmModuleEntry = {
+				id: 5,
+				owner: 'org',
+				name: 'module-rel-update',
+				description: 'demo',
+				topics: ['csm-modsets'],
+				visibility: 'public',
+				defaultBranch: 'main',
+				repoUrl: moduleRepo,
+			};
+			const applied = await service.applyModule(workspaceRoot, config, moduleEntry, 'copy');
+			const moduleDir = path.join(workspaceRoot, 'csm', 'module-rel-update');
+			assert.ok((await fs.readFile(path.join(moduleDir, 'README.md'), 'utf8')).includes('# v1'));
+
+			// release 附件：zip 覆盖
+			const zip = new JSZip();
+			zip.file('rel-pkg/Foo.vi', 'rel-vi');
+			const zipBuffer = await zip.generateAsync({ type: 'nodebuffer' });
+			globalThis.fetch = (async () => ({
+				ok: true,
+				status: 200,
+				arrayBuffer: async () => zipBuffer.buffer.slice(zipBuffer.byteOffset, zipBuffer.byteOffset + zipBuffer.byteLength),
+			}) as Response) as typeof fetch;
+
+			const result = await service.updateModule(workspaceRoot, applied, moduleEntry, {
+				selection: {
+					kind: 'release',
+					versionRef: 'v2.0',
+					releaseName: 'Release v2.0',
+					releaseAssets: [
+						{ name: 'rel-v2.zip', browserDownloadUrl: 'https://example.com/rel-v2.zip' },
+					],
+					branch: 'main',
+					label: 'Release v2.0',
+				},
+			});
+			// 无 zip 备份，目录被整体替换为附件内容（顶层剥离）
+			assert.strictEqual(result.backupPath, undefined);
+			assert.strictEqual(result.entry.versionKind, 'release');
+			assert.strictEqual(result.entry.versionRef, 'v2.0');
+			assert.strictEqual(result.entry.releaseName, 'Release v2.0');
+			assert.strictEqual((await fs.readFile(path.join(moduleDir, 'Foo.vi'), 'utf8')), 'rel-vi');
+			const topEntries = await fs.readdir(moduleDir);
+			assert.ok(!topEntries.includes('README.md'));
+		} finally {
+			globalThis.fetch = originalFetch;
+			await removeWritableTree(tempRoot);
+		}
+	});
+
 	test('WorkspaceModuleService syncSubmoduleEntriesToConfig adds untracked submodules to an existing config', async function () {
 		this.timeout(20000);
 		const tempRoot = await fs.mkdtemp(path.join(getTempRoot(), 'csm-sync-submodules-'));

@@ -2953,7 +2953,14 @@ suite('ModuleManagerController Regression Tests', () => {
 			listBranches: async () => [],
 			listTags: async () => [],
 			listReleases: async () => [
-				{ name: 'Release v1.0', tagName: 'v1.0', publishedAt: '2026-06-01T00:00:00Z' },
+				{
+					name: 'Release v1.0',
+					tagName: 'v1.0',
+					publishedAt: '2026-06-01T00:00:00Z',
+					assets: [
+						{ name: 'module-v1.0.zip', browserDownloadUrl: 'https://github.com/org/module-ver/releases/download/v1.0/module-v1.0.zip' },
+					],
+				},
 			],
 			listCommits: async () => [],
 			resolveCommitInfo: async () => ({ commitInfo: 'release commit', date: '2026-06-01T00:00:00Z' }),
@@ -2988,6 +2995,7 @@ suite('ModuleManagerController Regression Tests', () => {
 					branch: moduleEntry.defaultBranch,
 					versionKind: 'release',
 					versionRef: 'v1.0',
+					releaseName: 'Release v1.0',
 				};
 			},
 			withAppliedModule: (config: LocalModuleConfig, moduleEntry: LocalModuleConfig['modules'][string]) => ({
@@ -3011,30 +3019,38 @@ suite('ModuleManagerController Regression Tests', () => {
 		// Release 列表：显示标题，不显示 commit MD5
 		mocked.__setQuickPickResponse({
 			label: 'Release v1.0 · v1.0',
-			release: { name: 'Release v1.0', tagName: 'v1.0', publishedAt: '2026-06-01T00:00:00Z' },
+			release: {
+				name: 'Release v1.0',
+				tagName: 'v1.0',
+				publishedAt: '2026-06-01T00:00:00Z',
+				assets: [
+					{ name: 'module-v1.0.zip', browserDownloadUrl: 'https://github.com/org/module-ver/releases/download/v1.0/module-v1.0.zip' },
+				],
+			},
 		});
 		mocked.__setWarningMessageResponse('Apply');
 
 		await controller.applyToWorkspaceCommand(entry);
 
-		// applyModule 收到 release 版本选择
+		// applyModule 收到 release 版本选择（含附件与 release 名）
 		assert.ok(receivedSelection);
-		const selection = receivedSelection as { kind: string; versionRef: string; branch: string };
+		const selection = receivedSelection as { kind: string; versionRef: string; branch: string; releaseName?: string; releaseAssets?: unknown[] };
 		assert.strictEqual(selection.kind, 'release');
 		assert.strictEqual(selection.versionRef, 'v1.0');
 		assert.strictEqual(selection.branch, 'main');
-		// 确认框展示目标版本
+		assert.strictEqual(selection.releaseName, 'Release v1.0');
+		assert.strictEqual(selection.releaseAssets?.length, 1);
+		// 确认框只展示 release 名
 		assert.ok(mocked.__getLastWarningPrompt()?.message.includes('at version Release v1.0'));
 		// Release 列表项显示标题（而非 commit MD5）
 		const releasePick = mocked.__getQuickPickHistory()[2];
 		const releaseItems = releasePick?.items as Array<{ label?: string; description?: string }> | undefined;
 		assert.ok(releaseItems?.[0]?.label?.includes('Release v1.0'));
 		assert.ok(!releaseItems?.[0]?.label?.match(/[0-9a-f]{40}/i));
-		// 应用成功后缓存提交信息
-		assert.ok(writtenConfig?.modules.org__module_ver?.versionKind === 'release');
-		assert.ok(cachedVersionInfo);
-		const cache = cachedVersionInfo as Record<string, { commitInfo?: string }>;
-		assert.strictEqual(cache['org/module-ver']?.commitInfo, 'release commit');
+		// 应用成功后写入 releaseName；Release 附件方式不缓存提交信息
+		assert.strictEqual(writtenConfig?.modules.org__module_ver?.versionKind, 'release');
+		assert.strictEqual(writtenConfig?.modules.org__module_ver?.releaseName, 'Release v1.0');
+		assert.strictEqual(cachedVersionInfo, undefined);
 	});
 
 	test('apply auto-stars imported community modules for signed-in users', async () => {

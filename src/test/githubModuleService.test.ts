@@ -420,6 +420,36 @@ suite('GitHubModuleService Tests', () => {
 		assert.strictEqual(releases[0]?.published_at, '2026-06-01T00:00:00Z');
 	});
 
+	test('fetchReleases includes asset metadata in the response', async () => {
+		globalThis.fetch = (async () => ({
+			ok: true,
+			status: 200,
+			headers: createHeaders(),
+			json: async () => [
+				{
+					id: 6,
+					name: 'Release v2.0',
+					tag_name: 'v2.0',
+					published_at: '2026-07-01T00:00:00Z',
+					assets: [
+						{
+							name: 'module-v2.0.zip',
+							browser_download_url: 'https://github.com/org/module-a/releases/download/v2.0/module-v2.0.zip',
+							size: 2048,
+						},
+					],
+				},
+			],
+		}) as Response) as FetchFn;
+
+		const service = new GitHubModuleService();
+		const releases = await service.fetchReleases('org', 'module-a');
+		assert.strictEqual(releases[0]?.assets?.length, 1);
+		assert.strictEqual(releases[0]?.assets?.[0]?.name, 'module-v2.0.zip');
+		assert.strictEqual(releases[0]?.assets?.[0]?.browser_download_url, 'https://github.com/org/module-a/releases/download/v2.0/module-v2.0.zip');
+		assert.strictEqual(releases[0]?.assets?.[0]?.size, 2048);
+	});
+
 	test('fetchBranches lists branches with head commit sha', async () => {
 		const requests: string[] = [];
 		globalThis.fetch = (async (input) => {

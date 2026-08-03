@@ -102,6 +102,9 @@ export function finalizeModuleSection(module: Partial<LocalModuleConfigEntry>): 
 	if (module.versionRef) {
 		entry.versionRef = module.versionRef;
 	}
+	if (module.releaseName) {
+		entry.releaseName = module.releaseName;
+	}
 	if (module.labviewVersion) {
 		entry.labviewVersion = module.labviewVersion;
 	}
@@ -128,6 +131,9 @@ export function serializeConfig(config: LocalModuleConfig): string {
 		}
 		if (module.versionRef) {
 			entry.versionRef = module.versionRef;
+		}
+		if (module.releaseName) {
+			entry.releaseName = module.releaseName;
 		}
 		// Only persist labviewVersion when detected, avoid writing empty values
 		if (module.labviewVersion) {
@@ -191,6 +197,7 @@ export function parseYamlConfig(raw: string): ParsedConfigShape {
 					? entry.versionKind
 					: undefined,
 				versionRef: typeof entry.versionRef === 'string' ? entry.versionRef : undefined,
+				releaseName: typeof entry.releaseName === 'string' ? entry.releaseName : undefined,
 				labviewVersion: typeof entry.labviewVersion === 'string' ? entry.labviewVersion : undefined,
 			});
 		}

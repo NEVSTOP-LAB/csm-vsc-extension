@@ -902,11 +902,19 @@ export class ModuleManagerController {
 		if (!picked) {
 			return undefined;
 		}
+		const assets = picked.release.assets ?? [];
+		if (assets.length === 0) {
+			void vscode.window.showWarningMessage(t('releaseHasNoAssets', { release: picked.release.name }));
+			return undefined;
+		}
 		return {
 			kind: 'release',
 			versionRef: picked.release.tagName,
+			releaseName: picked.release.name,
+			releaseAssets: assets,
 			branch,
-			label: picked.label,
+			// 确认框/成功提示只展示 release 名（issue #37）
+			label: picked.release.name,
 		};
 	}
 
@@ -955,7 +963,10 @@ export class ModuleManagerController {
 	 * tag / release 优先显示来源名称，否则显示 短SHA · 提交信息 · 相对日期。
 	 */
 	private formatTargetVersionLabel(entry: LocalModuleConfigEntry, selection: ModuleVersionSelection): string {
-		if (entry.versionKind === 'tag' || entry.versionKind === 'release') {
+		if (entry.versionKind === 'release') {
+			return entry.releaseName || entry.versionRef || selection.label || t('versionUnknown');
+		}
+		if (entry.versionKind === 'tag') {
 			return entry.versionRef || selection.label || this.formatShortSha(entry.ref) || t('versionUnknown');
 		}
 		const relative = formatRelativeDate(selection.commitDate);
@@ -974,10 +985,10 @@ export class ModuleManagerController {
 	 * tag / release 优先显示来源名称，否则读本地缓存显示 短SHA · 提交信息 · 相对日期。
 	 */
 	private formatCurrentVersionLabel(target: LocalModuleConfigEntry): string {
-		if (target.versionKind === 'tag' && target.versionRef) {
-			return target.versionRef;
+		if (target.versionKind === 'release') {
+			return target.releaseName || target.versionRef || t('versionUnknown');
 		}
-		if (target.versionKind === 'release' && target.versionRef) {
+		if (target.versionKind === 'tag' && target.versionRef) {
 			return target.versionRef;
 		}
 		const cacheEntry = this.versionCache[`${target.owner}/${target.name}`];
@@ -1004,6 +1015,10 @@ export class ModuleManagerController {
 		authToken: string | undefined,
 	): Promise<void> {
 		try {
+			// Release 附件方式没有对应的提交 SHA，跳过提交信息缓存（侧边栏用 releaseName 展示）
+			if (selection.kind === 'release') {
+				return;
+			}
 			const cacheKey = `${updatedEntry.owner}/${updatedEntry.name}`;
 			let commitInfo = selection.commitInfo;
 			let date = selection.commitDate;
@@ -2767,6 +2782,7 @@ export class ModuleManagerController {
 					// 版本来源信息（issue #37），旧配置缺省视为 commit
 					versionKind: configEntry.versionKind,
 					versionRef: configEntry.versionRef,
+					releaseName: configEntry.releaseName,
 					commitInfo: cacheMatchesRef ? versionCacheEntry.commitInfo : undefined,
 					commitDate: cacheMatchesRef ? versionCacheEntry.date : undefined,
 					locked: this.isLocalModuleLocked(configEntry),

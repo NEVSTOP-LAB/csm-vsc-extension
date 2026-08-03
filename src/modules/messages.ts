@@ -377,6 +377,14 @@ const messages = {
 		en: 'Copying {repo} files...',
 		zh: '正在复制 {repo} 文件...',
 	},
+	applyingReleaseDownloading: {
+		en: 'Downloading release assets for {repo}...',
+		zh: '正在下载 {repo} 的 Release 附件...',
+	},
+	releaseHasNoAssets: {
+		en: 'Release {release} has no downloadable assets.',
+		zh: 'Release {release} 没有可下载的附件。',
+	},
 	switchMethodSuccessWithBackup: {
 		en: 'Switched {module} to {method}. Backup saved to {backupPath}.',
 		zh: '已将 {module} 切换为 {method}。备份已保存到 {backupPath}。',
