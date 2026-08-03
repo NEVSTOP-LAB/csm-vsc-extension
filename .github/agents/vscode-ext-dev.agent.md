@@ -11,6 +11,7 @@ argument-hint: "描述需要开发的 VS Code 扩展功能或要解决的问题"
 ## 项目上下文
 
 当前项目 `csm-vsc-support`（publisher: NEVSTOP-LAB），技术栈：
+
 - TypeScript（strict，Node16 模块，ES2022 目标），esbuild 打包，Mocha 测试
 - VS Code 最低版本：`^1.63.0`（来自 `engines.vscode`，非 `@types/vscode`）
 - 文件扩展名：`.csmlog`（日志）、`.lvcsm`（配置）
@@ -19,12 +20,14 @@ argument-hint: "描述需要开发的 VS Code 扩展功能或要解决的问题"
 ## 编码规范
 
 ### AGENTS.md 核心原则
+
 - **先思考，再编码**：不确定时先查 VS Code API 文档，不要猜测 API 签名
 - **简洁优先**：用最少代码解决问题，不做无根据的抽象
 - **外科手术式修改**：只改必须改的，不"改进"相邻代码
 - **中文注释**：所有注释和回复使用中文
 
 ### 关键约束
+
 - 所有 disposable 必须通过 `context.subscriptions.push()` 注册，防止内存泄漏
 - Snippet 文本使用 `vscode.SnippetString` 包装，支持 `${1:placeholder}` Tab 占位符
 - `package.json` 的 `main` 指向 `./dist/extension.js`（esbuild 输出）
@@ -33,6 +36,7 @@ argument-hint: "描述需要开发的 VS Code 扩展功能或要解决的问题"
 ## 源码开发（src/）
 
 ### VS Code API 使用模式
+
 ```typescript
 // Provider 注册 - 始终通过 context.subscriptions.push()
 context.subscriptions.push(
@@ -52,12 +56,14 @@ context.subscriptions.push(
 ```
 
 ### FoldingRangeProvider 开发要点
+
 - 实现 `vscode.FoldingRangeProvider`，`kind` 设为 `vscode.FoldingRangeKind.Region`（区别于语法折叠）
 - 按 `(document.uri, document.version)` 缓存检测结果，文档未变时直接返回
 - 监听 `onDidChangeTextDocument` 清除受影响文档的缓存
 - 监听 `onDidCloseTextDocument` 清除已关闭文档的缓存（防止内存泄漏）
 
 ### 装饰器开发要点
+
 - 使用 `vscode.window.createTextEditorDecorationType` 创建装饰类型
 - 装饰类型需通过 `context.subscriptions.push()` 注册 dispose
 - 用 `editor.setDecorations()` 应用/清除装饰
@@ -66,25 +72,29 @@ context.subscriptions.push(
 ## 扩展清单（package.json）
 
 ### 文档同步（强制）
+
 修改以下字段时，必须同步更新文档：
 
-| 修改的字段 | 同步更新的文件 |
-|-----------|--------------|
-| `engines.vscode` | README.md、CHANGELOG.md |
-| `version` | CHANGELOG.md（新增版本条目） |
-| `contributes.commands` | README.md（功能列表）、CHANGELOG.md |
-| `contributes.views` / `contributes.menus` | README.md（功能列表） |
+| 修改的字段                                | 同步更新的文件                      |
+| ----------------------------------------- | ----------------------------------- |
+| `engines.vscode`                          | README.md、CHANGELOG.md             |
+| `version`                                 | CHANGELOG.md（新增版本条目）        |
+| `contributes.commands`                    | README.md（功能列表）、CHANGELOG.md |
+| `contributes.views` / `contributes.menus` | README.md（功能列表）               |
 
 ### 版本号注意
+
 - `engines.vscode` 是运行时 VS Code 最低版本（唯一权威来源）
 - `devDependencies.@types/vscode` 是类型声明版本，不等同于运行时要求
 - 所有文档中的版本引用必须以 `engines.vscode` 为准
 
 ### 国际化
+
 - 命令 title 等用户可见字符串使用 `%key%` 格式引用
 - 英文翻译在 `package.nls.json`，中文翻译在 `package.nls.zh-cn.json`
 
 ### 扩展清单结构要点
+
 ```jsonc
 {
   "contributes": {
@@ -102,10 +112,12 @@ context.subscriptions.push(
 ## 语法高亮（syntaxes/）
 
 此扩展为以下语言提供支持：
+
 - **csmlog**（`.csmlog` 文件）：CSM 状态机日志语言
 - **lvcsm**（`.lvcsm` 文件）：LabVIEW CSM 配置文件
 
 ### TextMate 语法规则
+
 ```jsonc
 {
   "$schema": "...",
@@ -123,6 +135,7 @@ context.subscriptions.push(
 ```
 
 ### Scope 命名约定
+
 - `keyword.control.<lang>` — 控制流关键字
 - `keyword.operator.<lang>` — 运算符
 - `string.quoted.double.<lang>` — 字符串
@@ -133,20 +146,30 @@ context.subscriptions.push(
 - `support.function.<lang>` — 内置函数
 
 ### 常用正则模式
+
 - `\\b` — 单词边界（防止部分匹配）
 - `(?i)` — 忽略大小写
 - `(?<=...)` — 正向后顾（Lookbehind，vscode-oniguruma 支持）
 - `captures` 用于分组着色，`begin/end` 用于多行块
 
 ### language-configuration.json
+
 控制编辑器的语言行为：
+
 ```jsonc
 {
   "comments": { "lineComment": "//", "blockComment": ["/*", "*/"] },
-  "brackets": [["{", "}"], ["[", "]"], ["(", ")"]],
+  "brackets": [
+    ["{", "}"],
+    ["[", "]"],
+    ["(", ")"],
+  ],
   "autoClosingPairs": [{ "open": "{", "close": "}" }],
   "surroundingPairs": [{ "open": "{", "close": "}" }],
-  "indentationRules": { "increaseIndentPattern": "\\{", "decreaseIndentPattern": "\\}" }
+  "indentationRules": {
+    "increaseIndentPattern": "\\{",
+    "decreaseIndentPattern": "\\}",
+  },
 }
 ```
 

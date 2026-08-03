@@ -15,10 +15,10 @@ YEAR.MONTH.RUN_NUMBER
 
 示例：`2026.4.42`
 
-| 字段         | 含义                                       | 示例   |
-|--------------|--------------------------------------------|--------|
-| `YEAR`       | UTC 构建年份（4 位）                       | `2026` |
-| `MONTH`      | UTC 构建月份（无前导零）                   | `4`    |
+| 字段         | 含义                                                 | 示例   |
+|--------------|------------------------------------------------------|--------|
+| `YEAR`       | UTC 构建年份（4 位）                                   | `2026` |
+| `MONTH`      | UTC 构建月份（无前导零）                               | `4`    |
 | `RUN_NUMBER` | GitHub Actions `github.run_number`（仓库级自增流水号） | `42`   |
 
 ---
@@ -81,10 +81,10 @@ Error: The VS Marketplace doesn't support prerelease versions: '2026.4.23-21'.
 
 ## 4. Artifact 与 VSIX 文件命名
 
-| 产物           | 命名规则                                        | 示例                              |
-|----------------|-------------------------------------------------|-----------------------------------|
+| 产物                    | 命名规则                               | 示例                             |
+|-------------------------|----------------------------------------|----------------------------------|
 | GitHub Actions Artifact | `csm-vsc-support-{build_version}-vsix` | `csm-vsc-support-2026.4.42-vsix` |
-| VSIX 文件      | `csm-vsc-support-{build_version}.vsix`          | `csm-vsc-support-2026.4.42.vsix` |
+| VSIX 文件               | `csm-vsc-support-{build_version}.vsix` | `csm-vsc-support-2026.4.42.vsix` |
 
 Artifact 名称与 VSIX 文件名保持一致（扩展名不同），便于在 CI 各 job 之间传递和下载。
 
