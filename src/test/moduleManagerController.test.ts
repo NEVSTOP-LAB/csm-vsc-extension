@@ -149,6 +149,7 @@ suite('ModuleManagerController Regression Tests', () => {
 				},
 			}),
 		});
+		mocked.__setQuickPickResponse({ mode: 'online' });
 
 		await controller.refreshCommand();
 
@@ -187,6 +188,7 @@ suite('ModuleManagerController Regression Tests', () => {
 			assert.strictEqual(options.prompt, false);
 			initRefreshCount += 1;
 		};
+		mocked.__setQuickPickResponse({ mode: 'online' });
 
 		await controller.refreshCommand();
 
@@ -218,6 +220,7 @@ suite('ModuleManagerController Regression Tests', () => {
 			assert.deepStrictEqual(options, { prompt: false });
 			initRefreshCount += 1;
 		};
+		mocked.__setQuickPickResponse({ mode: 'online' });
 
 		await controller.refreshCommand();
 
@@ -621,6 +624,7 @@ suite('ModuleManagerController Regression Tests', () => {
 			}),
 		});
 		controller.register([]);
+		mocked.__setQuickPickResponse({ mode: 'online' });
 
 		await controller.refreshCommand();
 
@@ -664,6 +668,7 @@ suite('ModuleManagerController Regression Tests', () => {
 				},
 			}),
 		});
+		mocked.__setQuickPickResponse({ mode: 'online' });
 
 		await controller.refreshCommand();
 
@@ -1279,6 +1284,7 @@ suite('ModuleManagerController Regression Tests', () => {
 			getSessionSilently: async () => undefined,
 			getSessionInteractively: async () => undefined,
 		};
+		mocked.__setQuickPickResponse({ mode: 'online' });
 
 		await controller.refreshCommand();
 
@@ -1303,11 +1309,96 @@ suite('ModuleManagerController Regression Tests', () => {
 			viewProvider: createViewProvider(),
 		});
 		mocked.__resetMessageLog();
+		mocked.__setQuickPickResponse({ mode: 'online' });
 
 		await controller.refreshCommand();
 
 		assert.strictEqual(fetched, true);
 		assert.strictEqual(mocked.__getLastWarningPrompt(), undefined);
+	});
+
+	test('refreshCommand offers online catalog and local module re-scan modes', async () => {
+		const controller = createController(undefined, {
+			authService: {
+				getSessionSilently: async () => createSession(),
+				getSessionInteractively: async () => undefined,
+			},
+			githubService: {
+				fetchModules: async () => ({ modules: [] }),
+				fetchReadme: async () => '',
+			},
+			viewProvider: createViewProvider(),
+		});
+		mocked.__setQuickPickResponse({ mode: 'online' });
+
+		await controller.refreshCommand();
+
+		const pick = mocked.__getLastQuickPick();
+		assert.ok(pick, 'refresh should show a quick pick');
+		const modes = (pick.items as Array<{ mode?: string }>).map((item) => item.mode);
+		assert.deepStrictEqual(modes, ['online', 'local']);
+	});
+
+	test('refreshCommand re-scans local modules without fetching GitHub in local mode', async () => {
+		let fetched = false;
+		let sidebarRefreshCount = 0;
+		let initRefreshCount = 0;
+		const controller = createController(undefined, {
+			authService: {
+				getSessionSilently: async () => createSession(),
+				getSessionInteractively: async () => undefined,
+			},
+			githubService: {
+				fetchModules: async () => {
+					fetched = true;
+					return { modules: [] };
+				},
+				fetchReadme: async () => '',
+			},
+			viewProvider: createViewProvider(),
+		}) as any;
+		controller.refreshSidebarWorkspaceState = async () => {
+			sidebarRefreshCount += 1;
+		};
+		controller.refreshWorkspaceInitializationState = async (options: { prompt: boolean }) => {
+			assert.strictEqual(options.prompt, false);
+			initRefreshCount += 1;
+		};
+		mocked.__setQuickPickResponse({ mode: 'local' });
+
+		await controller.refreshCommand();
+
+		assert.strictEqual(fetched, false);
+		assert.strictEqual(sidebarRefreshCount, 1);
+		assert.strictEqual(initRefreshCount, 1);
+	});
+
+	test('refreshCommand does nothing when the mode pick is dismissed', async () => {
+		let fetched = false;
+		const controller = createController(undefined, {
+			authService: {
+				getSessionSilently: async () => createSession(),
+				getSessionInteractively: async () => undefined,
+			},
+			githubService: {
+				fetchModules: async () => {
+					fetched = true;
+					return { modules: [] };
+				},
+				fetchReadme: async () => '',
+			},
+			viewProvider: createViewProvider(),
+		}) as any;
+		let sidebarRefreshCount = 0;
+		controller.refreshSidebarWorkspaceState = async () => {
+			sidebarRefreshCount += 1;
+		};
+		mocked.__setQuickPickResponse(undefined);
+
+		await controller.refreshCommand();
+
+		assert.strictEqual(fetched, false);
+		assert.strictEqual(sidebarRefreshCount, 0);
 	});
 
 	test('register keeps fresh cache without immediate background refresh', async () => {

@@ -63,6 +63,12 @@ type RepositoryVisibilityQuickPickItem = vscode.QuickPickItem & {
 	visibility: RepositoryVisibility;
 };
 
+type RefreshMode = 'online' | 'local';
+
+type RefreshModeQuickPickItem = vscode.QuickPickItem & {
+	mode: RefreshMode;
+};
+
 type ModuleManagerAuthService = Pick<AuthService, 'getSessionSilently' | 'getSessionInteractively'>
 	& Partial<Pick<AuthService, 'signOut' | 'verifyScopes'>>;
 
@@ -1338,10 +1344,39 @@ export class ModuleManagerController {
 	}
 
 	/**
-	 * Refreshes the GitHub module catalog and then recomputes the unified sidebar's
-	 * local workspace state and initialization prompt, even if the remote refresh fails.
+	 * 刷新入口（issue #76）：让用户选择是刷新在线模块目录缓存，还是重新搜索本地模块。
+	 * 两种模式完成后都会重算本地工作区状态与初始化提示。
 	 */
 	public async refreshCommand(): Promise<void> {
+		const pick = await vscode.window.showQuickPick<RefreshModeQuickPickItem>(
+			[
+				{
+					label: t('refreshOnlineCatalogLabel'),
+					detail: t('refreshOnlineCatalogDetail'),
+					mode: 'online',
+				},
+				{
+					label: t('refreshLocalModulesLabel'),
+					detail: t('refreshLocalModulesDetail'),
+					mode: 'local',
+				},
+			],
+			{ placeHolder: t('refreshModePickPlaceholder') },
+		);
+		if (!pick) {
+			return;
+		}
+		if (pick.mode === 'local') {
+			await this.refreshLocalModulesOnly();
+			return;
+		}
+		await this.refreshOnlineCatalog();
+	}
+
+	/**
+	 * 从 GitHub 刷新在线模块目录并更新本地缓存，随后重算本地工作区状态。
+	 */
+	private async refreshOnlineCatalog(): Promise<void> {
 		await vscode.window.withProgress(
 			{ location: vscode.ProgressLocation.Notification, title: t('outputChannelName') },
 			async (progress) => {
@@ -1349,19 +1384,26 @@ export class ModuleManagerController {
 				try {
 					await this.loadModules({ interactiveAuth: false, showSuccessMessage: true, showErrorMessage: true });
 				} finally {
-					try {
-						await this.refreshSidebarWorkspaceState();
-					} catch (error) {
-						this.logger.warn(`Failed to refresh sidebar workspace state after module refresh: ${error instanceof Error ? error.message : String(error)}`);
-					}
-					try {
-						await this.refreshWorkspaceInitializationState({ prompt: false });
-					} catch (error) {
-						this.logger.warn(`Failed to refresh workspace initialization state after module refresh: ${error instanceof Error ? error.message : String(error)}`);
-					}
+					await this.refreshLocalModulesOnly();
 				}
 			},
 		);
+	}
+
+	/**
+	 * 重新搜索本地模块目录（更新未管理模块列表），并重算工作区初始化提示。
+	 */
+	private async refreshLocalModulesOnly(): Promise<void> {
+		try {
+			await this.refreshSidebarWorkspaceState();
+		} catch (error) {
+			this.logger.warn(`Failed to refresh sidebar workspace state after module refresh: ${error instanceof Error ? error.message : String(error)}`);
+		}
+		try {
+			await this.refreshWorkspaceInitializationState({ prompt: false });
+		} catch (error) {
+			this.logger.warn(`Failed to refresh workspace initialization state after module refresh: ${error instanceof Error ? error.message : String(error)}`);
+		}
 	}
 
 	private async toggleStarCommand(entry: CsmModuleEntry): Promise<void> {
