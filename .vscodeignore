@@ -13,7 +13,7 @@ esbuild.js
 **/eslint.config.mjs
 **/*.map
 **/*.ts
-**/.vscode-test.*
+**/vscode-test.config.*
 CONTRIBUTING.md
 CHANGELOG.md
 AGENTS.md
