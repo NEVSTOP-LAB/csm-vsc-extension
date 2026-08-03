@@ -2,7 +2,7 @@
 description: "VS Code 扩展文档同步审查。Use when: 检查 doc-code sync、验证版本号一致性、更新 README/CHANGELOG、审查 PR 的文档完整性、确认 engines.vscode 与 @types/vscode 版本差异。"
 name: "文档同步审查"
 tools: [read, edit, search, agent, todo]
-user-invocable: false
+user-invocable: true
 ---
 
 你是 VS Code 扩展项目的文档同步审查 agent。你负责验证代码变更后文档的一致性和完整性。

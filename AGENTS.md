@@ -1,23 +1,23 @@
 # AGENTS.md
 
-**详细开发规范和 agent 分派规则**见 `.github/agents/` 下的 agent 文件。本项目通过 5 个专业子 agent 覆盖所有 VS Code 扩展开发场景，以下仅保留全局通用约定。
+**详细开发规范**见 `.github/agents/` 下的 agent 文件。本项目通过 2 个 agent 覆盖开发与审查场景：`vscode-ext-dev`（全部开发工作）、`vscode-ext-review`（文档同步审查）。以下仅保留全局通用约定。
 
 ---
 
 ## 项目架构
 
-| 模块 | 路径 | 职责 |
-|------|------|------|
-| 扩展入口 | `src/extension.ts` | 注册 Provider、命令、状态栏 |
-| 语言功能 | `src/language/` | CSMLog/LVCSM 语法高亮、Hover、Outline、折叠、文件装饰 |
-| ┣ Hover 数据 | `src/language/hoverData/` | Hover 知识库（操作符、命令、控制流等） |
-| ┣ 日志折叠 | `src/language/logFold/` | 归一化 → 检测 → FoldingRangeProvider → 装饰器 |
-| 模块管理 | `src/modules/` | 侧边栏 Webview、GitHub/Git 操作、配置管理 |
-| ┣ 类型定义 | `src/modules/types.ts` | 所有核心类型 |
-| ┣ 配置服务 | `src/modules/configService.ts` | YAML 配置读写 |
-| ┣ 控制器 | `src/modules/moduleManagerController.ts` | 命令注册、状态管理、WebView 通信 |
-| 共享工具 | `src/common/` | 常量、国际化、临时路径、DocumentSymbol 构建 |
-| 语法高亮 | `syntaxes/*.tmLanguage.json` | csmlog / lvcsm TextMate 语法 |
+| 模块         | 路径                                     | 职责                                              |
+|--------------|------------------------------------------|---------------------------------------------------|
+| 扩展入口     | `src/extension.ts`                       | 注册 Provider、命令、状态栏                         |
+| 语言功能     | `src/language/`                          | CSMLog/LVCSM 语法高亮、Hover、Outline、折叠、文件装饰 |
+| ┣ Hover 数据 | `src/language/hoverData/`                | Hover 知识库（操作符、命令、控制流等）                |
+| ┣ 日志折叠   | `src/language/logFold/`                  | 归一化 → 检测 → FoldingRangeProvider → 装饰器     |
+| 模块管理     | `src/modules/`                           | 侧边栏 Webview、GitHub/Git 操作、配置管理           |
+| ┣ 类型定义   | `src/modules/types.ts`                   | 所有核心类型                                      |
+| ┣ 配置服务   | `src/modules/configService.ts`           | YAML 配置读写                                     |
+| ┣ 控制器     | `src/modules/moduleManagerController.ts` | 命令注册、状态管理、WebView 通信                    |
+| 共享工具     | `src/common/`                            | 常量、国际化、临时路径、DocumentSymbol 构建          |
+| 语法高亮     | `syntaxes/*.tmLanguage.json`             | csmlog / lvcsm TextMate 语法                      |
 
 ## 使用中文
 
@@ -53,30 +53,3 @@
 - **`git add` 指定文件不用 `-A`**：`-A` 会误暂存 `nul`、`.codegraph/` 等未追踪文件。
 - **`fs.mkdtemp` 前确保父目录存在**：`mkdtemp` 不自动创建父目录，用 `fs.mkdirSync(dir, { recursive: true })` 兜底。
 - **Windows git vs Node.js 盘符大小写**：git 返回大写 `D:/...`，Node.js 用小写 `d:\...`，路径比较时先统一 `replace(/\\/g, '/').toLowerCase()`。
-
-## 开发工作流
-
-按以下流程完成一个需求的开发，整个过程**自主执行，无需等待用户确认**：
-
-### 1. 分支创建
-- 收到需求后，先从 `main` 创建 `feature/<功能简述>` 分支
-- 在开始任何代码修改前完成
-
-### 2. 实现 + 频繁提交
-- 按功能模块拆分为多个小提交（类型定义 → 逻辑实现 → 配置注册 → 国际化 → 测试）
-- 每个提交保证：`tsc --noEmit` 通过 + `npm test`（单元测试）全部通过，`npm run lint` 无新增告警
-- 提交信息简洁描述变更内容，保持中英文混合风格
-
-### 3. Review → 修复循环
-- 实现完成后调用 `review` 子 agent 审查当前分支
-- 根据 review 结果修复问题，再提交
-- **重复 review → fix → commit 直到 review 无阻塞项**
-- 每次修复后推送：`git push`
-
-### 4. 提交 PR
-- 使用 `gh pr create` 创建 PR，包含概述、修改列表、关键设计决策
-- 若 `gh` 未认证，告诉用户 PR 链接
-
-### 5. 收尾
-- 切换回 `main` 并拉取：`git checkout main && git pull`
-- 等待用户指定下一个任务
