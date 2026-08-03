@@ -807,12 +807,12 @@ const messages = {
 		zh: '未管理文件夹',
 	},
 	workspaceModulesEmptyTitle: {
-		en: 'No module folders found under {root}/',
-		zh: '在 {root}/ 下未发现模块文件夹',
+		en: 'No module candidates found under {root}/',
+		zh: '在 {root}/ 下未发现模块候选目录',
 	},
 	workspaceModulesEmptyBody: {
-		en: 'This workspace does not currently contain module folders in the configured local module root.',
-		zh: '当前工作区在已配置的本地模块根目录下还没有模块文件夹。',
+		en: 'This workspace does not currently contain detectable module candidate folders in the configured local module root.',
+		zh: '当前工作区在已配置的本地模块根目录下还没有可识别的模块候选目录。',
 	},
 	managedBadge: {
 		en: 'Managed',
@@ -877,6 +877,46 @@ const messages = {
 	tipBody: {
 		en: 'Use the checkboxes to build a selection, then apply modules from the toolbar or open individual README files from each card.',
 		zh: '使用复选框建立选择，然后可从工具栏应用模块，或从每张卡片打开对应的 README。',
+	},
+	applyNamespacePlaceholder: {
+		en: 'Choose where to place the selected modules under the local module root.',
+		zh: '选择要在本地模块根目录下放置所选模块的位置。',
+	},
+	applyNamespaceRootOption: {
+		en: 'Use {root}/ directly',
+		zh: '直接使用 {root}/',
+	},
+	applyNamespaceRootDetail: {
+		en: 'Modules will be placed directly under {root}/<module-name>.',
+		zh: '模块将直接放置到 {root}/<module-name>。',
+	},
+	applyNamespacePathDetail: {
+		en: 'Target namespace path: {path}',
+		zh: '目标命名空间路径：{path}',
+	},
+	applyNamespaceManualInput: {
+		en: 'Enter a new namespace path...',
+		zh: '输入新的命名空间路径...',
+	},
+	applyNamespaceManualInputDetail: {
+		en: 'Create or use a custom path under the module root (for example: HAL/niDMM).',
+		zh: '在模块根目录下创建或使用自定义路径（例如：HAL/niDMM）。',
+	},
+	applyNamespaceInputPrompt: {
+		en: 'Enter a namespace path relative to {root}/ (leave empty to use root directly).',
+		zh: '请输入相对于 {root}/ 的命名空间路径（留空表示直接使用根目录）。',
+	},
+	applyNamespaceCreateConfirm: {
+		en: 'Namespace path {path} does not exist yet. Create it now?',
+		zh: '命名空间路径 {path} 尚不存在。要立即创建吗？',
+	},
+	applyNamespaceCreateAction: {
+		en: 'Create Namespace',
+		zh: '创建命名空间',
+	},
+	applyNamespaceTip: {
+		en: 'Tip: created namespace path {path}. You can reuse it next time from the namespace selector.',
+		zh: '提示：已创建命名空间路径 {path}。下次可在命名空间选择器中直接复用。',
 	},
 	dismissTip: {
 		en: 'Dismiss tip',

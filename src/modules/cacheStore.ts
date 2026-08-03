@@ -10,6 +10,7 @@ const MODULE_ETAG_KEY = STORAGE_KEYS.moduleEtag;
 const MODULE_AUTH_KEY = STORAGE_KEYS.moduleAuth;
 const MODULE_SORT_STATE_KEY = STORAGE_KEYS.moduleSortState;
 const MODULE_LV_VERSION_KEY = STORAGE_KEYS.moduleLvVersion;
+const RECENT_NAMESPACE_BY_WORKSPACE_KEY = STORAGE_KEYS.recentNamespaceByWorkspace;
 const MODULE_CACHE_SCHEMA_VERSION = 1;
 
 function isModuleSnapshotShape(value: unknown): value is ModuleCacheSnapshot {
@@ -154,6 +155,18 @@ export class ModuleCacheStore {
 		await this.globalState.update(MODULE_LV_VERSION_KEY, cache);
 	}
 
+	public getRecentNamespaceByWorkspace(): Record<string, string> {
+		const value = this.globalState.get<unknown>(RECENT_NAMESPACE_BY_WORKSPACE_KEY);
+		if (!value || typeof value !== 'object' || Array.isArray(value)) {
+			return {};
+		}
+		return value as Record<string, string>;
+	}
+
+	public async setRecentNamespaceByWorkspace(cache: Record<string, string>): Promise<void> {
+		await this.globalState.update(RECENT_NAMESPACE_BY_WORKSPACE_KEY, cache);
+	}
+
 	public async clear(): Promise<void> {
 		await this.globalState.update(MODULE_CACHE_KEY, undefined);
 		await this.globalState.update(README_CACHE_KEY, undefined);
@@ -161,5 +174,6 @@ export class ModuleCacheStore {
 		await this.globalState.update(MODULE_AUTH_KEY, undefined);
 		await this.globalState.update(MODULE_SORT_STATE_KEY, undefined);
 		await this.globalState.update(MODULE_LV_VERSION_KEY, undefined);
+		await this.globalState.update(RECENT_NAMESPACE_BY_WORKSPACE_KEY, undefined);
 	}
 }

@@ -103,4 +103,58 @@ suite('Module Manager Boundary Tests', () => {
 			await fs.rm(tmpDir, { recursive: true, force: true });
 		}
 	});
+
+	test('listModuleDirectories skips excluded relative paths (managed module subtrees)', async () => {
+		const service = new WorkspaceModuleService();
+		const tmpDir = await fs.mkdtemp(path.join(getTempRoot(), 'csm-scan-'));
+		try {
+			// csm/
+			//   managed-a/          → excluded entirely (managed module)
+			//     inner/
+			//       data.lvlib      → strong signal; must NOT appear
+			//   other/
+			//     README.md
+			//     main.vi           → weak signal; must appear
+			const root = path.join(tmpDir, 'csm');
+			await fs.mkdir(path.join(root, 'managed-a', 'inner'), { recursive: true });
+			await fs.writeFile(path.join(root, 'managed-a', 'inner', 'data.lvlib'), '', 'utf8');
+			await fs.mkdir(path.join(root, 'other'), { recursive: true });
+			await fs.writeFile(path.join(root, 'other', 'README.md'), '# Other', 'utf8');
+			await fs.writeFile(path.join(root, 'other', 'main.vi'), '', 'utf8');
+
+			const discovered = await service.listModuleDirectories(tmpDir, 'csm', {
+				maxDepth: 3,
+				includeReadmeWeakSignal: true,
+				excludedRelativePaths: ['managed-a'],
+			});
+			assert.deepStrictEqual(discovered, ['other']);
+		} finally {
+			await fs.rm(tmpDir, { recursive: true, force: true });
+		}
+	});
+
+	test('listModuleDirectories skips default excluded directory names', async () => {
+		const service = new WorkspaceModuleService();
+		const tmpDir = await fs.mkdtemp(path.join(getTempRoot(), 'csm-skip-'));
+		try {
+			// csm/
+			//   node_modules/       → default excluded name
+			//     index.js + README → would otherwise be a weak-signal candidate
+			//   real/
+			//     README.md
+			//     main.vi           → weak signal; must appear
+			const root = path.join(tmpDir, 'csm');
+			await fs.mkdir(path.join(root, 'node_modules'), { recursive: true });
+			await fs.writeFile(path.join(root, 'node_modules', 'index.js'), '', 'utf8');
+			await fs.writeFile(path.join(root, 'node_modules', 'README.md'), 'x', 'utf8');
+			await fs.mkdir(path.join(root, 'real'), { recursive: true });
+			await fs.writeFile(path.join(root, 'real', 'README.md'), '# real', 'utf8');
+			await fs.writeFile(path.join(root, 'real', 'main.vi'), '', 'utf8');
+
+			const discovered = await service.listModuleDirectories(tmpDir, 'csm');
+			assert.deepStrictEqual(discovered, ['real']);
+		} finally {
+			await fs.rm(tmpDir, { recursive: true, force: true });
+		}
+	});
 });
