@@ -44,18 +44,19 @@ context.subscriptions.push(
 
 **文档同步（强制）**：
 
-| 修改字段 | 同步文档 |
-|---|---|
-| `engines.vscode` | README.md、CHANGELOG.md |
-| `version` | CHANGELOG.md（新增版本条目） |
-| `contributes.commands` | README.md（功能列表）、CHANGELOG.md |
-| `contributes.views` / `menus` | README.md（功能列表） |
+| 修改字段                      | 同步文档                            |
+| ----------------------------- | ----------------------------------- |
+| `engines.vscode`              | README.md、CHANGELOG.md             |
+| `version`                     | CHANGELOG.md（新增版本条目）        |
+| `contributes.commands`        | README.md（功能列表）、CHANGELOG.md |
+| `contributes.views` / `menus` | README.md（功能列表）               |
 
 **版本号铁律**：`engines.vscode` 是运行时最低版本唯一权威来源；`@types/vscode` 只是类型声明版本；文档版本引用一律以 `engines.vscode` 为准。
 
 **国际化**：用户可见字符串用 `%key%` 引用；英文 `package.nls.json`、中文 `package.nls.zh-cn.json`。
 
 **结构要点**：
+
 ```jsonc
 {
   "contributes": {
