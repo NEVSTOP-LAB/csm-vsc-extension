@@ -8,7 +8,6 @@ samples/**
 .github/**
 .gitignore
 .yarnrc
-esbuild.js
 **/tsconfig.json
 **/eslint.config.mjs
 **/*.map
