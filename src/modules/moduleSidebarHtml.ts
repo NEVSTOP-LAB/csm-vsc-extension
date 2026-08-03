@@ -1,6 +1,6 @@
 import * as crypto from 'crypto';
 import { ModuleListScope, ModuleSortDirection, ModuleSortField, ModuleSortState } from './types';
-import { getApplyMethodLabel, getHtmlLang, getVisibilityLabel, t } from './messages';
+import { formatRelativeDate, getApplyMethodLabel, getHtmlLang, getVisibilityLabel, t } from './messages';
 import { truncate } from './utils';
 import { ViewState } from './moduleTreeTypes';
 import { sortModules } from './sort';
@@ -447,6 +447,7 @@ function renderLocalManagedCard(entry: LocalManagedModuleEntry, state: LocalWork
 		renderBadge(getApplyMethodLabel(entry.method), entry.method),
 		...(entry.stale ? [renderBadge(t('staleDirectoryMissing'), 'stale')] : []),
 		renderBadge(getVisibilityLabel(entry.visibility), entry.visibility === 'private' ? 'private' : undefined),
+		renderBadge(getLocalManagedVersionLabel(entry), 'module-version'),
 		renderBadge(t('branchBadge', { branch: entry.branch })),
 		...topicBadges,
 	];
@@ -1053,6 +1054,12 @@ export function renderModuleSidebarHtml(state: ModuleSidebarRenderState): string
 			border-color: var(--vscode-button-background, #0078d4);
 			color: var(--vscode-button-background, #0078d4);
 			font-weight: 600;
+		}
+		.badge.module-version {
+			background: transparent;
+			border-color: var(--vscode-editorInfo-foreground, var(--vscode-panel-border));
+			color: var(--vscode-editorInfo-foreground, var(--vscode-foreground));
+			font-variant-numeric: tabular-nums;
 		}
 		.card-footer {
 			display: flex;
@@ -1743,6 +1750,12 @@ export function renderLocalWorkspaceViewHtml(state: LocalWorkspaceRenderState): 
 			color: var(--vscode-button-background, #0078d4);
 			font-weight: 600;
 		}
+		.badge.module-version {
+			background: transparent;
+			border-color: var(--vscode-editorInfo-foreground, var(--vscode-panel-border));
+			color: var(--vscode-editorInfo-foreground, var(--vscode-foreground));
+			font-variant-numeric: tabular-nums;
+		}
 		.action-toolbar {
 			display: flex;
 			align-items: center;
@@ -2043,6 +2056,36 @@ function renderContent(
 function getLocalLabviewVersion(moduleKey: string, state: ModuleSidebarRenderState): string | undefined {
 	const localEntry = state.managedModules.find((m) => m.moduleKey === moduleKey);
 	return localEntry?.labviewVersion;
+}
+
+function formatShortSha(sha: string | undefined): string {
+	if (!sha) {
+		return t('versionUnknown');
+	}
+	return sha.length > 10 ? sha.slice(0, 7) : sha;
+}
+
+/**
+ * 构建本地管理模块的当前版本展示文本（issue #37）：
+ * tag / release 优先显示来源名称，否则显示 短SHA · 提交信息 · 相对日期（读本地缓存）。
+ */
+function getLocalManagedVersionLabel(entry: LocalManagedModuleEntry): string {
+	if (entry.versionKind === 'tag' && entry.versionRef) {
+		return entry.versionRef;
+	}
+	if (entry.versionKind === 'release' && entry.versionRef) {
+		return entry.versionRef;
+	}
+	const ref = formatShortSha(entry.ref);
+	if (entry.commitInfo) {
+		const parts = [ref, truncate(entry.commitInfo, 40)];
+		const relative = formatRelativeDate(entry.commitDate);
+		if (relative) {
+			parts.push(relative);
+		}
+		return parts.join(' · ');
+	}
+	return ref;
 }
 
 function renderModuleCard(entry: CsmModuleEntry, state: ModuleSidebarRenderState): string {

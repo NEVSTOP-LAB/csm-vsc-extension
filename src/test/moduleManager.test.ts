@@ -1594,9 +1594,19 @@ suite('Module Manager Tests', () => {
 			assert.strictEqual(preview.latestRef, latestRef);
 			assert.ok(preview.backupDirectory?.endsWith('.csm-module-backups'));
 
-			const result = await service.updateModule(workspaceRoot, applied, moduleEntry, undefined, undefined, preview.latestRef);
+			const result = await service.updateModule(workspaceRoot, applied, moduleEntry, {
+				selection: {
+					kind: 'latest',
+					branch: 'main',
+					label: 'latest',
+					ref: preview.latestRef,
+				},
+				latestRefHint: preview.latestRef,
+			});
 			assert.strictEqual(result.entry.ref, latestRef);
 			assert.strictEqual(result.entry.locked, true);
+			assert.strictEqual(result.entry.versionKind, 'branch');
+			assert.strictEqual(result.entry.versionRef, 'main');
 			assert.ok(result.backupPath);
 			assert.strictEqual((await fs.stat(path.join(workspaceRoot, 'csm', 'module-copy', 'README.md'))).mode & 0o222, 0);
 			assert.ok((await fs.readFile(path.join(workspaceRoot, 'csm', 'module-copy', 'README.md'), 'utf8')).includes('# v2'));
@@ -1607,6 +1617,188 @@ suite('Module Manager Tests', () => {
 
 			const secondPreview = await service.previewCopyModuleUpdate(workspaceRoot, result.entry, moduleEntry);
 			assert.strictEqual(secondPreview.needsUpdate, false);
+		} finally {
+			await removeWritableTree(tempRoot);
+		}
+	});
+
+	test('WorkspaceModuleService updates a copy module to a specific older commit (rollback)', async function () {
+		this.timeout(20000);
+		const tempRoot = await fs.mkdtemp(path.join(getTempRoot(), 'csm-modules-copy-commit-'));
+		const moduleRepo = path.join(tempRoot, 'module-copy-commit-repo');
+		const workspaceRoot = path.join(tempRoot, 'plain-workspace');
+		const service = new WorkspaceModuleService();
+		try {
+			await fs.mkdir(moduleRepo, { recursive: true });
+			runGit(moduleRepo, ['init', '--initial-branch=main']);
+			runGit(moduleRepo, ['config', 'user.name', 'Test User']);
+			runGit(moduleRepo, ['config', 'user.email', 'test@example.com']);
+			await fs.writeFile(path.join(moduleRepo, 'README.md'), '# v1\n', 'utf8');
+			runGit(moduleRepo, ['add', 'README.md']);
+			runGit(moduleRepo, ['commit', '-m', 'init module']);
+			const firstSha = runGit(moduleRepo, ['rev-parse', 'HEAD']);
+			await fs.writeFile(path.join(moduleRepo, 'README.md'), '# v2\n', 'utf8');
+			runGit(moduleRepo, ['add', 'README.md']);
+			runGit(moduleRepo, ['commit', '-m', 'update module']);
+			const latestSha = runGit(moduleRepo, ['rev-parse', 'HEAD']);
+
+			await fs.mkdir(workspaceRoot, { recursive: true });
+			const config = await service.initializeConfig(workspaceRoot, 'csm');
+			const moduleEntry: CsmModuleEntry = {
+				id: 1,
+				owner: 'org',
+				name: 'module-copy-commit',
+				description: 'demo',
+				topics: ['csm-modsets'],
+				visibility: 'public',
+				defaultBranch: 'main',
+				repoUrl: moduleRepo,
+			};
+			const applied = await service.applyModule(workspaceRoot, config, moduleEntry, 'copy');
+			assert.strictEqual(applied.ref, latestSha);
+
+			// 回退到旧提交
+			const result = await service.updateModule(workspaceRoot, applied, moduleEntry, {
+				selection: {
+					kind: 'commit',
+					versionRef: firstSha,
+					ref: firstSha,
+					branch: 'main',
+					label: firstSha.slice(0, 7),
+					commitInfo: 'init module',
+				},
+			});
+			assert.strictEqual(result.entry.ref, firstSha);
+			assert.strictEqual(result.entry.versionKind, 'commit');
+			assert.strictEqual(result.entry.versionRef, firstSha);
+			assert.strictEqual(result.entry.branch, 'main');
+			assert.strictEqual(result.entry.locked, true);
+			assert.ok(result.backupPath);
+			assert.ok((await fs.readFile(path.join(workspaceRoot, 'csm', 'module-copy-commit', 'README.md'), 'utf8')).includes('# v1'));
+
+			// 备份 zip 保存的是更新前的 v2
+			const backupZip = await JSZip.loadAsync(await fs.readFile(result.backupPath!));
+			const backupReadme = await backupZip.file('module-copy-commit/README.md')?.async('string');
+			assert.ok(backupReadme?.includes('# v2'));
+		} finally {
+			await removeWritableTree(tempRoot);
+		}
+	});
+
+	test('WorkspaceModuleService updates a submodule to a specific commit (detached HEAD)', async function () {
+		this.timeout(20000);
+		const tempRoot = await fs.mkdtemp(path.join(getTempRoot(), 'csm-modules-submodule-commit-'));
+		const moduleRepo = path.join(tempRoot, 'module-sub-commit-repo');
+		const repoRoot = path.join(tempRoot, 'workspace-repo');
+		const service = new WorkspaceModuleService();
+		try {
+			await fs.mkdir(moduleRepo, { recursive: true });
+			runGit(moduleRepo, ['init', '--initial-branch=main']);
+			runGit(moduleRepo, ['config', 'user.name', 'Test User']);
+			runGit(moduleRepo, ['config', 'user.email', 'test@example.com']);
+			await fs.writeFile(path.join(moduleRepo, 'README.md'), '# v1\n', 'utf8');
+			runGit(moduleRepo, ['add', 'README.md']);
+			runGit(moduleRepo, ['commit', '-m', 'init module']);
+			const firstSha = runGit(moduleRepo, ['rev-parse', 'HEAD']);
+			await fs.writeFile(path.join(moduleRepo, 'README.md'), '# v2\n', 'utf8');
+			runGit(moduleRepo, ['add', 'README.md']);
+			runGit(moduleRepo, ['commit', '-m', 'update module']);
+
+			await fs.mkdir(repoRoot, { recursive: true });
+			runGit(repoRoot, ['init', '--initial-branch=main']);
+			runGit(repoRoot, ['config', 'user.name', 'Test User']);
+			runGit(repoRoot, ['config', 'user.email', 'test@example.com']);
+			runGit(repoRoot, ['-c', 'protocol.file.allow=always', 'submodule', 'add', moduleRepo, 'csm/module-a']);
+			runGit(repoRoot, ['commit', '-am', 'add submodule']);
+
+			const recovered = await service.recoverConfigFromExistingSubmodules(repoRoot);
+			assert.ok(recovered);
+			const entry = Object.values(recovered!.modules)[0]!;
+			assert.strictEqual(entry.method, 'submodule');
+
+			const moduleEntry: CsmModuleEntry = {
+				id: 1,
+				owner: 'local',
+				name: 'module-a',
+				description: 'demo',
+				topics: [],
+				visibility: 'public',
+				defaultBranch: 'main',
+				repoUrl: moduleRepo,
+			};
+
+			const result = await service.updateModule(repoRoot, entry, moduleEntry, {
+				selection: {
+					kind: 'commit',
+					versionRef: firstSha,
+					ref: firstSha,
+					branch: 'main',
+					label: firstSha.slice(0, 7),
+					commitInfo: 'init module',
+				},
+			});
+			assert.strictEqual(result.entry.ref, firstSha);
+			assert.strictEqual(result.entry.versionKind, 'commit');
+			assert.strictEqual(result.entry.versionRef, firstSha);
+
+			const submodulePath = path.join(repoRoot, 'csm', 'module-a');
+			const head = runGit(submodulePath, ['rev-parse', 'HEAD']);
+			assert.strictEqual(head, firstSha);
+			// detached HEAD：rev-parse --abbrev-ref 返回 "HEAD" 而非分支名
+			const abbrevRef = runGit(submodulePath, ['rev-parse', '--abbrev-ref', 'HEAD']);
+			assert.strictEqual(abbrevRef, 'HEAD');
+			assert.ok((await fs.readFile(path.join(submodulePath, 'README.md'), 'utf8')).includes('# v1'));
+		} finally {
+			await removeWritableTree(tempRoot);
+		}
+	});
+
+	test('WorkspaceModuleService updates a copy module to a tag version', async function () {
+		this.timeout(20000);
+		const tempRoot = await fs.mkdtemp(path.join(getTempRoot(), 'csm-modules-copy-tag-'));
+		const moduleRepo = path.join(tempRoot, 'module-copy-tag-repo');
+		const workspaceRoot = path.join(tempRoot, 'plain-workspace');
+		const service = new WorkspaceModuleService();
+		try {
+			await fs.mkdir(moduleRepo, { recursive: true });
+			runGit(moduleRepo, ['init', '--initial-branch=main']);
+			runGit(moduleRepo, ['config', 'user.name', 'Test User']);
+			runGit(moduleRepo, ['config', 'user.email', 'test@example.com']);
+			await fs.writeFile(path.join(moduleRepo, 'README.md'), '# v1\n', 'utf8');
+			runGit(moduleRepo, ['add', 'README.md']);
+			runGit(moduleRepo, ['commit', '-m', 'init module']);
+			const tagRef = runGit(moduleRepo, ['rev-parse', 'HEAD']);
+			runGit(moduleRepo, ['tag', 'v1.0']);
+			await fs.writeFile(path.join(moduleRepo, 'README.md'), '# v2\n', 'utf8');
+			runGit(moduleRepo, ['add', 'README.md']);
+			runGit(moduleRepo, ['commit', '-m', 'update module']);
+
+			await fs.mkdir(workspaceRoot, { recursive: true });
+			const config = await service.initializeConfig(workspaceRoot, 'csm');
+			const moduleEntry: CsmModuleEntry = {
+				id: 1,
+				owner: 'org',
+				name: 'module-copy-tag',
+				description: 'demo',
+				topics: ['csm-modsets'],
+				visibility: 'public',
+				defaultBranch: 'main',
+				repoUrl: moduleRepo,
+			};
+			const applied = await service.applyModule(workspaceRoot, config, moduleEntry, 'copy');
+
+			const result = await service.updateModule(workspaceRoot, applied, moduleEntry, {
+				selection: {
+					kind: 'tag',
+					versionRef: 'v1.0',
+					branch: 'main',
+					label: 'v1.0',
+				},
+			});
+			assert.strictEqual(result.entry.ref, tagRef);
+			assert.strictEqual(result.entry.versionKind, 'tag');
+			assert.strictEqual(result.entry.versionRef, 'v1.0');
+			assert.ok((await fs.readFile(path.join(workspaceRoot, 'csm', 'module-copy-tag', 'README.md'), 'utf8')).includes('# v1'));
 		} finally {
 			await removeWritableTree(tempRoot);
 		}

@@ -877,6 +877,13 @@ suite('ModuleManagerController Regression Tests', () => {
 				repoUrl: 'https://github.com/org/module-copy',
 			},
 		];
+		controller.versionService = {
+			listBranches: async () => [],
+			listTags: async () => [],
+			listReleases: async () => [],
+			listCommits: async () => [],
+			resolveCommitInfo: async () => ({}),
+		};
 		controller.workspaceModuleService = {
 			resolveGitRepositoryRoot: async () => undefined,
 			previewCopyModuleUpdate: async (workspaceRoot: string) => {
@@ -893,13 +900,11 @@ suite('ModuleManagerController Regression Tests', () => {
 				workspaceRoot: string,
 				entry: LocalModuleConfig['modules'][string],
 				_moduleEntry: CsmModuleEntry,
-				_authToken?: string,
-				repoRoot?: string,
-				latestRef?: string,
+				options: { repoRoot?: string; selection: { ref?: string } },
 			) => {
-				updateCall = { workspaceRoot, repoRoot, latestRef };
+				updateCall = { workspaceRoot, repoRoot: options.repoRoot, latestRef: options.selection.ref };
 				return {
-					entry: { ...entry, ref: latestRef ?? 'def4567890123' },
+					entry: { ...entry, ref: options.selection.ref ?? 'def4567890123' },
 					backupPath: 'd:/plain-workspace/.csm-module-backups/org__module-copy.zip',
 				};
 			},
@@ -918,6 +923,7 @@ suite('ModuleManagerController Regression Tests', () => {
 		controller.resolveWorkspaceFolder = async () => ({ name: 'plain-workspace', uri: vscode.Uri.file('d:/plain-workspace') });
 		controller.tryLoadSidebarLocalModuleConfig = async () => config;
 		controller.refreshSidebarWorkspaceState = async () => undefined;
+		mocked.__setQuickPickResponse({ versionSource: 'latest', label: 'Update to latest (main)' });
 		mocked.__setWarningMessageResponse('Update');
 
 		await controller.updateModuleCommand();
@@ -933,6 +939,171 @@ suite('ModuleManagerController Regression Tests', () => {
 		assert.ok(!errors.some((text) => text.includes('not a Git repository')));
 		const infos = mocked.__getMessageLog().filter((message) => message.level === 'info').map((message) => message.text);
 		assert.ok(infos.some((text) => text.includes('Backup saved to d:/plain-workspace/.csm-module-backups/org__module-copy.zip.')));
+	});
+
+	test('update command picks a specific commit via two-step quickpick and caches version info', async () => {
+		const controller = createController() as any;
+		let config: LocalModuleConfig = {
+			version: '2',
+			root: 'csm',
+			configPath: 'd:/plain-workspace/csm/csm-modules.yaml',
+			modules: {
+				org__module_copy: {
+					key: 'org__module_copy',
+					name: 'module-copy',
+					owner: 'org',
+					source: 'https://github.com/org/module-copy',
+					method: 'copy',
+					path: 'csm/module-copy',
+					ref: 'abc1234567890',
+					branch: 'main',
+				},
+			},
+		};
+		let updateSelection: { kind: string; ref?: string; branch?: string } | undefined;
+		let cachedVersionInfo: unknown;
+
+		controller.availableModules = [
+			{
+				id: 1,
+				owner: 'org',
+				name: 'module-copy',
+				description: 'demo',
+				topics: ['csm-modsets'],
+				visibility: 'public',
+				defaultBranch: 'main',
+				repoUrl: 'https://github.com/org/module-copy',
+			},
+		];
+		controller.versionService = {
+			listBranches: async () => [],
+			listTags: async () => [],
+			listReleases: async () => [],
+			listCommits: async () => [
+				{
+					sha: 'def4567890123abcdef',
+					message: 'fix xxx',
+					date: new Date(Date.now() - 2 * 24 * 3600 * 1000).toISOString(),
+				},
+				{ sha: 'abc1234567890abcdef', message: 'init module', date: undefined },
+			],
+			resolveCommitInfo: async () => ({}),
+		};
+		controller.workspaceModuleService = {
+			resolveGitRepositoryRoot: async () => undefined,
+			previewCopyModuleUpdate: async () => undefined as never,
+			updateModule: async (
+				_workspaceRoot: string,
+				entry: LocalModuleConfig['modules'][string],
+				_moduleEntry: CsmModuleEntry,
+				options: { repoRoot?: string; selection: { kind: string; ref?: string; branch?: string } },
+			) => {
+				updateSelection = { kind: options.selection.kind, ref: options.selection.ref, branch: options.selection.branch };
+				return {
+					entry: {
+						...entry,
+						ref: options.selection.ref ?? 'def4567890123abcdef',
+						versionKind: 'commit',
+						versionRef: options.selection.ref,
+					},
+					backupPath: 'd:/plain-workspace/.csm-module-backups/org__module-copy.zip',
+				};
+			},
+			withAppliedModule: (currentConfig: LocalModuleConfig, entry: LocalModuleConfig['modules'][string]) => {
+				config = {
+					...currentConfig,
+					modules: {
+						...currentConfig.modules,
+						[entry.key]: entry,
+					},
+				};
+				return config;
+			},
+			writeConfig: async () => undefined,
+		};
+		controller.resolveWorkspaceFolder = async () => ({ name: 'plain-workspace', uri: vscode.Uri.file('d:/plain-workspace') });
+		controller.tryLoadSidebarLocalModuleConfig = async () => config;
+		controller.refreshSidebarWorkspaceState = async () => undefined;
+		controller.cacheStore.setModuleVersionCache = async (cache: unknown) => {
+			cachedVersionInfo = cache;
+		};
+		// 第一步：选择"提交记录"；第二步：选择具体提交
+		mocked.__setQuickPickResponse({ versionSource: 'commits', label: 'Commit history' });
+		mocked.__setQuickPickResponse({
+			label: 'def4567 · fix xxx · 2天前',
+			commit: { sha: 'def4567890123abcdef', message: 'fix xxx', date: new Date(Date.now() - 2 * 24 * 3600 * 1000).toISOString() },
+		});
+		mocked.__setWarningMessageResponse('Update');
+
+		await controller.updateModuleCommand();
+
+		assert.deepStrictEqual(updateSelection, { kind: 'commit', ref: 'def4567890123abcdef', branch: 'main' });
+		// 提交信息写入本地缓存（key = owner/name）
+		assert.ok(cachedVersionInfo);
+		const cache = cachedVersionInfo as Record<string, { ref: string; commitInfo: string }>;
+		assert.deepStrictEqual(cache['org/module-copy']?.commitInfo, 'fix xxx');
+		const infos = mocked.__getMessageLog().filter((message) => message.level === 'info').map((message) => message.text);
+		assert.ok(infos.some((text) => text.includes('Updated org/module-copy to def4567 · fix xxx')));
+	});
+
+	test('update command cancels version source pick and aborts without touching the module', async () => {
+		const controller = createController() as any;
+		let updateCalled = false;
+		const config: LocalModuleConfig = {
+			version: '2',
+			root: 'csm',
+			configPath: 'd:/plain-workspace/csm/csm-modules.yaml',
+			modules: {
+				org__module_copy: {
+					key: 'org__module_copy',
+					name: 'module-copy',
+					owner: 'org',
+					source: 'https://github.com/org/module-copy',
+					method: 'copy',
+					path: 'csm/module-copy',
+					ref: 'abc1234567890',
+					branch: 'main',
+				},
+			},
+		};
+		controller.availableModules = [
+			{
+				id: 1,
+				owner: 'org',
+				name: 'module-copy',
+				description: 'demo',
+				topics: ['csm-modsets'],
+				visibility: 'public',
+				defaultBranch: 'main',
+				repoUrl: 'https://github.com/org/module-copy',
+			},
+		];
+		controller.versionService = {
+			listBranches: async () => [],
+			listTags: async () => [],
+			listReleases: async () => [],
+			listCommits: async () => [],
+			resolveCommitInfo: async () => ({}),
+		};
+		controller.workspaceModuleService = {
+			resolveGitRepositoryRoot: async () => undefined,
+			previewCopyModuleUpdate: async () => undefined as never,
+			updateModule: async () => {
+				updateCalled = true;
+				throw new Error('should not be called');
+			},
+			withAppliedModule: (currentConfig: LocalModuleConfig, _entry: LocalModuleConfig['modules'][string]) => currentConfig,
+			writeConfig: async () => undefined,
+		};
+		controller.resolveWorkspaceFolder = async () => ({ name: 'plain-workspace', uri: vscode.Uri.file('d:/plain-workspace') });
+		controller.tryLoadSidebarLocalModuleConfig = async () => config;
+		controller.refreshSidebarWorkspaceState = async () => undefined;
+		// 第一步 QuickPick 返回 undefined（用户取消）
+		mocked.__setQuickPickResponse(undefined);
+
+		await controller.updateModuleCommand();
+
+		assert.strictEqual(updateCalled, false);
 	});
 
 	test('switchLocalModuleMethodCommand switches a managed local module to submodule mode in a git workspace', async () => {

@@ -332,4 +332,135 @@ suite('GitHubModuleService Tests', () => {
 		assert.strictEqual(result.modules[0]?.fork, true);
 		assert.strictEqual(result.modules[0]?.pushedAt, '2026-06-10T00:00:00Z');
 	});
+
+	test('fetchCommits lists recent commits for a branch and maps message/date', async () => {
+		const requests: string[] = [];
+		globalThis.fetch = (async (input) => {
+			requests.push(String(input));
+			return {
+				ok: true,
+				status: 200,
+				headers: createHeaders(),
+				json: async () => [
+					{
+						sha: 'def4567890123abcdef',
+						commit: {
+							message: 'fix xxx\n\nbody',
+							author: { date: '2026-07-01T00:00:00Z' },
+						},
+					},
+					{
+						sha: 'abc1234567890abcdef',
+						commit: { message: 'init module' },
+					},
+				],
+			} as Response;
+		}) as FetchFn;
+
+		const service = new GitHubModuleService();
+		const commits = await service.fetchCommits('org', 'module-a', 'main', 'token-123');
+
+		assert.strictEqual(requests[0], 'https://api.github.com/repos/org/module-a/commits?sha=main&per_page=20');
+		assert.strictEqual(commits.length, 2);
+		assert.strictEqual(commits[0]?.sha, 'def4567890123abcdef');
+		assert.strictEqual(commits[0]?.commit?.message, 'fix xxx\n\nbody');
+		assert.strictEqual(commits[0]?.commit?.author?.date, '2026-07-01T00:00:00Z');
+	});
+
+	test('fetchTags lists tags with their referenced sha', async () => {
+		const requests: string[] = [];
+		globalThis.fetch = (async (input) => {
+			requests.push(String(input));
+			return {
+				ok: true,
+				status: 200,
+				headers: createHeaders(),
+				json: async () => [
+					{ name: 'v1.0', commit: { sha: 'aaa111' } },
+					{ name: 'v2.0', commit: { sha: 'bbb222' } },
+				],
+			} as Response;
+		}) as FetchFn;
+
+		const service = new GitHubModuleService();
+		const tags = await service.fetchTags('org', 'module-a', 'token-123');
+
+		assert.strictEqual(requests[0], 'https://api.github.com/repos/org/module-a/tags?per_page=20');
+		assert.strictEqual(tags.length, 2);
+		assert.strictEqual(tags[1]?.name, 'v2.0');
+		assert.strictEqual(tags[1]?.commit?.sha, 'bbb222');
+	});
+
+	test('fetchReleases lists releases with tag name and publish time', async () => {
+		const requests: string[] = [];
+		globalThis.fetch = (async (input) => {
+			requests.push(String(input));
+			return {
+				ok: true,
+				status: 200,
+				headers: createHeaders(),
+				json: async () => [
+					{
+						id: 5,
+						name: 'Release v1.0',
+						tag_name: 'v1.0',
+						published_at: '2026-06-01T00:00:00Z',
+						target_commitish: 'main',
+					},
+				],
+			} as Response;
+		}) as FetchFn;
+
+		const service = new GitHubModuleService();
+		const releases = await service.fetchReleases('org', 'module-a', 'token-123');
+
+		assert.strictEqual(requests[0], 'https://api.github.com/repos/org/module-a/releases?per_page=20');
+		assert.strictEqual(releases.length, 1);
+		assert.strictEqual(releases[0]?.tag_name, 'v1.0');
+		assert.strictEqual(releases[0]?.published_at, '2026-06-01T00:00:00Z');
+	});
+
+	test('fetchBranches lists branches with head commit sha', async () => {
+		const requests: string[] = [];
+		globalThis.fetch = (async (input) => {
+			requests.push(String(input));
+			return {
+				ok: true,
+				status: 200,
+				headers: createHeaders(),
+				json: async () => [
+					{ name: 'main', commit: { sha: 'ccc333' } },
+					{ name: 'dev', commit: { sha: 'ddd444' } },
+				],
+			} as Response;
+		}) as FetchFn;
+
+		const service = new GitHubModuleService();
+		const branches = await service.fetchBranches('org', 'module-a', 'token-123');
+
+		assert.strictEqual(requests[0], 'https://api.github.com/repos/org/module-a/branches?per_page=100');
+		assert.strictEqual(branches.length, 2);
+		assert.strictEqual(branches[1]?.name, 'dev');
+		assert.strictEqual(branches[1]?.commit?.sha, 'ddd444');
+	});
+
+	test('fetchCommit returns commit detail and undefined on failure', async () => {
+		globalThis.fetch = (async () => ({
+			ok: true,
+			status: 200,
+			headers: createHeaders(),
+			json: async () => ({ sha: 'aaa111', commit: { message: 'detail', author: { date: '2026-05-01T00:00:00Z' } } }),
+		}) as Response) as FetchFn;
+		const service = new GitHubModuleService();
+		const commit = await service.fetchCommit('org', 'module-a', 'aaa111');
+		assert.strictEqual(commit?.commit?.message, 'detail');
+
+		globalThis.fetch = (async () => ({
+			ok: false,
+			status: 404,
+			headers: createHeaders(),
+		}) as Response) as FetchFn;
+		const missing = await service.fetchCommit('org', 'module-a', 'nope');
+		assert.strictEqual(missing, undefined);
+	});
 });

@@ -19,6 +19,15 @@ export interface CsmModuleEntry {
 
 export type ModuleApplyMethod = 'submodule' | 'copy';
 
+/**
+ * 版本来源类型（issue #37）：
+ * - `branch`：分支
+ * - `commit`：具体提交（旧配置缺省按此处理）
+ * - `tag`：git 标签
+ * - `release`：GitHub Release
+ */
+export type ModuleVersionKind = 'branch' | 'commit' | 'tag' | 'release';
+
 export interface LocalModuleConfigEntry {
 	key: string;
 	name: string;
@@ -28,6 +37,10 @@ export interface LocalModuleConfigEntry {
 	path: string;
 	ref: string;
 	branch: string;
+	/** 版本来源类型（issue #37），旧配置缺省视为 `commit` */
+	versionKind?: ModuleVersionKind;
+	/** 版本来源引用：分支名 / tag 名 / release 名（commit 类型时为提交 SHA） */
+	versionRef?: string;
 	locked?: boolean;
 	/** LabVIEW 开发版本显示名（如 "lv2020"），持久化到 YAML 配置 */
 	labviewVersion?: string;
@@ -50,6 +63,14 @@ export interface LocalManagedModuleEntry {
 	method: ModuleApplyMethod;
 	branch: string;
 	ref: string;
+	/** 版本来源类型（issue #37），缺省视为 `commit` */
+	versionKind?: ModuleVersionKind;
+	/** 版本来源引用：分支名 / tag 名 / release 名 */
+	versionRef?: string;
+	/** 当前版本提交信息（来自本地缓存，避免每次在线查询） */
+	commitInfo?: string;
+	/** 当前版本提交日期（ISO 字符串，来自本地缓存） */
+	commitDate?: string;
 	locked?: boolean;
 	repoUrl: string;
 	description: string;
@@ -77,6 +98,69 @@ export interface CopyModuleUpdatePreview {
 	branch: string;
 	needsUpdate: boolean;
 	backupDirectory?: string;
+}
+
+// ---------------------------------------------------------------------------
+// 模块版本（issue #37）
+// ---------------------------------------------------------------------------
+
+/** 一次提交的展示信息 */
+export interface ModuleCommitInfo {
+	sha: string;
+	message: string;
+	/** ISO 日期字符串 */
+	date?: string;
+}
+
+/** 一个 git 标签的展示信息 */
+export interface ModuleTagInfo {
+	name: string;
+	/** 标签指向的引用 SHA（轻量标签为提交 SHA，注解标签可能为 tag 对象 SHA） */
+	sha: string;
+	/** ISO 日期字符串（尽力解析） */
+	date?: string;
+}
+
+/** 一个 GitHub Release 的展示信息 */
+export interface ModuleReleaseInfo {
+	name: string;
+	tagName: string;
+	/** ISO 发布时间字符串 */
+	publishedAt?: string;
+}
+
+/** 一个远端分支的展示信息 */
+export interface ModuleBranchInfo {
+	name: string;
+	/** 分支 HEAD 提交 SHA */
+	sha: string;
+}
+
+/**
+ * 用户选择的更新目标版本。`kind === 'latest'` 表示更新到分支最新提交（与现状一致）；
+ * 其余为具体版本来源（branch/commit/tag/release），更新时通过 `versionRef`/`ref` 定位。
+ */
+export interface ModuleVersionSelection {
+	kind: 'latest' | ModuleVersionKind;
+	/** 版本来源引用：分支名 / tag 名 / release 名 / 提交 SHA */
+	versionRef?: string;
+	/** 目标提交 SHA（尽力解析，供确认对话框与更新使用） */
+	ref?: string;
+	/** 更新所基于的分支（提交记录默认基于该分支） */
+	branch: string;
+	/** 目标版本展示文本（确认对话框与成功提示） */
+	label: string;
+	/** 目标提交信息（更新成功后写入本地缓存） */
+	commitInfo?: string;
+	/** 目标提交日期（ISO，更新成功后写入本地缓存） */
+	commitDate?: string;
+}
+
+/** 本地提交信息缓存条目：key=`owner/name`，value=`{ ref, commitInfo, date }` */
+export interface ModuleVersionCacheEntry {
+	ref: string;
+	commitInfo?: string;
+	date?: string;
 }
 
 export interface ModuleUpdateResult {

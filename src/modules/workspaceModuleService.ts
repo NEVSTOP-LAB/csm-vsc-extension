@@ -3,7 +3,7 @@ import * as fs from 'fs/promises';
 import { getTempRoot } from '../common/tempPaths';
 import * as path from 'path';
 import JSZip from 'jszip';
-import { CopyModuleUpdatePreview, CsmModuleEntry, LocalModuleConfig, LocalModuleConfigEntry, ModuleApplyMethod, ModuleUpdateResult } from './types';
+import { CopyModuleUpdatePreview, CsmModuleEntry, LocalModuleConfig, LocalModuleConfigEntry, ModuleApplyMethod, ModuleUpdateResult, ModuleVersionSelection } from './types';
 import { t } from './messages';
 import { GitService, IGitRunner } from './gitService';
 import {
@@ -51,6 +51,18 @@ export interface PublishLocalFolderResult {
 	remoteUrl: string;
 	headRef: string;
 	createdCommit: boolean;
+}
+
+/**
+ * 更新模块选项（issue #37）：携带用户选择的版本来源（最新 / 提交 / 标签 / Release）。
+ */
+export interface UpdateModuleOptions {
+	authToken?: string;
+	repoRoot?: string;
+	/** 目标版本选择；`kind === 'latest'` 保持原有"更新到分支最新"行为 */
+	selection: ModuleVersionSelection;
+	/** 更新到最新时的分支 HEAD 提示（避免额外一次 rev-parse） */
+	latestRefHint?: string;
 }
 
 export interface ModuleDirectoryScanOptions {
@@ -471,14 +483,16 @@ export class WorkspaceModuleService {
 		};
 	}
 
+	/**
+	 * 更新选项（issue #37）：携带用户选择的版本来源（最新 / 提交 / 标签 / Release）。
+	 */
 	public async updateModule(
 		workspaceRoot: string,
 		entry: LocalModuleConfigEntry,
 		moduleEntry: CsmModuleEntry,
-		authToken?: string,
-		repoRoot?: string,
-		latestRefHint?: string,
+		options: UpdateModuleOptions,
 	): Promise<ModuleUpdateResult> {
+		const { authToken, repoRoot, selection } = options;
 		const normalizedEntry = this.normalizeConfigEntry(entry);
 		const targetRelativePath = this.normalizeRootPath(normalizedEntry.path);
 		const targetAbsolute = this.toAbsoluteTargetPath(workspaceRoot, targetRelativePath);
@@ -490,26 +504,38 @@ export class WorkspaceModuleService {
 		try {
 			if (normalizedEntry.method === 'submodule') {
 				const gitRoot = repoRoot ?? workspaceRoot;
-				await this.runGit(gitRoot, ['submodule', 'update', '--remote', '--', targetRelativePath], authToken, normalizedEntry.source);
+				await this.runGit(gitRoot, ['submodule', 'update', '--init', '--', targetRelativePath], authToken, normalizedEntry.source);
+				await this.runGit(targetAbsolute, ['fetch', '--tags', 'origin'], authToken, normalizedEntry.source);
+				const checkoutRef = this.getSubmoduleCheckoutRef(selection);
+				await this.runGit(targetAbsolute, ['checkout', checkoutRef], authToken, normalizedEntry.source);
 				const head = await this.runGit(targetAbsolute, ['rev-parse', 'HEAD']);
 				return {
-					entry: this.normalizeConfigEntry({ ...normalizedEntry, ref: head }),
+					entry: this.normalizeConfigEntry(this.withVersionInfo({
+						...normalizedEntry,
+						ref: head,
+						branch: selection.branch,
+					}, selection)),
 				};
 			}
 
 			const tmpDir = await fs.mkdtemp(path.join(getTempRoot(), 'csm-update-'));
 			try {
-				const branch = normalizedEntry.branch || moduleEntry.defaultBranch || 'main';
-				await this.runGit(tmpDir, ['clone', '--depth', '1', '--branch', branch, normalizedEntry.source, 'src'], authToken, normalizedEntry.source);
-				const cloneRoot = path.join(tmpDir, 'src');
-				const head = (await this.runGit(cloneRoot, ['rev-parse', 'HEAD'])) || latestRefHint || this.normalizeRef(normalizedEntry.ref);
+				const cloneRoot = await this.cloneModuleVersion(tmpDir, selection, normalizedEntry, moduleEntry, authToken);
+				const head = (await this.runGit(cloneRoot, ['rev-parse', 'HEAD']))
+					|| selection.ref
+					|| options.latestRefHint
+					|| this.normalizeRef(normalizedEntry.ref);
 				const backupPath = await this.backupModuleDirectoryAsZip(workspaceRoot, normalizedEntry);
 				await fs.rm(targetAbsolute, { recursive: true, force: true });
 				await fs.mkdir(path.dirname(targetAbsolute), { recursive: true });
 				await fs.cp(cloneRoot, targetAbsolute, { recursive: true });
 				await fs.rm(path.join(targetAbsolute, '.git'), { recursive: true, force: true });
 				return {
-					entry: this.normalizeConfigEntry({ ...normalizedEntry, ref: head, branch }),
+					entry: this.normalizeConfigEntry(this.withVersionInfo({
+						...normalizedEntry,
+						ref: head,
+						branch: selection.branch,
+					}, selection)),
 					backupPath,
 				};
 			} finally {
@@ -1237,6 +1263,86 @@ export class WorkspaceModuleService {
 
 	private normalizeRef(value: string | undefined): string {
 		return value?.trim() ?? '';
+	}
+
+	/**
+	 * 计算 submodule 更新时的 checkout 目标（issue #37）：
+	 * - latest：`origin/<branch>`（detached HEAD，等价于原 `submodule update --remote`）
+	 * - tag / release：按 tag 名 checkout
+	 * - commit：按提交 SHA checkout
+	 */
+	private getSubmoduleCheckoutRef(selection: ModuleVersionSelection): string {
+		if (selection.kind === 'latest') {
+			return `origin/${selection.branch}`;
+		}
+		if (selection.kind === 'tag' || selection.kind === 'release') {
+			if (!selection.versionRef) {
+				throw new Error(`Missing tag reference for ${selection.kind} update.`);
+			}
+			return selection.versionRef;
+		}
+		if (!selection.ref) {
+			throw new Error('Missing commit reference for commit update.');
+		}
+		return selection.ref;
+	}
+
+	/**
+	 * 在临时目录拉取目标版本，返回 checkout 根目录（issue #37）：
+	 * - latest：`git clone --depth 1 --branch <branch>`（维持现状）
+	 * - tag / release：`git clone --depth 1 --branch <tag> --single-branch`
+	 * - commit：`git init` + `git fetch --depth 1 origin <sha>` + `git checkout FETCH_HEAD`
+	 */
+	private async cloneModuleVersion(
+		tmpDir: string,
+		selection: ModuleVersionSelection,
+		entry: LocalModuleConfigEntry,
+		moduleEntry: CsmModuleEntry,
+		authToken?: string,
+	): Promise<string> {
+		const source = entry.source;
+		if (selection.kind === 'latest') {
+			const branch = selection.branch || entry.branch || moduleEntry.defaultBranch || 'main';
+			await this.runGit(tmpDir, ['clone', '--depth', '1', '--branch', branch, source, 'src'], authToken, source);
+			return path.join(tmpDir, 'src');
+		}
+		if (selection.kind === 'tag' || selection.kind === 'release') {
+			const tagName = selection.versionRef;
+			if (!tagName) {
+				throw new Error(`Missing tag reference for ${selection.kind} update.`);
+			}
+			await this.runGit(tmpDir, ['clone', '--depth', '1', '--branch', tagName, '--single-branch', source, 'src'], authToken, source);
+			return path.join(tmpDir, 'src');
+		}
+		// commit 类型（含 branch → 具体提交）
+		const sha = selection.ref;
+		if (!sha) {
+			throw new Error('Missing commit reference for commit update.');
+		}
+		const checkoutPath = path.join(tmpDir, 'src');
+		await fs.mkdir(checkoutPath, { recursive: true });
+		await this.runGit(checkoutPath, ['init', '-q'], authToken, source);
+		await this.runGit(checkoutPath, ['remote', 'add', 'origin', source], authToken, source);
+		await this.runGit(checkoutPath, ['fetch', '--depth', '1', 'origin', sha], authToken, source);
+		await this.runGit(checkoutPath, ['checkout', 'FETCH_HEAD'], authToken, source);
+		return checkoutPath;
+	}
+
+	/**
+	 * 将版本选择写入配置条目（issue #37）：
+	 * - latest → versionKind=`branch`、versionRef=分支名
+	 * - 其余 → versionKind=选择来源类型、versionRef=来源引用（commit 为提交 SHA）
+	 */
+	private withVersionInfo(entry: LocalModuleConfigEntry, selection: ModuleVersionSelection): LocalModuleConfigEntry {
+		const next: LocalModuleConfigEntry = { ...entry };
+		if (selection.kind === 'latest') {
+			next.versionKind = 'branch';
+			next.versionRef = selection.branch;
+		} else {
+			next.versionKind = selection.kind;
+			next.versionRef = selection.versionRef ?? (selection.kind === 'commit' ? entry.ref : undefined);
+		}
+		return next;
 	}
 
 	private getBackupDirectory(workspaceRoot: string): string {

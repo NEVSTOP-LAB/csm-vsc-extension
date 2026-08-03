@@ -202,6 +202,137 @@ const messages = {
 		en: 'Failed to update module: {message}',
 		zh: '更新模块失败：{message}',
 	},
+	// ------------------------------------------------------------------
+	// 模块版本选择（issue #37）
+	// ------------------------------------------------------------------
+	updateToLatestOption: {
+		en: 'Update to latest ({branch})',
+		zh: '更新到最新（{branch}）',
+	},
+	updateToLatestDetail: {
+		en: 'Update the module to the latest commit on branch {branch}.',
+		zh: '将模块更新到分支 {branch} 的最新提交。',
+	},
+	versionSourceCommits: {
+		en: 'Commit history',
+		zh: '提交记录',
+	},
+	versionSourceCommitsDetail: {
+		en: 'Recent {count} commits on branch {branch}.',
+		zh: '分支 {branch} 上最近的 {count} 条提交。',
+	},
+	versionSourceTags: {
+		en: 'Tags',
+		zh: '标签',
+	},
+	versionSourceTagsDetail: {
+		en: 'Recent {count} git tags.',
+		zh: '仓库最近的 {count} 个 git 标签。',
+	},
+	versionSourceReleases: {
+		en: 'Releases',
+		zh: 'Release',
+	},
+	versionSourceReleasesDetail: {
+		en: 'Recent {count} GitHub releases.',
+		zh: '仓库最近的 {count} 个 GitHub Release。',
+	},
+	versionSourceBranches: {
+		en: 'Branches',
+		zh: '分支',
+	},
+	versionSourceBranchesDetail: {
+		en: 'All branches; pick a commit from the chosen branch afterwards.',
+		zh: '仓库全部分支；选择分支后可进一步选择该分支的提交。',
+	},
+	versionSourcePlaceholder: {
+		en: 'Choose a version source for {module}',
+		zh: '请为 {module} 选择版本来源',
+	},
+	versionCommitsPlaceholder: {
+		en: 'Choose a commit to update to',
+		zh: '请选择要更新到的提交',
+	},
+	versionTagsPlaceholder: {
+		en: 'Choose a tag to update to',
+		zh: '请选择要更新到的标签',
+	},
+	versionReleasesPlaceholder: {
+		en: 'Choose a release to update to',
+		zh: '请选择要更新到的 Release',
+	},
+	versionBranchesPlaceholder: {
+		en: 'Choose a branch',
+		zh: '请选择分支',
+	},
+	versionListEmpty: {
+		en: 'No {kind} found for this module.',
+		zh: '该模块没有可用的{kind}。',
+	},
+	versionKindCommits: {
+		en: 'commits',
+		zh: '提交',
+	},
+	versionKindTags: {
+		en: 'tags',
+		zh: '标签',
+	},
+	versionKindReleases: {
+		en: 'releases',
+		zh: 'Release',
+	},
+	versionKindBranches: {
+		en: 'branches',
+		zh: '分支',
+	},
+	versionUpdateConfirmationWithBackup: {
+		en: 'Update {module} from {current} to {target}? The current folder will be replaced, and a zip backup will be saved to {backupDirectory}.',
+		zh: '要将模块 {module} 从 {current} 更新到 {target} 吗？当前模块目录将被整体替换，并在 {backupDirectory} 中保存一个 zip 备份。',
+	},
+	versionUpdateConfirmationWithoutBackup: {
+		en: 'Update {module} from {current} to {target}? The current folder will be replaced. No local folder was found to back up.',
+		zh: '要将模块 {module} 从 {current} 更新到 {target} 吗？当前模块目录将被整体替换，但未找到可备份的本地目录。',
+	},
+	versionUpdateSubmoduleConfirmation: {
+		en: 'Update submodule {module} from {current} to {target}? The submodule will be checked out at the target version (detached HEAD).',
+		zh: '要将子模块 {module} 从 {current} 更新到 {target} 吗？子模块将被检出到目标版本（detached HEAD）。',
+	},
+	updateSuccessVersion: {
+		en: 'Updated {module} to {version}.',
+		zh: '已将 {module} 更新到 {version}。',
+	},
+	updateSuccessVersionWithBackup: {
+		en: 'Updated {module} to {version}. Backup saved to {backupPath}.',
+		zh: '已将 {module} 更新到 {version}。备份已保存到 {backupPath}。',
+	},
+	relativeJustNow: {
+		en: 'just now',
+		zh: '刚刚',
+	},
+	relativeMinutes: {
+		en: '{count} minute(s) ago',
+		zh: '{count} 分钟前',
+	},
+	relativeHours: {
+		en: '{count} hour(s) ago',
+		zh: '{count} 小时前',
+	},
+	relativeDays: {
+		en: '{count} day(s) ago',
+		zh: '{count} 天前',
+	},
+	relativeMonths: {
+		en: '{count} month(s) ago',
+		zh: '{count} 个月前',
+	},
+	relativeYears: {
+		en: '{count} year(s) ago',
+		zh: '{count} 年前',
+	},
+	versionUnknown: {
+		en: 'unknown version',
+		zh: '未知版本',
+	},
 	switchMethodAction: {
 		en: 'Switch',
 		zh: '切换',
@@ -1192,6 +1323,42 @@ export function getHtmlLang(): string {
 
 export function getApplyMethodLabel(method: ModuleApplyMethod): string {
 	return method === 'copy' ? t('applyMethodCopyLabel') : t('applyMethodSubmoduleLabel');
+}
+
+/**
+ * 将 ISO 日期字符串格式化为相对时间（如 "2天前"）。
+ * 解析失败或为空时返回空字符串。
+ */
+export function formatRelativeDate(isoDate: string | undefined): string {
+	if (!isoDate) {
+		return '';
+	}
+	const parsed = new Date(isoDate);
+	if (Number.isNaN(parsed.getTime())) {
+		return '';
+	}
+	const diffMs = Date.now() - parsed.getTime();
+	const minutes = Math.floor(diffMs / 60000);
+	if (minutes < 1) {
+		return t('relativeJustNow');
+	}
+	const hours = Math.floor(minutes / 60);
+	if (hours < 1) {
+		return t('relativeMinutes', { count: minutes });
+	}
+	const days = Math.floor(hours / 24);
+	if (days < 1) {
+		return t('relativeHours', { count: hours });
+	}
+	const months = Math.floor(days / 30);
+	if (months < 1) {
+		return t('relativeDays', { count: days });
+	}
+	const years = Math.floor(days / 365);
+	if (years < 1) {
+		return t('relativeMonths', { count: months });
+	}
+	return t('relativeYears', { count: years });
 }
 
 export function getVisibilityLabel(visibility: 'private' | 'public'): string {

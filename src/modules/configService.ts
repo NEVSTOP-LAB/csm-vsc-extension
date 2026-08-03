@@ -80,6 +80,10 @@ export function isLegacyConfigPath(configPath: string): boolean {
 // Serialization / deserialization
 // ---------------------------------------------------------------------------
 
+function isModuleVersionKind(value: unknown): value is LocalModuleConfigEntry['versionKind'] {
+	return value === 'branch' || value === 'commit' || value === 'tag' || value === 'release';
+}
+
 export function finalizeModuleSection(module: Partial<LocalModuleConfigEntry>): LocalModuleConfigEntry {
 	const entry: LocalModuleConfigEntry = {
 		key: module.key ?? '',
@@ -92,6 +96,12 @@ export function finalizeModuleSection(module: Partial<LocalModuleConfigEntry>): 
 		branch: module.branch ?? '',
 		locked: isEntryLocked(module),
 	};
+	if (isModuleVersionKind(module.versionKind)) {
+		entry.versionKind = module.versionKind;
+	}
+	if (module.versionRef) {
+		entry.versionRef = module.versionRef;
+	}
 	if (module.labviewVersion) {
 		entry.labviewVersion = module.labviewVersion;
 	}
@@ -112,6 +122,13 @@ export function serializeConfig(config: LocalModuleConfig): string {
 			branch: module.branch,
 			locked: isEntryLocked(module),
 		};
+		// Only persist versionKind/versionRef when present (issue #37)
+		if (isModuleVersionKind(module.versionKind)) {
+			entry.versionKind = module.versionKind;
+		}
+		if (module.versionRef) {
+			entry.versionRef = module.versionRef;
+		}
 		// Only persist labviewVersion when detected, avoid writing empty values
 		if (module.labviewVersion) {
 			entry.labviewVersion = module.labviewVersion;
@@ -170,6 +187,10 @@ export function parseYamlConfig(raw: string): ParsedConfigShape {
 				ref: typeof entry.ref === 'string' ? entry.ref : undefined,
 				branch: typeof entry.branch === 'string' ? entry.branch : undefined,
 				locked: typeof entry.locked === 'boolean' ? entry.locked : undefined,
+				versionKind: entry.versionKind === 'branch' || entry.versionKind === 'commit' || entry.versionKind === 'tag' || entry.versionKind === 'release'
+					? entry.versionKind
+					: undefined,
+				versionRef: typeof entry.versionRef === 'string' ? entry.versionRef : undefined,
 				labviewVersion: typeof entry.labviewVersion === 'string' ? entry.labviewVersion : undefined,
 			});
 		}

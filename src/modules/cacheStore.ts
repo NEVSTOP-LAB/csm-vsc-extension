@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { ModuleSortState } from './types';
 import { normalizeModuleSortState } from './sort';
-import { CsmModuleEntry, ModuleAuthSnapshot, ModuleCacheSnapshot } from './types';
+import { CsmModuleEntry, ModuleAuthSnapshot, ModuleCacheSnapshot, ModuleVersionCacheEntry } from './types';
 import { STORAGE_KEYS } from './constants';
 
 const MODULE_CACHE_KEY = STORAGE_KEYS.moduleCache;
@@ -11,6 +11,7 @@ const MODULE_AUTH_KEY = STORAGE_KEYS.moduleAuth;
 const MODULE_SORT_STATE_KEY = STORAGE_KEYS.moduleSortState;
 const MODULE_LV_VERSION_KEY = STORAGE_KEYS.moduleLvVersion;
 const RECENT_NAMESPACE_BY_WORKSPACE_KEY = STORAGE_KEYS.recentNamespaceByWorkspace;
+const MODULE_VERSION_CACHE_KEY = STORAGE_KEYS.moduleVersionCache;
 const MODULE_CACHE_SCHEMA_VERSION = 1;
 
 function isModuleSnapshotShape(value: unknown): value is ModuleCacheSnapshot {
@@ -167,6 +168,23 @@ export class ModuleCacheStore {
 		await this.globalState.update(RECENT_NAMESPACE_BY_WORKSPACE_KEY, cache);
 	}
 
+	/**
+	 * 获取模块当前版本提交信息缓存（key=`owner/name`，value=`{ ref, commitInfo, date }`）。
+	 * 在更新/选择版本成功时写入，侧边栏展示时优先读缓存，避免每次在线查询（issue #37）。
+	 */
+	public getModuleVersionCache(): Record<string, ModuleVersionCacheEntry> {
+		const value = this.globalState.get<unknown>(MODULE_VERSION_CACHE_KEY);
+		if (!value || typeof value !== 'object' || Array.isArray(value)) {
+			return {};
+		}
+		return value as Record<string, ModuleVersionCacheEntry>;
+	}
+
+	/** 更新模块当前版本提交信息缓存（整体替换）。 */
+	public async setModuleVersionCache(cache: Record<string, ModuleVersionCacheEntry>): Promise<void> {
+		await this.globalState.update(MODULE_VERSION_CACHE_KEY, cache);
+	}
+
 	public async clear(): Promise<void> {
 		await this.globalState.update(MODULE_CACHE_KEY, undefined);
 		await this.globalState.update(README_CACHE_KEY, undefined);
@@ -175,5 +193,6 @@ export class ModuleCacheStore {
 		await this.globalState.update(MODULE_SORT_STATE_KEY, undefined);
 		await this.globalState.update(MODULE_LV_VERSION_KEY, undefined);
 		await this.globalState.update(RECENT_NAMESPACE_BY_WORKSPACE_KEY, undefined);
+		await this.globalState.update(MODULE_VERSION_CACHE_KEY, undefined);
 	}
 }
