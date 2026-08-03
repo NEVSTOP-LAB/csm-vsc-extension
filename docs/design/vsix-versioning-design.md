@@ -98,16 +98,10 @@ Artifact 名称与 VSIX 文件名保持一致（扩展名不同），便于在 C
 
 ---
 
-## 6. 本地结束 Hook（开发流程）
+## 6. 本地开发：Copilot 自动编译校验
 
-为了保证每次本地验证都能安装到最新扩展包，开发流程新增 `npm run hook:finish`：
+开发时不再本地打包 / 安装 VSIX，改为每次 Copilot 会话结束时自动校验代码可编译：
 
-1. 自动 patch 递增 `package.json` 的 `version`
-2. 同步更新 `README.md` 与 `CHANGELOG.md`
-3. 执行类型检查、lint、编译与测试
-4. 本地打包 VSIX 并尝试通过 `code --install-extension` 安装
-
-此流程是**本地开发约束**，与 CI 的日历化版本注入（`YEAR.MONTH.RUN_NUMBER`）并行存在，目标不同：
-
-- CI 版本用于流水线产物唯一化与发布链路
-- 本地版本用于开发安装覆盖与变更追踪
+- **机制**：`.github/hooks/local-finish-stop.json` 注册 `Stop` hook，会话结束时执行 `scripts/copilot-stop-hook.mjs`
+- **动作**：运行 `npm run compile`（类型检查 + lint + esbuild 打包）；编译失败时阻止会话结束并回传原因，连续失败则放行避免死循环
+- **与 CI 的关系**：本地 hook 只保证代码可编译，VSIX 打包与发布统一由 CI 完成

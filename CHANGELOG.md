@@ -30,6 +30,9 @@
 - 清理废弃代码：删除已废弃的 `moduleTreeDataProvider.ts`（提取 `ViewState` 和 `ModuleTreeItem` 到 `moduleTreeTypes.ts`）和死代码 `csmlogHoverTranslations.ts`
 - 测试：新增 `i18n.test.ts`（13 个测试）、`hoverDataModules.test.ts`（12 个测试）、`sort.test.ts`（16 个测试），测试总数从 76 增至 119
 - CI：将新增测试文件纳入 CI 流程
+- 简化 AI 开发设施：Copilot 自动 hook 收敛为单个 `Stop` hook（每次会话结束执行 `npm run compile`，不再自动打包安装 VSIX），删除 `hook:finish`、`vsix:package`、`vsix:verify-local` 等手动脚本
+- 重构：5 个 custom agent 合并为 2 个（`vscode-ext-dev` 负责全部开发、`vscode-ext-review` 负责文档同步审查），并精简 `AGENTS.md`
+- 维护：清理 `.vscode/settings.json` 中失效的 `chat.tools.terminal.autoApprove` 配置
 
 ### 新增
 
