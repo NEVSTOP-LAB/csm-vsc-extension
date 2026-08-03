@@ -76,7 +76,7 @@ type RefreshModeQuickPickItem = vscode.QuickPickItem & {
 // 模块版本选择（issue #37）QuickPick item 类型
 // ---------------------------------------------------------------------------
 
-type VersionSourceKind = 'latest' | 'commits' | 'tags' | 'releases' | 'branches';
+type VersionSourceKind = 'latest' | 'commits' | 'tags' | 'branches';
 
 type VersionSourceQuickPickItem = vscode.QuickPickItem & {
 	versionSource: VersionSourceKind;
@@ -357,10 +357,17 @@ export class ModuleManagerController {
 		if (typeof targetNamespace === 'undefined') {
 			return;
 		}
-		// 单选时提供版本来源选择（issue #37）：置顶“使用默认分支”，其余来源与更新一致；
-		// 多选时不提供版本选择，沿用默认分支（现状）。用户取消版本选择时回退到默认分支继续。
+		// 版本来源 / Release 选择（issue #37）：
+		// - release 引入方式（仅单选）：弹 release 列表选具体 release 后下载附件
+		// - submodule / copy 单选：版本来源选择（置顶“使用默认分支”，不再包含 release）
+		// - 多选：不提供版本选择，沿用默认分支（现状）
 		let versionSelection: ModuleVersionSelection | undefined;
-		if (selectedEntries.length === 1) {
+		if (applyMethod === 'release') {
+			versionSelection = await this.promptReleaseSelection(selectedEntries[0], authToken);
+			if (!versionSelection) {
+				return;
+			}
+		} else if (selectedEntries.length === 1) {
 			const singleEntry = selectedEntries[0];
 			const defaultBranch = singleEntry.defaultBranch || 'main';
 			versionSelection = await this.promptVersionSelection(
@@ -662,21 +669,29 @@ export class ModuleManagerController {
 		const targetLabel = `${target.owner}/${target.name}`;
 		try {
 			// 第一步：选择版本来源
-			const branch = target.branch || moduleEntry.defaultBranch || 'main';
-			const selection = await this.promptVersionSelection(
-				{
-					owner: target.owner,
-					name: target.name,
-					source: target.source,
-					branch,
-					moduleLabel: `${target.owner}/${target.name}`,
-				},
-				authToken,
-				{
-					label: t('updateToLatestOption', { branch }),
-					detail: t('updateToLatestDetail', { branch }),
-				},
-			);
+			// 第一步：选择版本来源 / Release（issue #37）
+			// - release 引入方式：弹 release 列表选具体 release
+			// - submodule / copy：版本来源选择（不再包含 release）
+			let selection: ModuleVersionSelection | undefined;
+			if (target.method === 'release') {
+				selection = await this.promptReleaseSelection(moduleEntry, authToken);
+			} else {
+				const branch = target.branch || moduleEntry.defaultBranch || 'main';
+				selection = await this.promptVersionSelection(
+					{
+						owner: target.owner,
+						name: target.name,
+						source: target.source,
+						branch,
+						moduleLabel: `${target.owner}/${target.name}`,
+					},
+					authToken,
+					{
+						label: t('updateToLatestOption', { branch }),
+						detail: t('updateToLatestDetail', { branch }),
+					},
+				);
+			}
 			if (!selection) {
 				return;
 			}
@@ -757,7 +772,8 @@ export class ModuleManagerController {
 	// ----------------------------------------------------------------------
 
 	/**
-	 * 第一步：选择版本来源（最新/使用默认分支 / 提交记录 / 标签 / Release / 分支）。
+	 * 第一步：选择版本来源（最新/使用默认分支 / 提交记录 / 标签 / 分支）。
+	 * release 已作为独立引入方式，不再出现在版本来源中。
 	 * 选择具体来源后进入第二步选择具体版本；分支来源会再进入该分支的提交列表。
 	 */
 	private async promptVersionSelection(
@@ -785,11 +801,6 @@ export class ModuleManagerController {
 				versionSource: 'tags',
 			},
 			{
-				label: t('versionSourceReleases'),
-				detail: t('versionSourceReleasesDetail', { count: VERSION_LIST_LIMIT }),
-				versionSource: 'releases',
-			},
-			{
 				label: t('versionSourceBranches'),
 				detail: t('versionSourceBranchesDetail'),
 				versionSource: 'branches',
@@ -814,10 +825,6 @@ export class ModuleManagerController {
 				const tags = await this.versionService.listTags(owner, name, repoUrl, authToken);
 				return this.pickTag(tags, branch);
 			}
-			case 'releases': {
-				const releases = await this.versionService.listReleases(owner, name, authToken);
-				return this.pickRelease(releases, branch);
-			}
 			case 'branches': {
 				const branches = await this.versionService.listBranches(owner, name, repoUrl, authToken);
 				const pickedBranch = await this.pickBranch(branches);
@@ -827,6 +834,8 @@ export class ModuleManagerController {
 				const commits = await this.versionService.listCommits(owner, name, pickedBranch.name, repoUrl, authToken);
 				return this.pickCommit(commits, pickedBranch.name);
 			}
+			default:
+				return undefined;
 		}
 	}
 
@@ -885,6 +894,18 @@ export class ModuleManagerController {
 		};
 	}
 
+	/**
+	 * release 引入方式：弹 release 列表选具体一个（含当前/最新），再下载其附件。
+	 */
+	private async promptReleaseSelection(
+		moduleEntry: CsmModuleEntry,
+		authToken: string | undefined,
+	): Promise<ModuleVersionSelection | undefined> {
+		const releases = await this.versionService.listReleases(moduleEntry.owner, moduleEntry.name, authToken);
+		const branch = moduleEntry.defaultBranch || 'main';
+		return this.pickRelease(releases, branch);
+	}
+
 	private async pickRelease(releases: ModuleReleaseInfo[], branch: string): Promise<ModuleVersionSelection | undefined> {
 		if (releases.length === 0) {
 			void vscode.window.showInformationMessage(t('versionListEmpty', { kind: t('versionKindReleases') }));
@@ -913,8 +934,8 @@ export class ModuleManagerController {
 			releaseName: picked.release.name,
 			releaseAssets: assets,
 			branch,
-			// 确认框/成功提示只展示 release 名（issue #37）
-			label: picked.release.name,
+			// 确认框/成功提示/侧边栏显示 tag 名（issue #37）；列表本身仍显示「标题 · tag · 时间」
+			label: picked.release.tagName,
 		};
 	}
 
@@ -964,7 +985,8 @@ export class ModuleManagerController {
 	 */
 	private formatTargetVersionLabel(entry: LocalModuleConfigEntry, selection: ModuleVersionSelection): string {
 		if (entry.versionKind === 'release') {
-			return entry.releaseName || entry.versionRef || selection.label || t('versionUnknown');
+			// 显示 release 的 tag 名（不用标题）
+			return entry.versionRef || selection.label || entry.releaseName || t('versionUnknown');
 		}
 		if (entry.versionKind === 'tag') {
 			return entry.versionRef || selection.label || this.formatShortSha(entry.ref) || t('versionUnknown');
@@ -986,7 +1008,8 @@ export class ModuleManagerController {
 	 */
 	private formatCurrentVersionLabel(target: LocalModuleConfigEntry): string {
 		if (target.versionKind === 'release') {
-			return target.releaseName || target.versionRef || t('versionUnknown');
+			// 显示 release 的 tag 名（不用标题）
+			return target.versionRef || target.releaseName || t('versionUnknown');
 		}
 		if (target.versionKind === 'tag' && target.versionRef) {
 			return target.versionRef;
@@ -1097,9 +1120,22 @@ export class ModuleManagerController {
 			return;
 		}
 
-		const nextMethod: ModuleApplyMethod = target.method === 'copy' ? 'submodule' : 'copy';
+		// 三选一选择器：submodule / copy / GitHub Release（当前方式标识）
+		const nextMethod = await this.promptSwitchMethod(target.method);
+		if (!nextMethod || nextMethod === target.method) {
+			return;
+		}
+
 		let authToken: string | undefined;
-		if (nextMethod === 'submodule' && entry.visibility === 'private') {
+		let releaseSelection: ModuleVersionSelection | undefined;
+		if (nextMethod === 'release') {
+			// 切到 release：弹 release 列表选具体一个
+			authToken = await this.ensureToken(entry.visibility === 'private');
+			releaseSelection = await this.promptReleaseSelection(entry.moduleEntry, authToken);
+			if (!releaseSelection) {
+				return;
+			}
+		} else if (nextMethod === 'submodule' && entry.visibility === 'private') {
 			authToken = await this.ensureToken(true);
 			if (!authToken) {
 				void vscode.window.showWarningMessage(t('signInRequiredToSwitchPrivateModule'));
@@ -1112,8 +1148,8 @@ export class ModuleManagerController {
 		const currentMethodLabel = getApplyMethodLabel(target.method);
 		const nextMethodLabel = getApplyMethodLabel(nextMethod);
 
-		// When switching from copy to submodule, warn about data loss and mention the zip backup.
-		const isCopyToSubmodule = target.method === 'copy';
+		// 从 copy/submodule 切到 release 会整体替换目录（无 zip 备份提示）；copy → submodule 保留 zip 备份提示
+		const isCopyToSubmodule = target.method === 'copy' && nextMethod === 'submodule';
 		const backupDir = isCopyToSubmodule ? path.join(repoRoot, '.csm-module-backups') : '';
 		const confirmationMessage = isCopyToSubmodule
 			? t('switchMethodConfirmationWithBackup', {
@@ -1150,7 +1186,14 @@ export class ModuleManagerController {
 					cancellable: false,
 				},
 				async () => {
-					switchResult = await this.workspaceModuleService.switchModuleMethod(repoRoot, target, nextMethod, authToken, repoRoot);
+					switchResult = await this.workspaceModuleService.switchModuleMethod(
+						repoRoot,
+						target,
+						nextMethod,
+						authToken,
+						repoRoot,
+						releaseSelection,
+					);
 					config = this.workspaceModuleService.withAppliedModule(config!, switchResult.entry);
 					await this.workspaceModuleService.writeConfig(config);
 				},
@@ -1173,6 +1216,24 @@ export class ModuleManagerController {
 		}
 
 		await this.refreshSidebarWorkspaceState();
+	}
+
+	private async promptSwitchMethod(current: ModuleApplyMethod): Promise<ModuleApplyMethod | undefined> {
+		const options: Array<{ method: ModuleApplyMethod; label: string; description: string }> = [
+			{ method: 'submodule', label: t('applyMethodSubmoduleLabel'), description: t('applyMethodSubmoduleDescription') },
+			{ method: 'copy', label: t('applyMethodCopyLabel'), description: t('applyMethodCopyDescription') },
+			{ method: 'release', label: t('applyMethodReleaseLabel'), description: t('applyMethodReleaseDescription') },
+		];
+		const items: Array<ApplyMethodQuickPickItem & { picked?: boolean }> = options.map((option) => ({
+			label: option.label,
+			description: option.description,
+			method: option.method,
+			picked: option.method === current,
+		}));
+		const pick = await vscode.window.showQuickPick(items, {
+			placeHolder: t('switchMethodPlaceholder'),
+		});
+		return pick?.method;
 	}
 
 	public async toggleLocalModuleLockCommand(entry: LocalManagedModuleEntry): Promise<void> {
@@ -3593,6 +3654,14 @@ export class ModuleManagerController {
 		moduleCount: number,
 		options: { gitAvailable: boolean },
 	): Promise<ModuleApplyMethod | undefined> {
+		// release 引入方式仅在单选时提供（多选批量应用暂不支持每个模块分别选 release）
+		const allowRelease = moduleCount === 1;
+		const releaseItem: ApplyMethodQuickPickItem = {
+			label: t('applyMethodReleaseLabel'),
+			description: t('applyMethodReleaseDescription'),
+			detail: t('applyMethodReleaseDetail'),
+			method: 'release',
+		};
 		const items: ApplyMethodQuickPickItem[] = options.gitAvailable
 			? [
 				{
@@ -3607,6 +3676,7 @@ export class ModuleManagerController {
 					detail: t('applyMethodCopyDetail', { count: moduleCount }),
 					method: 'copy',
 				},
+				...(allowRelease ? [releaseItem] : []),
 			]
 			: [
 				{
@@ -3619,6 +3689,7 @@ export class ModuleManagerController {
 					detail: t('applyMethodCopyDetail', { count: moduleCount }),
 					method: 'copy',
 				},
+				...(allowRelease ? [releaseItem] : []),
 			];
 
 		const pick = await vscode.window.showQuickPick(

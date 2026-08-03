@@ -385,7 +385,6 @@ function renderLocalManagedCard(entry: LocalManagedModuleEntry, state: LocalWork
 	const topics = getVisibleModuleTopics(entry.topics).slice(0, 3);
 	const topicBadges = topics.map((topic) => renderBadge(topic));
 	const locked = entry.locked !== false;
-	const nextMethod = entry.method === 'copy' ? 'submodule' : 'copy';
 	const summary = entry.description.trim().length > 0
 		? entry.description.trim()
 		: t('localManagedFallbackSummary', { source: entry.source });
@@ -428,7 +427,7 @@ function renderLocalManagedCard(entry: LocalManagedModuleEntry, state: LocalWork
 			action: 'switchLocalModuleMethod',
 			localItemId: entry.id,
 			title: state.gitAvailable
-				? t('switchMethodToTarget', { method: getApplyMethodLabel(nextMethod) })
+				? t('switchMethodButton')
 				: t('switchMethodRequiresGitRepo'),
 			icon: 'switch',
 			disabled: !state.gitAvailable,
@@ -448,7 +447,8 @@ function renderLocalManagedCard(entry: LocalManagedModuleEntry, state: LocalWork
 		...(entry.stale ? [renderBadge(t('staleDirectoryMissing'), 'stale')] : []),
 		renderBadge(getVisibilityLabel(entry.visibility), entry.visibility === 'private' ? 'private' : undefined),
 		renderBadge(getLocalManagedVersionLabel(entry), 'module-version'),
-		renderBadge(t('branchBadge', { branch: entry.branch })),
+		// release 引入方式不依赖分支，不显示“分支：xxx”徽章
+		...(entry.method === 'release' ? [] : [renderBadge(t('branchBadge', { branch: entry.branch }))]),
 		...topicBadges,
 	];
 	return renderModuleCardShell({
@@ -2071,7 +2071,8 @@ function formatShortSha(sha: string | undefined): string {
  */
 function getLocalManagedVersionLabel(entry: LocalManagedModuleEntry): string {
 	if (entry.versionKind === 'release') {
-		return entry.releaseName || entry.versionRef || formatShortSha(entry.ref);
+		// 显示 release 的 tag 名（不用标题）
+		return entry.versionRef || entry.releaseName || formatShortSha(entry.ref);
 	}
 	if (entry.versionKind === 'tag' && entry.versionRef) {
 		return entry.versionRef;

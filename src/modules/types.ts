@@ -17,7 +17,7 @@ export interface CsmModuleEntry {
 	labviewVersion?: string;
 }
 
-export type ModuleApplyMethod = 'submodule' | 'copy';
+export type ModuleApplyMethod = 'submodule' | 'copy' | 'release';
 
 /**
  * 版本来源类型（issue #37）：

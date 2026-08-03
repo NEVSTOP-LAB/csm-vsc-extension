@@ -333,13 +333,17 @@ const messages = {
 		en: 'Switch',
 		zh: '切换',
 	},
-	switchMethodToTarget: {
-		en: 'Switch to {method}',
-		zh: '切换为 {method}',
-	},
 	switchMethodRequiresGitRepo: {
-		en: 'Switching between copy and submodule is only available when the current workspace folder is a Git repository.',
-		zh: '只有当前工作区文件夹是 Git 仓库时，才允许在 copy 和 submodule 之间切换。',
+		en: 'Switching the module method is only available when the current workspace folder is a Git repository.',
+		zh: '只有当前工作区文件夹是 Git 仓库时，才允许切换模块引入方式。',
+	},
+	switchMethodPlaceholder: {
+		en: 'Choose the module method to switch to',
+		zh: '请选择要切换到的模块引入方式',
+	},
+	switchMethodButton: {
+		en: 'Switch module method',
+		zh: '切换引入方式',
 	},
 	signInRequiredToSwitchPrivateModule: {
 		en: 'GitHub sign-in is required to switch a private module into submodule mode.',
@@ -816,6 +820,18 @@ const messages = {
 	applyMethodCopyDetail: {
 		en: 'Clones then copies files into the local module directory for {count} selected module(s).',
 		zh: '先克隆，再把文件复制到本地模块目录，适用于所选的 {count} 个模块。',
+	},
+	applyMethodReleaseLabel: {
+		en: 'GitHub Release',
+		zh: 'GitHub Release',
+	},
+	applyMethodReleaseDescription: {
+		en: 'Download the release assets from GitHub.',
+		zh: '从 GitHub 下载 Release 附件。',
+	},
+	applyMethodReleaseDetail: {
+		en: 'Downloads the assets of a chosen GitHub release into the local module directory.',
+		zh: '把所选 GitHub Release 的附件下载到本地模块目录。',
 	},
 	loadingModules: {
 		en: 'Loading modules...',
@@ -1326,7 +1342,13 @@ export function getHtmlLang(): string {
 }
 
 export function getApplyMethodLabel(method: ModuleApplyMethod): string {
-	return method === 'copy' ? t('applyMethodCopyLabel') : t('applyMethodSubmoduleLabel');
+	if (method === 'copy') {
+		return t('applyMethodCopyLabel');
+	}
+	if (method === 'release') {
+		return t('applyMethodReleaseLabel');
+	}
+	return t('applyMethodSubmoduleLabel');
 }
 
 /**

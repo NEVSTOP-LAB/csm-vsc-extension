@@ -31,25 +31,29 @@
 - 应用模块时会提示选择命名空间位置：可直接使用模块根目录，也可选择最近使用的命名空间或手动输入新的嵌套路径；新建的命名空间会被记住，供后续复用
 - 模块卡片支持 VS Code 原生右键菜单，可直接执行 `Apply` / `Update` / `Remove` / `Open README` / 选择操作，并按模块当前状态自动启用、禁用或切换对应项
 - 首次应用时可初始化本地模块目录，默认生成 `csm/csm-modules.yaml`，也可指定仓库内自定义相对路径
-- 支持 `submodule` / `copy` 两种引入方式
+- 支持 `submodule` / `copy` / `GitHub Release` 三种引入方式
 - **应用模块时（单选）可选择具体版本**（issue #37）：
   - 应用单个模块时，在引入方式与命名空间选择后会进入版本来源选择（置顶 `使用默认分支（{defaultBranch}）`，与更新一致提供 提交记录 / 标签 / Release / 分支）
   - 多选批量应用时不提供版本选择，沿用默认分支
   - 选择具体版本后确认对话框会展示目标版本；`submodule` 与 `copy` 两种方式都支持指定分支 / 提交 / 标签 / Release 应用（submodule 检出到指定提交为 detached HEAD）
   - Release 列表中每项显示 `release 标题 · tag 名 · 相对发布时间`，不显示 commit MD5
-- **使用 GitHub Release 是指下载其附件**（issue #37）：
+- **`GitHub Release` 是一种独立的引入方式**（issue #37）：
   - 选择 Release 后，扩展会下载该 Release 的**全部附件**（排除 GitHub 自动生成的 `Source code` 附件），而不是 checkout 其对应的 commit
   - 附件为 zip / tar.gz 时会解压（解压后若顶层只有一个目录则剥离）；其它格式直接复制
   - 单附件时内容直接放入模块目录；多附件时每个附件放入 `模块目录/<附件名去扩展名>/` 独立子目录
   - 该 Release 没有可用附件时提示并中止；私有仓库附件下载复用登录 token
-  - 引入方式为 submodule 时 Release 回退为 git tag 检出（submodule 无法直接下载附件）
+  - Release 方式下更新时先选择 Release 再下载附件整体替换，不产生 zip 备份
 - **更新模块时支持选择具体版本**（issue #37）：
   - 更新流程分为两步：先选择版本来源（`更新到最新（{当前分支}）` / 提交记录 / 标签 / Release / 分支），再选择具体版本（提交为 `短SHA · 提交信息 · 相对日期` 格式）
   - 选择 `分支` 后会先列出仓库全部分支，再进入该分支的最近提交列表选择具体提交
   - 选择版本后展示确认对话框（当前版本 → 目标版本；copy 方式附带 zip 备份提示），确认后执行更新并写入本地配置
   - 版本来源数据优先通过 GitHub REST API 获取（复用已登录 token），API 不可用（未登录 / 网络受限）时用 git CLI 兜底（`git ls-remote` 分支/标签、临时 fetch + `git log` 提交记录）
   - 本地模块卡片会展示当前版本（`短SHA · 提交信息 · 相对日期`；tag / Release 优先显示对应名称），提交信息在更新成功时缓存到本地，避免每次在线查询
-- 对已管理的本地模块，若当前工作区本身是 Git 仓库，可在侧边栏中把 `copy` 与 `submodule` 方式互相切换；非 Git 工作区会禁用该操作
+- 对已管理的本地模块，若当前工作区本身是 Git 仓库，可在侧边栏把 `submodule` / `copy` / `GitHub Release` 三种引入方式**互相切换**（弹出三选一选择器；切到 Release 时需再选择具体 Release）：
+  - `copy` / `submodule` → `GitHub Release`：下载所选 Release 附件整体替换
+  - `GitHub Release` → `copy`：重新克隆默认分支替换
+  - `GitHub Release` → `submodule`：`submodule add` 默认分支后检出当前 Release 的 tag
+  - 非 Git 工作区会禁用该操作
 - 已管理的本地模块默认会进入只读 lock 状态；侧边栏卡片会显示锁定/解锁按钮，解锁前需要确认，重新锁定后会再次把模块目录下的文件递归设为只读
 - 刷新 / 应用 / 更新 / 删除模块时会把 GitHub HTTP 状态、Git 权限失败、Git 缺失、网络错误与 YAML 解析错误转换为更可操作的提示
 
@@ -92,8 +96,8 @@
 - **兼容旧配置**：若仓库中仍保留 `csm-modules.lvcsm`，扩展会读取旧文件并在后续写回时迁移到 YAML
 - **配置格式**：当前以 YAML 为规范格式，配置文件始终写回 `csm-modules.yaml`
 - **自定义目录**：通过 `Apply to Current Repository` 流程输入仓库根目录下的相对路径，或通过 `csmModules.defaultModuleRoot` 为首次初始化预设默认目录
-- **配置内容**：记录每个模块的引入方式（`submodule` / `copy`）、锁定提交、默认分支、源仓库地址、本地相对路径，以及本地文件是否处于 lock（只读）状态
-- **模块版本信息**（issue #37）：每个已应用模块额外记录 `versionKind`（`branch` / `commit` / `tag` / `release`，旧配置缺省视为 `commit`）与 `versionRef`（分支名 / tag 名 / release 名，commit 类型时为提交 SHA）；`ref` 始终指向实际应用的提交 SHA
+- **配置内容**：记录每个模块的引入方式（`submodule` / `copy` / `release`）、锁定提交、默认分支、源仓库地址、本地相对路径，以及本地文件是否处于 lock（只读）状态
+- **模块版本信息**（issue #37）：每个已应用模块额外记录 `versionKind`（`branch` / `commit` / `tag` / `release`，旧配置缺省视为 `commit`）与 `versionRef`（分支名 / tag 名 / release 名，commit 类型时为提交 SHA）；`ref` 始终指向实际应用的提交 SHA；`release` 方式还会记录 `releaseName`，`ref` 为空
 
 ## 扩展设置
 

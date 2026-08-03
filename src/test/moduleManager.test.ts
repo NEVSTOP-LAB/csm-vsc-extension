@@ -1479,6 +1479,190 @@ suite('Module Manager Tests', () => {
 		}
 	});
 
+	test('WorkspaceModuleService switches a copy module to release mode by downloading assets', async function () {
+		this.timeout(20000);
+		const originalFetch = globalThis.fetch;
+		const workspaceRoot = await fs.mkdtemp(path.join(getTempRoot(), 'csm-switch-to-release-'));
+		const targetPath = path.join(workspaceRoot, 'csm', 'module-a');
+		await fs.mkdir(targetPath, { recursive: true });
+		await fs.writeFile(path.join(targetPath, 'README.md'), 'old', 'utf8');
+
+		const gitRunner = new RecordingGitRunner(async () => {
+			throw new Error('Unexpected git command');
+		});
+		const service = new WorkspaceModuleService(gitRunner);
+
+		try {
+			const zip = new JSZip();
+			zip.file('rel-pkg/Foo.vi', 'rel-vi');
+			const zipBuffer = await zip.generateAsync({ type: 'nodebuffer' });
+			globalThis.fetch = (async () => ({
+				ok: true,
+				status: 200,
+				arrayBuffer: async () => zipBuffer.buffer.slice(zipBuffer.byteOffset, zipBuffer.byteOffset + zipBuffer.byteLength),
+			}) as Response) as typeof fetch;
+
+			const result = await service.switchModuleMethod(
+				workspaceRoot,
+				{
+					key: 'org__module_a',
+					name: 'module-a',
+					owner: 'org',
+					source: 'https://github.com/org/module-a',
+					method: 'copy',
+					path: 'csm/module-a',
+					ref: 'abc123',
+					branch: 'main',
+				},
+				'release',
+				undefined,
+				workspaceRoot,
+				{
+					kind: 'release',
+					versionRef: 'v2.0',
+					releaseName: 'Release v2.0',
+					releaseAssets: [{ name: 'rel-v2.zip', browserDownloadUrl: 'https://example.com/rel-v2.zip' }],
+					branch: 'main',
+					label: 'Release v2.0',
+				},
+			);
+
+			// copy → release：目录被附件整体替换（顶层剥离），无 zip 备份
+			assert.strictEqual(result.entry.method, 'release');
+			assert.strictEqual(result.entry.versionKind, 'release');
+			assert.strictEqual(result.entry.versionRef, 'v2.0');
+			assert.strictEqual(result.entry.releaseName, 'Release v2.0');
+			assert.strictEqual(await fs.readFile(path.join(targetPath, 'Foo.vi'), 'utf8'), 'rel-vi');
+			const topEntries = await fs.readdir(targetPath);
+			assert.ok(!topEntries.includes('README.md'));
+			assert.deepStrictEqual(gitRunner.calls, []);
+		} finally {
+			globalThis.fetch = originalFetch;
+			await removeWritableTree(workspaceRoot);
+		}
+	});
+
+	test('WorkspaceModuleService switches a release module to copy mode by re-cloning the default branch', async function () {
+		this.timeout(20000);
+		const workspaceRoot = await fs.mkdtemp(path.join(getTempRoot(), 'csm-switch-release-to-copy-'));
+		const targetPath = path.join(workspaceRoot, 'csm', 'module-a');
+		await fs.mkdir(targetPath, { recursive: true });
+		await fs.writeFile(path.join(targetPath, 'README.md'), 'release-content', 'utf8');
+
+		const gitRunner = new RecordingGitRunner(async (options) => {
+			const command = options.args.join(' ');
+			switch (command) {
+				case 'clone --depth 1 --branch main https://github.com/org/module-a src':
+					await fs.mkdir(path.join(String(options.cwd), 'src'), { recursive: true });
+					await fs.writeFile(path.join(String(options.cwd), 'src', 'README.md'), 'cloned', 'utf8');
+					return '';
+				case 'rev-parse HEAD':
+					return 'def456\n';
+				default:
+					throw new Error(`Unexpected git command: ${command}`);
+			}
+		});
+		const service = new WorkspaceModuleService(gitRunner);
+
+		try {
+			const result = await service.switchModuleMethod(
+				workspaceRoot,
+				{
+					key: 'org__module_a',
+					name: 'module-a',
+					owner: 'org',
+					source: 'https://github.com/org/module-a',
+					method: 'release',
+					path: 'csm/module-a',
+					ref: '',
+					branch: 'main',
+					versionKind: 'release',
+					versionRef: 'v1.0',
+					releaseName: 'Release v1.0',
+				},
+				'copy',
+				undefined,
+				workspaceRoot,
+			);
+
+			// release → copy：重新克隆默认分支替换目录
+			assert.strictEqual(result.entry.method, 'copy');
+			assert.strictEqual(result.entry.versionKind, 'branch');
+			assert.strictEqual(result.entry.versionRef, 'main');
+			assert.strictEqual(result.entry.releaseName, undefined);
+			assert.strictEqual(result.entry.ref, 'def456');
+			assert.strictEqual(result.entry.branch, 'main');
+			assert.strictEqual(await fs.readFile(path.join(targetPath, 'README.md'), 'utf8'), 'cloned');
+			assert.deepStrictEqual(gitRunner.calls.map((call) => call.args.join(' ')), [
+				'clone --depth 1 --branch main https://github.com/org/module-a src',
+				'rev-parse HEAD',
+			]);
+		} finally {
+			await removeWritableTree(workspaceRoot);
+		}
+	});
+
+	test('WorkspaceModuleService switches a release module to submodule mode checking out the release tag', async function () {
+		this.timeout(20000);
+		const repoRoot = await fs.mkdtemp(path.join(getTempRoot(), 'csm-switch-release-to-submodule-'));
+		const targetPath = path.join(repoRoot, 'csm', 'module-a');
+		await fs.mkdir(targetPath, { recursive: true });
+		await fs.writeFile(path.join(targetPath, 'README.md'), 'release-content', 'utf8');
+
+		const gitRunner = new RecordingGitRunner(async (options) => {
+			const command = options.args.join(' ');
+			switch (command) {
+				case '-c protocol.file.allow=always submodule add -b main https://github.com/org/module-a csm/module-a':
+				case '-c protocol.file.allow=always submodule update --init --recursive csm/module-a':
+				case 'fetch --tags origin':
+				case 'checkout v1.0':
+					return '';
+				case 'rev-parse HEAD':
+					return 'def456\n';
+				default:
+					throw new Error(`Unexpected git command: ${command}`);
+			}
+		});
+		const service = new WorkspaceModuleService(gitRunner);
+
+		try {
+			const result = await service.switchModuleMethod(
+				repoRoot,
+				{
+					key: 'org__module_a',
+					name: 'module-a',
+					owner: 'org',
+					source: 'https://github.com/org/module-a',
+					method: 'release',
+					path: 'csm/module-a',
+					ref: '',
+					branch: 'main',
+					versionKind: 'release',
+					versionRef: 'v1.0',
+					releaseName: 'Release v1.0',
+					locked: false,
+				},
+				'submodule',
+				'token',
+				repoRoot,
+			);
+
+			// release → submodule：submodule add 默认分支后检出 release 的 tag
+			assert.strictEqual(result.entry.method, 'submodule');
+			assert.strictEqual(result.entry.ref, 'def456');
+			assert.strictEqual(result.entry.branch, 'main');
+			assert.deepStrictEqual(gitRunner.calls.map((call) => call.args.join(' ')), [
+				'-c protocol.file.allow=always submodule add -b main https://github.com/org/module-a csm/module-a',
+				'-c protocol.file.allow=always submodule update --init --recursive csm/module-a',
+				'fetch --tags origin',
+				'checkout v1.0',
+				'rev-parse HEAD',
+			]);
+		} finally {
+			await removeWritableTree(repoRoot);
+		}
+	});
+
 	test('WorkspaceModuleService reconstructs yaml config from existing csm submodules', async function () {
 		this.timeout(20000);
 		const tempRoot = await fs.mkdtemp(path.join(getTempRoot(), 'csm-modules-recover-'));

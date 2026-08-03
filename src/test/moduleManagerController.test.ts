@@ -1326,6 +1326,7 @@ suite('ModuleManagerController Regression Tests', () => {
 		controller.refreshSidebarWorkspaceState = async () => {
 			sidebarRefreshed = true;
 		};
+		mocked.__setQuickPickResponse({ method: 'submodule' });
 		mocked.__setWarningMessageResponse('Switch');
 
 		await controller.switchLocalModuleMethodCommand({
@@ -1361,6 +1362,368 @@ suite('ModuleManagerController Regression Tests', () => {
 			repoRoot: 'd:/repo',
 			authToken: undefined,
 		});
+		assert.strictEqual(config.modules.org__module_copy?.method, 'submodule');
+		assert.strictEqual(config.modules.org__module_copy?.ref, 'def456');
+		assert.strictEqual(sidebarRefreshed, true);
+		const infos = mocked.__getMessageLog().filter((message) => message.level === 'info').map((message) => message.text);
+		assert.ok(infos.some((text) => text.includes('Switched org/module-copy to submodule.')));
+	});
+
+	test('switchLocalModuleMethodCommand switches a copy module to release mode', async () => {
+		const controller = createController() as any;
+		let config: LocalModuleConfig = {
+			version: '2',
+			root: 'csm',
+			configPath: 'd:/repo/csm/csm-modules.yaml',
+			modules: {
+				org__module_copy: {
+					key: 'org__module_copy',
+					name: 'module-copy',
+					owner: 'org',
+					source: 'https://github.com/org/module-copy',
+					method: 'copy',
+					path: 'csm/module-copy',
+					ref: 'abc123',
+					branch: 'main',
+				},
+			},
+		};
+		let switchCall:
+			| {
+				workspaceRoot: string;
+				nextMethod: ModuleApplyMethod;
+				repoRoot?: string;
+				authToken?: string;
+				versionSelection?: unknown;
+			}
+			| undefined;
+		let sidebarRefreshed = false;
+
+		controller.versionService = {
+			listBranches: async () => [],
+			listTags: async () => [],
+			listReleases: async () => [
+				{
+					name: 'Release v1.0',
+					tagName: 'v1.0',
+					publishedAt: '2026-06-01T00:00:00Z',
+					assets: [
+						{ name: 'module-v1.0.zip', browserDownloadUrl: 'https://github.com/org/module-copy/releases/download/v1.0/module-v1.0.zip' },
+					],
+				},
+			],
+			listCommits: async () => [],
+			resolveCommitInfo: async () => ({}),
+		};
+		controller.workspaceModuleService = {
+			resolveGitRepositoryRoot: async () => 'd:/repo',
+			switchModuleMethod: async (
+				workspaceRoot: string,
+				entry: LocalModuleConfig['modules'][string],
+				nextMethod: ModuleApplyMethod,
+				authToken?: string,
+				repoRoot?: string,
+				versionSelection?: unknown,
+			) => {
+				switchCall = { workspaceRoot, nextMethod, repoRoot, authToken, versionSelection };
+				return {
+					entry: {
+						...entry,
+						method: 'release',
+						ref: '',
+						versionKind: 'release',
+						versionRef: 'v1.0',
+						releaseName: 'Release v1.0',
+					},
+				};
+			},
+			withAppliedModule: (currentConfig: LocalModuleConfig, entry: LocalModuleConfig['modules'][string]) => {
+				config = {
+					...currentConfig,
+					modules: {
+						...currentConfig.modules,
+						[entry.key]: entry,
+					},
+				};
+				return config;
+			},
+			writeConfig: async () => undefined,
+		};
+		controller.resolveWorkspaceFolder = async () => ({ name: 'repo', uri: vscode.Uri.file('d:/repo') });
+		controller.tryLoadSidebarLocalModuleConfig = async () => config;
+		controller.refreshSidebarWorkspaceState = async () => {
+			sidebarRefreshed = true;
+		};
+		// 三选一：GitHub Release
+		mocked.__setQuickPickResponse({ method: 'release' });
+		// Release 列表选择 v1.0
+		mocked.__setQuickPickResponse({
+			label: 'v1.0',
+			release: {
+				name: 'Release v1.0',
+				tagName: 'v1.0',
+				publishedAt: '2026-06-01T00:00:00Z',
+				assets: [
+					{ name: 'module-v1.0.zip', browserDownloadUrl: 'https://github.com/org/module-copy/releases/download/v1.0/module-v1.0.zip' },
+				],
+			},
+		});
+		mocked.__setWarningMessageResponse('Switch');
+
+		await controller.switchLocalModuleMethodCommand({
+			id: 'org__module_copy',
+			kind: 'managed',
+			owner: 'org',
+			name: 'module-copy',
+			path: 'csm/module-copy',
+			source: 'https://github.com/org/module-copy',
+			method: 'copy',
+			branch: 'main',
+			ref: 'abc123',
+			repoUrl: 'https://github.com/org/module-copy',
+			description: 'demo',
+			visibility: 'public',
+			topics: ['csm-modsets'],
+			moduleEntry: {
+				id: 1,
+				owner: 'org',
+				name: 'module-copy',
+				description: 'demo',
+				topics: ['csm-modsets'],
+				visibility: 'public',
+				defaultBranch: 'main',
+				repoUrl: 'https://github.com/org/module-copy',
+			},
+			stale: false,
+		});
+
+		assert.strictEqual(switchCall?.nextMethod, 'release');
+		assert.strictEqual(switchCall?.workspaceRoot, 'd:/repo');
+		const selection = switchCall?.versionSelection as { kind: string; versionRef: string; releaseName: string };
+		assert.strictEqual(selection.kind, 'release');
+		assert.strictEqual(selection.versionRef, 'v1.0');
+		assert.strictEqual(selection.releaseName, 'Release v1.0');
+		assert.strictEqual(config.modules.org__module_copy?.method, 'release');
+		assert.strictEqual(config.modules.org__module_copy?.versionRef, 'v1.0');
+		assert.strictEqual(sidebarRefreshed, true);
+		const infos = mocked.__getMessageLog().filter((message) => message.level === 'info').map((message) => message.text);
+		assert.ok(infos.some((text) => text.includes('Switched org/module-copy to GitHub Release.')));
+	});
+
+	test('switchLocalModuleMethodCommand switches a release module to copy mode', async () => {
+		const controller = createController() as any;
+		let config: LocalModuleConfig = {
+			version: '2',
+			root: 'csm',
+			configPath: 'd:/repo/csm/csm-modules.yaml',
+			modules: {
+				org__module_copy: {
+					key: 'org__module_copy',
+					name: 'module-copy',
+					owner: 'org',
+					source: 'https://github.com/org/module-copy',
+					method: 'release',
+					path: 'csm/module-copy',
+					ref: '',
+					branch: 'main',
+					versionKind: 'release',
+					versionRef: 'v1.0',
+					releaseName: 'Release v1.0',
+				},
+			},
+		};
+		let switchCall:
+			| {
+				workspaceRoot: string;
+				nextMethod: ModuleApplyMethod;
+				repoRoot?: string;
+				authToken?: string;
+				versionSelection?: unknown;
+			}
+			| undefined;
+		let sidebarRefreshed = false;
+
+		controller.workspaceModuleService = {
+			resolveGitRepositoryRoot: async () => 'd:/repo',
+			switchModuleMethod: async (
+				workspaceRoot: string,
+				entry: LocalModuleConfig['modules'][string],
+				nextMethod: ModuleApplyMethod,
+				authToken?: string,
+				repoRoot?: string,
+				versionSelection?: unknown,
+			) => {
+				switchCall = { workspaceRoot, nextMethod, repoRoot, authToken, versionSelection };
+				return {
+					entry: {
+						...entry,
+						method: 'copy',
+						ref: 'def456',
+						branch: 'main',
+						versionKind: 'branch',
+						versionRef: 'main',
+						releaseName: undefined,
+					},
+				};
+			},
+			withAppliedModule: (currentConfig: LocalModuleConfig, entry: LocalModuleConfig['modules'][string]) => {
+				config = {
+					...currentConfig,
+					modules: {
+						...currentConfig.modules,
+						[entry.key]: entry,
+					},
+				};
+				return config;
+			},
+			writeConfig: async () => undefined,
+		};
+		controller.resolveWorkspaceFolder = async () => ({ name: 'repo', uri: vscode.Uri.file('d:/repo') });
+		controller.tryLoadSidebarLocalModuleConfig = async () => config;
+		controller.refreshSidebarWorkspaceState = async () => {
+			sidebarRefreshed = true;
+		};
+		mocked.__setQuickPickResponse({ method: 'copy' });
+		mocked.__setWarningMessageResponse('Switch');
+
+		await controller.switchLocalModuleMethodCommand({
+			id: 'org__module_copy',
+			kind: 'managed',
+			owner: 'org',
+			name: 'module-copy',
+			path: 'csm/module-copy',
+			source: 'https://github.com/org/module-copy',
+			method: 'release',
+			branch: 'main',
+			ref: '',
+			repoUrl: 'https://github.com/org/module-copy',
+			description: 'demo',
+			visibility: 'public',
+			topics: ['csm-modsets'],
+			moduleEntry: {
+				id: 1,
+				owner: 'org',
+				name: 'module-copy',
+				description: 'demo',
+				topics: ['csm-modsets'],
+				visibility: 'public',
+				defaultBranch: 'main',
+				repoUrl: 'https://github.com/org/module-copy',
+			},
+			stale: false,
+		});
+
+		assert.strictEqual(switchCall?.nextMethod, 'copy');
+		assert.strictEqual(switchCall?.versionSelection, undefined);
+		assert.strictEqual(config.modules.org__module_copy?.method, 'copy');
+		assert.strictEqual(config.modules.org__module_copy?.ref, 'def456');
+		assert.strictEqual(sidebarRefreshed, true);
+		const infos = mocked.__getMessageLog().filter((message) => message.level === 'info').map((message) => message.text);
+		assert.ok(infos.some((text) => text.includes('Switched org/module-copy to copy.')));
+	});
+
+	test('switchLocalModuleMethodCommand switches a release module to submodule mode', async () => {
+		const controller = createController() as any;
+		let config: LocalModuleConfig = {
+			version: '2',
+			root: 'csm',
+			configPath: 'd:/repo/csm/csm-modules.yaml',
+			modules: {
+				org__module_copy: {
+					key: 'org__module_copy',
+					name: 'module-copy',
+					owner: 'org',
+					source: 'https://github.com/org/module-copy',
+					method: 'release',
+					path: 'csm/module-copy',
+					ref: '',
+					branch: 'main',
+					versionKind: 'release',
+					versionRef: 'v1.0',
+					releaseName: 'Release v1.0',
+				},
+			},
+		};
+		let switchCall:
+			| {
+				workspaceRoot: string;
+				nextMethod: ModuleApplyMethod;
+				repoRoot?: string;
+				authToken?: string;
+				versionSelection?: unknown;
+			}
+			| undefined;
+		let sidebarRefreshed = false;
+
+		controller.workspaceModuleService = {
+			resolveGitRepositoryRoot: async () => 'd:/repo',
+			switchModuleMethod: async (
+				workspaceRoot: string,
+				entry: LocalModuleConfig['modules'][string],
+				nextMethod: ModuleApplyMethod,
+				authToken?: string,
+				repoRoot?: string,
+				versionSelection?: unknown,
+			) => {
+				switchCall = { workspaceRoot, nextMethod, repoRoot, authToken, versionSelection };
+				return {
+					entry: {
+						...entry,
+						method: 'submodule',
+						ref: 'def456',
+						branch: 'main',
+					},
+				};
+			},
+			withAppliedModule: (currentConfig: LocalModuleConfig, entry: LocalModuleConfig['modules'][string]) => {
+				config = {
+					...currentConfig,
+					modules: {
+						...currentConfig.modules,
+						[entry.key]: entry,
+					},
+				};
+				return config;
+			},
+			writeConfig: async () => undefined,
+		};
+		controller.resolveWorkspaceFolder = async () => ({ name: 'repo', uri: vscode.Uri.file('d:/repo') });
+		controller.tryLoadSidebarLocalModuleConfig = async () => config;
+		controller.refreshSidebarWorkspaceState = async () => {
+			sidebarRefreshed = true;
+		};
+		mocked.__setQuickPickResponse({ method: 'submodule' });
+		mocked.__setWarningMessageResponse('Switch');
+
+		await controller.switchLocalModuleMethodCommand({
+			id: 'org__module_copy',
+			kind: 'managed',
+			owner: 'org',
+			name: 'module-copy',
+			path: 'csm/module-copy',
+			source: 'https://github.com/org/module-copy',
+			method: 'release',
+			branch: 'main',
+			ref: '',
+			repoUrl: 'https://github.com/org/module-copy',
+			description: 'demo',
+			visibility: 'public',
+			topics: ['csm-modsets'],
+			moduleEntry: {
+				id: 1,
+				owner: 'org',
+				name: 'module-copy',
+				description: 'demo',
+				topics: ['csm-modsets'],
+				visibility: 'public',
+				defaultBranch: 'main',
+				repoUrl: 'https://github.com/org/module-copy',
+			},
+			stale: false,
+		});
+
+		assert.strictEqual(switchCall?.nextMethod, 'submodule');
+		assert.strictEqual(switchCall?.versionSelection, undefined);
 		assert.strictEqual(config.modules.org__module_copy?.method, 'submodule');
 		assert.strictEqual(config.modules.org__module_copy?.ref, 'def456');
 		assert.strictEqual(sidebarRefreshed, true);
@@ -2926,7 +3289,7 @@ suite('ModuleManagerController Regression Tests', () => {
 		assert.ok(!errors.some((text) => text.includes('not a Git repository')));
 	});
 
-	test('apply offers release version selection for a single module and passes it through', async () => {
+	test('apply uses GitHub Release as the apply method and downloads its assets', async () => {
 		const controller = createController() as any;
 		const entry: CsmModuleEntry = {
 			id: 10,
@@ -2944,6 +3307,7 @@ suite('ModuleManagerController Regression Tests', () => {
 			configPath: 'd:/repo/csm/csm-modules.yaml',
 			modules: {},
 		};
+		let receivedMethod: ModuleApplyMethod | undefined;
 		let receivedSelection: unknown;
 		let writtenConfig: LocalModuleConfig | undefined;
 		let cachedVersionInfo: unknown;
@@ -2977,21 +3341,22 @@ suite('ModuleManagerController Regression Tests', () => {
 				_repoRoot: string,
 				_config: LocalModuleConfig,
 				moduleEntry: CsmModuleEntry,
-				_method: ModuleApplyMethod,
+				method: ModuleApplyMethod,
 				_authToken?: string,
 				_onProgress?: (message: string) => void,
 				_explicitTargetRelativePath?: string,
 				versionSelection?: unknown,
 			) => {
+				receivedMethod = method;
 				receivedSelection = versionSelection;
 				return {
 					key: 'org__module_ver',
 					name: moduleEntry.name,
 					owner: moduleEntry.owner,
 					source: moduleEntry.repoUrl,
-					method: 'copy' as const,
+					method: 'release' as const,
 					path: `csm/${moduleEntry.name}`,
-					ref: 'abc123',
+					ref: '',
 					branch: moduleEntry.defaultBranch,
 					versionKind: 'release',
 					versionRef: 'v1.0',
@@ -3013,9 +3378,8 @@ suite('ModuleManagerController Regression Tests', () => {
 		mocked.__setFindFilesResult([]);
 		mocked.__setConfigurationValue('csmModules.defaultModuleRoot', 'csm');
 		mocked.__setInformationMessageResponse('Use csm/');
-		mocked.__setQuickPickResponse({ method: 'copy' });
-		// 版本来源选择：Release
-		mocked.__setQuickPickResponse({ versionSource: 'releases', label: 'Releases' });
+		// 引入方式：GitHub Release
+		mocked.__setQuickPickResponse({ method: 'release' });
 		// Release 列表：显示标题，不显示 commit MD5
 		mocked.__setQuickPickResponse({
 			label: 'Release v1.0 · v1.0',
@@ -3032,22 +3396,25 @@ suite('ModuleManagerController Regression Tests', () => {
 
 		await controller.applyToWorkspaceCommand(entry);
 
-		// applyModule 收到 release 版本选择（含附件与 release 名）
+		// applyModule 收到 method='release' 与 release 选择（含附件与 release 名）
+		assert.strictEqual(receivedMethod, 'release');
 		assert.ok(receivedSelection);
-		const selection = receivedSelection as { kind: string; versionRef: string; branch: string; releaseName?: string; releaseAssets?: unknown[] };
+		const selection = receivedSelection as { kind: string; versionRef: string; branch: string; releaseName?: string; releaseAssets?: unknown[]; label: string };
 		assert.strictEqual(selection.kind, 'release');
 		assert.strictEqual(selection.versionRef, 'v1.0');
 		assert.strictEqual(selection.branch, 'main');
 		assert.strictEqual(selection.releaseName, 'Release v1.0');
 		assert.strictEqual(selection.releaseAssets?.length, 1);
-		// 确认框只展示 release 名
-		assert.ok(mocked.__getLastWarningPrompt()?.message.includes('at version Release v1.0'));
+		// 确认框显示 tag 名（不是标题）
+		assert.ok(mocked.__getLastWarningPrompt()?.message.includes('at version v1.0'));
+		assert.ok(!mocked.__getLastWarningPrompt()?.message.includes('at version Release v1.0'));
 		// Release 列表项显示标题（而非 commit MD5）
-		const releasePick = mocked.__getQuickPickHistory()[2];
+		const releasePick = mocked.__getQuickPickHistory()[1];
 		const releaseItems = releasePick?.items as Array<{ label?: string; description?: string }> | undefined;
 		assert.ok(releaseItems?.[0]?.label?.includes('Release v1.0'));
 		assert.ok(!releaseItems?.[0]?.label?.match(/[0-9a-f]{40}/i));
-		// 应用成功后写入 releaseName；Release 附件方式不缓存提交信息
+		// 应用成功后写入 method='release' 与 releaseName；Release 附件方式不缓存提交信息
+		assert.strictEqual(writtenConfig?.modules.org__module_ver?.method, 'release');
 		assert.strictEqual(writtenConfig?.modules.org__module_ver?.versionKind, 'release');
 		assert.strictEqual(writtenConfig?.modules.org__module_ver?.releaseName, 'Release v1.0');
 		assert.strictEqual(cachedVersionInfo, undefined);

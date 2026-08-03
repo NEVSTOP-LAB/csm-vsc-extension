@@ -289,34 +289,51 @@ export class WorkspaceModuleService {
 		nextMethod: ModuleApplyMethod,
 		authToken?: string,
 		repoRoot?: string,
+		/** 切到 release 时所需的具体 release 选择 */
+		versionSelection?: ModuleVersionSelection,
 	): Promise<ModuleUpdateResult> {
 		const normalizedEntry = this.normalizeConfigEntry(entry);
 		if (normalizedEntry.method === nextMethod) {
 			return { entry: normalizedEntry };
 		}
 
-		if (nextMethod === 'copy') {
+		let switchedEntry: LocalModuleConfigEntry;
+		if (nextMethod === 'release') {
+			// copy / submodule → release：下载所选 release 附件替换
+			if (!versionSelection || versionSelection.kind !== 'release') {
+				throw new Error('A release must be selected to switch to release mode.');
+			}
+			switchedEntry = await this.convertToRelease(workspaceRoot, normalizedEntry, versionSelection, authToken, repoRoot);
+		} else if (normalizedEntry.method === 'release') {
+			// release → copy / submodule
+			if (nextMethod === 'copy') {
+				switchedEntry = await this.convertReleaseToCopy(workspaceRoot, normalizedEntry, authToken);
+			} else {
+				if (!repoRoot) {
+					throw new Error('Git repository root is required to convert a release module to submodule mode.');
+				}
+				switchedEntry = await this.convertReleaseToSubmodule(repoRoot, normalizedEntry, authToken);
+			}
+		} else if (nextMethod === 'copy') {
+			// submodule → copy（保留现有快照）
 			if (!repoRoot) {
 				throw new Error('Git repository root is required to convert a submodule to copy mode.');
 			}
-			const switchedEntry = await this.convertSubmoduleToCopy(workspaceRoot, normalizedEntry, repoRoot);
-			if (isEntryLocked(normalizedEntry)) {
-				await this.ensureSwitchTargetExists(workspaceRoot, switchedEntry);
-				await this.applyEntryLockState(workspaceRoot, switchedEntry);
+			switchedEntry = await this.convertSubmoduleToCopy(workspaceRoot, normalizedEntry, repoRoot);
+		} else {
+			// copy → submodule
+			if (!repoRoot) {
+				throw new Error('Git repository root is required to convert a copied module to submodule mode.');
 			}
-			return { entry: switchedEntry };
+			const result = await this.convertCopyToSubmodule(repoRoot, normalizedEntry, authToken);
+			switchedEntry = result.entry;
 		}
 
-		if (!repoRoot) {
-			throw new Error('Git repository root is required to convert a copied module to submodule mode.');
-		}
-
-		const result = await this.convertCopyToSubmodule(repoRoot, normalizedEntry, authToken);
 		if (isEntryLocked(normalizedEntry)) {
-			await this.ensureSwitchTargetExists(workspaceRoot, result.entry);
-			await this.applyEntryLockState(workspaceRoot, result.entry);
+			await this.ensureSwitchTargetExists(workspaceRoot, switchedEntry);
+			await this.applyEntryLockState(workspaceRoot, switchedEntry);
 		}
-		return result;
+		return { entry: switchedEntry };
 	}
 
 	public async initializeConfig(repoRoot: string, rootRelativePath: string): Promise<LocalModuleConfig> {
@@ -711,7 +728,7 @@ export class WorkspaceModuleService {
 
 		const appliedEntry = method === 'submodule'
 			? this.applyModuleAsSubmodule(repoRoot, entry, targetRelativePath, targetPath, authToken, onProgress, versionSelection)
-			: this.applyModuleAsCopy(repoRoot, entry, targetRelativePath, targetPath, authToken, onProgress, versionSelection);
+			: this.applyModuleAsCopy(repoRoot, method, entry, targetRelativePath, targetPath, authToken, onProgress, versionSelection);
 		const lockedEntry = this.normalizeConfigEntry(await appliedEntry);
 		await this.applyEntryLockState(repoRoot, lockedEntry);
 		return lockedEntry;
@@ -877,6 +894,7 @@ export class WorkspaceModuleService {
 
 	private async applyModuleAsCopy(
 		_repoRoot: string,
+		method: ModuleApplyMethod,
 		entry: CsmModuleEntry,
 		targetRelativePath: string,
 		targetPath: string,
@@ -902,7 +920,7 @@ export class WorkspaceModuleService {
 				onProgress?.(t('applyingCopyFiles', { repo: `${entry.owner}/${entry.name}` }));
 				await fs.mkdir(path.dirname(targetPath), { recursive: true });
 				await this.placeReleaseAssets(tempRoot, assets, targetPath);
-				return this.createConfigEntry(entry, 'copy', targetRelativePath, '', branch, versionSelection);
+				return this.createConfigEntry(entry, method, targetRelativePath, '', branch, versionSelection);
 			}
 			onProgress?.(t('applyingCopyCloning', { repo: `${entry.owner}/${entry.name}` }));
 			let cloneRoot: string;
@@ -922,7 +940,7 @@ export class WorkspaceModuleService {
 			onProgress?.(t('applyingCopyFiles', { repo: `${entry.owner}/${entry.name}` }));
 			await fs.mkdir(path.dirname(targetPath), { recursive: true });
 			await this.copyDirectory(cloneRoot, targetPath);
-			return this.createConfigEntry(entry, 'copy', targetRelativePath, ref, branch, versionSelection);
+			return this.createConfigEntry(entry, method, targetRelativePath, ref, branch, versionSelection);
 		} catch (error) {
 			await fs.rm(targetPath, { recursive: true, force: true });
 			throw error;
@@ -1059,6 +1077,121 @@ export class WorkspaceModuleService {
 			}
 			await fs.rm(tempRoot, { recursive: true, force: true });
 		}
+	}
+
+	/** copy / submodule → release：下载所选 release 附件替换模块目录（issue #37）。 */
+	private async convertToRelease(
+		workspaceRoot: string,
+		entry: LocalModuleConfigEntry,
+		selection: ModuleVersionSelection,
+		authToken?: string,
+		repoRoot?: string,
+	): Promise<LocalModuleConfigEntry> {
+		const targetRelativePath = this.normalizeRootPath(entry.path);
+		const targetAbsolute = this.toAbsoluteTargetPath(workspaceRoot, targetRelativePath);
+		const assets = selection.releaseAssets ?? [];
+		if (assets.length === 0) {
+			throw new Error('The release has no downloadable assets.');
+		}
+		if (entry.method === 'submodule' && repoRoot) {
+			await this.removeModule(workspaceRoot, entry, repoRoot);
+		} else if (await this.pathExists(targetAbsolute)) {
+			await this.updatePathLockState(targetAbsolute, false);
+			await fs.rm(targetAbsolute, { recursive: true, force: true });
+		}
+		const tmpDir = await fs.mkdtemp(path.join(getTempRoot(), 'csm-switch-release-'));
+		try {
+			await this.downloadReleaseAssets(assets, authToken, tmpDir);
+			await fs.mkdir(path.dirname(targetAbsolute), { recursive: true });
+			await this.placeReleaseAssets(tmpDir, assets, targetAbsolute);
+		} finally {
+			await fs.rm(tmpDir, { recursive: true, force: true });
+		}
+		const branch = entry.branch || 'main';
+		return this.normalizeConfigEntry(this.withVersionInfo({
+			...entry,
+			method: 'release',
+			ref: '',
+			branch,
+		}, selection));
+	}
+
+	/** release → copy：重新克隆默认分支替换模块目录。 */
+	private async convertReleaseToCopy(
+		workspaceRoot: string,
+		entry: LocalModuleConfigEntry,
+		authToken?: string,
+	): Promise<LocalModuleConfigEntry> {
+		const targetRelativePath = this.normalizeRootPath(entry.path);
+		const targetAbsolute = this.toAbsoluteTargetPath(workspaceRoot, targetRelativePath);
+		const branch = entry.branch || 'main';
+		const tempRoot = await fs.mkdtemp(path.join(getTempRoot(), 'csm-switch-copy-'));
+		try {
+			if (await this.pathExists(targetAbsolute)) {
+				await this.updatePathLockState(targetAbsolute, false);
+				await fs.rm(targetAbsolute, { recursive: true, force: true });
+			}
+			const cloneArgs = ['clone', '--depth', '1'];
+			if (branch) {
+				cloneArgs.push('--branch', branch);
+			}
+			cloneArgs.push(entry.source, 'src');
+			await this.runGit(tempRoot, cloneArgs, authToken, entry.source);
+			const cloneRoot = path.join(tempRoot, 'src');
+			const ref = (await this.runGit(cloneRoot, ['rev-parse', 'HEAD'])).trim();
+			await fs.mkdir(path.dirname(targetAbsolute), { recursive: true });
+			await this.copyDirectory(cloneRoot, targetAbsolute);
+			return this.normalizeConfigEntry({
+				...entry,
+				method: 'copy',
+				ref,
+				branch,
+				versionKind: 'branch',
+				versionRef: branch,
+				releaseName: undefined,
+			});
+		} finally {
+			await fs.rm(tempRoot, { recursive: true, force: true });
+		}
+	}
+
+	/** release → submodule：submodule add 默认分支后检出当前 release 的 tag（detached HEAD）。 */
+	private async convertReleaseToSubmodule(
+		repoRoot: string,
+		entry: LocalModuleConfigEntry,
+		authToken?: string,
+	): Promise<LocalModuleConfigEntry> {
+		const targetRelativePath = this.normalizeRootPath(entry.path);
+		const targetAbsolute = this.toAbsoluteTargetPath(repoRoot, targetRelativePath);
+		const branch = entry.branch || 'main';
+		const releaseTag = entry.versionRef;
+		if (await this.pathExists(targetAbsolute)) {
+			await this.updatePathLockState(targetAbsolute, false);
+			await fs.rm(targetAbsolute, { recursive: true, force: true });
+		}
+		await this.runGit(
+			repoRoot,
+			['-c', 'protocol.file.allow=always', 'submodule', 'add', '-b', branch, entry.source, targetRelativePath],
+			authToken,
+			entry.source,
+		);
+		await this.runGit(
+			repoRoot,
+			['-c', 'protocol.file.allow=always', 'submodule', 'update', '--init', '--recursive', targetRelativePath],
+			authToken,
+			entry.source,
+		);
+		await this.runGit(targetAbsolute, ['fetch', '--tags', 'origin'], authToken, entry.source);
+		if (releaseTag) {
+			await this.runGit(targetAbsolute, ['checkout', releaseTag], authToken, entry.source);
+		}
+		const ref = (await this.runGit(targetAbsolute, ['rev-parse', 'HEAD'])).trim();
+		return this.normalizeConfigEntry({
+			...entry,
+			method: 'submodule',
+			ref,
+			branch,
+		});
 	}
 
 	private async ensureSwitchTargetExists(workspaceRoot: string, entry: LocalModuleConfigEntry): Promise<void> {
