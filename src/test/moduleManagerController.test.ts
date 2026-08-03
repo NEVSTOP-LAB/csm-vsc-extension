@@ -22,6 +22,7 @@ type VscodeMock = typeof vscode & {
 	__setConfigurationValue: (key: string, value: unknown) => void;
 	__getContextValue: (key: string) => unknown;
 	__getLastQuickPick: () => { items: unknown[]; options?: unknown } | undefined;
+	__getQuickPickHistory: () => Array<{ items: unknown[]; options?: unknown }>;
 	__getLastWarningPrompt: () => { message: string; items: unknown[] } | undefined;
 	__getLastWebviewPanel: () => { title: string; html: string } | undefined;
 	__resolveWebviewView: (viewId: string) => { html: string; fireMessage: (message: unknown) => void } | undefined;
@@ -2902,21 +2903,138 @@ suite('ModuleManagerController Regression Tests', () => {
 		mocked.__setConfigurationValue('csmModules.defaultModuleRoot', 'csm');
 		mocked.__setInformationMessageResponse('Use csm/');
 		mocked.__setQuickPickResponse({ method: 'copy' });
+		mocked.__setQuickPickResponse({ versionSource: 'latest', label: 'Use default branch (main)' });
 		mocked.__setWarningMessageResponse('Apply');
 
 		await controller.applyToWorkspaceCommand(entry);
 
 		assert.strictEqual(appliedRoot, 'd:/plain-workspace');
 		assert.strictEqual(writtenConfig?.modules.org__module_non_git?.method, 'copy');
-		const quickPick = mocked.__getLastQuickPick();
-		const quickPickItems = quickPick?.items as Array<{ label?: string; method?: string; kind?: vscode.QuickPickItemKind }> | undefined;
-		assert.ok(quickPickItems?.some((item) => item.label?.includes('submodule')));
-		assert.ok(!quickPickItems?.some((item) => item.method === 'submodule'));
-		assert.strictEqual(quickPickItems?.[0]?.kind, vscode.QuickPickItemKind.Separator);
-		const quickPickOptions = quickPick?.options as { prompt?: string } | undefined;
-		assert.ok(quickPickOptions?.prompt?.includes('not a Git repository'));
+		// 第一次 QuickPick 是引入方式选择：非 git 工作区下 submodule 不可用
+		const methodPick = mocked.__getQuickPickHistory()[0];
+		const methodPickItems = methodPick?.items as Array<{ label?: string; method?: string; kind?: vscode.QuickPickItemKind }> | undefined;
+		assert.ok(methodPickItems?.some((item) => item.label?.includes('submodule')));
+		assert.ok(!methodPickItems?.some((item) => item.method === 'submodule'));
+		assert.strictEqual(methodPickItems?.[0]?.kind, vscode.QuickPickItemKind.Separator);
+		const methodPickOptions = methodPick?.options as { prompt?: string } | undefined;
+		assert.ok(methodPickOptions?.prompt?.includes('not a Git repository'));
+		// 第二次 QuickPick 是版本来源选择（单选，issue #37）
+		const versionPick = mocked.__getQuickPickHistory()[1];
+		const versionPickOptions = versionPick?.options as { placeHolder?: string } | undefined;
+		assert.ok(versionPickOptions?.placeHolder?.includes('Choose a version source for org/module-non-git'));
 		const errors = mocked.__getMessageLog().filter((message) => message.level === 'error').map((message) => message.text);
 		assert.ok(!errors.some((text) => text.includes('not a Git repository')));
+	});
+
+	test('apply offers release version selection for a single module and passes it through', async () => {
+		const controller = createController() as any;
+		const entry: CsmModuleEntry = {
+			id: 10,
+			owner: 'org',
+			name: 'module-ver',
+			description: 'demo',
+			topics: ['csm-modsets'],
+			visibility: 'public',
+			defaultBranch: 'main',
+			repoUrl: 'https://github.com/org/module-ver',
+		};
+		const initialConfig: LocalModuleConfig = {
+			version: '2',
+			root: 'csm',
+			configPath: 'd:/repo/csm/csm-modules.yaml',
+			modules: {},
+		};
+		let receivedSelection: unknown;
+		let writtenConfig: LocalModuleConfig | undefined;
+		let cachedVersionInfo: unknown;
+
+		controller.availableModules = [entry];
+		controller.versionService = {
+			listBranches: async () => [],
+			listTags: async () => [],
+			listReleases: async () => [
+				{ name: 'Release v1.0', tagName: 'v1.0', publishedAt: '2026-06-01T00:00:00Z' },
+			],
+			listCommits: async () => [],
+			resolveCommitInfo: async () => ({ commitInfo: 'release commit', date: '2026-06-01T00:00:00Z' }),
+		};
+		controller.workspaceModuleService = {
+			resolveGitRepositoryRoot: async () => 'd:/repo',
+			normalizeRootPath: (value: string) => value,
+			recoverConfigFromExistingSubmodules: async () => undefined,
+			initializeConfig: async () => initialConfig,
+			loadConfig: async () => initialConfig,
+			getTargetRelativePath: (config: LocalModuleConfig, moduleEntry: CsmModuleEntry) => `${config.root}/${moduleEntry.name}`,
+			targetExists: async () => false,
+			applyModule: async (
+				_repoRoot: string,
+				_config: LocalModuleConfig,
+				moduleEntry: CsmModuleEntry,
+				_method: ModuleApplyMethod,
+				_authToken?: string,
+				_onProgress?: (message: string) => void,
+				_explicitTargetRelativePath?: string,
+				versionSelection?: unknown,
+			) => {
+				receivedSelection = versionSelection;
+				return {
+					key: 'org__module_ver',
+					name: moduleEntry.name,
+					owner: moduleEntry.owner,
+					source: moduleEntry.repoUrl,
+					method: 'copy' as const,
+					path: `csm/${moduleEntry.name}`,
+					ref: 'abc123',
+					branch: moduleEntry.defaultBranch,
+					versionKind: 'release',
+					versionRef: 'v1.0',
+				};
+			},
+			withAppliedModule: (config: LocalModuleConfig, moduleEntry: LocalModuleConfig['modules'][string]) => ({
+				...config,
+				modules: { ...config.modules, [moduleEntry.key]: moduleEntry },
+			}),
+			writeConfig: async (config: LocalModuleConfig) => {
+				writtenConfig = config;
+			},
+		};
+		controller.cacheStore.setModuleVersionCache = async (cache: unknown) => {
+			cachedVersionInfo = cache;
+		};
+		mocked.__setWorkspaceFolders([{ name: 'repo', uri: vscode.Uri.file('d:/repo') }]);
+		mocked.__setFindFilesResult([]);
+		mocked.__setConfigurationValue('csmModules.defaultModuleRoot', 'csm');
+		mocked.__setInformationMessageResponse('Use csm/');
+		mocked.__setQuickPickResponse({ method: 'copy' });
+		// 版本来源选择：Release
+		mocked.__setQuickPickResponse({ versionSource: 'releases', label: 'Releases' });
+		// Release 列表：显示标题，不显示 commit MD5
+		mocked.__setQuickPickResponse({
+			label: 'Release v1.0 · v1.0',
+			release: { name: 'Release v1.0', tagName: 'v1.0', publishedAt: '2026-06-01T00:00:00Z' },
+		});
+		mocked.__setWarningMessageResponse('Apply');
+
+		await controller.applyToWorkspaceCommand(entry);
+
+		// applyModule 收到 release 版本选择
+		assert.ok(receivedSelection);
+		const selection = receivedSelection as { kind: string; versionRef: string; branch: string };
+		assert.strictEqual(selection.kind, 'release');
+		assert.strictEqual(selection.versionRef, 'v1.0');
+		assert.strictEqual(selection.branch, 'main');
+		// 确认框展示目标版本
+		assert.ok(mocked.__getLastWarningPrompt()?.message.includes('at version Release v1.0'));
+		// Release 列表项显示标题（而非 commit MD5）
+		const releasePick = mocked.__getQuickPickHistory()[2];
+		const releaseItems = releasePick?.items as Array<{ label?: string; description?: string }> | undefined;
+		assert.ok(releaseItems?.[0]?.label?.includes('Release v1.0'));
+		assert.ok(!releaseItems?.[0]?.label?.match(/[0-9a-f]{40}/i));
+		// 应用成功后缓存提交信息
+		assert.ok(writtenConfig?.modules.org__module_ver?.versionKind === 'release');
+		assert.ok(cachedVersionInfo);
+		const cache = cachedVersionInfo as Record<string, { commitInfo?: string }>;
+		assert.strictEqual(cache['org/module-ver']?.commitInfo, 'release commit');
 	});
 
 	test('apply auto-stars imported community modules for signed-in users', async () => {

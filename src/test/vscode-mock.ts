@@ -365,6 +365,7 @@ let lastWebviewView: {
 } | undefined;
 let lastWarningPrompt: { message: string; items: unknown[] } | undefined;
 let lastQuickPick: { items: unknown[]; options?: unknown } | undefined;
+const quickPickHistory: Array<{ items: unknown[]; options?: unknown }> = [];
 
 const webviewViewProviders = new Map<string, { resolveWebviewView: (webviewView: unknown, context: unknown, token: unknown) => void }>();
 const webviewViews = new Map<string, MockWebviewView>();
@@ -438,6 +439,7 @@ export const window = {
     async showQuickPick<T>(_items: readonly T[] | Promise<readonly T[]>, _options?: unknown): Promise<T | undefined> {
         const items = await Promise.resolve(_items);
         lastQuickPick = { items: [...items], options: _options };
+        quickPickHistory.push({ items: [...items], options: _options });
         const nextResponse = quickPickResponses.shift();
         return nextResponse as T | undefined;
     },
@@ -641,6 +643,14 @@ export function __getLastQuickPick(): { items: unknown[]; options?: unknown } | 
         : undefined;
 }
 
+/** 返回本次测试中所有 showQuickPick 调用的历史（按顺序）。 */
+export function __getQuickPickHistory(): Array<{ items: unknown[]; options?: unknown }> {
+    return quickPickHistory.map((entry) => ({
+        items: [...entry.items],
+        options: entry.options,
+    }));
+}
+
 export function __getExecutedCommands(): Array<{ command: string; args: unknown[] }> {
     return [...executedCommands];
 }
@@ -660,6 +670,7 @@ export function __resetUiState(): void {
     lastWebviewView = undefined;
     lastWarningPrompt = undefined;
     lastQuickPick = undefined;
+    quickPickHistory.length = 0;
     executedCommands.length = 0;
     webviewViewProviders.clear();
     webviewViews.clear();

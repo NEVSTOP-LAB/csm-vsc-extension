@@ -98,6 +98,21 @@ type BranchQuickPickItem = vscode.QuickPickItem & {
 	branch: ModuleBranchInfo;
 };
 
+/** 版本来源选择所需的模块基本信息（update 与 apply 复用，issue #37） */
+interface VersionSelectionContext {
+	owner: string;
+	name: string;
+	source: string;
+	branch: string;
+	moduleLabel: string;
+}
+
+/** 版本来源选择框顶部“使用默认/最新”项的文案 */
+interface VersionLatestOption {
+	label: string;
+	detail: string;
+}
+
 type ModuleManagerAuthService = Pick<AuthService, 'getSessionSilently' | 'getSessionInteractively'>
 	& Partial<Pick<AuthService, 'signOut' | 'verifyScopes'>>;
 
@@ -342,6 +357,28 @@ export class ModuleManagerController {
 		if (typeof targetNamespace === 'undefined') {
 			return;
 		}
+		// 单选时提供版本来源选择（issue #37）：置顶“使用默认分支”，其余来源与更新一致；
+		// 多选时不提供版本选择，沿用默认分支（现状）。用户取消版本选择时回退到默认分支继续。
+		let versionSelection: ModuleVersionSelection | undefined;
+		if (selectedEntries.length === 1) {
+			const singleEntry = selectedEntries[0];
+			const defaultBranch = singleEntry.defaultBranch || 'main';
+			versionSelection = await this.promptVersionSelection(
+				{
+					owner: singleEntry.owner,
+					name: singleEntry.name,
+					source: singleEntry.repoUrl,
+					branch: defaultBranch,
+					moduleLabel: `${singleEntry.owner}/${singleEntry.name}`,
+				},
+				authToken,
+				{
+					label: t('applyUseDefaultBranchOption', { branch: defaultBranch }),
+					detail: t('applyUseDefaultBranchDetail', { branch: defaultBranch }),
+				},
+			);
+			// 取消版本选择：保持现状，使用默认分支继续应用
+		}
 		const explicitTargetPathsByModuleKey = new Map<string, string>();
 		for (const moduleEntry of selectedEntries) {
 			explicitTargetPathsByModuleKey.set(
@@ -364,13 +401,25 @@ export class ModuleManagerController {
 		}
 		const applyMethodLabel = getApplyMethodLabel(applyMethod);
 
+		// 单选且选择了具体版本时，确认框展示目标版本（issue #37）
+		const versionLabel = versionSelection && versionSelection.kind !== 'latest'
+			? versionSelection.label
+			: undefined;
 		const confirmation = await vscode.window.showWarningMessage(
-			t('applyConfirmation', {
-				count: selectedEntries.length,
-				repository: path.basename(applyRoot),
-				method: applyMethodLabel,
-				root: config.root,
-			}),
+			versionLabel
+				? t('applyConfirmationWithVersion', {
+					count: selectedEntries.length,
+					repository: path.basename(applyRoot),
+					method: applyMethodLabel,
+					root: config.root,
+					version: versionLabel,
+				})
+				: t('applyConfirmation', {
+					count: selectedEntries.length,
+					repository: path.basename(applyRoot),
+					method: applyMethodLabel,
+					root: config.root,
+				}),
 			{ modal: true },
 			t('applyAction'),
 		);
@@ -407,6 +456,7 @@ export class ModuleManagerController {
 										authToken,
 										(msg) => progress.report({ message: msg }),
 										explicitTargetPath,
+										versionSelection && versionSelection.kind !== 'latest' ? versionSelection : undefined,
 									);
 									return applied;
 								} finally {
@@ -451,6 +501,7 @@ export class ModuleManagerController {
 								authToken,
 								(msg) => progress.report({ message: msg }),
 								explicitTargetPath,
+								versionSelection && versionSelection.kind !== 'latest' ? versionSelection : undefined,
 							);
 							config = this.workspaceModuleService.withAppliedModule(config, applied);
 							await writeConfigSafely(config);
@@ -477,6 +528,17 @@ export class ModuleManagerController {
 
 		await this.autoStarImportedModules(appliedEntriesForAutoStar);
 
+		// 单选指定版本时，应用成功后缓存提交信息，便于侧边栏展示当前版本（issue #37）
+		if (versionSelection && versionSelection.kind !== 'latest' && appliedCount > 0) {
+			const singleEntry = selectedEntries[0];
+			const appliedEntry = Object.values(config.modules).find(
+				(module) => module.owner === singleEntry.owner && module.name === singleEntry.name,
+			);
+			if (appliedEntry) {
+				await this.cacheModuleVersionInfo(appliedEntry, singleEntry, versionSelection, authToken);
+			}
+		}
+
 		void vscode.window.showInformationMessage(
 			t('applySuccess', {
 				count: selectedEntries.length,
@@ -484,6 +546,9 @@ export class ModuleManagerController {
 				configPath: path.relative(applyRoot, config.configPath).replace(/\\/g, '/'),
 			}),
 		);
+		// 应用成功后清除勾选状态：残留选择会让已应用模块仍显示为选中，
+		// 且会连带影响下一次批量应用（把已应用模块再次纳入目标集合）。
+		this.setSelectedModuleKeys([]);
 		await this.refreshSidebarWorkspaceState();
 	}
 
@@ -597,7 +662,21 @@ export class ModuleManagerController {
 		const targetLabel = `${target.owner}/${target.name}`;
 		try {
 			// 第一步：选择版本来源
-			const selection = await this.promptVersionSelection(target, moduleEntry, authToken);
+			const branch = target.branch || moduleEntry.defaultBranch || 'main';
+			const selection = await this.promptVersionSelection(
+				{
+					owner: target.owner,
+					name: target.name,
+					source: target.source,
+					branch,
+					moduleLabel: `${target.owner}/${target.name}`,
+				},
+				authToken,
+				{
+					label: t('updateToLatestOption', { branch }),
+					detail: t('updateToLatestDetail', { branch }),
+				},
+			);
 			if (!selection) {
 				return;
 			}
@@ -678,20 +757,20 @@ export class ModuleManagerController {
 	// ----------------------------------------------------------------------
 
 	/**
-	 * 第一步：选择版本来源（更新到最新 / 提交记录 / 标签 / Release / 分支）。
+	 * 第一步：选择版本来源（最新/使用默认分支 / 提交记录 / 标签 / Release / 分支）。
 	 * 选择具体来源后进入第二步选择具体版本；分支来源会再进入该分支的提交列表。
 	 */
 	private async promptVersionSelection(
-		target: LocalModuleConfigEntry,
-		moduleEntry: CsmModuleEntry,
+		context: VersionSelectionContext,
 		authToken: string | undefined,
+		latestOption: VersionLatestOption,
 	): Promise<ModuleVersionSelection | undefined> {
-		const branch = target.branch || moduleEntry.defaultBranch || 'main';
-		const moduleLabel = `${target.owner}/${target.name}`;
+		const { owner, name, branch, moduleLabel } = context;
+		const repoUrl = context.source;
 		const sourceItems: VersionSourceQuickPickItem[] = [
 			{
-				label: t('updateToLatestOption', { branch }),
-				detail: t('updateToLatestDetail', { branch }),
+				label: latestOption.label,
+				detail: latestOption.detail,
 				versionSource: 'latest',
 				alwaysShow: true,
 			},
@@ -716,36 +795,36 @@ export class ModuleManagerController {
 				versionSource: 'branches',
 			},
 		];
-		const source = await vscode.window.showQuickPick(sourceItems, {
+		const pickedSource = await vscode.window.showQuickPick(sourceItems, {
 			placeHolder: t('versionSourcePlaceholder', { module: moduleLabel }),
 			ignoreFocusOut: true,
 		});
-		if (!source) {
+		if (!pickedSource) {
 			return undefined;
 		}
 
-		switch (source.versionSource) {
+		switch (pickedSource.versionSource) {
 			case 'latest':
-				return { kind: 'latest', branch, label: t('latestRef') };
+				return { kind: 'latest', branch, label: latestOption.label };
 			case 'commits': {
-				const commits = await this.versionService.listCommits(target.owner, target.name, branch, target.source, authToken);
+				const commits = await this.versionService.listCommits(owner, name, branch, repoUrl, authToken);
 				return this.pickCommit(commits, branch);
 			}
 			case 'tags': {
-				const tags = await this.versionService.listTags(target.owner, target.name, target.source, authToken);
+				const tags = await this.versionService.listTags(owner, name, repoUrl, authToken);
 				return this.pickTag(tags, branch);
 			}
 			case 'releases': {
-				const releases = await this.versionService.listReleases(target.owner, target.name, authToken);
+				const releases = await this.versionService.listReleases(owner, name, authToken);
 				return this.pickRelease(releases, branch);
 			}
 			case 'branches': {
-				const branches = await this.versionService.listBranches(target.owner, target.name, target.source, authToken);
+				const branches = await this.versionService.listBranches(owner, name, repoUrl, authToken);
 				const pickedBranch = await this.pickBranch(branches);
 				if (!pickedBranch) {
 					return undefined;
 				}
-				const commits = await this.versionService.listCommits(target.owner, target.name, pickedBranch.name, target.source, authToken);
+				const commits = await this.versionService.listCommits(owner, name, pickedBranch.name, repoUrl, authToken);
 				return this.pickCommit(commits, pickedBranch.name);
 			}
 		}

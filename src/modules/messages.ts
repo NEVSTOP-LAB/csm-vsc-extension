@@ -54,6 +54,10 @@ const messages = {
 		en: 'Apply {count} module(s) to {repository} using {method} under {root}/?',
 		zh: '要在 {repository} 的 {root}/ 下以 {method} 方式应用 {count} 个模块吗？',
 	},
+	applyConfirmationWithVersion: {
+		en: 'Apply {count} module(s) to {repository} using {method} under {root}/, at version {version}?',
+		zh: '要以 {method} 方式将 {count} 个模块应用到 {repository} 的 {root}/ 下，目标版本 {version} 吗？',
+	},
 	applyAction: {
 		en: 'Apply',
 		zh: '应用',
@@ -196,6 +200,14 @@ const messages = {
 	updateToLatestDetail: {
 		en: 'Update the module to the latest commit on branch {branch}.',
 		zh: '将模块更新到分支 {branch} 的最新提交。',
+	},
+	applyUseDefaultBranchOption: {
+		en: 'Use default branch ({branch})',
+		zh: '使用默认分支（{branch}）',
+	},
+	applyUseDefaultBranchDetail: {
+		en: 'Apply the module at the latest commit of branch {branch}.',
+		zh: '使用分支 {branch} 的最新提交应用该模块。',
 	},
 	versionSourceCommits: {
 		en: 'Commit history',

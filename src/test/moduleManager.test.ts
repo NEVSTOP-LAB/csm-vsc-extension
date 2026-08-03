@@ -1809,6 +1809,117 @@ suite('Module Manager Tests', () => {
 		}
 	});
 
+	test('WorkspaceModuleService applies a copy module at a specific tag version', async function () {
+		this.timeout(20000);
+		const tempRoot = await fs.mkdtemp(path.join(getTempRoot(), 'csm-modules-apply-tag-'));
+		const moduleRepo = path.join(tempRoot, 'module-apply-tag-repo');
+		const workspaceRoot = path.join(tempRoot, 'plain-workspace');
+		const service = new WorkspaceModuleService();
+		try {
+			await fs.mkdir(moduleRepo, { recursive: true });
+			runGit(moduleRepo, ['init', '--initial-branch=main']);
+			runGit(moduleRepo, ['config', 'user.name', 'Test User']);
+			runGit(moduleRepo, ['config', 'user.email', 'test@example.com']);
+			await fs.writeFile(path.join(moduleRepo, 'README.md'), '# v1\n', 'utf8');
+			runGit(moduleRepo, ['add', 'README.md']);
+			runGit(moduleRepo, ['commit', '-m', 'init module']);
+			const tagRef = runGit(moduleRepo, ['rev-parse', 'HEAD']);
+			runGit(moduleRepo, ['tag', 'v1.0']);
+			await fs.writeFile(path.join(moduleRepo, 'README.md'), '# v2\n', 'utf8');
+			runGit(moduleRepo, ['add', 'README.md']);
+			runGit(moduleRepo, ['commit', '-m', 'update module']);
+
+			await fs.mkdir(workspaceRoot, { recursive: true });
+			const config = await service.initializeConfig(workspaceRoot, 'csm');
+			const moduleEntry: CsmModuleEntry = {
+				id: 1,
+				owner: 'org',
+				name: 'module-apply-tag',
+				description: 'demo',
+				topics: ['csm-modsets'],
+				visibility: 'public',
+				defaultBranch: 'main',
+				repoUrl: moduleRepo,
+			};
+			// 首次应用直接指定 v1.0 标签（copy）
+			const applied = await service.applyModule(workspaceRoot, config, moduleEntry, 'copy', undefined, undefined, undefined, {
+				kind: 'tag',
+				versionRef: 'v1.0',
+				branch: 'main',
+				label: 'v1.0',
+			});
+			assert.strictEqual(applied.ref, tagRef);
+			assert.strictEqual(applied.versionKind, 'tag');
+			assert.strictEqual(applied.versionRef, 'v1.0');
+			assert.strictEqual(applied.branch, 'main');
+			assert.strictEqual(applied.locked, true);
+			assert.ok((await fs.readFile(path.join(workspaceRoot, 'csm', 'module-apply-tag', 'README.md'), 'utf8')).includes('# v1'));
+		} finally {
+			await removeWritableTree(tempRoot);
+		}
+	});
+
+	test('WorkspaceModuleService applies a submodule at a specific commit (detached HEAD)', async function () {
+		this.timeout(20000);
+		const tempRoot = await fs.mkdtemp(path.join(getTempRoot(), 'csm-modules-apply-sub-commit-'));
+		const moduleRepo = path.join(tempRoot, 'module-apply-sub-repo');
+		const repoRoot = path.join(tempRoot, 'workspace-repo');
+		const service = new WorkspaceModuleService();
+		try {
+			await fs.mkdir(moduleRepo, { recursive: true });
+			runGit(moduleRepo, ['init', '--initial-branch=main']);
+			runGit(moduleRepo, ['config', 'user.name', 'Test User']);
+			runGit(moduleRepo, ['config', 'user.email', 'test@example.com']);
+			await fs.writeFile(path.join(moduleRepo, 'README.md'), '# v1\n', 'utf8');
+			runGit(moduleRepo, ['add', 'README.md']);
+			runGit(moduleRepo, ['commit', '-m', 'init module']);
+			const firstSha = runGit(moduleRepo, ['rev-parse', 'HEAD']);
+			await fs.writeFile(path.join(moduleRepo, 'README.md'), '# v2\n', 'utf8');
+			runGit(moduleRepo, ['add', 'README.md']);
+			runGit(moduleRepo, ['commit', '-m', 'update module']);
+
+			await fs.mkdir(repoRoot, { recursive: true });
+			runGit(repoRoot, ['init', '--initial-branch=main']);
+			runGit(repoRoot, ['config', 'user.name', 'Test User']);
+			runGit(repoRoot, ['config', 'user.email', 'test@example.com']);
+			await fs.writeFile(path.join(repoRoot, 'README.md'), '# workspace\n', 'utf8');
+			runGit(repoRoot, ['add', 'README.md']);
+			runGit(repoRoot, ['commit', '-m', 'init workspace']);
+
+			const config = await service.initializeConfig(repoRoot, 'csm');
+			const moduleEntry: CsmModuleEntry = {
+				id: 1,
+				owner: 'org',
+				name: 'module-apply-sub',
+				description: 'demo',
+				topics: ['csm-modsets'],
+				visibility: 'public',
+				defaultBranch: 'main',
+				repoUrl: moduleRepo,
+			};
+			// 首次应用直接指定旧提交（submodule，detached HEAD）
+			const applied = await service.applyModule(repoRoot, config, moduleEntry, 'submodule', undefined, undefined, undefined, {
+				kind: 'commit',
+				versionRef: firstSha,
+				ref: firstSha,
+				branch: 'main',
+				label: firstSha.slice(0, 7),
+			});
+			assert.strictEqual(applied.ref, firstSha);
+			assert.strictEqual(applied.versionKind, 'commit');
+			assert.strictEqual(applied.versionRef, firstSha);
+			assert.strictEqual(applied.branch, 'main');
+			const submodulePath = path.join(repoRoot, 'csm', 'module-apply-sub');
+			const head = runGit(submodulePath, ['rev-parse', 'HEAD']);
+			assert.strictEqual(head, firstSha);
+			const abbrevRef = runGit(submodulePath, ['rev-parse', '--abbrev-ref', 'HEAD']);
+			assert.strictEqual(abbrevRef, 'HEAD');
+			assert.ok((await fs.readFile(path.join(submodulePath, 'README.md'), 'utf8')).includes('# v1'));
+		} finally {
+			await removeWritableTree(tempRoot);
+		}
+	});
+
 	test('WorkspaceModuleService syncSubmoduleEntriesToConfig adds untracked submodules to an existing config', async function () {
 		this.timeout(20000);
 		const tempRoot = await fs.mkdtemp(path.join(getTempRoot(), 'csm-sync-submodules-'));

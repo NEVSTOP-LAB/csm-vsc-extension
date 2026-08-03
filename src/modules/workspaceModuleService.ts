@@ -520,7 +520,13 @@ export class WorkspaceModuleService {
 
 			const tmpDir = await fs.mkdtemp(path.join(getTempRoot(), 'csm-update-'));
 			try {
-				const cloneRoot = await this.cloneModuleVersion(tmpDir, selection, normalizedEntry, moduleEntry, authToken);
+				const cloneRoot = await this.cloneModuleVersion(
+					tmpDir,
+					selection,
+					normalizedEntry.source,
+					selection.branch || normalizedEntry.branch || moduleEntry.defaultBranch || 'main',
+					authToken,
+				);
 				const head = (await this.runGit(cloneRoot, ['rev-parse', 'HEAD']))
 					|| selection.ref
 					|| options.latestRefHint
@@ -656,6 +662,8 @@ export class WorkspaceModuleService {
 		authToken?: string,
 		onProgress?: (message: string) => void,
 		explicitTargetRelativePath?: string,
+		/** 指定版本来源（issue #37）：`latest` 或缺省时使用默认分支（现状） */
+		versionSelection?: ModuleVersionSelection,
 	): Promise<LocalModuleConfigEntry> {
 		const targetRelativePath = explicitTargetRelativePath
 			? this.normalizeRootPath(explicitTargetRelativePath)
@@ -669,8 +677,8 @@ export class WorkspaceModuleService {
 		}
 
 		const appliedEntry = method === 'submodule'
-			? this.applyModuleAsSubmodule(repoRoot, entry, targetRelativePath, targetPath, authToken, onProgress)
-			: this.applyModuleAsCopy(repoRoot, entry, targetRelativePath, targetPath, authToken, onProgress);
+			? this.applyModuleAsSubmodule(repoRoot, entry, targetRelativePath, targetPath, authToken, onProgress, versionSelection)
+			: this.applyModuleAsCopy(repoRoot, entry, targetRelativePath, targetPath, authToken, onProgress, versionSelection);
 		const lockedEntry = this.normalizeConfigEntry(await appliedEntry);
 		await this.applyEntryLockState(repoRoot, lockedEntry);
 		return lockedEntry;
@@ -800,50 +808,75 @@ export class WorkspaceModuleService {
 		targetPath: string,
 		authToken?: string,
 		onProgress?: (message: string) => void,
+		versionSelection?: ModuleVersionSelection,
 	): Promise<LocalModuleConfigEntry> {
-		const branch = entry.defaultBranch || 'main';
+		const defaultBranch = entry.defaultBranch || 'main';
+		// commit 来源记录所选分支；tag / release / 默认分支 记录默认分支
+		const branch = versionSelection && versionSelection.kind === 'commit' && versionSelection.branch
+			? versionSelection.branch
+			: defaultBranch;
 		onProgress?.(t('applyingSubmoduleAdding', { repo: `${entry.owner}/${entry.name}` }));
+		// `-c protocol.file.allow=always`：允许从本地路径（file transport）添加 submodule，
+		// 否则 git 2.38+ 会以 "transport 'file' not allowed" 拒绝（对 https 远程无影响）。
 		await this.runGit(
 			repoRoot,
-			['submodule', 'add', '-b', branch, entry.repoUrl, targetRelativePath],
+			['-c', 'protocol.file.allow=always', 'submodule', 'add', '-b', branch, entry.repoUrl, targetRelativePath],
 			authToken,
 			entry.repoUrl,
 		);
 		onProgress?.(t('applyingSubmoduleInit', { repo: `${entry.owner}/${entry.name}` }));
 		await this.runGit(
 			repoRoot,
-			['submodule', 'update', '--init', '--recursive', targetRelativePath],
+			['-c', 'protocol.file.allow=always', 'submodule', 'update', '--init', '--recursive', targetRelativePath],
 			authToken,
 			entry.repoUrl,
 		);
-		const ref = await this.runGit(targetPath, ['rev-parse', 'HEAD']);
-		return this.createConfigEntry(entry, 'submodule', targetRelativePath, ref, branch);
+		let ref = await this.runGit(targetPath, ['rev-parse', 'HEAD']);
+		// 指定版本（非“使用默认分支”）：fetch + checkout 到目标提交/tag（detached HEAD）
+		if (versionSelection && versionSelection.kind !== 'latest') {
+			await this.runGit(targetPath, ['fetch', '--tags', 'origin'], authToken, entry.repoUrl);
+			const checkoutRef = this.getSubmoduleCheckoutRef(versionSelection);
+			await this.runGit(targetPath, ['checkout', checkoutRef], authToken, entry.repoUrl);
+			ref = await this.runGit(targetPath, ['rev-parse', 'HEAD']);
+		}
+		return this.createConfigEntry(entry, 'submodule', targetRelativePath, ref, branch, versionSelection);
 	}
 
 	private async applyModuleAsCopy(
-		repoRoot: string,
+		_repoRoot: string,
 		entry: CsmModuleEntry,
 		targetRelativePath: string,
 		targetPath: string,
 		authToken?: string,
 		onProgress?: (message: string) => void,
+		versionSelection?: ModuleVersionSelection,
 	): Promise<LocalModuleConfigEntry> {
 		const tempRoot = await fs.mkdtemp(path.join(getTempRoot(), 'csm-module-'));
-		const checkoutPath = path.join(tempRoot, 'checkout');
-		const branch = entry.defaultBranch || 'main';
+		const defaultBranch = entry.defaultBranch || 'main';
+		// commit 来源记录所选分支；tag / release / 默认分支 记录默认分支
+		const branch = versionSelection && versionSelection.kind === 'commit' && versionSelection.branch
+			? versionSelection.branch
+			: defaultBranch;
 		try {
-			const cloneArgs = ['clone', '--depth', '1'];
-			if (entry.defaultBranch) {
-				cloneArgs.push('--branch', entry.defaultBranch);
-			}
-			cloneArgs.push(entry.repoUrl, checkoutPath);
 			onProgress?.(t('applyingCopyCloning', { repo: `${entry.owner}/${entry.name}` }));
-			await this.runGit(repoRoot, cloneArgs, authToken, entry.repoUrl);
-			const ref = await this.runGit(checkoutPath, ['rev-parse', 'HEAD']);
+			let cloneRoot: string;
+			if (versionSelection && versionSelection.kind !== 'latest') {
+				cloneRoot = await this.cloneModuleVersion(tempRoot, versionSelection, entry.repoUrl, defaultBranch, authToken);
+			} else {
+				// 现状：浅克隆默认分支
+				const cloneArgs = ['clone', '--depth', '1'];
+				if (defaultBranch) {
+					cloneArgs.push('--branch', defaultBranch);
+				}
+				cloneArgs.push(entry.repoUrl, 'src');
+				await this.runGit(tempRoot, cloneArgs, authToken, entry.repoUrl);
+				cloneRoot = path.join(tempRoot, 'src');
+			}
+			const ref = await this.runGit(cloneRoot, ['rev-parse', 'HEAD']);
 			onProgress?.(t('applyingCopyFiles', { repo: `${entry.owner}/${entry.name}` }));
 			await fs.mkdir(path.dirname(targetPath), { recursive: true });
-			await this.copyDirectory(checkoutPath, targetPath);
-			return this.createConfigEntry(entry, 'copy', targetRelativePath, ref, branch);
+			await this.copyDirectory(cloneRoot, targetPath);
+			return this.createConfigEntry(entry, 'copy', targetRelativePath, ref, branch, versionSelection);
 		} catch (error) {
 			await fs.rm(targetPath, { recursive: true, force: true });
 			throw error;
@@ -1041,8 +1074,9 @@ export class WorkspaceModuleService {
 		targetRelativePath: string,
 		ref: string,
 		branch: string,
+		versionSelection?: ModuleVersionSelection,
 	): LocalModuleConfigEntry {
-		return {
+		const configEntry: LocalModuleConfigEntry = {
 			key: this.getModuleKey(entry),
 			name: entry.name,
 			owner: entry.owner,
@@ -1053,6 +1087,7 @@ export class WorkspaceModuleService {
 			branch,
 			locked: true,
 		};
+		return versionSelection ? this.withVersionInfo(configEntry, versionSelection) : configEntry;
 	}
 
 
@@ -1289,21 +1324,19 @@ export class WorkspaceModuleService {
 
 	/**
 	 * 在临时目录拉取目标版本，返回 checkout 根目录（issue #37）：
-	 * - latest：`git clone --depth 1 --branch <branch>`（维持现状）
+	 * - latest：`git clone --depth 1 --branch <defaultBranch>`（维持现状）
 	 * - tag / release：`git clone --depth 1 --branch <tag> --single-branch`
 	 * - commit：`git init` + `git fetch --depth 1 origin <sha>` + `git checkout FETCH_HEAD`
 	 */
 	private async cloneModuleVersion(
 		tmpDir: string,
 		selection: ModuleVersionSelection,
-		entry: LocalModuleConfigEntry,
-		moduleEntry: CsmModuleEntry,
+		source: string,
+		defaultBranch: string,
 		authToken?: string,
 	): Promise<string> {
-		const source = entry.source;
 		if (selection.kind === 'latest') {
-			const branch = selection.branch || entry.branch || moduleEntry.defaultBranch || 'main';
-			await this.runGit(tmpDir, ['clone', '--depth', '1', '--branch', branch, source, 'src'], authToken, source);
+			await this.runGit(tmpDir, ['clone', '--depth', '1', '--branch', defaultBranch, source, 'src'], authToken, source);
 			return path.join(tmpDir, 'src');
 		}
 		if (selection.kind === 'tag' || selection.kind === 'release') {
