@@ -97,11 +97,10 @@ code --install-extension csm-vsc-support-*.vsix
 
 ### Copilot 结束时自动 Hook
 
-- **配置文件**：`.github/hooks/local-finish-stop.json`
-- **触发时机**：Copilot agent `Stop` 事件，也就是一次对话准备结束时
-- **实际执行**：每次会话结束都会执行 `node scripts/copilot-stop-hook.mjs`，运行 `npm run compile`（类型检查 + lint + esbuild 打包），验证当前代码可编译
-- **失败行为**：编译失败会阻止 agent 直接结束，并把失败原因回传给 agent；若再次进入 stop hook 仍失败，则改为放行结束以避免无限循环
-- **排查点**：如发现 hook 没触发，先确认 VS Code 已启用 workspace hooks，并检查 `GitHub Copilot Chat Hooks` 输出面板，以及 `chat.hookFilesLocations` 未禁用 `.github/hooks`
+- **配置**：`.github/hooks/local-finish-stop.json` 注册 `Stop` hook
+- **行为**：每次会话结束执行 `scripts/copilot-stop-hook.mjs`，运行 `npm run compile`（类型检查 + lint + esbuild）验证代码可编译
+- **失败**：编译失败阻止会话结束并回传原因；再次失败则放行，避免死循环
+- **排查**：hook 未触发时检查 VS Code workspace hooks 是否启用、`GitHub Copilot Chat Hooks` 输出面板、`chat.hookFilesLocations` 未禁用 `.github/hooks`
 
 ## 代码风格约定
 
