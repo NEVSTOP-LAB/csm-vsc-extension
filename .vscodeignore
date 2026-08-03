@@ -19,7 +19,7 @@ CHANGELOG.md
 AGENTS.md
 
 # 开发示例和日志：不需要打包进扩展
-.ignore/**
+test/fixtures/**
 csm/**
 scripts/**
 *.log
