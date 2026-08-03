@@ -314,6 +314,38 @@ const messages = {
 		en: 'Refresh',
 		zh: '刷新',
 	},
+	refreshModePickPlaceholder: {
+		en: 'What would you like to refresh?',
+		zh: '请选择要刷新的内容',
+	},
+	refreshOnlineCatalogLabel: {
+		en: 'Refresh online module catalog',
+		zh: '刷新在线模块目录',
+	},
+	refreshOnlineCatalogDetail: {
+		en: 'Fetch the latest module list from GitHub and update the local cache.',
+		zh: '从 GitHub 拉取最新模块列表，并更新本地存储的在线模块信息缓存。',
+	},
+	refreshLocalModulesLabel: {
+		en: 'Re-scan local modules',
+		zh: '重新搜索本地模块',
+	},
+	refreshLocalModulesDetail: {
+		en: 'Re-scan the local module folder to find unmanaged modules.',
+		zh: '重新扫描本地模块目录，查找并更新未管理的本地模块。',
+	},
+	rescanningLocalModules: {
+		en: 'Re-scanning local modules...',
+		zh: '正在重新搜索本地模块...',
+	},
+	localModulesRescanned: {
+		en: 'Local modules re-scanned. Found {count} unmanaged module(s).',
+		zh: '已重新搜索本地模块，发现 {count} 个未管理模块。',
+	},
+	localModulesRescannedNone: {
+		en: 'Local modules re-scanned. No unmanaged modules found.',
+		zh: '已重新搜索本地模块，未发现未管理的模块。',
+	},
 	signInRequiredForRefresh: {
 		en: 'GitHub sign-in is required to refresh modules.',
 		zh: '刷新模块前需要登录 GitHub。',

@@ -27,3 +27,5 @@
 - `gh` 传整数用 `--input -` + JSON；PR 正文含特殊字符用 `--body-file`
 - `fs.mkdtemp` 前先 `fs.mkdirSync(dir, { recursive: true })`
 - Windows 路径比较：统一 `replace(/\\/g, '/').toLowerCase()`（git 大写 / Node 小写）
+- `gh pr comment` / `gh pr create` 即使终端输出被截断或看似失败，也可能已成功发布；重复执行前必须先确认，勿想当然
+- 判断 issue/PR 评论是否已发布，用 `gh api repos/{owner}/{repo}/issues/{n}/comments` 查询；不要用 PR fetch 工具返回的 `comments` 字段判断——那是 review comments（行内评审），不含 issue comments（正文下普通评论）

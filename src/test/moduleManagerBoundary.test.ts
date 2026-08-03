@@ -157,4 +157,112 @@ suite('Module Manager Boundary Tests', () => {
 			await fs.rm(tmpDir, { recursive: true, force: true });
 		}
 	});
+
+	test('listModuleDirectories skips special-character-prefixed directories (issue #77)', async () => {
+		const service = new WorkspaceModuleService();
+		const tmpDir = await fs.mkdtemp(path.join(getTempRoot(), 'csm-special-prefix-'));
+		try {
+			// csm/
+			//   -dash/            → '-' prefix: not a submodule, never recursed
+			//     README.md
+			//     main.vi         → would otherwise be a strong-signal candidate
+			//   _underscore/      → '_' prefix: skipped entirely
+			//     data.lvlib
+			//   _space-prefixed/  → ' ' prefix: skipped entirely
+			//     other.vi
+			//   real/             → normal folder, still discovered
+			//     README.md
+			//     main.vi
+			const root = path.join(tmpDir, 'csm');
+			await fs.mkdir(path.join(root, '-dash'), { recursive: true });
+			await fs.writeFile(path.join(root, '-dash', 'README.md'), '# dash', 'utf8');
+			await fs.writeFile(path.join(root, '-dash', 'main.vi'), '', 'utf8');
+			await fs.mkdir(path.join(root, '_underscore'), { recursive: true });
+			await fs.writeFile(path.join(root, '_underscore', 'data.lvlib'), '', 'utf8');
+			await fs.mkdir(path.join(root, ' space-prefixed'), { recursive: true });
+			await fs.writeFile(path.join(root, ' space-prefixed', 'other.vi'), '', 'utf8');
+			await fs.mkdir(path.join(root, 'real'), { recursive: true });
+			await fs.writeFile(path.join(root, 'real', 'README.md'), '# real', 'utf8');
+			await fs.writeFile(path.join(root, 'real', 'main.vi'), '', 'utf8');
+
+			const discovered = await service.listModuleDirectories(tmpDir, 'csm');
+			assert.deepStrictEqual(discovered, ['real']);
+		} finally {
+			await fs.rm(tmpDir, { recursive: true, force: true });
+		}
+	});
+
+	test('listModuleDirectories treats .vi/.vit files as a strong module signal (issue #77)', async () => {
+		const service = new WorkspaceModuleService();
+		const tmpDir = await fs.mkdtemp(path.join(getTempRoot(), 'csm-vi-signal-'));
+		try {
+			// csm/
+			//   agilent/          → contains only .vi files, no README/.lvproj
+			//     measure.vi
+			//   typedef/          → contains only .vit files
+			//     template.vit
+			//   plain/            → no LabVIEW files: must NOT appear
+			//     notes.txt
+			const root = path.join(tmpDir, 'csm');
+			await fs.mkdir(path.join(root, 'agilent'), { recursive: true });
+			await fs.writeFile(path.join(root, 'agilent', 'measure.vi'), '', 'utf8');
+			await fs.mkdir(path.join(root, 'typedef'), { recursive: true });
+			await fs.writeFile(path.join(root, 'typedef', 'template.vit'), '', 'utf8');
+			await fs.mkdir(path.join(root, 'plain'), { recursive: true });
+			await fs.writeFile(path.join(root, 'plain', 'notes.txt'), 'x', 'utf8');
+
+			const discovered = await service.listModuleDirectories(tmpDir, 'csm', {
+				includeReadmeWeakSignal: false,
+			});
+			assert.deepStrictEqual(discovered, ['agilent', 'typedef']);
+		} finally {
+			await fs.rm(tmpDir, { recursive: true, force: true });
+		}
+	});
+
+	test('listModuleDirectories does not recurse into a discovered module folder (issue #77)', async () => {
+		const service = new WorkspaceModuleService();
+		const tmpDir = await fs.mkdtemp(path.join(getTempRoot(), 'csm-no-recurse-'));
+		try {
+			// csm/
+			//   module-a/         → strong signal at top level
+			//     main.vi
+			//     nested/         → inside a module: must NOT be reported separately
+			//       inner.lvlib
+			//   sibling/          → still discovered independently
+			//     sibling.vi
+			const root = path.join(tmpDir, 'csm');
+			await fs.mkdir(path.join(root, 'module-a', 'nested'), { recursive: true });
+			await fs.writeFile(path.join(root, 'module-a', 'main.vi'), '', 'utf8');
+			await fs.writeFile(path.join(root, 'module-a', 'nested', 'inner.lvlib'), '', 'utf8');
+			await fs.mkdir(path.join(root, 'sibling'), { recursive: true });
+			await fs.writeFile(path.join(root, 'sibling', 'sibling.vi'), '', 'utf8');
+
+			const discovered = await service.listModuleDirectories(tmpDir, 'csm');
+			assert.deepStrictEqual(discovered, ['module-a', 'sibling']);
+		} finally {
+			await fs.rm(tmpDir, { recursive: true, force: true });
+		}
+	});
+
+	test('listModuleDirectories reproduces the HAL/DMM layout from issue #77', async () => {
+		const service = new WorkspaceModuleService();
+		const tmpDir = await fs.mkdtemp(path.join(getTempRoot(), 'csm-hal-dmm-'));
+		try {
+			// csm/HAL/DMM/{Agilent,NI,Typedef} — only NI contains .lvlib,
+			// Agilent/Typedef only contain .vi files. All three must be found.
+			const dmm = path.join(tmpDir, 'csm', 'HAL', 'DMM');
+			await fs.mkdir(path.join(dmm, 'Agilent'), { recursive: true });
+			await fs.writeFile(path.join(dmm, 'Agilent', 'agilent.vi'), '', 'utf8');
+			await fs.mkdir(path.join(dmm, 'NI'), { recursive: true });
+			await fs.writeFile(path.join(dmm, 'NI', 'data.lvlib'), '', 'utf8');
+			await fs.mkdir(path.join(dmm, 'Typedef'), { recursive: true });
+			await fs.writeFile(path.join(dmm, 'Typedef', 'typedef.vi'), '', 'utf8');
+
+			const discovered = await service.listModuleDirectories(tmpDir, 'csm');
+			assert.deepStrictEqual(discovered, ['HAL/DMM/Agilent', 'HAL/DMM/NI', 'HAL/DMM/Typedef']);
+		} finally {
+			await fs.rm(tmpDir, { recursive: true, force: true });
+		}
+	});
 });

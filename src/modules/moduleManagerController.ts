@@ -63,6 +63,12 @@ type RepositoryVisibilityQuickPickItem = vscode.QuickPickItem & {
 	visibility: RepositoryVisibility;
 };
 
+type RefreshMode = 'online' | 'local';
+
+type RefreshModeQuickPickItem = vscode.QuickPickItem & {
+	mode: RefreshMode;
+};
+
 type ModuleManagerAuthService = Pick<AuthService, 'getSessionSilently' | 'getSessionInteractively'>
 	& Partial<Pick<AuthService, 'signOut' | 'verifyScopes'>>;
 
@@ -1338,10 +1344,39 @@ export class ModuleManagerController {
 	}
 
 	/**
-	 * Refreshes the GitHub module catalog and then recomputes the unified sidebar's
-	 * local workspace state and initialization prompt, even if the remote refresh fails.
+	 * 刷新入口（issue #76）：让用户选择是刷新在线模块目录缓存，还是重新搜索本地模块。
+	 * 两种模式完成后都会重算本地工作区状态与初始化提示。
 	 */
 	public async refreshCommand(): Promise<void> {
+		const pick = await vscode.window.showQuickPick<RefreshModeQuickPickItem>(
+			[
+				{
+					label: t('refreshOnlineCatalogLabel'),
+					detail: t('refreshOnlineCatalogDetail'),
+					mode: 'online',
+				},
+				{
+					label: t('refreshLocalModulesLabel'),
+					detail: t('refreshLocalModulesDetail'),
+					mode: 'local',
+				},
+			],
+			{ placeHolder: t('refreshModePickPlaceholder') },
+		);
+		if (!pick) {
+			return;
+		}
+		if (pick.mode === 'local') {
+			await this.refreshLocalModulesWithFeedback();
+			return;
+		}
+		await this.refreshOnlineCatalog();
+	}
+
+	/**
+	 * 从 GitHub 刷新在线模块目录并更新本地缓存，随后重算本地工作区状态。
+	 */
+	private async refreshOnlineCatalog(): Promise<void> {
 		await vscode.window.withProgress(
 			{ location: vscode.ProgressLocation.Notification, title: t('outputChannelName') },
 			async (progress) => {
@@ -1349,19 +1384,46 @@ export class ModuleManagerController {
 				try {
 					await this.loadModules({ interactiveAuth: false, showSuccessMessage: true, showErrorMessage: true });
 				} finally {
-					try {
-						await this.refreshSidebarWorkspaceState();
-					} catch (error) {
-						this.logger.warn(`Failed to refresh sidebar workspace state after module refresh: ${error instanceof Error ? error.message : String(error)}`);
-					}
-					try {
-						await this.refreshWorkspaceInitializationState({ prompt: false });
-					} catch (error) {
-						this.logger.warn(`Failed to refresh workspace initialization state after module refresh: ${error instanceof Error ? error.message : String(error)}`);
-					}
+					await this.refreshLocalModulesOnly();
 				}
 			},
 		);
+	}
+
+	/**
+	 * 用户主动选择"重新搜索本地模块"：显示进度提示，并在完成后反馈扫描结果。
+	 */
+	private async refreshLocalModulesWithFeedback(): Promise<void> {
+		const unmanagedCount = await vscode.window.withProgress(
+			{ location: vscode.ProgressLocation.Notification, title: t('outputChannelName') },
+			async (progress) => {
+				progress.report({ message: t('rescanningLocalModules') });
+				return this.refreshLocalModulesOnly();
+			},
+		);
+		const message = unmanagedCount > 0
+			? t('localModulesRescanned', { count: String(unmanagedCount) })
+			: t('localModulesRescannedNone');
+		void vscode.window.showInformationMessage(message);
+	}
+
+	/**
+	 * 重新搜索本地模块目录（更新未管理模块列表），并重算工作区初始化提示。
+	 * 返回当前发现的未管理模块数量；作为在线刷新完成后的静默补充步骤时不产生任何 UI 提示。
+	 */
+	private async refreshLocalModulesOnly(): Promise<number> {
+		let unmanagedCount = 0;
+		try {
+			unmanagedCount = await this.refreshSidebarWorkspaceState();
+		} catch (error) {
+			this.logger.warn(`Failed to refresh sidebar workspace state after module refresh: ${error instanceof Error ? error.message : String(error)}`);
+		}
+		try {
+			await this.refreshWorkspaceInitializationState({ prompt: false });
+		} catch (error) {
+			this.logger.warn(`Failed to refresh workspace initialization state after module refresh: ${error instanceof Error ? error.message : String(error)}`);
+		}
+		return unmanagedCount;
 	}
 
 	private async toggleStarCommand(entry: CsmModuleEntry): Promise<void> {
@@ -2161,7 +2223,10 @@ export class ModuleManagerController {
 		return ref.length > 10 ? ref.slice(0, 7) : ref;
 	}
 
-	private async refreshSidebarWorkspaceState(): Promise<void> {
+	/**
+	 * 重算侧边栏本地工作区状态，并返回当前发现的未管理模块数量。
+	 */
+	private async refreshSidebarWorkspaceState(): Promise<number> {
 		const setContext = (context: SidebarWorkspaceContext): void => {
 			this.appliedModuleKeys.clear();
 			for (const moduleKey of context.appliedModuleKeys) {
@@ -2179,7 +2244,7 @@ export class ModuleManagerController {
 		const workspaceFolder = this.getPreferredWorkspaceFolder();
 		if (!workspaceFolder) {
 			setContext({ appliedModuleKeys: [] });
-			return;
+			return 0;
 		}
 
 		const repoRoot = await this.workspaceModuleService.resolveGitRepositoryRoot(workspaceFolder.uri.fsPath);
@@ -2225,6 +2290,7 @@ export class ModuleManagerController {
 			}
 		}
 
+		const unmanagedFolders = moduleRoot ? await this.mapUnmanagedFolders(workspaceRoot, moduleRoot, config) : [];
 		setContext({
 			workspaceLabel: path.basename(workspaceRoot) || workspaceFolder.name,
 			moduleRoot,
@@ -2232,9 +2298,10 @@ export class ModuleManagerController {
 			appliedModuleKeys: this.mapAppliedModuleKeys(config),
 			staleModuleKeys,
 			managedModules,
-			unmanagedFolders: moduleRoot ? await this.mapUnmanagedFolders(workspaceRoot, moduleRoot, config) : [],
+			unmanagedFolders,
 			workspaceLabviewVersion: workspaceVersionResult?.display,
 		});
+		return unmanagedFolders.length;
 	}
 
 	private async resolveSidebarModuleRoot(workspaceRoot: string, config: LocalModuleConfig | undefined): Promise<string | undefined> {
