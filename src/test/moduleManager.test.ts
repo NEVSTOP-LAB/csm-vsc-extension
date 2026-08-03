@@ -405,6 +405,11 @@ suite('Module Manager Tests', () => {
 		assert.ok(!rendered?.html.includes('title="Refresh modules"'));
 		assert.ok(!rendered?.html.includes('Cached list'));
 
+		// 本地管理模块卡片展示当前版本徽章（issue #37）
+		assert.ok(rendered?.html.includes('badge module-version'));
+		assert.ok(rendered?.html.includes('>abc123<'));
+		assert.ok(rendered?.html.includes('Branch: main'));
+
 		provider.setSelection(['org/module-a']);
 		const selectedRender = mocked.__getLastWebviewView();
 		assert.ok(selectedRender?.html.includes('1 applied | 2 workspace | 1 catalog | 1 selected'));
