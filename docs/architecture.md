@@ -61,10 +61,11 @@ src/
 │   ├── moduleSidebarHtml.ts      # 侧边栏 HTML 模板
 │   ├── moduleTreeTypes.ts        # 模块树视图类型
 │   ├── authService.ts            # GitHub 认证
-│   ├── githubModuleService.ts    # GitHub API 服务
+│   ├── githubModuleService.ts    # GitHub API 服务（含模块版本来源 API：提交/标签/Release/分支）
+│   ├── versionService.ts         # 模块版本来源服务（API 优先、git CLI 兜底，issue #37）
 │   ├── gitService.ts             # Git CLI 安全封装
-│   ├── workspaceModuleService.ts # 模块应用/更新/移除
-│   ├── configService.ts          # YAML 配置读写
+│   ├── workspaceModuleService.ts # 模块应用/更新/移除（更新支持指定版本）
+│   ├── configService.ts          # YAML 配置读写（含 versionKind/versionRef）
 │   ├── cacheStore.ts             # 持久化缓存
 │   ├── sort.ts                   # 模块排序
 │   ├── topics.ts                 # 话题过滤
@@ -133,6 +134,25 @@ extension.ts activate()
         ├── submodule: git submodule add
         ├── copy: git clone + 复制
         └── configService.withAppliedModule() + writeConfig()
+    → 刷新侧边栏
+```
+
+### 3.4 模块更新流程（版本选择，issue #37）
+
+```
+用户触发 Update
+  → controller.updateModuleCommand()
+    → 第一步 QuickPick：选择版本来源
+        ├── 更新到最新（{当前分支}）   # 行为与现状一致
+        ├── 提交记录 / 标签 / Release / 分支
+        └── versionService.list*()   # GitHub API 优先，git CLI 兜底
+    → 第二步 QuickPick：选择具体版本（分支来源需再选提交）
+    → 确认对话框（当前版本 → 目标版本 + 备份提示）
+    → workspaceModuleService.updateModule(selection)
+        ├── copy:      按 commit/tag/release/latest 拉取目标版本后整体覆盖
+        ├── submodule: git submodule update --init + fetch + checkout（detached HEAD）
+        └── configService.withAppliedModule() + writeConfig()  # 写入 versionKind/versionRef
+    → cacheStore.setModuleVersionCache()  # 缓存提交信息（owner/name → {ref, commitInfo, date}）
     → 刷新侧边栏
 ```
 

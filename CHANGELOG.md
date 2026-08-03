@@ -8,6 +8,10 @@
 
 ### 新增
 
+- **模块版本概念**（issue #37）：更新模块时支持选择具体版本——更新到分支最新，或从提交记录 / git 标签 / GitHub Release / 分支中选择目标版本（含回退到旧版本）；版本来源数据优先走 GitHub REST API，未登录或网络受限时用 git CLI 兜底
+- 每个已管理模块记录 `versionKind`（`branch` / `commit` / `tag` / `release`）与 `versionRef`，`ref` 始终指向实际应用的提交 SHA；旧配置自动兼容
+- 本地模块卡片展示当前版本（`短SHA · 提交信息 · 相对日期`，tag / Release 优先显示名称），提交信息在更新成功时缓存，避免每次在线查询
+- 新增 `src/modules/versionService.ts`（版本来源列表 + git 兜底）与对应单元测试
 - **CSMLog 日志重复折叠**：自动检测并折叠 `.csmlog` 中重复日志行，支持精确 / 参数变化 / 多行块 / 交错 4 种重复模式；三级递进算法（连续匹配 → Rabin-Karp 哈希 → token 确认）实现 100K 行约 265ms 检测。提供 `csmlog.folding.*` 配置与 `toggleAllFolds` / `showStats` 命令，通过编辑器工具栏 👁 按钮按文件激活
 - 折叠区以 4 种底色区分重复类型（灰蓝精确 / 灰紫参数 / 灰绿块 / 灰橙交错），概要标签显示重复次数、时间跨度与频率
 - 新增 `src/logFold/`（types / normalizer / detector / foldingProvider / decorations）与 `src/test/logFold/`（28 项测试覆盖归一化、检测、Provider、性能）
@@ -16,6 +20,8 @@
 
 ### 变更
 
+- 更新模块流程改为两步 QuickPick（版本来源 → 具体版本）+ 确认对话框（当前版本 → 目标版本，copy 方式附 zip 备份提示）
+- `copy` / `submodule` 更新均支持指定版本：copy 按目标版本拉取后整体覆盖，submodule 通过 fetch + checkout 检出到指定提交（detached HEAD）
 - 升级 `engines.vscode` 最低版本至 `^1.63.0`，以支持 pre-release 发布
 
 ### 重构
