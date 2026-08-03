@@ -130,10 +130,14 @@ extension.ts activate()
   → controller.applyToWorkspaceCommand()
     → resolveWorkspaceContext()     # 统一上下文解析
     → configService.loadConfig()    # 读取 YAML
-    → workspaceModuleService.applyModule()
-        ├── submodule: git submodule add
-        ├── copy: git clone + 复制
-        └── configService.withAppliedModule() + writeConfig()
+    → promptApplyMethod()           # submodule / copy
+    → promptApplyTargetNamespace()  # 命名空间
+    → 单选：promptVersionSelection()  # 版本来源（issue #37）：置顶「使用默认分支」
+    → workspaceModuleService.applyModule(versionSelection?)
+        ├── submodule: git submodule add + fetch + checkout（指定版本时 detached HEAD）
+        ├── copy:      按分支/tag/commit 拉取后复制
+        └── configService.withAppliedModule() + writeConfig()  # 写入 versionKind/versionRef
+    → cacheStore.setModuleVersionCache()  # 单选指定版本时缓存提交信息
     → 刷新侧边栏
 ```
 
