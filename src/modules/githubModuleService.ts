@@ -347,6 +347,65 @@ export class GitHubModuleService {
 			return undefined;
 		}
 	}
+
+	// ---------------------------------------------------------------------------
+	// 模块版本来源（issue #37）
+	// ---------------------------------------------------------------------------
+
+	/**
+	 * 获取仓库最近提交列表。
+	 * `GET /repos/{owner}/{repo}/commits?sha={branch}&per_page={perPage}`
+	 */
+	public async fetchCommits(owner: string, repo: string, branch: string, token?: string, perPage = 20): Promise<GitHubCommitInfo[]> {
+		const url = `${GITHUB_API_BASE}/repos/${owner}/${repo}/commits?sha=${encodeURIComponent(branch)}&per_page=${perPage}`;
+		const { data } = await this.requestJson<GitHubCommitInfo[]>(url, token);
+		return data ?? [];
+	}
+
+	/**
+	 * 获取仓库最近标签列表。
+	 * `GET /repos/{owner}/{repo}/tags?per_page={perPage}`
+	 */
+	public async fetchTags(owner: string, repo: string, token?: string, perPage = 20): Promise<GitHubTagInfo[]> {
+		const url = `${GITHUB_API_BASE}/repos/${owner}/${repo}/tags?per_page=${perPage}`;
+		const { data } = await this.requestJson<GitHubTagInfo[]>(url, token);
+		return data ?? [];
+	}
+
+	/**
+	 * 获取仓库最近 GitHub Release 列表。
+	 * `GET /repos/{owner}/{repo}/releases?per_page={perPage}`
+	 */
+	public async fetchReleases(owner: string, repo: string, token?: string, perPage = 20): Promise<GitHubReleaseInfo[]> {
+		const url = `${GITHUB_API_BASE}/repos/${owner}/${repo}/releases?per_page=${perPage}`;
+		const { data } = await this.requestJson<GitHubReleaseInfo[]>(url, token);
+		return data ?? [];
+	}
+
+	/**
+	 * 获取仓库全部分支列表。
+	 * `GET /repos/{owner}/{repo}/branches?per_page={perPage}`
+	 */
+	public async fetchBranches(owner: string, repo: string, token?: string, perPage = 100): Promise<GitHubBranchInfo[]> {
+		const url = `${GITHUB_API_BASE}/repos/${owner}/${repo}/branches?per_page=${perPage}`;
+		const { data } = await this.requestJson<GitHubBranchInfo[]>(url, token);
+		return data ?? [];
+	}
+
+	/**
+	 * 获取单个提交详情（缓存缺失或解析 tag/release 指向提交时使用）。
+	 * `GET /repos/{owner}/{repo}/commits/{sha}`
+	 */
+	public async fetchCommit(owner: string, repo: string, sha: string, token?: string): Promise<GitHubCommitInfo | undefined> {
+		try {
+			const url = `${GITHUB_API_BASE}/repos/${owner}/${repo}/commits/${encodeURIComponent(sha)}`;
+			const { data } = await this.requestJson<GitHubCommitInfo>(url, token);
+			return data;
+		} catch (error) {
+			this.logger.warn(`GitHub commit detail request for ${owner}/${repo}@${sha} failed: ${error instanceof Error ? error.message : String(error)}`);
+			return undefined;
+		}
+	}
 }
 
 interface GitHubContentItem {
@@ -358,4 +417,43 @@ interface GitHubContentItem {
 interface GitHubTreeItem {
 	type: string;
 	path?: string;
+}
+
+/** GET /repos/{owner}/{repo}/commits 响应条目 */
+export interface GitHubCommitInfo {
+	sha: string;
+	commit?: {
+		message?: string;
+		author?: { date?: string };
+		committer?: { date?: string };
+	};
+}
+
+/** GET /repos/{owner}/{repo}/tags 响应条目 */
+export interface GitHubTagInfo {
+	name: string;
+	commit?: { sha?: string };
+}
+
+/** GET /repos/{owner}/{repo}/releases 响应条目 */
+export interface GitHubReleaseInfo {
+	id: number;
+	name: string | null;
+	tag_name: string;
+	published_at?: string | null;
+	target_commitish?: string;
+	assets?: GitHubReleaseAssetInfo[];
+}
+
+/** GET /repos/{owner}/{repo}/releases 响应中的附件条目 */
+export interface GitHubReleaseAssetInfo {
+	name: string;
+	browser_download_url: string;
+	size?: number;
+}
+
+/** GET /repos/{owner}/{repo}/branches 响应条目 */
+export interface GitHubBranchInfo {
+	name: string;
+	commit?: { sha?: string };
 }

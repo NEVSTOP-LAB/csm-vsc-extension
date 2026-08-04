@@ -80,18 +80,31 @@ export function isLegacyConfigPath(configPath: string): boolean {
 // Serialization / deserialization
 // ---------------------------------------------------------------------------
 
+function isModuleVersionKind(value: unknown): value is LocalModuleConfigEntry['versionKind'] {
+	return value === 'branch' || value === 'commit' || value === 'tag' || value === 'release';
+}
+
 export function finalizeModuleSection(module: Partial<LocalModuleConfigEntry>): LocalModuleConfigEntry {
 	const entry: LocalModuleConfigEntry = {
 		key: module.key ?? '',
 		name: module.name ?? '',
 		owner: module.owner ?? '',
 		source: module.source ?? '',
-		method: module.method === 'copy' ? 'copy' : 'submodule',
+		method: module.method === 'copy' ? 'copy' : module.method === 'release' ? 'release' : 'submodule',
 		path: module.path ?? '',
 		ref: module.ref ?? '',
 		branch: module.branch ?? '',
 		locked: isEntryLocked(module),
 	};
+	if (isModuleVersionKind(module.versionKind)) {
+		entry.versionKind = module.versionKind;
+	}
+	if (module.versionRef) {
+		entry.versionRef = module.versionRef;
+	}
+	if (module.releaseName) {
+		entry.releaseName = module.releaseName;
+	}
 	if (module.labviewVersion) {
 		entry.labviewVersion = module.labviewVersion;
 	}
@@ -112,6 +125,16 @@ export function serializeConfig(config: LocalModuleConfig): string {
 			branch: module.branch,
 			locked: isEntryLocked(module),
 		};
+		// Only persist versionKind/versionRef when present (issue #37)
+		if (isModuleVersionKind(module.versionKind)) {
+			entry.versionKind = module.versionKind;
+		}
+		if (module.versionRef) {
+			entry.versionRef = module.versionRef;
+		}
+		if (module.releaseName) {
+			entry.releaseName = module.releaseName;
+		}
 		// Only persist labviewVersion when detected, avoid writing empty values
 		if (module.labviewVersion) {
 			entry.labviewVersion = module.labviewVersion;
@@ -165,11 +188,16 @@ export function parseYamlConfig(raw: string): ParsedConfigShape {
 				name: typeof entry.name === 'string' ? entry.name : undefined,
 				owner: typeof entry.owner === 'string' ? entry.owner : undefined,
 				source: typeof entry.source === 'string' ? entry.source : undefined,
-				method: entry.method === 'copy' ? 'copy' : 'submodule',
+				method: entry.method === 'copy' ? 'copy' : entry.method === 'release' ? 'release' : 'submodule',
 				path: typeof entry.path === 'string' ? entry.path : undefined,
 				ref: typeof entry.ref === 'string' ? entry.ref : undefined,
 				branch: typeof entry.branch === 'string' ? entry.branch : undefined,
 				locked: typeof entry.locked === 'boolean' ? entry.locked : undefined,
+				versionKind: entry.versionKind === 'branch' || entry.versionKind === 'commit' || entry.versionKind === 'tag' || entry.versionKind === 'release'
+					? entry.versionKind
+					: undefined,
+				versionRef: typeof entry.versionRef === 'string' ? entry.versionRef : undefined,
+				releaseName: typeof entry.releaseName === 'string' ? entry.releaseName : undefined,
 				labviewVersion: typeof entry.labviewVersion === 'string' ? entry.labviewVersion : undefined,
 			});
 		}

@@ -4,15 +4,16 @@ import * as fs from 'fs/promises';
 import { AuthService } from './authService';
 import { GitHubModuleService, mapRepoToModuleEntry } from './githubModuleService';
 import { ModuleCacheStore } from './cacheStore';
-import { CopyModuleUpdatePreview, CsmModuleEntry, GitHubRepoSummary, LocalManagedModuleEntry, LocalModuleConfig, LocalModuleConfigEntry, LocalUnmanagedFolderEntry, ModuleApplyMethod, ModuleAuthSnapshot, ModuleCacheSnapshot, ModuleUpdateResult } from './types';
+import { CsmModuleEntry, GitHubRepoSummary, LocalManagedModuleEntry, LocalModuleConfig, LocalModuleConfigEntry, LocalUnmanagedFolderEntry, ModuleApplyMethod, ModuleAuthSnapshot, ModuleBranchInfo, ModuleCacheSnapshot, ModuleCommitInfo, ModuleReleaseInfo, ModuleTagInfo, ModuleUpdateResult, ModuleVersionCacheEntry, ModuleVersionSelection } from './types';
 import { ModuleTreeItem } from './moduleTreeTypes';
 import { ModuleSidebarViewProvider } from './moduleSidebarViewProvider';
 import { IModuleViewProvider, ModuleSortField, ModuleSortState, SidebarWorkspaceContext } from './types';
 import { ReadmeAssetCache } from './readmeAssetCache';
-import { DEFAULT_EXCLUDED_DIRECTORY_NAMES, DEFAULT_LOCAL_MODULE_ROOT, GitIdentity, LEGACY_LOCAL_MODULE_CONFIG_FILE, LOCAL_MODULE_CONFIG_FILE, WorkspaceModuleService } from './workspaceModuleService';
+import { DEFAULT_EXCLUDED_DIRECTORY_NAMES, DEFAULT_LOCAL_MODULE_ROOT, GitIdentity, LEGACY_LOCAL_MODULE_CONFIG_FILE, LOCAL_MODULE_CONFIG_FILE, UpdateModuleOptions, WorkspaceModuleService } from './workspaceModuleService';
 import { COMMAND_IDS, CONFIG_KEYS, CONFIG_SECTIONS, CONTEXT_KEYS, GITHUB, VIEW_IDS } from './constants';
 import { Logger, getLogger, wrapCommand } from './logger';
-import { getApplyMethodLabel, t } from './messages';
+import { formatRelativeDate, getApplyMethodLabel, t } from './messages';
+import { ModuleVersionService } from './versionService';
 import { openBuiltinReadmePreview, type ReadmePreviewServiceDeps } from './readmePreviewService';
 import { DEFAULT_MODULE_SORT_STATE, isModuleSortField, normalizeModuleSortState, sortModules } from './sort';
 import { getUserFacingErrorMessage } from './userFacingErrors';
@@ -27,6 +28,8 @@ const HAS_UNAPPLIED_SELECTION_CONTEXT_KEY = CONTEXT_KEYS.selectionHasUnapplied;
 const LVPROJ_GLOB = '**/*.lvproj';
 const DEFAULT_SHARED_MODULE_TOPICS = ['labview-csm', 'csm-modsets'] as const;
 const ROOT_NAMESPACE_VALUE = '';
+/** 版本来源列表每类最多展示的条数（issue #37） */
+const VERSION_LIST_LIMIT = 20;
 
 function getWorkspaceInitPrompt(rootPath: string): string {
 	return t('workspaceInitPrompt', { rootPath });
@@ -69,11 +72,54 @@ type RefreshModeQuickPickItem = vscode.QuickPickItem & {
 	mode: RefreshMode;
 };
 
+// ---------------------------------------------------------------------------
+// 模块版本选择（issue #37）QuickPick item 类型
+// ---------------------------------------------------------------------------
+
+type VersionSourceKind = 'latest' | 'commits' | 'tags' | 'branches';
+
+type VersionSourceQuickPickItem = vscode.QuickPickItem & {
+	versionSource: VersionSourceKind;
+};
+
+type CommitQuickPickItem = vscode.QuickPickItem & {
+	commit: ModuleCommitInfo;
+};
+
+type TagQuickPickItem = vscode.QuickPickItem & {
+	tag: ModuleTagInfo;
+};
+
+type ReleaseQuickPickItem = vscode.QuickPickItem & {
+	release: ModuleReleaseInfo;
+};
+
+type BranchQuickPickItem = vscode.QuickPickItem & {
+	branch: ModuleBranchInfo;
+};
+
+/** 版本来源选择所需的模块基本信息（update 与 apply 复用，issue #37） */
+interface VersionSelectionContext {
+	owner: string;
+	name: string;
+	source: string;
+	branch: string;
+	moduleLabel: string;
+}
+
+/** 版本来源选择框顶部“使用默认/最新”项的文案 */
+interface VersionLatestOption {
+	label: string;
+	detail: string;
+}
+
 type ModuleManagerAuthService = Pick<AuthService, 'getSessionSilently' | 'getSessionInteractively'>
 	& Partial<Pick<AuthService, 'signOut' | 'verifyScopes'>>;
 
 type ModuleManagerGithubService = Pick<GitHubModuleService, 'fetchModules' | 'fetchReadme'>
 	& Partial<Pick<GitHubModuleService, 'isRepositoryStarred' | 'setRepositoryStarred' | 'createRepository' | 'detectRemoteLabviewVersion'>>;
+
+type ModuleManagerVersionService = Pick<ModuleVersionService, 'listBranches' | 'listTags' | 'listReleases' | 'listCommits' | 'resolveCommitInfo'>;
 
 /**
  * Optional dependencies for {@link ModuleManagerController}.
@@ -85,6 +131,7 @@ type ModuleManagerGithubService = Pick<GitHubModuleService, 'fetchModules' | 'fe
 export interface ModuleManagerControllerDeps {
 	authService?: ModuleManagerAuthService;
 	githubService?: ModuleManagerGithubService;
+	versionService?: ModuleManagerVersionService;
 	workspaceModuleService?: WorkspaceModuleService;
 	viewProvider?: IModuleViewProvider;
 	logger?: Logger;
@@ -94,6 +141,7 @@ export class ModuleManagerController {
 	private readonly logger: Logger;
 	private readonly authService: ModuleManagerAuthService;
 	private readonly githubService: ModuleManagerGithubService;
+	private readonly versionService: ModuleManagerVersionService;
 	private readonly cacheStore: ModuleCacheStore;
 	private readonly sidebarViewProvider: ModuleSidebarViewProvider = new ModuleSidebarViewProvider({
 		onLogin: () => {
@@ -159,6 +207,8 @@ export class ModuleManagerController {
 	private currentSortState: ModuleSortState = DEFAULT_MODULE_SORT_STATE;
 	private readonly appliedModuleKeys = new Set<string>();
 	private readonly selectedModuleKeys = new Set<string>();
+	/** 模块当前版本提交信息缓存（key=`owner/name`，issue #37） */
+	private versionCache: Record<string, ModuleVersionCacheEntry> = {};
 	private currentToken: string | undefined;
 	private currentAccountId: string | undefined;
 	private currentAccountLabel: string | undefined;
@@ -170,12 +220,14 @@ export class ModuleManagerController {
 		this.logger = deps.logger ?? getLogger();
 		this.authService = deps.authService ?? new AuthService(this.logger);
 		this.githubService = deps.githubService ?? new GitHubModuleService(this.logger);
+		this.versionService = deps.versionService ?? new ModuleVersionService(this.githubService as unknown as ConstructorParameters<typeof ModuleVersionService>[0], undefined, this.logger);
 		this.workspaceModuleService = deps.workspaceModuleService ?? new WorkspaceModuleService();
 		this.treeDataProvider = deps.viewProvider ?? this.sidebarViewProvider;
 		this.cacheStore = new ModuleCacheStore(context.globalState);
 		this.readmeAssetCache = new ReadmeAssetCache(context.globalStorageUri);
 		this.currentSortState = this.cacheStore.getModuleSortState();
 		this.recentNamespaceByWorkspace = this.cacheStore.getRecentNamespaceByWorkspace();
+		this.versionCache = this.cacheStore.getModuleVersionCache();
 		// Pull any legacy in-memory copy from GlobalState (for backward compat),
 		// but do NOT persist new entries there going forward — the filesystem
 		// asset cache is the single source of truth (review item 3.5).
@@ -305,6 +357,35 @@ export class ModuleManagerController {
 		if (typeof targetNamespace === 'undefined') {
 			return;
 		}
+		// 版本来源 / Release 选择（issue #37）：
+		// - release 引入方式（仅单选）：弹 release 列表选具体 release 后下载附件
+		// - submodule / copy 单选：版本来源选择（置顶“使用默认分支”，不再包含 release）
+		// - 多选：不提供版本选择，沿用默认分支（现状）
+		let versionSelection: ModuleVersionSelection | undefined;
+		if (applyMethod === 'release') {
+			versionSelection = await this.promptReleaseSelection(selectedEntries[0], authToken);
+			if (!versionSelection) {
+				return;
+			}
+		} else if (selectedEntries.length === 1) {
+			const singleEntry = selectedEntries[0];
+			const defaultBranch = singleEntry.defaultBranch || 'main';
+			versionSelection = await this.promptVersionSelection(
+				{
+					owner: singleEntry.owner,
+					name: singleEntry.name,
+					source: singleEntry.repoUrl,
+					branch: defaultBranch,
+					moduleLabel: `${singleEntry.owner}/${singleEntry.name}`,
+				},
+				authToken,
+				{
+					label: t('applyUseDefaultBranchOption', { branch: defaultBranch }),
+					detail: t('applyUseDefaultBranchDetail', { branch: defaultBranch }),
+				},
+			);
+			// 取消版本选择：保持现状，使用默认分支继续应用
+		}
 		const explicitTargetPathsByModuleKey = new Map<string, string>();
 		for (const moduleEntry of selectedEntries) {
 			explicitTargetPathsByModuleKey.set(
@@ -327,13 +408,25 @@ export class ModuleManagerController {
 		}
 		const applyMethodLabel = getApplyMethodLabel(applyMethod);
 
+		// 单选且选择了具体版本时，确认框展示目标版本（issue #37）
+		const versionLabel = versionSelection && versionSelection.kind !== 'latest'
+			? versionSelection.label
+			: undefined;
 		const confirmation = await vscode.window.showWarningMessage(
-			t('applyConfirmation', {
-				count: selectedEntries.length,
-				repository: path.basename(applyRoot),
-				method: applyMethodLabel,
-				root: config.root,
-			}),
+			versionLabel
+				? t('applyConfirmationWithVersion', {
+					count: selectedEntries.length,
+					repository: path.basename(applyRoot),
+					method: applyMethodLabel,
+					root: config.root,
+					version: versionLabel,
+				})
+				: t('applyConfirmation', {
+					count: selectedEntries.length,
+					repository: path.basename(applyRoot),
+					method: applyMethodLabel,
+					root: config.root,
+				}),
 			{ modal: true },
 			t('applyAction'),
 		);
@@ -370,6 +463,7 @@ export class ModuleManagerController {
 										authToken,
 										(msg) => progress.report({ message: msg }),
 										explicitTargetPath,
+										versionSelection && versionSelection.kind !== 'latest' ? versionSelection : undefined,
 									);
 									return applied;
 								} finally {
@@ -414,6 +508,7 @@ export class ModuleManagerController {
 								authToken,
 								(msg) => progress.report({ message: msg }),
 								explicitTargetPath,
+								versionSelection && versionSelection.kind !== 'latest' ? versionSelection : undefined,
 							);
 							config = this.workspaceModuleService.withAppliedModule(config, applied);
 							await writeConfigSafely(config);
@@ -440,6 +535,17 @@ export class ModuleManagerController {
 
 		await this.autoStarImportedModules(appliedEntriesForAutoStar);
 
+		// 单选指定版本时，应用成功后缓存提交信息，便于侧边栏展示当前版本（issue #37）
+		if (versionSelection && versionSelection.kind !== 'latest' && appliedCount > 0) {
+			const singleEntry = selectedEntries[0];
+			const appliedEntry = Object.values(config.modules).find(
+				(module) => module.owner === singleEntry.owner && module.name === singleEntry.name,
+			);
+			if (appliedEntry) {
+				await this.cacheModuleVersionInfo(appliedEntry, singleEntry, versionSelection, authToken);
+			}
+		}
+
 		void vscode.window.showInformationMessage(
 			t('applySuccess', {
 				count: selectedEntries.length,
@@ -447,6 +553,9 @@ export class ModuleManagerController {
 				configPath: path.relative(applyRoot, config.configPath).replace(/\\/g, '/'),
 			}),
 		);
+		// 应用成功后清除勾选状态：残留选择会让已应用模块仍显示为选中，
+		// 且会连带影响下一次批量应用（把已应用模块再次纳入目标集合）。
+		this.setSelectedModuleKeys([]);
 		await this.refreshSidebarWorkspaceState();
 	}
 
@@ -559,39 +668,61 @@ export class ModuleManagerController {
 		const authToken = await this.ensureToken(moduleEntry.visibility === 'private');
 		const targetLabel = `${target.owner}/${target.name}`;
 		try {
-			let copyUpdatePreview: CopyModuleUpdatePreview | undefined;
-			if (target.method === 'copy') {
-				copyUpdatePreview = await this.workspaceModuleService.previewCopyModuleUpdate(workspaceRoot, target, moduleEntry, authToken);
-				if (!copyUpdatePreview.needsUpdate) {
-					void vscode.window.showInformationMessage(t('moduleAlreadyUpToDate', {
-						module: targetLabel,
-						branch: copyUpdatePreview.branch,
-						ref: this.formatShortRef(copyUpdatePreview.latestRef),
-					}));
-					return;
-				}
-
-				const confirmation = await vscode.window.showWarningMessage(
-					copyUpdatePreview.backupDirectory
-						? t('copyUpdateConfirmation', {
-							module: targetLabel,
-							branch: copyUpdatePreview.branch,
-							currentRef: this.formatShortRef(copyUpdatePreview.currentRef),
-							latestRef: this.formatShortRef(copyUpdatePreview.latestRef),
-							backupDirectory: copyUpdatePreview.backupDirectory,
-						})
-						: t('copyUpdateConfirmationWithoutBackup', {
-							module: targetLabel,
-							branch: copyUpdatePreview.branch,
-							currentRef: this.formatShortRef(copyUpdatePreview.currentRef),
-							latestRef: this.formatShortRef(copyUpdatePreview.latestRef),
-						}),
-					{ modal: true },
-					t('updateAction'),
+			// 第一步：选择版本来源
+			// 第一步：选择版本来源 / Release（issue #37）
+			// - release 引入方式：弹 release 列表选具体 release
+			// - submodule / copy：版本来源选择（不再包含 release）
+			let selection: ModuleVersionSelection | undefined;
+			if (target.method === 'release') {
+				selection = await this.promptReleaseSelection(moduleEntry, authToken);
+			} else {
+				const branch = target.branch || moduleEntry.defaultBranch || 'main';
+				selection = await this.promptVersionSelection(
+					{
+						owner: target.owner,
+						name: target.name,
+						source: target.source,
+						branch,
+						moduleLabel: `${target.owner}/${target.name}`,
+					},
+					authToken,
+					{
+						label: t('updateToLatestOption', { branch }),
+						detail: t('updateToLatestDetail', { branch }),
+					},
 				);
-				if (confirmation !== t('updateAction')) {
-					return;
+			}
+			if (!selection) {
+				return;
+			}
+
+			// 更新到最新：解析分支 HEAD 并复用原有"已是最新"提示
+			let backupDirectory: string | undefined;
+			if (selection.kind === 'latest') {
+				if (target.method === 'copy') {
+					const preview = await this.workspaceModuleService.previewCopyModuleUpdate(workspaceRoot, target, moduleEntry, authToken);
+					if (!preview.needsUpdate) {
+						void vscode.window.showInformationMessage(t('moduleAlreadyUpToDate', {
+							module: targetLabel,
+							branch: preview.branch,
+							ref: this.formatShortRef(preview.latestRef),
+						}));
+						return;
+					}
+					selection.ref = preview.latestRef;
+					selection.label = `${this.formatShortSha(preview.latestRef)} · ${t('latestRef')}`;
+					backupDirectory = preview.backupDirectory;
+				} else {
+					const latestRef = await this.workspaceModuleService.resolveRemoteBranchRef(workspaceRoot, target.source, selection.branch, authToken);
+					selection.ref = latestRef;
+					selection.label = `${this.formatShortSha(latestRef)} · ${t('latestRef')}`;
 				}
+			}
+
+			// 确认对话框：当前版本 → 目标版本 + 备份提示
+			const confirmed = await this.confirmVersionUpdate(target, selection, targetLabel, backupDirectory);
+			if (!confirmed) {
+				return;
 			}
 
 			let updateResult: ModuleUpdateResult | undefined;
@@ -602,28 +733,29 @@ export class ModuleManagerController {
 					cancellable: false,
 				},
 				async () => {
+					const options: UpdateModuleOptions = { authToken, repoRoot, selection };
 					updateResult = await this.workspaceModuleService.updateModule(
 						workspaceRoot,
 						target,
 						moduleEntry,
-						authToken,
-						repoRoot,
-						copyUpdatePreview?.latestRef,
+						options,
 					);
 					config = this.workspaceModuleService.withAppliedModule(config!, updateResult.entry);
 					await this.workspaceModuleService.writeConfig(config);
+					await this.cacheModuleVersionInfo(updateResult.entry, moduleEntry, selection, authToken);
 				},
 			);
+			const versionLabel = this.formatTargetVersionLabel(updateResult!.entry, selection);
 			void vscode.window.showInformationMessage(
-				updateResult?.backupPath
-					? t('updateSuccessWithBackup', {
+				updateResult!.backupPath
+					? t('updateSuccessVersionWithBackup', {
 						module: targetLabel,
-						ref: updateResult.entry.ref ?? t('latestRef'),
-						backupPath: updateResult.backupPath,
+						version: versionLabel,
+						backupPath: updateResult!.backupPath,
 					})
-					: t('updateSuccess', {
+					: t('updateSuccessVersion', {
 						module: targetLabel,
-						ref: updateResult?.entry.ref ?? t('latestRef'),
+						version: versionLabel,
 					}),
 			);
 		} catch (error) {
@@ -633,6 +765,335 @@ export class ModuleManagerController {
 			return;
 		}
 		await this.refreshSidebarWorkspaceState();
+	}
+
+	// ----------------------------------------------------------------------
+	// 模块版本选择（issue #37）
+	// ----------------------------------------------------------------------
+
+	/**
+	 * 第一步：选择版本来源（最新/使用默认分支 / 提交记录 / 标签 / 分支）。
+	 * release 已作为独立引入方式，不再出现在版本来源中。
+	 * 选择具体来源后进入第二步选择具体版本；分支来源会再进入该分支的提交列表。
+	 */
+	private async promptVersionSelection(
+		context: VersionSelectionContext,
+		authToken: string | undefined,
+		latestOption: VersionLatestOption,
+	): Promise<ModuleVersionSelection | undefined> {
+		const { owner, name, branch, moduleLabel } = context;
+		const repoUrl = context.source;
+		const sourceItems: VersionSourceQuickPickItem[] = [
+			{
+				label: latestOption.label,
+				detail: latestOption.detail,
+				versionSource: 'latest',
+				alwaysShow: true,
+			},
+			{
+				label: t('versionSourceCommits'),
+				detail: t('versionSourceCommitsDetail', { count: VERSION_LIST_LIMIT, branch }),
+				versionSource: 'commits',
+			},
+			{
+				label: t('versionSourceTags'),
+				detail: t('versionSourceTagsDetail', { count: VERSION_LIST_LIMIT }),
+				versionSource: 'tags',
+			},
+			{
+				label: t('versionSourceBranches'),
+				detail: t('versionSourceBranchesDetail'),
+				versionSource: 'branches',
+			},
+		];
+		const pickedSource = await vscode.window.showQuickPick(sourceItems, {
+			placeHolder: t('versionSourcePlaceholder', { module: moduleLabel }),
+			ignoreFocusOut: true,
+		});
+		if (!pickedSource) {
+			return undefined;
+		}
+
+		switch (pickedSource.versionSource) {
+			case 'latest':
+				return { kind: 'latest', branch, label: latestOption.label };
+			case 'commits': {
+				const commits = await this.versionService.listCommits(owner, name, branch, repoUrl, authToken);
+				return this.pickCommit(commits, branch);
+			}
+			case 'tags': {
+				const tags = await this.versionService.listTags(owner, name, repoUrl, authToken);
+				return this.pickTag(tags, branch);
+			}
+			case 'branches': {
+				const branches = await this.versionService.listBranches(owner, name, repoUrl, authToken);
+				const pickedBranch = await this.pickBranch(branches);
+				if (!pickedBranch) {
+					return undefined;
+				}
+				const commits = await this.versionService.listCommits(owner, name, pickedBranch.name, repoUrl, authToken);
+				return this.pickCommit(commits, pickedBranch.name);
+			}
+			default:
+				return undefined;
+		}
+	}
+
+	private async pickCommit(commits: ModuleCommitInfo[], branch: string): Promise<ModuleVersionSelection | undefined> {
+		if (commits.length === 0) {
+			void vscode.window.showInformationMessage(t('versionListEmpty', { kind: t('versionKindCommits') }));
+			return undefined;
+		}
+		const items: CommitQuickPickItem[] = commits.map((commit) => ({
+			label: this.formatCommitItemLabel(commit),
+			description: commit.sha,
+			commit,
+		}));
+		const picked = await vscode.window.showQuickPick(items, {
+			placeHolder: t('versionCommitsPlaceholder'),
+			ignoreFocusOut: true,
+		});
+		if (!picked) {
+			return undefined;
+		}
+		return {
+			kind: 'commit',
+			versionRef: picked.commit.sha,
+			ref: picked.commit.sha,
+			branch,
+			label: picked.label,
+			commitInfo: picked.commit.message,
+			commitDate: picked.commit.date,
+		};
+	}
+
+	private async pickTag(tags: ModuleTagInfo[], branch: string): Promise<ModuleVersionSelection | undefined> {
+		if (tags.length === 0) {
+			void vscode.window.showInformationMessage(t('versionListEmpty', { kind: t('versionKindTags') }));
+			return undefined;
+		}
+		const items: TagQuickPickItem[] = tags.map((tag) => ({
+			label: `${tag.name} · ${this.formatShortSha(tag.sha)}${tag.date ? ` · ${formatRelativeDate(tag.date)}` : ''}`,
+			description: tag.sha,
+			tag,
+		}));
+		const picked = await vscode.window.showQuickPick(items, {
+			placeHolder: t('versionTagsPlaceholder'),
+			ignoreFocusOut: true,
+		});
+		if (!picked) {
+			return undefined;
+		}
+		return {
+			kind: 'tag',
+			versionRef: picked.tag.name,
+			// 注解标签的 sha 可能是 tag 对象 SHA；更新时 git 会按 tag 名解析，无需保证为提交 SHA
+			ref: picked.tag.sha,
+			branch,
+			label: picked.label,
+		};
+	}
+
+	/**
+	 * release 引入方式：弹 release 列表选具体一个（含当前/最新），再下载其附件。
+	 */
+	private async promptReleaseSelection(
+		moduleEntry: CsmModuleEntry,
+		authToken: string | undefined,
+	): Promise<ModuleVersionSelection | undefined> {
+		const releases = await this.versionService.listReleases(moduleEntry.owner, moduleEntry.name, authToken);
+		const branch = moduleEntry.defaultBranch || 'main';
+		return this.pickRelease(releases, branch);
+	}
+
+	private async pickRelease(releases: ModuleReleaseInfo[], branch: string): Promise<ModuleVersionSelection | undefined> {
+		if (releases.length === 0) {
+			void vscode.window.showInformationMessage(t('versionListEmpty', { kind: t('versionKindReleases') }));
+			return undefined;
+		}
+		const items: ReleaseQuickPickItem[] = releases.map((release) => ({
+			label: `${release.name} · ${release.tagName}${release.publishedAt ? ` · ${formatRelativeDate(release.publishedAt)}` : ''}`,
+			description: release.tagName,
+			release,
+		}));
+		const picked = await vscode.window.showQuickPick(items, {
+			placeHolder: t('versionReleasesPlaceholder'),
+			ignoreFocusOut: true,
+		});
+		if (!picked) {
+			return undefined;
+		}
+		const assets = picked.release.assets ?? [];
+		if (assets.length === 0) {
+			void vscode.window.showWarningMessage(t('releaseHasNoAssets', { release: picked.release.name }));
+			return undefined;
+		}
+		return {
+			kind: 'release',
+			versionRef: picked.release.tagName,
+			releaseName: picked.release.name,
+			releaseAssets: assets,
+			branch,
+			// 确认框/成功提示/侧边栏显示 tag 名（issue #37）；列表本身仍显示「标题 · tag · 时间」
+			label: picked.release.tagName,
+		};
+	}
+
+	private async pickBranch(branches: ModuleBranchInfo[]): Promise<ModuleBranchInfo | undefined> {
+		if (branches.length === 0) {
+			void vscode.window.showInformationMessage(t('versionListEmpty', { kind: t('versionKindBranches') }));
+			return undefined;
+		}
+		const items: BranchQuickPickItem[] = branches.map((branch) => ({
+			label: branch.name,
+			description: this.formatShortSha(branch.sha),
+			branch,
+		}));
+		const picked = await vscode.window.showQuickPick(items, {
+			placeHolder: t('versionBranchesPlaceholder'),
+			ignoreFocusOut: true,
+		});
+		return picked?.branch;
+	}
+
+	/**
+	 * 更新确认对话框：显示 当前版本 → 目标版本 + 备份提示（issue #37）。
+	 */
+	private async confirmVersionUpdate(
+		target: LocalModuleConfigEntry,
+		selection: ModuleVersionSelection,
+		targetLabel: string,
+		backupDirectory?: string,
+	): Promise<boolean> {
+		const current = this.formatCurrentVersionLabel(target);
+		const message = target.method === 'submodule'
+			? t('versionUpdateSubmoduleConfirmation', { module: targetLabel, current, target: selection.label })
+			: backupDirectory
+				? t('versionUpdateConfirmationWithBackup', { module: targetLabel, current, target: selection.label, backupDirectory })
+				: t('versionUpdateConfirmationWithoutBackup', { module: targetLabel, current, target: selection.label });
+		const confirmation = await vscode.window.showWarningMessage(
+			message,
+			{ modal: true },
+			t('updateAction'),
+		);
+		return confirmation === t('updateAction');
+	}
+
+	/**
+	 * 生成更新成功提示中的目标版本标签：
+	 * tag / release 优先显示来源名称，否则显示 短SHA · 提交信息 · 相对日期。
+	 */
+	private formatTargetVersionLabel(entry: LocalModuleConfigEntry, selection: ModuleVersionSelection): string {
+		if (entry.versionKind === 'release') {
+			// 显示 release 的 tag 名（不用标题）
+			return entry.versionRef || selection.label || entry.releaseName || t('versionUnknown');
+		}
+		if (entry.versionKind === 'tag') {
+			return entry.versionRef || selection.label || this.formatShortSha(entry.ref) || t('versionUnknown');
+		}
+		const relative = formatRelativeDate(selection.commitDate);
+		const parts = [this.formatShortSha(entry.ref) || t('versionUnknown')];
+		if (selection.commitInfo) {
+			parts.push(this.truncateCommitMessage(selection.commitInfo));
+		}
+		if (relative) {
+			parts.push(relative);
+		}
+		return parts.join(' · ');
+	}
+
+	/**
+	 * 构建当前版本展示文本（确认对话框与侧边栏共用）：
+	 * tag / release 优先显示来源名称，否则读本地缓存显示 短SHA · 提交信息 · 相对日期。
+	 */
+	private formatCurrentVersionLabel(target: LocalModuleConfigEntry): string {
+		if (target.versionKind === 'release') {
+			// 显示 release 的 tag 名（不用标题）
+			return target.versionRef || target.releaseName || t('versionUnknown');
+		}
+		if (target.versionKind === 'tag' && target.versionRef) {
+			return target.versionRef;
+		}
+		const cacheEntry = this.versionCache[`${target.owner}/${target.name}`];
+		const ref = this.formatShortSha(target.ref);
+		if (cacheEntry && cacheEntry.ref === target.ref && cacheEntry.commitInfo) {
+			const parts = [ref, this.truncateCommitMessage(cacheEntry.commitInfo)];
+			const relative = formatRelativeDate(cacheEntry.date);
+			if (relative) {
+				parts.push(relative);
+			}
+			return parts.join(' · ');
+		}
+		return ref || t('versionUnknown');
+	}
+
+	/**
+	 * 更新成功后把目标版本提交信息写入本地缓存（key=`owner/name`，issue #37），
+	 * 供侧边栏展示当前版本时读取，避免每次在线查询。
+	 */
+	private async cacheModuleVersionInfo(
+		updatedEntry: LocalModuleConfigEntry,
+		moduleEntry: CsmModuleEntry,
+		selection: ModuleVersionSelection,
+		authToken: string | undefined,
+	): Promise<void> {
+		try {
+			// Release 附件方式没有对应的提交 SHA，跳过提交信息缓存（侧边栏用 releaseName 展示）
+			if (selection.kind === 'release') {
+				return;
+			}
+			const cacheKey = `${updatedEntry.owner}/${updatedEntry.name}`;
+			let commitInfo = selection.commitInfo;
+			let date = selection.commitDate;
+			// 最新 / 标签 / Release 来源在列表阶段没有提交信息，更新后尽力解析一次
+			if (!commitInfo) {
+				const resolved = await this.versionService.resolveCommitInfo(
+					updatedEntry.owner,
+					updatedEntry.name,
+					updatedEntry.ref,
+					updatedEntry.source,
+					selection.branch || moduleEntry.defaultBranch || 'main',
+					authToken,
+				);
+				commitInfo = resolved.commitInfo;
+				date = resolved.date ?? date;
+			}
+			this.versionCache = {
+				...this.versionCache,
+				[cacheKey]: {
+					ref: updatedEntry.ref,
+					commitInfo,
+					date,
+				},
+			};
+			await this.cacheStore.setModuleVersionCache(this.versionCache);
+		} catch (error) {
+			this.logger.warn(`Failed to cache module version info for ${updatedEntry.owner}/${updatedEntry.name}: ${error instanceof Error ? error.message : String(error)}`);
+		}
+	}
+
+	private formatCommitItemLabel(commit: ModuleCommitInfo): string {
+		const relative = formatRelativeDate(commit.date);
+		const parts = [this.formatShortSha(commit.sha), this.truncateCommitMessage(commit.message)];
+		if (relative) {
+			parts.push(relative);
+		}
+		return parts.join(' · ');
+	}
+
+	private truncateCommitMessage(message: string): string {
+		const singleLine = message.split(/\r?\n/)[0]?.trim() ?? '';
+		if (singleLine.length <= 60) {
+			return singleLine;
+		}
+		return `${singleLine.slice(0, 57)}...`;
+	}
+
+	private formatShortSha(sha: string | undefined): string {
+		if (!sha) {
+			return '';
+		}
+		return sha.length > 10 ? sha.slice(0, 7) : sha;
 	}
 
 	public async switchLocalModuleMethodCommand(entry: LocalManagedModuleEntry): Promise<void> {
@@ -659,9 +1120,22 @@ export class ModuleManagerController {
 			return;
 		}
 
-		const nextMethod: ModuleApplyMethod = target.method === 'copy' ? 'submodule' : 'copy';
+		// 三选一选择器：submodule / copy / GitHub Release（当前方式标识）
+		const nextMethod = await this.promptSwitchMethod(target.method);
+		if (!nextMethod || nextMethod === target.method) {
+			return;
+		}
+
 		let authToken: string | undefined;
-		if (nextMethod === 'submodule' && entry.visibility === 'private') {
+		let releaseSelection: ModuleVersionSelection | undefined;
+		if (nextMethod === 'release') {
+			// 切到 release：弹 release 列表选具体一个
+			authToken = await this.ensureToken(entry.visibility === 'private');
+			releaseSelection = await this.promptReleaseSelection(entry.moduleEntry, authToken);
+			if (!releaseSelection) {
+				return;
+			}
+		} else if (nextMethod === 'submodule' && entry.visibility === 'private') {
 			authToken = await this.ensureToken(true);
 			if (!authToken) {
 				void vscode.window.showWarningMessage(t('signInRequiredToSwitchPrivateModule'));
@@ -674,8 +1148,8 @@ export class ModuleManagerController {
 		const currentMethodLabel = getApplyMethodLabel(target.method);
 		const nextMethodLabel = getApplyMethodLabel(nextMethod);
 
-		// When switching from copy to submodule, warn about data loss and mention the zip backup.
-		const isCopyToSubmodule = target.method === 'copy';
+		// 从 copy/submodule 切到 release 会整体替换目录（无 zip 备份提示）；copy → submodule 保留 zip 备份提示
+		const isCopyToSubmodule = target.method === 'copy' && nextMethod === 'submodule';
 		const backupDir = isCopyToSubmodule ? path.join(repoRoot, '.csm-module-backups') : '';
 		const confirmationMessage = isCopyToSubmodule
 			? t('switchMethodConfirmationWithBackup', {
@@ -712,7 +1186,14 @@ export class ModuleManagerController {
 					cancellable: false,
 				},
 				async () => {
-					switchResult = await this.workspaceModuleService.switchModuleMethod(repoRoot, target, nextMethod, authToken, repoRoot);
+					switchResult = await this.workspaceModuleService.switchModuleMethod(
+						repoRoot,
+						target,
+						nextMethod,
+						authToken,
+						repoRoot,
+						releaseSelection,
+					);
 					config = this.workspaceModuleService.withAppliedModule(config!, switchResult.entry);
 					await this.workspaceModuleService.writeConfig(config);
 				},
@@ -735,6 +1216,24 @@ export class ModuleManagerController {
 		}
 
 		await this.refreshSidebarWorkspaceState();
+	}
+
+	private async promptSwitchMethod(current: ModuleApplyMethod): Promise<ModuleApplyMethod | undefined> {
+		const options: Array<{ method: ModuleApplyMethod; label: string; description: string }> = [
+			{ method: 'submodule', label: t('applyMethodSubmoduleLabel'), description: t('applyMethodSubmoduleDescription') },
+			{ method: 'copy', label: t('applyMethodCopyLabel'), description: t('applyMethodCopyDescription') },
+			{ method: 'release', label: t('applyMethodReleaseLabel'), description: t('applyMethodReleaseDescription') },
+		];
+		const items: Array<ApplyMethodQuickPickItem & { picked?: boolean }> = options.map((option) => ({
+			label: option.label,
+			description: option.description,
+			method: option.method,
+			picked: option.method === current,
+		}));
+		const pick = await vscode.window.showQuickPick(items, {
+			placeHolder: t('switchMethodPlaceholder'),
+		});
+		return pick?.method;
 	}
 
 	public async toggleLocalModuleLockCommand(entry: LocalManagedModuleEntry): Promise<void> {
@@ -2329,6 +2828,8 @@ export class ModuleManagerController {
 				const availableModule = this.findAvailableModule(configEntry.owner, configEntry.name)
 					?? availableModulesBySource.get(this.normalizeModuleSource(configEntry.source));
 				const moduleEntry = availableModule ?? this.synthesizeModuleEntry(configEntry);
+				const versionCacheEntry = this.versionCache[`${configEntry.owner}/${configEntry.name}`];
+				const cacheMatchesRef = Boolean(versionCacheEntry && versionCacheEntry.ref === configEntry.ref);
 				const result: LocalManagedModuleEntry = {
 					id: configEntry.key,
 					kind: 'managed',
@@ -2339,6 +2840,12 @@ export class ModuleManagerController {
 					method: configEntry.method,
 					branch: configEntry.branch,
 					ref: configEntry.ref,
+					// 版本来源信息（issue #37），旧配置缺省视为 commit
+					versionKind: configEntry.versionKind,
+					versionRef: configEntry.versionRef,
+					releaseName: configEntry.releaseName,
+					commitInfo: cacheMatchesRef ? versionCacheEntry.commitInfo : undefined,
+					commitDate: cacheMatchesRef ? versionCacheEntry.date : undefined,
 					locked: this.isLocalModuleLocked(configEntry),
 					repoUrl: moduleEntry.repoUrl,
 					description: moduleEntry.description,
@@ -3147,6 +3654,14 @@ export class ModuleManagerController {
 		moduleCount: number,
 		options: { gitAvailable: boolean },
 	): Promise<ModuleApplyMethod | undefined> {
+		// release 引入方式仅在单选时提供（多选批量应用暂不支持每个模块分别选 release）
+		const allowRelease = moduleCount === 1;
+		const releaseItem: ApplyMethodQuickPickItem = {
+			label: t('applyMethodReleaseLabel'),
+			description: t('applyMethodReleaseDescription'),
+			detail: t('applyMethodReleaseDetail'),
+			method: 'release',
+		};
 		const items: ApplyMethodQuickPickItem[] = options.gitAvailable
 			? [
 				{
@@ -3161,6 +3676,7 @@ export class ModuleManagerController {
 					detail: t('applyMethodCopyDetail', { count: moduleCount }),
 					method: 'copy',
 				},
+				...(allowRelease ? [releaseItem] : []),
 			]
 			: [
 				{
@@ -3173,6 +3689,7 @@ export class ModuleManagerController {
 					detail: t('applyMethodCopyDetail', { count: moduleCount }),
 					method: 'copy',
 				},
+				...(allowRelease ? [releaseItem] : []),
 			];
 
 		const pick = await vscode.window.showQuickPick(

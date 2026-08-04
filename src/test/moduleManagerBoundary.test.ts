@@ -80,6 +80,58 @@ suite('Module Manager Boundary Tests', () => {
 		}
 	});
 
+	test('writeConfig + loadConfig round-trips versionKind/versionRef fields (issue #37)', async () => {
+		const service = new WorkspaceModuleService();
+		const tmpDir = await fs.mkdtemp(path.join(getTempRoot(), 'csm-version-roundtrip-'));
+		try {
+			const configPath = path.join(tmpDir, 'csm', 'modules.yaml');
+			const config = {
+				version: '1.0',
+				root: 'csm',
+				configPath,
+				modules: {
+					'org__tagged': {
+						key: 'org__tagged',
+						name: 'tagged',
+						owner: 'org',
+						source: 'https://github.com/org/tagged',
+						method: 'copy' as const,
+						path: 'csm/tagged',
+						ref: 'abc1234567890',
+						branch: 'main',
+						versionKind: 'tag' as const,
+						versionRef: 'v1.0',
+					},
+					'org__legacy': {
+						key: 'org__legacy',
+						name: 'legacy',
+						owner: 'org',
+						source: 'https://github.com/org/legacy',
+						method: 'submodule' as const,
+						path: 'csm/legacy',
+						ref: 'def4567890123',
+						branch: 'main',
+					},
+				},
+			};
+			await service.writeConfig(config);
+			const reloaded = await service.loadConfig(tmpDir, configPath);
+			assert.ok(reloaded);
+			// 新字段完整保留
+			assert.strictEqual(reloaded.modules['org__tagged'].versionKind, 'tag');
+			assert.strictEqual(reloaded.modules['org__tagged'].versionRef, 'v1.0');
+			// 旧记录没有 versionKind/versionRef，按缺省（commit）处理
+			assert.strictEqual(reloaded.modules['org__legacy'].versionKind, undefined);
+			assert.strictEqual(reloaded.modules['org__legacy'].versionRef, undefined);
+			// YAML 文本中确实写入了 versionKind/versionRef
+			const yamlText = await fs.readFile(configPath, 'utf8');
+			assert.ok(yamlText.includes('versionKind: "tag"'));
+			assert.ok(yamlText.includes('versionRef: "v1.0"'));
+		} finally {
+			await fs.rm(tmpDir, { recursive: true, force: true });
+		}
+	});
+
 	test('ModuleCacheStore handles corrupt JSON-shaped GlobalState gracefully', () => {
 		const state = new InMemoryGlobalState();
 		// Inject a value of unexpected shape directly

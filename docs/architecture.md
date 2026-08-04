@@ -9,11 +9,11 @@
 
 `csm-vsc-support` 是一个 VS Code 扩展，为 Communicable State Machine (CSM) 框架提供编辑器支持。核心功能分为两大域：
 
-| 域 | 路径 | 职责 |
-|----|------|------|
+| 域           | 路径            | 职责                                                   |
+|--------------|-----------------|--------------------------------------------------------|
 | **语言功能** | `src/language/` | `.csmlog` / `.lvcsm` 文件的语法高亮、Hover、Outline、折叠 |
-| **模块管理** | `src/modules/` | 侧边栏 Webview 浏览/搜索/引入/更新 CSM 模块 |
-| **共享工具** | `src/common/` | 国际化、常量、临时路径、DocumentSymbol 构建 |
+| **模块管理** | `src/modules/`  | 侧边栏 Webview 浏览/搜索/引入/更新 CSM 模块            |
+| **共享工具** | `src/common/`   | 国际化、常量、临时路径、DocumentSymbol 构建               |
 
 ---
 
@@ -61,10 +61,11 @@ src/
 │   ├── moduleSidebarHtml.ts      # 侧边栏 HTML 模板
 │   ├── moduleTreeTypes.ts        # 模块树视图类型
 │   ├── authService.ts            # GitHub 认证
-│   ├── githubModuleService.ts    # GitHub API 服务
+│   ├── githubModuleService.ts    # GitHub API 服务（含模块版本来源 API：提交/标签/Release/分支）
+│   ├── versionService.ts         # 模块版本来源服务（API 优先、git CLI 兜底，issue #37）
 │   ├── gitService.ts             # Git CLI 安全封装
-│   ├── workspaceModuleService.ts # 模块应用/更新/移除
-│   ├── configService.ts          # YAML 配置读写
+│   ├── workspaceModuleService.ts # 模块应用/更新/移除（更新支持指定版本）
+│   ├── configService.ts          # YAML 配置读写（含 versionKind/versionRef）
 │   ├── cacheStore.ts             # 持久化缓存
 │   ├── sort.ts                   # 模块排序
 │   ├── topics.ts                 # 话题过滤
@@ -129,10 +130,33 @@ extension.ts activate()
   → controller.applyToWorkspaceCommand()
     → resolveWorkspaceContext()     # 统一上下文解析
     → configService.loadConfig()    # 读取 YAML
-    → workspaceModuleService.applyModule()
-        ├── submodule: git submodule add
-        ├── copy: git clone + 复制
-        └── configService.withAppliedModule() + writeConfig()
+    → promptApplyMethod()           # submodule / copy
+    → promptApplyTargetNamespace()  # 命名空间
+    → 单选：promptVersionSelection()  # 版本来源（issue #37）：置顶「使用默认分支」
+    → workspaceModuleService.applyModule(versionSelection?)
+        ├── submodule: git submodule add + fetch + checkout（指定版本时 detached HEAD）
+        ├── copy:      按分支/tag/commit 拉取后复制
+        └── configService.withAppliedModule() + writeConfig()  # 写入 versionKind/versionRef
+    → cacheStore.setModuleVersionCache()  # 单选指定版本时缓存提交信息
+    → 刷新侧边栏
+```
+
+### 3.4 模块更新流程（版本选择，issue #37）
+
+```
+用户触发 Update
+  → controller.updateModuleCommand()
+    → 第一步 QuickPick：选择版本来源
+        ├── 更新到最新（{当前分支}）   # 行为与现状一致
+        ├── 提交记录 / 标签 / Release / 分支
+        └── versionService.list*()   # GitHub API 优先，git CLI 兜底
+    → 第二步 QuickPick：选择具体版本（分支来源需再选提交）
+    → 确认对话框（当前版本 → 目标版本 + 备份提示）
+    → workspaceModuleService.updateModule(selection)
+        ├── copy:      按 commit/tag/release/latest 拉取目标版本后整体覆盖
+        ├── submodule: git submodule update --init + fetch + checkout（detached HEAD）
+        └── configService.withAppliedModule() + writeConfig()  # 写入 versionKind/versionRef
+    → cacheStore.setModuleVersionCache()  # 缓存提交信息（owner/name → {ref, commitInfo, date}）
     → 刷新侧边栏
 ```
 
@@ -162,14 +186,14 @@ extension.ts activate()
 
 ## 5. 构建与测试
 
-| 命令 | 说明 |
-|------|------|
-| `npm run check-types` | TypeScript 类型检查 |
-| `npm run lint` | ESLint 代码规范 |
-| `npm run compile` | esbuild 打包 → `dist/extension.js` |
-| `npm run compile-tests` | 编译测试 → `out/test/` |
-| `npx mocha --ui tdd ...` | 独立单元测试（无需 VS Code） |
-| `npm test` | 完整扩展测试（需 VS Code 宿主） |
+| 命令                     | 说明                               |
+|--------------------------|------------------------------------|
+| `npm run check-types`    | TypeScript 类型检查                |
+| `npm run lint`           | ESLint 代码规范                    |
+| `npm run compile`        | esbuild 打包 → `dist/extension.js` |
+| `npm run compile-tests`  | 编译测试 → `out/test/`             |
+| `npx mocha --ui tdd ...` | 独立单元测试（无需 VS Code）         |
+| `npm test`               | 完整扩展测试（需 VS Code 宿主）      |
 
 ### 测试统计
 

@@ -54,6 +54,10 @@ const messages = {
 		en: 'Apply {count} module(s) to {repository} using {method} under {root}/?',
 		zh: '要在 {repository} 的 {root}/ 下以 {method} 方式应用 {count} 个模块吗？',
 	},
+	applyConfirmationWithVersion: {
+		en: 'Apply {count} module(s) to {repository} using {method} under {root}/, at version {version}?',
+		zh: '要以 {method} 方式将 {count} 个模块应用到 {repository} 的 {root}/ 下，目标版本 {version} 吗？',
+	},
 	applyAction: {
 		en: 'Apply',
 		zh: '应用',
@@ -174,14 +178,6 @@ const messages = {
 		en: 'Failed to change local lock state: {message}',
 		zh: '修改本地锁定状态失败：{message}',
 	},
-	copyUpdateConfirmation: {
-		en: 'Update copied module {module} on branch {branch} from {currentRef} to {latestRef}? The current folder will be replaced, and a zip backup will be saved to {backupDirectory}.',
-		zh: '要将拷贝方式引入的模块 {module} 从分支 {branch} 的 {currentRef} 更新到 {latestRef} 吗？当前模块目录将被整体替换，并在 {backupDirectory} 中保存一个 zip 备份。',
-	},
-	copyUpdateConfirmationWithoutBackup: {
-		en: 'Update copied module {module} on branch {branch} from {currentRef} to {latestRef}? The current folder will be replaced. No local folder was found to back up.',
-		zh: '要将拷贝方式引入的模块 {module} 从分支 {branch} 的 {currentRef} 更新到 {latestRef} 吗？当前模块目录将被整体替换，但未找到可备份的本地目录。',
-	},
 	latestRef: {
 		en: 'latest',
 		zh: '最新版本',
@@ -190,29 +186,164 @@ const messages = {
 		en: 'Module {module} is already up to date on {branch} ({ref}).',
 		zh: '模块 {module} 在分支 {branch} 上已经是最新版本（{ref}）。',
 	},
-	updateSuccess: {
-		en: 'Updated {module} to {ref}.',
-		zh: '已将 {module} 更新到 {ref}。',
-	},
-	updateSuccessWithBackup: {
-		en: 'Updated {module} to {ref}. Backup saved to {backupPath}.',
-		zh: '已将 {module} 更新到 {ref}。备份已保存到 {backupPath}。',
-	},
 	updateFailed: {
 		en: 'Failed to update module: {message}',
 		zh: '更新模块失败：{message}',
+	},
+	// ------------------------------------------------------------------
+	// 模块版本选择（issue #37）
+	// ------------------------------------------------------------------
+	updateToLatestOption: {
+		en: 'Update to latest ({branch})',
+		zh: '更新到最新（{branch}）',
+	},
+	updateToLatestDetail: {
+		en: 'Update the module to the latest commit on branch {branch}.',
+		zh: '将模块更新到分支 {branch} 的最新提交。',
+	},
+	applyUseDefaultBranchOption: {
+		en: 'Use default branch ({branch})',
+		zh: '使用默认分支（{branch}）',
+	},
+	applyUseDefaultBranchDetail: {
+		en: 'Apply the module at the latest commit of branch {branch}.',
+		zh: '使用分支 {branch} 的最新提交应用该模块。',
+	},
+	versionSourceCommits: {
+		en: 'Commit history',
+		zh: '提交记录',
+	},
+	versionSourceCommitsDetail: {
+		en: 'Recent {count} commits on branch {branch}.',
+		zh: '分支 {branch} 上最近的 {count} 条提交。',
+	},
+	versionSourceTags: {
+		en: 'Tags',
+		zh: '标签',
+	},
+	versionSourceTagsDetail: {
+		en: 'Recent {count} git tags.',
+		zh: '仓库最近的 {count} 个 git 标签。',
+	},
+	versionSourceReleases: {
+		en: 'Releases',
+		zh: 'Release',
+	},
+	versionSourceReleasesDetail: {
+		en: 'Recent {count} GitHub releases.',
+		zh: '仓库最近的 {count} 个 GitHub Release。',
+	},
+	versionSourceBranches: {
+		en: 'Branches',
+		zh: '分支',
+	},
+	versionSourceBranchesDetail: {
+		en: 'All branches; pick a commit from the chosen branch afterwards.',
+		zh: '仓库全部分支；选择分支后可进一步选择该分支的提交。',
+	},
+	versionSourcePlaceholder: {
+		en: 'Choose a version source for {module}',
+		zh: '请为 {module} 选择版本来源',
+	},
+	versionCommitsPlaceholder: {
+		en: 'Choose a commit to update to',
+		zh: '请选择要更新到的提交',
+	},
+	versionTagsPlaceholder: {
+		en: 'Choose a tag to update to',
+		zh: '请选择要更新到的标签',
+	},
+	versionReleasesPlaceholder: {
+		en: 'Choose a release to update to',
+		zh: '请选择要更新到的 Release',
+	},
+	versionBranchesPlaceholder: {
+		en: 'Choose a branch',
+		zh: '请选择分支',
+	},
+	versionListEmpty: {
+		en: 'No {kind} found for this module.',
+		zh: '该模块没有可用的{kind}。',
+	},
+	versionKindCommits: {
+		en: 'commits',
+		zh: '提交',
+	},
+	versionKindTags: {
+		en: 'tags',
+		zh: '标签',
+	},
+	versionKindReleases: {
+		en: 'releases',
+		zh: 'Release',
+	},
+	versionKindBranches: {
+		en: 'branches',
+		zh: '分支',
+	},
+	versionUpdateConfirmationWithBackup: {
+		en: 'Update {module} from {current} to {target}? The current folder will be replaced, and a zip backup will be saved to {backupDirectory}.',
+		zh: '要将模块 {module} 从 {current} 更新到 {target} 吗？当前模块目录将被整体替换，并在 {backupDirectory} 中保存一个 zip 备份。',
+	},
+	versionUpdateConfirmationWithoutBackup: {
+		en: 'Update {module} from {current} to {target}? The current folder will be replaced. No local folder was found to back up.',
+		zh: '要将模块 {module} 从 {current} 更新到 {target} 吗？当前模块目录将被整体替换，但未找到可备份的本地目录。',
+	},
+	versionUpdateSubmoduleConfirmation: {
+		en: 'Update submodule {module} from {current} to {target}? The submodule will be checked out at the target version (detached HEAD).',
+		zh: '要将子模块 {module} 从 {current} 更新到 {target} 吗？子模块将被检出到目标版本（detached HEAD）。',
+	},
+	updateSuccessVersion: {
+		en: 'Updated {module} to {version}.',
+		zh: '已将 {module} 更新到 {version}。',
+	},
+	updateSuccessVersionWithBackup: {
+		en: 'Updated {module} to {version}. Backup saved to {backupPath}.',
+		zh: '已将 {module} 更新到 {version}。备份已保存到 {backupPath}。',
+	},
+	relativeJustNow: {
+		en: 'just now',
+		zh: '刚刚',
+	},
+	relativeMinutes: {
+		en: '{count} minute(s) ago',
+		zh: '{count} 分钟前',
+	},
+	relativeHours: {
+		en: '{count} hour(s) ago',
+		zh: '{count} 小时前',
+	},
+	relativeDays: {
+		en: '{count} day(s) ago',
+		zh: '{count} 天前',
+	},
+	relativeMonths: {
+		en: '{count} month(s) ago',
+		zh: '{count} 个月前',
+	},
+	relativeYears: {
+		en: '{count} year(s) ago',
+		zh: '{count} 年前',
+	},
+	versionUnknown: {
+		en: 'unknown version',
+		zh: '未知版本',
 	},
 	switchMethodAction: {
 		en: 'Switch',
 		zh: '切换',
 	},
-	switchMethodToTarget: {
-		en: 'Switch to {method}',
-		zh: '切换为 {method}',
-	},
 	switchMethodRequiresGitRepo: {
-		en: 'Switching between copy and submodule is only available when the current workspace folder is a Git repository.',
-		zh: '只有当前工作区文件夹是 Git 仓库时，才允许在 copy 和 submodule 之间切换。',
+		en: 'Switching the module method is only available when the current workspace folder is a Git repository.',
+		zh: '只有当前工作区文件夹是 Git 仓库时，才允许切换模块引入方式。',
+	},
+	switchMethodPlaceholder: {
+		en: 'Choose the module method to switch to',
+		zh: '请选择要切换到的模块引入方式',
+	},
+	switchMethodButton: {
+		en: 'Switch module method',
+		zh: '切换引入方式',
 	},
 	signInRequiredToSwitchPrivateModule: {
 		en: 'GitHub sign-in is required to switch a private module into submodule mode.',
@@ -249,6 +380,14 @@ const messages = {
 	applyingCopyFiles: {
 		en: 'Copying {repo} files...',
 		zh: '正在复制 {repo} 文件...',
+	},
+	applyingReleaseDownloading: {
+		en: 'Downloading release assets for {repo}...',
+		zh: '正在下载 {repo} 的 Release 附件...',
+	},
+	releaseHasNoAssets: {
+		en: 'Release {release} has no downloadable assets.',
+		zh: 'Release {release} 没有可下载的附件。',
 	},
 	switchMethodSuccessWithBackup: {
 		en: 'Switched {module} to {method}. Backup saved to {backupPath}.',
@@ -681,6 +820,18 @@ const messages = {
 	applyMethodCopyDetail: {
 		en: 'Clones then copies files into the local module directory for {count} selected module(s).',
 		zh: '先克隆，再把文件复制到本地模块目录，适用于所选的 {count} 个模块。',
+	},
+	applyMethodReleaseLabel: {
+		en: 'GitHub Release',
+		zh: 'GitHub Release',
+	},
+	applyMethodReleaseDescription: {
+		en: 'Download the release assets from GitHub.',
+		zh: '从 GitHub 下载 Release 附件。',
+	},
+	applyMethodReleaseDetail: {
+		en: 'Downloads the assets of a chosen GitHub release into the local module directory.',
+		zh: '把所选 GitHub Release 的附件下载到本地模块目录。',
 	},
 	loadingModules: {
 		en: 'Loading modules...',
@@ -1191,7 +1342,49 @@ export function getHtmlLang(): string {
 }
 
 export function getApplyMethodLabel(method: ModuleApplyMethod): string {
-	return method === 'copy' ? t('applyMethodCopyLabel') : t('applyMethodSubmoduleLabel');
+	if (method === 'copy') {
+		return t('applyMethodCopyLabel');
+	}
+	if (method === 'release') {
+		return t('applyMethodReleaseLabel');
+	}
+	return t('applyMethodSubmoduleLabel');
+}
+
+/**
+ * 将 ISO 日期字符串格式化为相对时间（如 "2天前"）。
+ * 解析失败或为空时返回空字符串。
+ */
+export function formatRelativeDate(isoDate: string | undefined): string {
+	if (!isoDate) {
+		return '';
+	}
+	const parsed = new Date(isoDate);
+	if (Number.isNaN(parsed.getTime())) {
+		return '';
+	}
+	const diffMs = Date.now() - parsed.getTime();
+	const minutes = Math.floor(diffMs / 60000);
+	if (minutes < 1) {
+		return t('relativeJustNow');
+	}
+	const hours = Math.floor(minutes / 60);
+	if (hours < 1) {
+		return t('relativeMinutes', { count: minutes });
+	}
+	const days = Math.floor(hours / 24);
+	if (days < 1) {
+		return t('relativeHours', { count: hours });
+	}
+	const months = Math.floor(days / 30);
+	if (months < 1) {
+		return t('relativeDays', { count: days });
+	}
+	const years = Math.floor(days / 365);
+	if (years < 1) {
+		return t('relativeMonths', { count: months });
+	}
+	return t('relativeYears', { count: years });
 }
 
 export function getVisibilityLabel(visibility: 'private' | 'public'): string {

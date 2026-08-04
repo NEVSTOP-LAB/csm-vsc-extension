@@ -54,6 +54,7 @@ export const STORAGE_KEYS = {
 	moduleSortState: 'csmModules.sort.state',
 	moduleLvVersion: 'csmModules.cache.lvVersions',
 	recentNamespaceByWorkspace: 'csmModules.cache.recentNamespaceByWorkspace',
+	moduleVersionCache: 'csmModules.cache.moduleVersions',
 } as const;
 
 export const CONTEXT_KEYS = {

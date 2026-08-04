@@ -8,6 +8,14 @@
 
 ### 新增
 
+- **模块版本概念**（issue #37）：更新模块时支持选择具体版本——更新到分支最新，或从提交记录 / git 标签 / GitHub Release / 分支中选择目标版本（含回退到旧版本）；版本来源数据优先走 GitHub REST API，未登录或网络受限时用 git CLI 兜底
+- **应用模块时（单选）支持选择具体版本**（issue #37）：应用单个模块时可选择版本来源（置顶「使用默认分支」，与更新一致）；多选批量应用沿用默认分支；确认框展示目标版本；`submodule` / `copy` 均支持指定分支 / 提交 / 标签 / Release 应用
+- **使用 GitHub Release = 下载其附件**（issue #37）：选择 Release 后下载该 Release 的全部附件（排除 `Source code` 自动附件）；zip / tar.gz 自动解压（剥离顶层单目录），其它格式直接复制；单附件放模块根、多附件各自放独立子目录；submodule 方式回退为 git tag 检出
+- **GitHub Release 提升为独立引入方式**（issue #37）：与 `submodule` / `copy` 同级，应用 / 更新时可直接选择该方式；release 模块不显示「分支」徽章，版本标签显示 release 的 tag 名（非标题）
+- **三种引入方式互相切换**（issue #37）：侧边栏弹出三选一选择器（submodule / copy / GitHub Release），切到 Release 时再选具体 Release；`copy` / `submodule` → `release` 下载附件整体替换，`release` → `copy` 重新克隆默认分支，`release` → `submodule` 检出当前 release 的 tag
+- 每个已管理模块记录 `versionKind`（`branch` / `commit` / `tag` / `release`）与 `versionRef`，`ref` 始终指向实际应用的提交 SHA；旧配置自动兼容
+- 本地模块卡片展示当前版本（`短SHA · 提交信息 · 相对日期`，tag / Release 优先显示名称），提交信息在更新/应用成功时缓存，避免每次在线查询
+- 新增 `src/modules/versionService.ts`（版本来源列表 + git 兜底）与对应单元测试
 - **CSMLog 日志重复折叠**：自动检测并折叠 `.csmlog` 中重复日志行，支持精确 / 参数变化 / 多行块 / 交错 4 种重复模式；三级递进算法（连续匹配 → Rabin-Karp 哈希 → token 确认）实现 100K 行约 265ms 检测。提供 `csmlog.folding.*` 配置与 `toggleAllFolds` / `showStats` 命令，通过编辑器工具栏 👁 按钮按文件激活
 - 折叠区以 4 种底色区分重复类型（灰蓝精确 / 灰紫参数 / 灰绿块 / 灰橙交错），概要标签显示重复次数、时间跨度与频率
 - 新增 `src/logFold/`（types / normalizer / detector / foldingProvider / decorations）与 `src/test/logFold/`（28 项测试覆盖归一化、检测、Provider、性能）
@@ -16,6 +24,8 @@
 
 ### 变更
 
+- 更新模块流程改为两步 QuickPick（版本来源 → 具体版本）+ 确认对话框（当前版本 → 目标版本，copy 方式附 zip 备份提示）
+- `copy` / `submodule` 更新均支持指定版本：copy 按目标版本拉取后整体覆盖，submodule 通过 fetch + checkout 检出到指定提交（detached HEAD）
 - 升级 `engines.vscode` 最低版本至 `^1.63.0`，以支持 pre-release 发布
 
 ### 重构
@@ -47,7 +57,7 @@
 - 交互：从未管理文件夹发布仓库后接管为 Git submodule 并写回 YAML；非 Git 工作区保持 `copy` 并刷新
 - 交互：未管理文件夹可直接关联在线模块仓库（先 `copy` 登记，后续可更新 / 移除 / 切 `submodule`）；已关联目录为现有 submodule 时保留其远端 / 分支 / 锁定提交
 - 交互：`csm/` 下的嵌套 Git 仓库（自带 `.git`）会被接管并补登记为真实 submodule；发布仓库后等待在线目录刷新完成
-- 交互：已管理模块可在 Git 工作区内切换 `copy` / `submodule`，非 Git 工作区禁用切换
+- 交互：已管理模块可在 Git 工作区内切换 `submodule` / `copy` / `GitHub Release` 三种引入方式，非 Git 工作区禁用切换
 - 交互：已管理模块默认进入 lock 状态（递归只读），侧边栏提供锁定 / 解锁（需确认），状态写回 YAML
 - 错误处理：lock 同步失败改为 warning 并继续刷新，不中断 Apply / Remove / Update
 - 维护：`ModuleManagerController` 直接调用锁定接口，移除运行时 `Partial` / `typeof` 兜底
