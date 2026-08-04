@@ -48,14 +48,12 @@ src/
 │       ├── normalizer.ts         # 行签名归一化引擎
 │       ├── detector.ts           # 三级递进重复检测算法
 │       ├── foldingProvider.ts    # VS Code FoldingRangeProvider
-│       ├── messages.ts           # 折叠功能本地化文案（中/英）
 │       └── decorations.ts        # 装饰器视觉呈现
 │
 ├── modules/                      # 模块管理域
 │   ├── index.ts                  # barrel 导出
 │   ├── types.ts                  # 所有核心类型定义
 │   ├── constants.ts              # 命令 ID、视图 ID、配置键
-│   ├── messages.ts               # 国际化消息（中/英）
 │   ├── logger.ts                 # 输出通道日志器
 │   ├── moduleManagerController.ts # 主控制器（命令注册、状态管理）
 │   ├── moduleSidebarViewProvider.ts # WebView 侧边栏提供者
@@ -76,11 +74,17 @@ src/
 │   ├── readmeAssetCache.ts       # README 资源缓存
 │   └── readmePreviewService.ts   # README 预览
 │
+├── i18n/                         # 本地化模块（统一入口）
+│   ├── index.ts                  # barrel：对外唯一入口
+│   ├── core.ts                   # 本地化基础设施（语言检测、{en, zh} bundle 替换）
+│   ├── messages.ts               # 模块管理 UI 文案（中/英）+ 辅助函数
+│   ├── logFold.ts                # CSMLog 日志折叠 UI 文案（中/英）
+│   └── language.ts               # 语言功能 UI 文案（outline 符号名、文件徽章）
+│
 ├── common/                       # 跨域共享
 │   ├── constants.ts              # CSM 日志正则与常量
 │   ├── symbols.ts                # DocumentSymbol 构建工具
-│   ├── tempPaths.ts              # 临时目录管理
-│   └── i18n.ts                   # VS Code 语言检测 + 本地化
+│   └── tempPaths.ts              # 临时目录管理
 │
 └── test/                         # 测试（镜像源码结构）
     ├── setup.ts                  # Mocha 启动钩子（拦截 require('vscode')）

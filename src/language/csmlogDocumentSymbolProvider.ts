@@ -1,25 +1,11 @@
 import * as vscode from 'vscode';
-import { localizeBundle } from '../common/i18n';
+import { getSymbolMessage } from '../i18n';
 import {
     CONFIG_KEY_REGEX,
     MODULE_LIFECYCLE_REGEX,
     LOGGER_MESSAGE_REGEX,
 } from '../common/constants';
 import { SymbolEntry, buildDocumentSymbols } from '../common/symbols';
-const symbolMessages = {
-    moduleCreated: {
-        en: 'Module Created',
-        zh: '模块创建',
-    },
-    moduleDestroyed: {
-        en: 'Module Destroyed',
-        zh: '模块销毁',
-    },
-    unknownModule: {
-        en: '<unknown-module>',
-        zh: '<未知模块>',
-    },
-} as const;
 
 /**
  * Provides document symbols (outline) for CSMLog files.
@@ -60,9 +46,9 @@ export class CSMLogDocumentSymbolProvider implements vscode.DocumentSymbolProvid
                     ? vscode.SymbolKind.Constructor
                     : vscode.SymbolKind.Event;
                 const eventName = moduleMatch[1] === 'Module Created'
-                    ? localizeBundle(symbolMessages, 'moduleCreated')
-                    : localizeBundle(symbolMessages, 'moduleDestroyed');
-                const moduleName = moduleMatch[2]?.trim() || localizeBundle(symbolMessages, 'unknownModule');
+                    ? getSymbolMessage('moduleCreated')
+                    : getSymbolMessage('moduleDestroyed');
+                const moduleName = moduleMatch[2]?.trim() || getSymbolMessage('unknownModule');
                 entries.push({ lineIndex: i, name: `${eventName}: ${moduleName}`, kind });
                 continue;
             }

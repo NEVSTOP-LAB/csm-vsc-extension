@@ -16,7 +16,7 @@ import {
 	DecorationTypes,
 } from './language/logFold';
 import { DEFAULT_FOLD_OPTIONS, FoldOptions } from './language/logFold/types';
-import { t } from './language/logFold/messages';
+import { t } from './i18n/logFold';
 
 // ---------------------------------------------------------------------------
 // 状态

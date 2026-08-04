@@ -4,7 +4,7 @@
 
 import * as vscode from 'vscode';
 import { FoldRegion, FoldOptions, DEFAULT_FOLD_OPTIONS, RepeatPattern } from './types';
-import { t } from './messages';
+import { t } from '../../i18n/logFold';
 
 // ---------------------------------------------------------------------------
 // 颜色常量（深色/浅色主题自适应）

@@ -1,4 +1,4 @@
-import { t } from './messages';
+import { t } from '../i18n';
 
 /**
  * Centralized constants for the Module Manager feature.

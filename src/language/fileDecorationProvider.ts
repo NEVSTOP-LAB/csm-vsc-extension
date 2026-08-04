@@ -1,17 +1,5 @@
 import * as vscode from 'vscode';
-import { localizeBundle } from '../common/i18n';
-
-/** 文件徽章 tooltip 本地化文案 */
-const fileBadgeMessages = {
-	csmlogBadge: {
-		en: 'CSM log file',
-		zh: 'CSM 日志文件',
-	},
-	lvcsmBadge: {
-		en: 'LVCSM script file',
-		zh: 'LVCSM 脚本文件',
-	},
-} as const;
+import { getFileBadgeMessage } from '../i18n';
 
 /**
  * CSM 文件装饰提供者，为 .csmlog 和 .lvcsm 文件在资源管理器中添加 Badge 标记。
@@ -25,14 +13,14 @@ export class CsmFileDecorationProvider implements vscode.FileDecorationProvider 
             return {
                 badge: 'C',
                 color: new vscode.ThemeColor('charts.blue'),
-                tooltip: localizeBundle(fileBadgeMessages, 'csmlogBadge')
+                tooltip: getFileBadgeMessage('csmlogBadge')
             };
         }
         if (uri.fsPath.endsWith('.lvcsm')) {
             return {
                 badge: 'L',
                 color: new vscode.ThemeColor('charts.green'),
-                tooltip: localizeBundle(fileBadgeMessages, 'lvcsmBadge')
+                tooltip: getFileBadgeMessage('lvcsmBadge')
             };
         }
         return undefined;

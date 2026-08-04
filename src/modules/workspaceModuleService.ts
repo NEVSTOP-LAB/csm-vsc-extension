@@ -5,7 +5,7 @@ import * as path from 'path';
 import JSZip from 'jszip';
 import * as tar from 'tar';
 import { CopyModuleUpdatePreview, CsmModuleEntry, LocalModuleConfig, LocalModuleConfigEntry, ModuleApplyMethod, ModuleReleaseAssetInfo, ModuleUpdateResult, ModuleVersionSelection } from './types';
-import { t } from './messages';
+import { t } from '../i18n';
 import { GitService, IGitRunner } from './gitService';
 import {
 	isEntryLocked,

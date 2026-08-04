@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { GitHubModuleService } from './githubModuleService';
 import { Logger } from './logger';
-import { t } from './messages';
+import { t } from '../i18n';
 import { ReadmeAssetCache } from './readmeAssetCache';
 import { CsmModuleEntry } from './types';
 

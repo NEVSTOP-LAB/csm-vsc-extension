@@ -1,4 +1,4 @@
-import { t } from './messages';
+import { t } from '../i18n';
 
 export type UserFacingErrorContext = 'refresh' | 'apply' | 'update' | 'remove' | 'config' | 'createRepo';
 

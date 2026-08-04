@@ -12,7 +12,7 @@ import { ReadmeAssetCache } from './readmeAssetCache';
 import { DEFAULT_EXCLUDED_DIRECTORY_NAMES, DEFAULT_LOCAL_MODULE_ROOT, GitIdentity, LEGACY_LOCAL_MODULE_CONFIG_FILE, LOCAL_MODULE_CONFIG_FILE, UpdateModuleOptions, WorkspaceModuleService } from './workspaceModuleService';
 import { COMMAND_IDS, CONFIG_KEYS, CONFIG_SECTIONS, CONTEXT_KEYS, GITHUB, VIEW_IDS } from './constants';
 import { Logger, getLogger, wrapCommand } from './logger';
-import { formatRelativeDate, getApplyMethodLabel, t } from './messages';
+import { formatRelativeDate, getApplyMethodLabel, t } from '../i18n';
 import { ModuleVersionService } from './versionService';
 import { openBuiltinReadmePreview, type ReadmePreviewServiceDeps } from './readmePreviewService';
 import { DEFAULT_MODULE_SORT_STATE, isModuleSortField, normalizeModuleSortState, sortModules } from './sort';

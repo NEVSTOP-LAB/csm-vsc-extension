@@ -1,8 +1,8 @@
 // ---------------------------------------------------------------------------
-// src/language/logFold/messages.ts — CSMLog 折叠功能的本地化文案
+// src/i18n/logFold.ts — CSMLog 日志折叠功能的本地化文案
 // ---------------------------------------------------------------------------
 
-import { LocalizedBundle, localizeBundle } from '../../common/i18n';
+import { LocalizedBundle, localizeBundle } from './core';
 
 const logFoldMessages = {
 	/** 状态栏按钮 tooltip（扩展激活时创建） */

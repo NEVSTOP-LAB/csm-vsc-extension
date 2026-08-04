@@ -10,7 +10,7 @@
 
 import * as assert from 'assert';
 import * as path from 'path';
-import { __setLanguageOverrideForTests } from '../common/i18n';
+import { __setLanguageOverrideForTests } from '../i18n';
 
 // Load the compiled provider (vscode is already intercepted by setup.js)
 const { CSMLogDocumentSymbolProvider } = require(
