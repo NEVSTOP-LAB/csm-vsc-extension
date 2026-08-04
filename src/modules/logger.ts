@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { OUTPUT_CHANNEL_NAME } from './constants';
-import { t } from './messages';
+import { t } from '../i18n';
 
 export type Logger = vscode.LogOutputChannel;
 

@@ -4,7 +4,7 @@
 
 import * as vscode from 'vscode';
 import { CsmModuleEntry } from './types';
-import { getVisibilityLabel, getVisibilityTag, t } from './messages';
+import { getVisibilityLabel, getVisibilityTag, t } from '../i18n';
 import { getVisibleModuleTopics } from './topics';
 import { truncate } from './utils';
 

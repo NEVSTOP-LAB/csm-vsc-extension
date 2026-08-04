@@ -12,7 +12,7 @@ import { ReadmeAssetCache } from './readmeAssetCache';
 import { DEFAULT_EXCLUDED_DIRECTORY_NAMES, DEFAULT_LOCAL_MODULE_ROOT, GitIdentity, LEGACY_LOCAL_MODULE_CONFIG_FILE, LOCAL_MODULE_CONFIG_FILE, UpdateModuleOptions, WorkspaceModuleService } from './workspaceModuleService';
 import { COMMAND_IDS, CONFIG_KEYS, CONFIG_SECTIONS, CONTEXT_KEYS, GITHUB, VIEW_IDS } from './constants';
 import { Logger, getLogger, wrapCommand } from './logger';
-import { formatRelativeDate, getApplyMethodLabel, t } from './messages';
+import { formatRelativeDate, getApplyMethodLabel, t } from '../i18n';
 import { ModuleVersionService } from './versionService';
 import { openBuiltinReadmePreview, type ReadmePreviewServiceDeps } from './readmePreviewService';
 import { DEFAULT_MODULE_SORT_STATE, isModuleSortField, normalizeModuleSortState, sortModules } from './sort';
@@ -1377,7 +1377,7 @@ export class ModuleManagerController {
 						remoteUrl: this.toGitRemoteUrl(repository.html_url),
 						authToken: token,
 						defaultBranch: repository.default_branch || 'main',
-						commitMessage: `Initial publish of ${folder.name}`,
+						commitMessage: t('publishInitialCommitMessage', { folder: folder.name }),
 						authorName: gitIdentity.name,
 						authorEmail: gitIdentity.email,
 					});
@@ -1779,7 +1779,7 @@ export class ModuleManagerController {
 
 		if (typeof this.authService.signOut !== 'function') {
 			this.logger.error('Failed to sign out of GitHub: sign-out handler is unavailable.');
-			void vscode.window.showErrorMessage(t('signOutFailed', { message: 'Sign-out is unavailable.' }));
+			void vscode.window.showErrorMessage(t('signOutFailed', { message: t('signOutUnavailable') }));
 			return;
 		}
 
@@ -3098,7 +3098,7 @@ export class ModuleManagerController {
 						this.workspaceModuleService.normalizeRootPath(value);
 						return undefined;
 					} catch (error) {
-						return error instanceof Error ? error.message : t('invalidDirectory');
+						return error instanceof Error ? getUserFacingErrorMessage(error, 'config') : t('invalidDirectory');
 					}
 				},
 			});
@@ -3597,13 +3597,13 @@ export class ModuleManagerController {
 		if (picked.action === 'manual') {
 			const input = await vscode.window.showInputBox({
 				prompt: t('applyNamespaceInputPrompt', { root: config.root }),
-				placeHolder: 'HAL/niDMM',
+				placeHolder: t('applyNamespaceInputPlaceholder'),
 				validateInput: (value) => {
 					try {
 						this.normalizeNamespacePathValue(value);
 						return undefined;
 					} catch (error) {
-						return error instanceof Error ? error.message : t('invalidDirectory');
+						return error instanceof Error ? getUserFacingErrorMessage(error, 'apply') : t('invalidDirectory');
 					}
 				},
 			});

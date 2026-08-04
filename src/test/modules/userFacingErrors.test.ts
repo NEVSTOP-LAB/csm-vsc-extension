@@ -4,7 +4,7 @@
 
 import * as assert from 'assert';
 import { getUserFacingErrorMessage } from '../../modules/userFacingErrors';
-import { __setLanguageOverrideForTests } from '../../common/i18n';
+import { __setLanguageOverrideForTests } from '../../i18n';
 
 suite('Modules — UserFacingErrors', () => {
 
@@ -48,7 +48,7 @@ suite('Modules — UserFacingErrors', () => {
             msg503.includes('unavailable') || msg503.includes('temporarily') || msg503.includes('不可用'),
             `503 期望临时不可用，实际: "${msg503}"`
         );
-        
+
         const msg429 = getUserFacingErrorMessage(
             new Error('GitHub API request failed: 429'),
             ctx

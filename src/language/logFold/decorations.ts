@@ -4,6 +4,7 @@
 
 import * as vscode from 'vscode';
 import { FoldRegion, FoldOptions, DEFAULT_FOLD_OPTIONS, RepeatPattern } from './types';
+import { t } from '../../i18n/logFold';
 
 // ---------------------------------------------------------------------------
 // 颜色常量（深色/浅色主题自适应）
@@ -216,7 +217,7 @@ export function applyDecorations(
         editor.setDecorations(bgDecorations[pattern as RepeatPattern], ranges);
     }
     for (const pattern of Object.keys(bgDecorations)) {
-        if (!bgRanges[pattern]) {editor.setDecorations(bgDecorations[pattern as RepeatPattern], []);}
+        if (!bgRanges[pattern]) { editor.setDecorations(bgDecorations[pattern as RepeatPattern], []); }
     }
     editor.setDecorations(borderDecoration, borderRanges);
     editor.setDecorations(summaryLabelDecoration, summaryOptions);
@@ -246,7 +247,7 @@ function buildSummaryLabel(region: FoldRegion, options: FoldOptions): string {
     }
 
     const parts: string[] = [];
-    parts.push(`…重复 ${count} 次`);
+    parts.push(t('summaryRepeated', { count }));
 
     if (region.sampleLines.length >= 2) {
         const firstTime = extractTime(region.sampleLines[0]);

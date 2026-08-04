@@ -3,7 +3,7 @@ import { CsmModuleEntry, LocalManagedModuleEntry, LocalUnmanagedFolderEntry } fr
 import { ViewState } from './moduleTreeTypes';
 import { IModuleViewProvider, ModuleListScope, ModuleSortDirection, ModuleSortField, ModuleSortState, SidebarWorkspaceContext } from './types';
 import { DEFAULT_MODULE_SORT_STATE, isModuleSortDirection, isModuleSortField, normalizeModuleSortState } from './sort';
-import { t } from './messages';
+import { t } from '../i18n';
 import { renderModuleSidebarHtml } from './moduleSidebarHtml';
 import { getModuleKey } from './utils';
 

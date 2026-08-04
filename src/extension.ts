@@ -16,6 +16,7 @@ import {
 	DecorationTypes,
 } from './language/logFold';
 import { DEFAULT_FOLD_OPTIONS, FoldOptions } from './language/logFold/types';
+import { t } from './i18n/logFold';
 
 // ---------------------------------------------------------------------------
 // 状态
@@ -116,7 +117,7 @@ export function activate(context: vscode.ExtensionContext) {
 	// ---- 状态栏 ----
 	const statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 99);
 	statusBarItem.command = 'csmlog.folding.toggleAllFolds';
-	statusBarItem.tooltip = '切换全部 CSMLog 重复区折叠';
+	statusBarItem.tooltip = t('statusBarTooltip');
 	context.subscriptions.push(statusBarItem);
 	updateStatusBar(statusBarItem, vscode.window.activeTextEditor, foldProvider);
 	scheduleDecorUpdate(vscode.window.activeTextEditor);
@@ -238,18 +239,19 @@ function registerCommands(
 		vscode.commands.registerCommand('csmlog.folding.showStats', () => {
 			const editor = vscode.window.activeTextEditor;
 			if (!editor || editor.document.languageId !== 'csmlog') {
-				vscode.window.showInformationMessage('CSMLog Fold: 当前文件不是 CSMLog 文件');
+				vscode.window.showInformationMessage(t('statsNotCsmlog'));
 				return;
 			}
 			if (!foldProvider.enabledDocs.has(editor.document.uri.toString())) {
-				vscode.window.showInformationMessage('CSMLog Fold: 请先点击工具栏 👁 按钮启用折叠检测');
+				vscode.window.showInformationMessage(t('statsEnableFirst'));
 				return;
 			}
 			const stats = computeFoldStats(editor);
-			vscode.window.showInformationMessage(
-				`CSMLog 折叠统计: 检测到 ${stats.regionCount} 个重复区，覆盖 ${stats.foldedLines} 行 ` +
-				`(${stats.percentage}%)`,
-			);
+			vscode.window.showInformationMessage(t('statsResult', {
+				regionCount: stats.regionCount,
+				foldedLines: stats.foldedLines,
+				percentage: stats.percentage,
+			}));
 		}),
 	);
 }
@@ -324,8 +326,12 @@ function updateStatusBar(
 	} else {
 		item.color = undefined;
 	}
-	item.text = `$(fold) ${stats.regionCount}区 / ${editor.document.lineCount}行`;
-	item.tooltip = `检测到 ${stats.regionCount} 个重复折叠区，覆盖 ${stats.foldedLines} 行 (${stats.percentage}%) —— 点击切换折叠`;
+	item.text = t('statusBarText', { regionCount: stats.regionCount, lineCount: editor.document.lineCount });
+	item.tooltip = t('statusBarTooltipDetailed', {
+		regionCount: stats.regionCount,
+		foldedLines: stats.foldedLines,
+		percentage: stats.percentage,
+	});
 	item.show();
 }
 

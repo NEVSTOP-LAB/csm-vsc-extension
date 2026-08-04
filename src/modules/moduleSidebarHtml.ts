@@ -1,6 +1,6 @@
 import * as crypto from 'crypto';
 import { ModuleListScope, ModuleSortDirection, ModuleSortField, ModuleSortState } from './types';
-import { formatRelativeDate, getApplyMethodLabel, getHtmlLang, getVisibilityLabel, t } from './messages';
+import { formatRelativeDate, getApplyMethodLabel, getHtmlLang, getVisibilityLabel, t } from '../i18n';
 import { truncate } from './utils';
 import { ViewState } from './moduleTreeTypes';
 import { sortModules } from './sort';

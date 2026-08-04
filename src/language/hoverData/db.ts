@@ -1,6 +1,6 @@
 import type { HoverEntry } from './types';
 import { applyEnglishHoverTranslations } from './localize';
-import { isChineseLanguage } from '../../common/i18n';
+import { isChineseLanguage } from '../../i18n';
 import { operatorEntries } from './operators';
 import { commandEntries } from './commands';
 import { controlFlowEntries } from './controlFlow';

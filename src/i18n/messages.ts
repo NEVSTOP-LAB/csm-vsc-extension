@@ -1,5 +1,5 @@
-import type { ModuleApplyMethod } from './types';
-import { getHtmlLang as getHtmlLangValue, localizeBundle } from '../common/i18n';
+import type { ModuleApplyMethod } from '../modules/types';
+import { getHtmlLang as getHtmlLangValue, localizeBundle } from './core';
 
 const messages = {
 	outputChannelName: {
@@ -444,6 +444,10 @@ const messages = {
 	signOutFailed: {
 		en: 'Failed to sign out of GitHub: {message}',
 		zh: '退出 GitHub 登录失败：{message}',
+	},
+	signOutUnavailable: {
+		en: 'Sign-out is unavailable.',
+		zh: '退出登录功能不可用。',
 	},
 	refreshConfirmation: {
 		en: 'Refresh CSM modules from GitHub?',
@@ -1328,6 +1332,97 @@ const messages = {
 	readmePreviewTitle: {
 		en: 'README Preview',
 		zh: 'README 预览',
+	},
+	// ------------------------------------------------------------------
+	// 输入校验 / 底层错误消息本地化（供 userFacingErrors 映射与 InputBox 校验）
+	// ------------------------------------------------------------------
+	relativeDirectoryRequired: {
+		en: 'A relative directory is required.',
+		zh: '请输入相对目录。',
+	},
+	directoryMustBeRelative: {
+		en: 'Use a directory relative to the repository root.',
+		zh: '请输入相对于仓库根目录的路径。',
+	},
+	directoryCannotBeRoot: {
+		en: 'The directory cannot be the repository root.',
+		zh: '目录不能是仓库根目录。',
+	},
+	directoryInsideRoot: {
+		en: 'The directory must stay inside the repository root.',
+		zh: '目录必须位于仓库根目录内。',
+	},
+	namespaceRelativeRequired: {
+		en: 'Use a namespace path relative to the module root.',
+		zh: '请输入相对于模块根目录的命名空间路径。',
+	},
+	namespaceInsideRoot: {
+		en: 'The namespace path must stay inside the module root.',
+		zh: '命名空间路径必须位于模块根目录内。',
+	},
+	localFolderNotDirectory: {
+		en: 'Local folder is not a directory: {folder}',
+		zh: '本地文件夹不是目录：{folder}',
+	},
+	publishedFolderNotDirectory: {
+		en: 'Published folder is not a directory: {path}',
+		zh: '待发布的文件夹不是目录：{path}',
+	},
+	releaseRequiredToSwitchToRelease: {
+		en: 'A release must be selected to switch to release mode.',
+		zh: '切换到 Release 模式前必须选择一个 Release。',
+	},
+	gitRepoRootRequiredToConvert: {
+		en: 'Git repository root is required to convert a module to {method} mode.',
+		zh: '将模块转换为 {method} 模式需要 Git 仓库根目录。',
+	},
+	targetPathInsideRoot: {
+		en: 'Target path must stay inside the repository root.',
+		zh: '目标路径必须位于仓库根目录内。',
+	},
+	convertedModuleTargetMissing: {
+		en: 'Converted module target is missing or is not a directory after switching to {method} mode.',
+		zh: '切换到 {method} 模式后，转换后的模块目标不存在或不是目录。',
+	},
+	lockStateUpdateFailed: {
+		en: 'Failed to update lock state for {count} path(s).',
+		zh: '更新 {count} 个路径的锁定状态失败。',
+	},
+	unableToDetermineLockedRevision: {
+		en: 'Unable to determine the locked revision for {path}.',
+		zh: '无法确定 {path} 的锁定版本。',
+	},
+	missingTagReference: {
+		en: 'Missing tag reference for {kind} update.',
+		zh: '更新缺少 {kind} 标签引用。',
+	},
+	missingCommitReference: {
+		en: 'Missing commit reference for commit update.',
+		zh: '提交更新缺少提交引用。',
+	},
+	releaseAssetDownloadFailed: {
+		en: 'Failed to download release asset {name}: HTTP {status}',
+		zh: '下载 Release 附件 {name} 失败：HTTP {status}',
+	},
+	releaseAssetDownloadMissing: {
+		en: 'Downloaded release asset is missing: {name}',
+		zh: '下载的 Release 附件缺失：{name}',
+	},
+	unableToDetermineLatestRevision: {
+		en: 'Unable to determine the latest revision for branch {branch}.',
+		zh: '无法确定分支 {branch} 的最新版本。',
+	},
+	unknownCommandFailure: {
+		en: 'Unknown command failure.',
+		zh: '未知命令失败。',
+	},
+	publishInitialCommitMessage: {
+		en: 'Initial publish of {folder}',
+		zh: '发布 {folder} 的初始提交',
+	},
+	applyNamespaceInputPlaceholder: {
+		en: 'HAL/niDMM',
+		zh: 'HAL/niDMM',
 	},
 } as const;
 

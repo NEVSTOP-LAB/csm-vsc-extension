@@ -1,6 +1,6 @@
 import * as assert from 'assert';
-import { isChineseLanguage, localizeBundle, __setLanguageOverrideForTests } from '../common/i18n';
-import type { LocalizedBundle } from '../common/i18n';
+import { isChineseLanguage, localizeBundle, __setLanguageOverrideForTests } from '../i18n';
+import type { LocalizedBundle } from '../i18n';
 
 suite('i18n — language detection', () => {
 
