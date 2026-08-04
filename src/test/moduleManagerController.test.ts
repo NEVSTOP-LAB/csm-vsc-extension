@@ -3954,6 +3954,403 @@ suite('ModuleManagerController Regression Tests', () => {
 		assert.strictEqual(completed, true);
 	});
 
+	test('createLocalFolderRepositoryCommand asks for repository root level when module is nested', async () => {
+		const workspaceRoot = fs.mkdtempSync(path.join(getTempRoot(), 'csm-share-module-nested-'));
+		fs.mkdirSync(path.join(workspaceRoot, 'csm', 'DMM', 'NI'), { recursive: true });
+		fs.mkdirSync(path.join(workspaceRoot, 'csm', 'DMM', 'Agilent'), { recursive: true });
+		const controller = createController() as any;
+		const existingConfig: LocalModuleConfig = {
+			version: '2',
+			root: 'csm',
+			configPath: path.join(workspaceRoot, 'csm', 'csm-modules.yaml'),
+			modules: {},
+		};
+		let createdRequest: { name: string } | undefined;
+		let publishedRequest: { folderPath: string } | undefined;
+		let writtenConfig: LocalModuleConfig | undefined;
+
+		controller.authService = {
+			getSessionSilently: async () => createSession('token', 'tester'),
+			getSessionInteractively: async () => createSession('token', 'tester'),
+		};
+		controller.githubService = {
+			fetchModules: async () => ({ modules: [] }),
+			fetchReadme: async () => '',
+			createRepository: async (_token: string, options: { name: string; description?: string; private: boolean; topics: string[] }) => {
+				createdRequest = { name: options.name };
+				return {
+					id: 1,
+					name: options.name,
+					full_name: `tester/${options.name}`,
+					description: options.description ?? '',
+					private: options.private,
+					default_branch: 'main',
+					html_url: `https://github.com/tester/${options.name}`,
+					topics: options.topics,
+				};
+			},
+		};
+		controller.workspaceModuleService = {
+			resolveGitRepositoryRoot: async () => workspaceRoot,
+			getGitIdentity: async () => ({
+				name: 'Tester',
+				email: 'tester@example.com',
+			}),
+			listModuleDirectories: async (_repoRoot: string, rootRelativePath: string) => rootRelativePath === 'csm/DMM' ? ['NI', 'Agilent'] : [],
+			publishLocalFolder: async (options: { folderPath: string; remoteUrl: string; defaultBranch?: string }) => {
+				publishedRequest = { folderPath: options.folderPath };
+				return {
+					branch: options.defaultBranch ?? 'main',
+					remoteName: 'origin',
+					remoteUrl: options.remoteUrl,
+					headRef: 'abc123',
+					createdCommit: true,
+				};
+			},
+			convertPublishedFolderToSubmodule: async (options: { branch?: string }) => ({
+				branch: options.branch ?? 'main',
+				headRef: 'def456',
+			}),
+			normalizeRootPath: (value: string) => value.replace(/\\/g, '/'),
+			getModuleKey: (entry: CsmModuleEntry) => `${entry.owner}__${entry.name}`,
+			setModuleLocked: async (_workspaceRoot: string, entry: LocalModuleConfig['modules'][string], locked: boolean) => ({
+				...entry,
+				locked,
+			}),
+			withAppliedModule: (config: LocalModuleConfig, entry: LocalModuleConfig['modules'][string]) => ({
+				...config,
+				modules: {
+					...config.modules,
+					[entry.key]: entry,
+				},
+			}),
+			writeConfig: async (config: LocalModuleConfig) => {
+				writtenConfig = config;
+			},
+		};
+		controller.resolveWorkspaceFolder = async () => ({ name: 'repo', uri: vscode.Uri.file(workspaceRoot) });
+		controller.tryLoadSidebarLocalModuleConfig = async () => existingConfig;
+		controller.refreshSidebarWorkspaceState = async () => undefined;
+		controller.loadModules = async () => undefined;
+		mocked.__setInputBoxResponses(['shared-module', 'Demo repo', 'labview-csm, csm-modsets custom-topic']);
+		// 第一次 QuickPick：层级选择（选择当前模块 NI）；第二次：可见性
+		mocked.__setQuickPickResponse({
+			label: 'NI',
+			description: 'csm/DMM/NI',
+			root: { id: 'csm/DMM/NI', kind: 'unmanaged', name: 'NI', path: 'csm/DMM/NI' },
+		});
+		mocked.__setQuickPickResponse({ label: 'Private', visibility: 'private' });
+		mocked.__setWarningMessageResponse('Create Repository');
+
+		await controller.createLocalFolderRepositoryCommand({
+			id: 'csm/DMM/NI',
+			kind: 'unmanaged',
+			name: 'NI',
+			path: 'csm/DMM/NI',
+		});
+
+		// 层级选择提供当前模块与祖先目录两个候选，祖先目录 detail 展示包含的模块数
+		const rootSelection = mocked.__getQuickPickHistory()[0];
+		assert.strictEqual(rootSelection.items.length, 2);
+		assert.strictEqual((rootSelection.items[0] as { label: string }).label, 'NI');
+		assert.strictEqual((rootSelection.items[1] as { label: string }).label, 'DMM');
+		assert.ok(String((rootSelection.items[1] as { detail: string }).detail).includes('2'));
+		assert.deepStrictEqual(createdRequest, { name: 'shared-module' });
+		assert.strictEqual(publishedRequest?.folderPath, path.join(workspaceRoot, 'csm', 'DMM', 'NI'));
+		assert.strictEqual(writtenConfig?.modules['tester__shared-module']?.path, 'csm/DMM/NI');
+	});
+
+	test('createLocalFolderRepositoryCommand publishes the ancestor folder when a parent level is chosen', async () => {
+		const workspaceRoot = fs.mkdtempSync(path.join(getTempRoot(), 'csm-share-module-ancestor-'));
+		fs.mkdirSync(path.join(workspaceRoot, 'csm', 'DMM', 'NI'), { recursive: true });
+		fs.mkdirSync(path.join(workspaceRoot, 'csm', 'DMM', 'Agilent'), { recursive: true });
+		const controller = createController() as any;
+		const existingConfig: LocalModuleConfig = {
+			version: '2',
+			root: 'csm',
+			configPath: path.join(workspaceRoot, 'csm', 'csm-modules.yaml'),
+			modules: {},
+		};
+		let publishedRequest: { folderPath: string } | undefined;
+		let writtenConfig: LocalModuleConfig | undefined;
+
+		controller.authService = {
+			getSessionSilently: async () => createSession('token', 'tester'),
+			getSessionInteractively: async () => createSession('token', 'tester'),
+		};
+		controller.githubService = {
+			fetchModules: async () => ({ modules: [] }),
+			fetchReadme: async () => '',
+			createRepository: async (_token: string, options: { name: string; description?: string; private: boolean; topics: string[] }) => ({
+				id: 1,
+				name: options.name,
+				full_name: `tester/${options.name}`,
+				description: options.description ?? '',
+				private: options.private,
+				default_branch: 'main',
+				html_url: `https://github.com/tester/${options.name}`,
+				topics: options.topics,
+			}),
+		};
+		controller.workspaceModuleService = {
+			resolveGitRepositoryRoot: async () => workspaceRoot,
+			getGitIdentity: async () => ({
+				name: 'Tester',
+				email: 'tester@example.com',
+			}),
+			listModuleDirectories: async (_repoRoot: string, rootRelativePath: string) => rootRelativePath === 'csm/DMM' ? ['NI', 'Agilent'] : [],
+			publishLocalFolder: async (options: { folderPath: string; remoteUrl: string; defaultBranch?: string }) => {
+				publishedRequest = { folderPath: options.folderPath };
+				return {
+					branch: options.defaultBranch ?? 'main',
+					remoteName: 'origin',
+					remoteUrl: options.remoteUrl,
+					headRef: 'abc123',
+					createdCommit: true,
+				};
+			},
+			convertPublishedFolderToSubmodule: async (options: { branch?: string }) => ({
+				branch: options.branch ?? 'main',
+				headRef: 'def456',
+			}),
+			normalizeRootPath: (value: string) => value.replace(/\\/g, '/'),
+			getModuleKey: (entry: CsmModuleEntry) => `${entry.owner}__${entry.name}`,
+			setModuleLocked: async (_workspaceRoot: string, entry: LocalModuleConfig['modules'][string], locked: boolean) => ({
+				...entry,
+				locked,
+			}),
+			withAppliedModule: (config: LocalModuleConfig, entry: LocalModuleConfig['modules'][string]) => ({
+				...config,
+				modules: {
+					...config.modules,
+					[entry.key]: entry,
+				},
+			}),
+			writeConfig: async (config: LocalModuleConfig) => {
+				writtenConfig = config;
+			},
+		};
+		controller.resolveWorkspaceFolder = async () => ({ name: 'repo', uri: vscode.Uri.file(workspaceRoot) });
+		controller.tryLoadSidebarLocalModuleConfig = async () => existingConfig;
+		controller.refreshSidebarWorkspaceState = async () => undefined;
+		controller.loadModules = async () => undefined;
+		mocked.__setInputBoxResponses(['shared-module', 'Demo repo', 'labview-csm, csm-modsets custom-topic']);
+		// 层级选择选择祖先目录 DMM
+		mocked.__setQuickPickResponse({
+			label: 'DMM',
+			description: 'csm/DMM',
+			root: { id: 'csm/DMM', kind: 'unmanaged', name: 'DMM', path: 'csm/DMM' },
+		});
+		mocked.__setQuickPickResponse({ label: 'Private', visibility: 'private' });
+		mocked.__setWarningMessageResponse('Create Repository');
+
+		await controller.createLocalFolderRepositoryCommand({
+			id: 'csm/DMM/NI',
+			kind: 'unmanaged',
+			name: 'NI',
+			path: 'csm/DMM/NI',
+		});
+
+		assert.strictEqual(publishedRequest?.folderPath, path.join(workspaceRoot, 'csm', 'DMM'));
+		assert.strictEqual(writtenConfig?.modules['tester__shared-module']?.path, 'csm/DMM');
+		assert.strictEqual(writtenConfig?.modules['tester__shared-module']?.method, 'submodule');
+	});
+
+	test('createLocalFolderRepositoryCommand blocks an ancestor root that contains managed modules', async () => {
+		const workspaceRoot = fs.mkdtempSync(path.join(getTempRoot(), 'csm-share-module-managed-under-'));
+		fs.mkdirSync(path.join(workspaceRoot, 'csm', 'DMM', 'NI'), { recursive: true });
+		fs.mkdirSync(path.join(workspaceRoot, 'csm', 'DMM', 'Agilent'), { recursive: true });
+		const controller = createController() as any;
+		const existingConfig: LocalModuleConfig = {
+			version: '2',
+			root: 'csm',
+			configPath: path.join(workspaceRoot, 'csm', 'csm-modules.yaml'),
+			modules: {
+				'tester__managed': {
+					key: 'tester__managed',
+					name: 'managed',
+					owner: 'tester',
+					source: 'https://github.com/tester/managed',
+					method: 'copy',
+					path: 'csm/DMM/managedX',
+					ref: 'abc123',
+					branch: 'main',
+					locked: false,
+				},
+			},
+		};
+		let createdCount = 0;
+		let publishedCount = 0;
+
+		controller.authService = {
+			getSessionSilently: async () => createSession('token', 'tester'),
+			getSessionInteractively: async () => createSession('token', 'tester'),
+		};
+		controller.githubService = {
+			fetchModules: async () => ({ modules: [] }),
+			fetchReadme: async () => '',
+			createRepository: async () => {
+				createdCount += 1;
+				return {
+					id: 1,
+					name: 'shared-module',
+					full_name: 'tester/shared-module',
+					description: '',
+					private: true,
+					default_branch: 'main',
+					html_url: 'https://github.com/tester/shared-module',
+					topics: [],
+				};
+			},
+		};
+		controller.workspaceModuleService = {
+			resolveGitRepositoryRoot: async () => workspaceRoot,
+			getGitIdentity: async () => ({
+				name: 'Tester',
+				email: 'tester@example.com',
+			}),
+			listModuleDirectories: async (_repoRoot: string, rootRelativePath: string) => rootRelativePath === 'csm/DMM' ? ['NI', 'Agilent'] : [],
+			publishLocalFolder: async () => {
+				publishedCount += 1;
+				return {
+					branch: 'main',
+					remoteName: 'origin',
+					remoteUrl: 'https://github.com/tester/shared-module.git',
+					headRef: 'abc123',
+					createdCommit: true,
+				};
+			},
+			convertPublishedFolderToSubmodule: async () => ({
+				branch: 'main',
+				headRef: 'def456',
+			}),
+			normalizeRootPath: (value: string) => value.replace(/\\/g, '/'),
+			getModuleKey: (entry: CsmModuleEntry) => `${entry.owner}__${entry.name}`,
+			setModuleLocked: async (_workspaceRoot: string, entry: LocalModuleConfig['modules'][string], locked: boolean) => ({
+				...entry,
+				locked,
+			}),
+			withAppliedModule: (config: LocalModuleConfig, entry: LocalModuleConfig['modules'][string]) => ({
+				...config,
+				modules: {
+					...config.modules,
+					[entry.key]: entry,
+				},
+			}),
+			writeConfig: async () => undefined,
+		};
+		controller.resolveWorkspaceFolder = async () => ({ name: 'repo', uri: vscode.Uri.file(workspaceRoot) });
+		controller.tryLoadSidebarLocalModuleConfig = async () => existingConfig;
+		controller.refreshSidebarWorkspaceState = async () => undefined;
+		controller.loadModules = async () => undefined;
+		// 层级选择选择祖先目录 DMM，随后因含已管理模块被阻止
+		mocked.__setQuickPickResponse({
+			label: 'DMM',
+			description: 'csm/DMM',
+			root: { id: 'csm/DMM', kind: 'unmanaged', name: 'DMM', path: 'csm/DMM' },
+		});
+
+		await controller.createLocalFolderRepositoryCommand({
+			id: 'csm/DMM/NI',
+			kind: 'unmanaged',
+			name: 'NI',
+			path: 'csm/DMM/NI',
+		});
+
+		assert.strictEqual(createdCount, 0);
+		assert.strictEqual(publishedCount, 0);
+		const warnings = mocked.__getMessageLog().filter((message) => message.level === 'warn').map((message) => message.text);
+		assert.ok(warnings.some((text) => text.includes('csm/DMM') && text.includes('managed CSM modules')));
+	});
+
+	test('createLocalFolderRepositoryCommand aborts when the repository root selection is cancelled', async () => {
+		const workspaceRoot = fs.mkdtempSync(path.join(getTempRoot(), 'csm-share-module-root-cancel-'));
+		fs.mkdirSync(path.join(workspaceRoot, 'csm', 'DMM', 'NI'), { recursive: true });
+		const controller = createController() as any;
+		const existingConfig: LocalModuleConfig = {
+			version: '2',
+			root: 'csm',
+			configPath: path.join(workspaceRoot, 'csm', 'csm-modules.yaml'),
+			modules: {},
+		};
+		let createdCount = 0;
+		let publishedCount = 0;
+
+		controller.authService = {
+			getSessionSilently: async () => createSession('token', 'tester'),
+			getSessionInteractively: async () => createSession('token', 'tester'),
+		};
+		controller.githubService = {
+			fetchModules: async () => ({ modules: [] }),
+			fetchReadme: async () => '',
+			createRepository: async () => {
+				createdCount += 1;
+				return {
+					id: 1,
+					name: 'shared-module',
+					full_name: 'tester/shared-module',
+					description: '',
+					private: true,
+					default_branch: 'main',
+					html_url: 'https://github.com/tester/shared-module',
+					topics: [],
+				};
+			},
+		};
+		controller.workspaceModuleService = {
+			resolveGitRepositoryRoot: async () => workspaceRoot,
+			getGitIdentity: async () => ({
+				name: 'Tester',
+				email: 'tester@example.com',
+			}),
+			listModuleDirectories: async () => [],
+			publishLocalFolder: async () => {
+				publishedCount += 1;
+				return {
+					branch: 'main',
+					remoteName: 'origin',
+					remoteUrl: 'https://github.com/tester/shared-module.git',
+					headRef: 'abc123',
+					createdCommit: true,
+				};
+			},
+			convertPublishedFolderToSubmodule: async () => ({
+				branch: 'main',
+				headRef: 'def456',
+			}),
+			normalizeRootPath: (value: string) => value.replace(/\\/g, '/'),
+			getModuleKey: (entry: CsmModuleEntry) => `${entry.owner}__${entry.name}`,
+			setModuleLocked: async (_workspaceRoot: string, entry: LocalModuleConfig['modules'][string], locked: boolean) => ({
+				...entry,
+				locked,
+			}),
+			withAppliedModule: (config: LocalModuleConfig, entry: LocalModuleConfig['modules'][string]) => ({
+				...config,
+				modules: {
+					...config.modules,
+					[entry.key]: entry,
+				},
+			}),
+			writeConfig: async () => undefined,
+		};
+		controller.resolveWorkspaceFolder = async () => ({ name: 'repo', uri: vscode.Uri.file(workspaceRoot) });
+		controller.tryLoadSidebarLocalModuleConfig = async () => existingConfig;
+		controller.refreshSidebarWorkspaceState = async () => undefined;
+		controller.loadModules = async () => undefined;
+		// 层级选择被取消
+		mocked.__setQuickPickResponse(undefined);
+
+		await controller.createLocalFolderRepositoryCommand({
+			id: 'csm/DMM/NI',
+			kind: 'unmanaged',
+			name: 'NI',
+			path: 'csm/DMM/NI',
+		});
+
+		assert.strictEqual(createdCount, 0);
+		assert.strictEqual(publishedCount, 0);
+	});
+
 	test('linkLocalFolderRepositoryCommand records an unmanaged folder against an online repository', async () => {
 		const workspaceRoot = fs.mkdtempSync(path.join(getTempRoot(), 'csm-link-module-'));
 		fs.mkdirSync(path.join(workspaceRoot, 'csm', 'custom-module'), { recursive: true });

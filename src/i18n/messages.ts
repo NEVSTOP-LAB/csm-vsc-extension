@@ -657,6 +657,22 @@ const messages = {
 		en: 'Enter repository topics separated by commas or spaces.',
 		zh: '请输入仓库 topics，可使用逗号或空格分隔。',
 	},
+	createRepositoryRootSelectionPlaceholder: {
+		en: 'Choose the folder level to create the GitHub repository for.',
+		zh: '请选择为哪一级目录创建 GitHub 仓库。',
+	},
+	createRepositoryRootCurrentModuleDetail: {
+		en: 'Create a repository for this module only.',
+		zh: '仅为该模块单独创建仓库。',
+	},
+	createRepositoryRootAncestorDetail: {
+		en: 'Create a repository rooted at this folder (contains {count} module folder(s)).',
+		zh: '以该目录为根创建仓库（包含 {count} 个模块目录）。',
+	},
+	createRepositoryRootContainsManagedModules: {
+		en: 'Cannot create a repository rooted at {folder} because it contains managed CSM modules. Choose a more specific folder instead.',
+		zh: '无法以 {folder} 为根创建仓库，因为该目录下包含已管理的 CSM 模块，请选择更具体的目录。',
+	},
 	createRepositoryConfirmation: {
 		en: 'Create a {visibility} GitHub repository named {name} for local folder {folder}, then publish the current folder contents? Topics: {topics}',
 		zh: '要为本地文件夹 {folder} 创建名为 {name} 的 {visibility} GitHub 仓库，并发布当前文件夹内容吗？Topics：{topics}',
