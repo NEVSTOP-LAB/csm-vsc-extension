@@ -900,6 +900,38 @@ export function renderModuleSidebarHtml(state: ModuleSidebarRenderState): string
 			padding-top: 12px;
 			border-top: 1px solid var(--vscode-panel-border);
 		}
+		.section-toggle {
+			display: flex;
+			align-items: baseline;
+			gap: 8px;
+			width: 100%;
+			padding: 4px 6px;
+			border: 0;
+			border-radius: 4px;
+			background: transparent;
+			text-align: left;
+		}
+		.section-toggle .section-title {
+			flex: 0 1 auto;
+			min-width: 0;
+		}
+		.section-toggle .section-meta {
+			margin-left: auto;
+		}
+		.section-toggle .section-chevron {
+			flex: 0 0 auto;
+			width: 14px;
+			height: 14px;
+			align-self: center;
+			color: var(--vscode-descriptionForeground);
+			transition: transform 0.15s ease;
+		}
+		.list-section.collapsed .section-toggle .section-chevron {
+			transform: rotate(-90deg);
+		}
+		.list-section.collapsed .list {
+			display: none;
+		}
 		.local-section {
 			margin-top: 12px;
 			padding-top: 12px;
@@ -1440,6 +1472,15 @@ export function renderModuleSidebarHtml(state: ModuleSidebarRenderState): string
 			if (rawTarget && !rawTarget.closest('[data-role="filter-menu"]') && !rawTarget.closest('[data-role="filter-button"]')) {
 				closeFilterMenu();
 			}
+			const sectionToggle = rawTarget ? rawTarget.closest('[data-role="section-toggle"]') : null;
+			if (sectionToggle instanceof HTMLButtonElement) {
+				const section = sectionToggle.closest('.list-section');
+				if (section instanceof HTMLElement) {
+					const collapsed = section.classList.toggle('collapsed');
+					sectionToggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+				}
+				return;
+			}
 			const target = rawTarget ? rawTarget.closest('[data-action]') : null;
 			if (!target) {
 				return;
@@ -1977,12 +2018,20 @@ function renderWorkspaceEmptyState(state: ModuleSidebarRenderState): string {
 	);
 }
 
+function renderSectionChevron(): string {
+	return '<svg class="section-chevron" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6l4 4 4-4"></path></svg>';
+}
+
+/**
+ * 渲染可折叠区域（issue #80）：标题栏整体可点击切换折叠/展开。
+ * 折叠为纯显示层优化——不改变任何内部处理逻辑（搜索过滤、勾选状态、计数等均不受影响）。
+ */
 function renderListSection(title: string, meta: string | undefined, bodyHtml: string): string {
 	if (!bodyHtml) {
 		return '';
 	}
-	const header = `<div class="section-header"><div class="section-title">${escapeHtml(title)}</div>${meta ? `<div class="section-meta">${meta}</div>` : ''}</div>`;
-	return `<section class="list-section">${header}<div class="list">${bodyHtml}</div></section>`;
+	const header = `<button type="button" class="section-toggle" data-role="section-toggle" aria-expanded="true"><span class="section-title">${escapeHtml(title)}</span>${meta ? `<span class="section-meta">${meta}</span>` : ''}${renderSectionChevron()}</button>`;
+	return `<section class="list-section" data-role="section">${header}<div class="list">${bodyHtml}</div></section>`;
 }
 
 function getWorkspaceSectionMeta(_state: ModuleSidebarRenderState, workspaceContent: WorkspaceContent): string | undefined {
@@ -2044,13 +2093,14 @@ function renderContent(
 		getWorkspaceSectionMeta(state, workspaceContent),
 		workspaceCards,
 	);
+	// Show More 按钮放入在线区域内容末尾，折叠时随区域一起隐藏（issue #80）
 	const catalogSection = renderListSection(
 		t('moduleScopeCatalog'),
 		getCatalogSectionMeta(state, catalogContent),
-		catalogCards,
+		`${catalogCards}${showMoreButton}`,
 	);
 
-	return `${statusBanner}<section class="list">${workspaceSection}${catalogSection}</section>${showMoreButton}${renderFilterEmptyState()}`;
+	return `${statusBanner}<section class="list">${workspaceSection}${catalogSection}</section>${renderFilterEmptyState()}`;
 }
 
 function getLocalLabviewVersion(moduleKey: string, state: ModuleSidebarRenderState): string | undefined {
