@@ -1053,10 +1053,6 @@ const messages = {
 		en: 'Path: {path}',
 		zh: '路径：{path}',
 	},
-	localManagedFallbackSummary: {
-		en: 'Tracked from {source}.',
-		zh: '已从 {source} 建立跟踪。',
-	},
 	localUnmanagedSummary: {
 		en: 'This folder exists under the current local module root but is not recorded in the CSM module config.',
 		zh: '该文件夹位于当前本地模块根目录下，但尚未记录到 CSM 模块配置中。',
