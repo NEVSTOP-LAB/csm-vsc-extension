@@ -55,6 +55,10 @@ type ApplyMethodQuickPickItem = vscode.QuickPickItem & {
 	method?: ModuleApplyMethod;
 };
 
+type RepositoryRootQuickPickItem = vscode.QuickPickItem & {
+	root: LocalUnmanagedFolderEntry;
+};
+
 type NamespaceQuickPickItem = vscode.QuickPickItem & {
 	namespacePath?: string;
 	action?: 'manual';
@@ -1307,15 +1311,28 @@ export class ModuleManagerController {
 			return;
 		}
 		const { workspaceFolder, repoRoot, workspaceRoot } = ctx;
-		const folderAbsolutePath = path.resolve(workspaceRoot, folder.path);
+
+		// 深层目录时先询问以哪一级目录作为新 GitHub 仓库的根（当前模块 vs 各级祖先目录）
+		const sidebarConfig = await this.tryLoadSidebarLocalModuleConfig(workspaceFolder, workspaceRoot);
+		const moduleRoot = sidebarConfig?.root ?? this.getConfiguredDefaultModuleRoot();
+		const targetFolder = await this.promptRepositoryRootSelection(folder, moduleRoot, sidebarConfig, workspaceRoot);
+		if (!targetFolder) {
+			return;
+		}
+		if (sidebarConfig && this.containsManagedModuleUnder(sidebarConfig, targetFolder.path)) {
+			void vscode.window.showWarningMessage(t('createRepositoryRootContainsManagedModules', { folder: targetFolder.path }));
+			return;
+		}
+
+		const folderAbsolutePath = path.resolve(workspaceRoot, targetFolder.path);
 		try {
 			const stat = await fs.stat(folderAbsolutePath);
 			if (!stat.isDirectory()) {
-				void vscode.window.showWarningMessage(t('localFolderMissing', { folder: folder.path }));
+				void vscode.window.showWarningMessage(t('localFolderMissing', { folder: targetFolder.path }));
 				return;
 			}
 		} catch {
-			void vscode.window.showWarningMessage(t('localFolderMissing', { folder: folder.path }));
+			void vscode.window.showWarningMessage(t('localFolderMissing', { folder: targetFolder.path }));
 			return;
 		}
 
@@ -1325,7 +1342,7 @@ export class ModuleManagerController {
 			return;
 		}
 
-		const repositoryConfig = await this.promptRepositoryCreation(folder.name);
+		const repositoryConfig = await this.promptRepositoryCreation(targetFolder.name);
 		if (!repositoryConfig) {
 			return;
 		}
@@ -1334,7 +1351,7 @@ export class ModuleManagerController {
 			t('createRepositoryConfirmation', {
 				visibility: repositoryConfig.visibility === 'private' ? t('createRepositoryPrivateLabel') : t('createRepositoryPublicLabel'),
 				name: repositoryConfig.name,
-				folder: folder.path,
+				folder: targetFolder.path,
 				topics: repositoryConfig.topics.join(', '),
 			}),
 			{ modal: true },
@@ -1377,7 +1394,7 @@ export class ModuleManagerController {
 						remoteUrl: this.toGitRemoteUrl(repository.html_url),
 						authToken: token,
 						defaultBranch: repository.default_branch || 'main',
-						commitMessage: t('publishInitialCommitMessage', { folder: folder.name }),
+						commitMessage: t('publishInitialCommitMessage', { folder: targetFolder.name }),
 						authorName: gitIdentity.name,
 						authorEmail: gitIdentity.email,
 					});
@@ -1387,16 +1404,16 @@ export class ModuleManagerController {
 			);
 			if (createdRepository && publishedHeadRef) {
 				try {
-					await this.syncPublishedLocalFolderState(workspaceFolder, workspaceRoot, repoRoot, folder, createdRepository, publishedHeadRef, publishedBranch, token);
+					await this.syncPublishedLocalFolderState(workspaceFolder, workspaceRoot, repoRoot, targetFolder, createdRepository, publishedHeadRef, publishedBranch, token);
 					await this.refreshSidebarWorkspaceState();
 				} catch (error) {
 					localStateSyncFailed = true;
 					const message = getUserFacingErrorMessage(error, 'config');
 					const repositoryLabel = repositoryName ?? repositoryConfig.name;
-					this.logger.error(`Created and published GitHub repository ${repositoryLabel}, but failed to sync local workspace state for ${folder.path}: ${message}`);
+					this.logger.error(`Created and published GitHub repository ${repositoryLabel}, but failed to sync local workspace state for ${targetFolder.path}: ${message}`);
 					void vscode.window.showWarningMessage(t('createRepositoryLocalStateSyncFailed', {
 						repository: repositoryLabel,
-						folder: folder.path,
+						folder: targetFolder.path,
 						message,
 					}));
 				}
@@ -1412,10 +1429,10 @@ export class ModuleManagerController {
 			});
 		} catch (error) {
 			const message = getUserFacingErrorMessage(error, 'createRepo');
-			this.logger.error(`Failed to create or publish GitHub repository for ${folder.path}: ${message}`);
+			this.logger.error(`Failed to create or publish GitHub repository for ${targetFolder.path}: ${message}`);
 			void vscode.window.showErrorMessage(
 				repositoryCreated
-					? t('createRepositoryPublishFailed', { folder: folder.path, message })
+					? t('createRepositoryPublishFailed', { folder: targetFolder.path, message })
 					: t('createRepositoryFailed', { message }),
 			);
 		}
@@ -3264,6 +3281,93 @@ export class ModuleManagerController {
 	private toGitRemoteUrl(repositoryUrl: string): string {
 		const trimmed = repositoryUrl.trim().replace(/\.git$/i, '').replace(/\/+$/g, '');
 		return `${trimmed}.git`;
+	}
+
+	/**
+	 * 当未管理模块位于 moduleRoot 更深层级时（如 csm/DMM/NI），先询问用户以哪一级
+	 * 目录作为新 GitHub 仓库的根：当前模块自身，或其各级祖先目录（如 DMM，可把
+	 * NI/Agilent 等兄弟模块一并纳入仓库）。模块直接位于 moduleRoot 下时无需询问。
+	 */
+	private async promptRepositoryRootSelection(
+		folder: LocalUnmanagedFolderEntry,
+		moduleRoot: string,
+		config: LocalModuleConfig | undefined,
+		workspaceRoot: string,
+	): Promise<LocalUnmanagedFolderEntry | undefined> {
+		const normalizedModuleRoot = this.workspaceModuleService.normalizeRootPath(moduleRoot);
+		const normalizedFolderPath = this.workspaceModuleService.normalizeRootPath(folder.path);
+		const rootPrefix = `${normalizedModuleRoot}/`;
+		if (!(normalizedFolderPath === normalizedModuleRoot || normalizedFolderPath.startsWith(rootPrefix))) {
+			return folder;
+		}
+		const relativeToModuleRoot = normalizedFolderPath === normalizedModuleRoot
+			? ''
+			: normalizedFolderPath.slice(rootPrefix.length);
+		const segments = relativeToModuleRoot.split('/').filter((segment) => segment.length > 0);
+		if (segments.length <= 1) {
+			// 模块直接位于 moduleRoot 下，无需询问
+			return folder;
+		}
+
+		const managedEntries = Object.values(config?.modules ?? {});
+		const scanOptions = this.getModuleDirectoryScanOptions();
+		const items: RepositoryRootQuickPickItem[] = [
+			{
+				label: folder.name,
+				description: folder.path,
+				detail: t('createRepositoryRootCurrentModuleDetail'),
+				picked: true,
+				root: folder,
+			},
+		];
+
+		// 祖先目录候选：从深到浅（csm/DMM/Group/NI → Group、DMM）
+		for (let depth = segments.length - 1; depth >= 1; depth -= 1) {
+			const ancestorSegments = segments.slice(0, depth);
+			const ancestorPath = path.posix.join(normalizedModuleRoot, ...ancestorSegments);
+			let childModuleCount = 0;
+			try {
+				const discovered = await this.listModuleDirectoriesForNamespaceScan(
+					workspaceRoot,
+					ancestorPath,
+					{
+						...scanOptions,
+						excludedRelativePaths: this.toManagedRelativePaths(managedEntries, ancestorPath),
+					},
+				);
+				childModuleCount = discovered.length;
+			} catch (error) {
+				this.logger.warn(
+					`Failed to count module folders under ${ancestorPath} for repository root selection: ${error instanceof Error ? error.message : String(error)}`,
+				);
+			}
+			items.push({
+				label: ancestorSegments[ancestorSegments.length - 1],
+				description: ancestorPath,
+				detail: t('createRepositoryRootAncestorDetail', { count: String(childModuleCount) }),
+				root: {
+					id: ancestorPath,
+					kind: 'unmanaged',
+					name: ancestorSegments[ancestorSegments.length - 1],
+					path: ancestorPath,
+				},
+			});
+		}
+
+		const pick = await vscode.window.showQuickPick(items, {
+			placeHolder: t('createRepositoryRootSelectionPlaceholder'),
+		});
+		return pick?.root;
+	}
+
+	/** 判断目标根目录（严格子路径）下是否包含已管理的 CSM 模块。 */
+	private containsManagedModuleUnder(config: LocalModuleConfig, rootPath: string): boolean {
+		const normalizedRoot = this.workspaceModuleService.normalizeRootPath(rootPath);
+		const rootPrefix = `${normalizedRoot}/`;
+		return Object.values(config.modules).some((entry) => {
+			const normalizedEntryPath = this.workspaceModuleService.normalizeRootPath(entry.path);
+			return normalizedEntryPath.startsWith(rootPrefix);
+		});
 	}
 
 	private async promptRepositoryCreation(folderName: string): Promise<{
