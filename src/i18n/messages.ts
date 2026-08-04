@@ -625,6 +625,22 @@ const messages = {
 		en: 'Failed to link the local folder: {message}',
 		zh: '关联本地文件夹失败：{message}',
 	},
+	createRepositoryOwnerPlaceholder: {
+		en: 'Choose where to create the GitHub repository: your personal account or an organization you belong to.',
+		zh: '请选择创建 GitHub 仓库的归属：个人账号或您所属的组织。',
+	},
+	createRepositoryOwnerUserDescription: {
+		en: 'Personal account',
+		zh: '个人账号',
+	},
+	createRepositoryOwnerOrgDescription: {
+		en: 'Organization',
+		zh: '组织',
+	},
+	createRepositoryOwnerFetchFailed: {
+		en: 'Failed to determine the repository owner: {message}',
+		zh: '无法确定仓库归属：{message}',
+	},
 	createRepositoryNamePrompt: {
 		en: 'Enter the GitHub repository name for {folder}.',
 		zh: '请输入 {folder} 对应的 GitHub 仓库名称。',
@@ -674,8 +690,8 @@ const messages = {
 		zh: '无法以 {folder} 为根创建仓库，因为该目录下包含已管理的 CSM 模块，请选择更具体的目录。',
 	},
 	createRepositoryConfirmation: {
-		en: 'Create a {visibility} GitHub repository named {name} for local folder {folder}, then publish the current folder contents? Topics: {topics}',
-		zh: '要为本地文件夹 {folder} 创建名为 {name} 的 {visibility} GitHub 仓库，并发布当前文件夹内容吗？Topics：{topics}',
+		en: 'Create a {visibility} GitHub repository named {owner}/{name} for local folder {folder}, then publish the current folder contents? Topics: {topics}',
+		zh: '要为本地文件夹 {folder} 创建属于 {owner} 的名为 {name} 的 {visibility} GitHub 仓库，并发布当前文件夹内容吗？Topics：{topics}',
 	},
 	createRepositoryAction: {
 		en: 'Create Repository',

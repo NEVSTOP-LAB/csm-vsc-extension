@@ -3546,6 +3546,9 @@ suite('ModuleManagerController Regression Tests', () => {
 		controller.githubService = {
 			fetchModules: async () => ({ modules: [] }),
 			fetchReadme: async () => '',
+			getCurrentUser: async () => ({ login: 'tester', name: 'Tester' }),
+			getUserOrganizations: async () => [],
+			getOrganizationMembership: async () => undefined,
 			createRepository: async (token: string, options: { name: string; description?: string; private: boolean; topics: string[] }) => {
 				createdRequest = { token, ...options };
 				return {
@@ -3621,6 +3624,7 @@ suite('ModuleManagerController Regression Tests', () => {
 
 		assert.deepStrictEqual(createdRequest, {
 			token: 'token',
+			owner: undefined,
 			name: 'shared-module',
 			description: 'Demo repo',
 			private: true,
@@ -3685,6 +3689,9 @@ suite('ModuleManagerController Regression Tests', () => {
 		controller.githubService = {
 			fetchModules: async () => ({ modules: [] }),
 			fetchReadme: async () => '',
+			getCurrentUser: async () => ({ login: 'tester', name: 'Tester' }),
+			getUserOrganizations: async () => [],
+			getOrganizationMembership: async () => undefined,
 			createRepository: async (_token: string, options: { name: string; description?: string; private: boolean; topics: string[] }) => ({
 				id: 1,
 				name: options.name,
@@ -3779,6 +3786,9 @@ suite('ModuleManagerController Regression Tests', () => {
 		controller.githubService = {
 			fetchModules: async () => ({ modules: [] }),
 			fetchReadme: async () => '',
+			getCurrentUser: async () => ({ login: 'tester', name: 'Tester' }),
+			getUserOrganizations: async () => [],
+			getOrganizationMembership: async () => undefined,
 			createRepository: async (_token: string, options: { name: string; description?: string; private: boolean; topics: string[] }) => ({
 				id: 1,
 				name: options.name,
@@ -3882,6 +3892,9 @@ suite('ModuleManagerController Regression Tests', () => {
 		controller.githubService = {
 			fetchModules: async () => ({ modules: [] }),
 			fetchReadme: async () => '',
+			getCurrentUser: async () => ({ login: 'tester', name: 'Tester' }),
+			getUserOrganizations: async () => [],
+			getOrganizationMembership: async () => undefined,
 			createRepository: async (_token: string, options: { name: string; description?: string; private: boolean; topics: string[] }) => ({
 				id: 1,
 				name: options.name,
@@ -3980,6 +3993,9 @@ suite('ModuleManagerController Regression Tests', () => {
 		controller.githubService = {
 			fetchModules: async () => ({ modules: [] }),
 			fetchReadme: async () => '',
+			getCurrentUser: async () => ({ login: 'tester', name: 'Tester' }),
+			getUserOrganizations: async () => [],
+			getOrganizationMembership: async () => undefined,
 			createRepository: async (_token: string, options: { name: string; description?: string; private: boolean; topics: string[] }) => {
 				createdRequest = { name: options.name };
 				return {
@@ -4085,6 +4101,9 @@ suite('ModuleManagerController Regression Tests', () => {
 		controller.githubService = {
 			fetchModules: async () => ({ modules: [] }),
 			fetchReadme: async () => '',
+			getCurrentUser: async () => ({ login: 'tester', name: 'Tester' }),
+			getUserOrganizations: async () => [],
+			getOrganizationMembership: async () => undefined,
 			createRepository: async (_token: string, options: { name: string; description?: string; private: boolean; topics: string[] }) => ({
 				id: 1,
 				name: options.name,
@@ -4193,6 +4212,9 @@ suite('ModuleManagerController Regression Tests', () => {
 		controller.githubService = {
 			fetchModules: async () => ({ modules: [] }),
 			fetchReadme: async () => '',
+			getCurrentUser: async () => ({ login: 'tester', name: 'Tester' }),
+			getUserOrganizations: async () => [],
+			getOrganizationMembership: async () => undefined,
 			createRepository: async () => {
 				createdCount += 1;
 				return {
@@ -4287,6 +4309,9 @@ suite('ModuleManagerController Regression Tests', () => {
 		controller.githubService = {
 			fetchModules: async () => ({ modules: [] }),
 			fetchReadme: async () => '',
+			getCurrentUser: async () => ({ login: 'tester', name: 'Tester' }),
+			getUserOrganizations: async () => [],
+			getOrganizationMembership: async () => undefined,
 			createRepository: async () => {
 				createdCount += 1;
 				return {
@@ -4353,6 +4378,299 @@ suite('ModuleManagerController Regression Tests', () => {
 
 		assert.strictEqual(createdCount, 0);
 		assert.strictEqual(publishedCount, 0);
+	});
+
+	test('createLocalFolderRepositoryCommand lets the user pick an organization and creates the repository there', async () => {
+		const workspaceRoot = fs.mkdtempSync(path.join(getTempRoot(), 'csm-share-module-org-'));
+		fs.mkdirSync(path.join(workspaceRoot, 'csm', 'custom-module'), { recursive: true });
+		const controller = createController() as any;
+		const existingConfig: LocalModuleConfig = {
+			version: '2',
+			root: 'csm',
+			configPath: path.join(workspaceRoot, 'csm', 'csm-modules.yaml'),
+			modules: {},
+		};
+		const membershipChecks: string[] = [];
+		let createdRequest:
+			| { token: string; owner?: string; name: string; private: boolean; topics: string[] }
+			| undefined;
+
+		controller.authService = {
+			getSessionSilently: async () => createSession('token', 'tester'),
+			getSessionInteractively: async () => createSession('token', 'tester'),
+		};
+		controller.githubService = {
+			fetchModules: async () => ({ modules: [] }),
+			fetchReadme: async () => '',
+			getCurrentUser: async () => ({ login: 'tester', name: 'Tester' }),
+			getUserOrganizations: async () => [
+				{ login: 'org-a', name: 'Org A' },
+				{ login: 'org-b' },
+			],
+			getOrganizationMembership: async (_token: string, org: string) => {
+				membershipChecks.push(org);
+				return org === 'org-a' ? { state: 'active', role: 'member' } : { state: 'pending', role: 'member' };
+			},
+			createRepository: async (token: string, options: { owner?: string; name: string; description?: string; private: boolean; topics: string[] }) => {
+				createdRequest = { token, owner: options.owner, name: options.name, private: options.private, topics: options.topics };
+				return {
+					id: 1,
+					name: options.name,
+					full_name: `${options.owner ?? 'tester'}/${options.name}`,
+					description: options.description ?? '',
+					private: options.private,
+					default_branch: 'main',
+					html_url: `https://github.com/${options.owner ?? 'tester'}/${options.name}`,
+					topics: options.topics,
+				};
+			},
+		};
+		controller.workspaceModuleService = {
+			resolveGitRepositoryRoot: async () => workspaceRoot,
+			getGitIdentity: async () => ({
+				name: 'Tester',
+				email: 'tester@example.com',
+			}),
+			publishLocalFolder: async (options: { remoteUrl: string; defaultBranch?: string }) => ({
+				branch: options.defaultBranch ?? 'main',
+				remoteName: 'origin',
+				remoteUrl: options.remoteUrl,
+				headRef: 'abc123',
+				createdCommit: true,
+			}),
+			convertPublishedFolderToSubmodule: async (options: { branch?: string }) => ({
+				branch: options.branch ?? 'main',
+				headRef: 'def456',
+			}),
+			normalizeRootPath: (value: string) => value.replace(/\\/g, '/'),
+			getModuleKey: (entry: CsmModuleEntry) => `${entry.owner}__${entry.name}`,
+			setModuleLocked: async (_workspaceRoot: string, entry: LocalModuleConfig['modules'][string], locked: boolean) => ({
+				...entry,
+				locked,
+			}),
+			withAppliedModule: (config: LocalModuleConfig, entry: LocalModuleConfig['modules'][string]) => ({
+				...config,
+				modules: {
+					...config.modules,
+					[entry.key]: entry,
+				},
+			}),
+			writeConfig: async () => undefined,
+		};
+		controller.resolveWorkspaceFolder = async () => ({ name: 'repo', uri: vscode.Uri.file(workspaceRoot) });
+		controller.tryLoadSidebarLocalModuleConfig = async () => existingConfig;
+		controller.refreshSidebarWorkspaceState = async () => undefined;
+		controller.loadModules = async () => undefined;
+		mocked.__setInputBoxResponses(['shared-module', 'Demo repo', 'labview-csm, csm-modsets custom-topic']);
+		// 第一次 QuickPick：归属选择（选择组织 org-a）；第二次：可见性
+		mocked.__setQuickPickResponse({ label: 'org-a', owner: { kind: 'org', login: 'org-a' } });
+		mocked.__setQuickPickResponse({ label: 'Private', visibility: 'private' });
+		mocked.__setWarningMessageResponse('Create Repository');
+
+		await controller.createLocalFolderRepositoryCommand({
+			id: 'csm/custom-module',
+			kind: 'unmanaged',
+			name: 'custom-module',
+			path: 'csm/custom-module',
+		});
+
+		// 两个组织都做了成员关系检查；org-a active 可选，org-b pending 不可选
+		assert.deepStrictEqual(membershipChecks, ['org-a', 'org-b']);
+		// 归属 QuickPick 列出个人账号 + 有权限组织（仅 org-a）
+		const ownerSelection = mocked.__getQuickPickHistory()[0];
+		assert.strictEqual(ownerSelection.items.length, 2);
+		assert.strictEqual((ownerSelection.items[0] as { label: string }).label, '@tester');
+		assert.strictEqual((ownerSelection.items[1] as { label: string }).label, 'org-a');
+		// 创建到组织
+		assert.deepStrictEqual(createdRequest, {
+			token: 'token',
+			owner: 'org-a',
+			name: 'shared-module',
+			private: true,
+			topics: ['labview-csm', 'csm-modsets', 'custom-topic'],
+		});
+		// 确认对话框展示归属 owner/name
+		const warnings = mocked.__getMessageLog().filter((message) => message.level === 'warn').map((message) => message.text);
+		assert.ok(warnings.some((text) => text.includes('org-a/shared-module')));
+	});
+
+	test('createLocalFolderRepositoryCommand skips the owner selection when no organization can create repositories', async () => {
+		const workspaceRoot = fs.mkdtempSync(path.join(getTempRoot(), 'csm-share-module-no-org-'));
+		fs.mkdirSync(path.join(workspaceRoot, 'csm', 'custom-module'), { recursive: true });
+		const controller = createController() as any;
+		const existingConfig: LocalModuleConfig = {
+			version: '2',
+			root: 'csm',
+			configPath: path.join(workspaceRoot, 'csm', 'csm-modules.yaml'),
+			modules: {},
+		};
+		let createdRequest: { owner?: string; name: string } | undefined;
+
+		controller.authService = {
+			getSessionSilently: async () => createSession('token', 'tester'),
+			getSessionInteractively: async () => createSession('token', 'tester'),
+		};
+		controller.githubService = {
+			fetchModules: async () => ({ modules: [] }),
+			fetchReadme: async () => '',
+			getCurrentUser: async () => ({ login: 'tester', name: 'Tester' }),
+			getUserOrganizations: async () => [
+				{ login: 'org-a', name: 'Org A' },
+			],
+			getOrganizationMembership: async () => undefined,
+			createRepository: async (_token: string, options: { owner?: string; name: string; description?: string; private: boolean; topics: string[] }) => {
+				createdRequest = { owner: options.owner, name: options.name };
+				return {
+					id: 1,
+					name: options.name,
+					full_name: `tester/${options.name}`,
+					description: options.description ?? '',
+					private: options.private,
+					default_branch: 'main',
+					html_url: `https://github.com/tester/${options.name}`,
+					topics: options.topics,
+				};
+			},
+		};
+		controller.workspaceModuleService = {
+			resolveGitRepositoryRoot: async () => workspaceRoot,
+			getGitIdentity: async () => ({
+				name: 'Tester',
+				email: 'tester@example.com',
+			}),
+			publishLocalFolder: async (options: { remoteUrl: string; defaultBranch?: string }) => ({
+				branch: options.defaultBranch ?? 'main',
+				remoteName: 'origin',
+				remoteUrl: options.remoteUrl,
+				headRef: 'abc123',
+				createdCommit: true,
+			}),
+			convertPublishedFolderToSubmodule: async (options: { branch?: string }) => ({
+				branch: options.branch ?? 'main',
+				headRef: 'def456',
+			}),
+			normalizeRootPath: (value: string) => value.replace(/\\/g, '/'),
+			getModuleKey: (entry: CsmModuleEntry) => `${entry.owner}__${entry.name}`,
+			setModuleLocked: async (_workspaceRoot: string, entry: LocalModuleConfig['modules'][string], locked: boolean) => ({
+				...entry,
+				locked,
+			}),
+			withAppliedModule: (config: LocalModuleConfig, entry: LocalModuleConfig['modules'][string]) => ({
+				...config,
+				modules: {
+					...config.modules,
+					[entry.key]: entry,
+				},
+			}),
+			writeConfig: async () => undefined,
+		};
+		controller.resolveWorkspaceFolder = async () => ({ name: 'repo', uri: vscode.Uri.file(workspaceRoot) });
+		controller.tryLoadSidebarLocalModuleConfig = async () => existingConfig;
+		controller.refreshSidebarWorkspaceState = async () => undefined;
+		controller.loadModules = async () => undefined;
+		mocked.__setInputBoxResponses(['shared-module', 'Demo repo', 'labview-csm, csm-modsets custom-topic']);
+		// 仅一个 QuickPick：可见性（归属选择被跳过，默认个人账号）
+		mocked.__setQuickPickResponse({ label: 'Private', visibility: 'private' });
+		mocked.__setWarningMessageResponse('Create Repository');
+
+		await controller.createLocalFolderRepositoryCommand({
+			id: 'csm/custom-module',
+			kind: 'unmanaged',
+			name: 'custom-module',
+			path: 'csm/custom-module',
+		});
+
+		assert.deepStrictEqual(createdRequest, { owner: undefined, name: 'shared-module' });
+		// 归属选择未弹出：QuickPick 历史中只有可见性选择
+		const history = mocked.__getQuickPickHistory();
+		assert.strictEqual(history.length, 1);
+		assert.strictEqual((history[0].items[0] as { visibility?: string }).visibility, 'private');
+	});
+
+	test('createLocalFolderRepositoryCommand aborts when fetching owner candidates fails', async () => {
+		const workspaceRoot = fs.mkdtempSync(path.join(getTempRoot(), 'csm-share-module-owner-fail-'));
+		fs.mkdirSync(path.join(workspaceRoot, 'csm', 'custom-module'), { recursive: true });
+		const controller = createController() as any;
+		const existingConfig: LocalModuleConfig = {
+			version: '2',
+			root: 'csm',
+			configPath: path.join(workspaceRoot, 'csm', 'csm-modules.yaml'),
+			modules: {},
+		};
+		let createdCount = 0;
+
+		controller.authService = {
+			getSessionSilently: async () => createSession('token', 'tester'),
+			getSessionInteractively: async () => createSession('token', 'tester'),
+		};
+		controller.githubService = {
+			fetchModules: async () => ({ modules: [] }),
+			fetchReadme: async () => '',
+			getCurrentUser: async () => {
+				throw new Error('GitHub current user request failed: 500');
+			},
+			createRepository: async () => {
+				createdCount += 1;
+				return {
+					id: 1,
+					name: 'shared-module',
+					full_name: 'tester/shared-module',
+					description: '',
+					private: true,
+					default_branch: 'main',
+					html_url: 'https://github.com/tester/shared-module',
+					topics: [],
+				};
+			},
+		};
+		controller.workspaceModuleService = {
+			resolveGitRepositoryRoot: async () => workspaceRoot,
+			getGitIdentity: async () => ({
+				name: 'Tester',
+				email: 'tester@example.com',
+			}),
+			publishLocalFolder: async () => ({
+				branch: 'main',
+				remoteName: 'origin',
+				remoteUrl: '',
+				headRef: 'abc123',
+				createdCommit: true,
+			}),
+			convertPublishedFolderToSubmodule: async () => ({
+				branch: 'main',
+				headRef: 'def456',
+			}),
+			normalizeRootPath: (value: string) => value.replace(/\\/g, '/'),
+			getModuleKey: (entry: CsmModuleEntry) => `${entry.owner}__${entry.name}`,
+			setModuleLocked: async (_workspaceRoot: string, entry: LocalModuleConfig['modules'][string], locked: boolean) => ({
+				...entry,
+				locked,
+			}),
+			withAppliedModule: (config: LocalModuleConfig, entry: LocalModuleConfig['modules'][string]) => ({
+				...config,
+				modules: {
+					...config.modules,
+					[entry.key]: entry,
+				},
+			}),
+			writeConfig: async () => undefined,
+		};
+		controller.resolveWorkspaceFolder = async () => ({ name: 'repo', uri: vscode.Uri.file(workspaceRoot) });
+		controller.tryLoadSidebarLocalModuleConfig = async () => existingConfig;
+		controller.refreshSidebarWorkspaceState = async () => undefined;
+		controller.loadModules = async () => undefined;
+
+		await controller.createLocalFolderRepositoryCommand({
+			id: 'csm/custom-module',
+			kind: 'unmanaged',
+			name: 'custom-module',
+			path: 'csm/custom-module',
+		});
+
+		// 归属获取失败：中断创建流程，不创建仓库
+		assert.strictEqual(createdCount, 0);
+		const errors = mocked.__getMessageLog().filter((message) => message.level === 'error').map((message) => message.text);
+		assert.ok(errors.some((text) => text.includes('GitHub is temporarily unavailable (HTTP 500)')));
 	});
 
 	test('linkLocalFolderRepositoryCommand records an unmanaged folder against an online repository', async () => {

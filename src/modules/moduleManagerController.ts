@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs/promises';
 import { AuthService } from './authService';
-import { GitHubModuleService, mapRepoToModuleEntry } from './githubModuleService';
+import { GitHubModuleService, GitHubOrganizationProfile, GitHubUserProfile, mapRepoToModuleEntry } from './githubModuleService';
 import { ModuleCacheStore } from './cacheStore';
 import { CsmModuleEntry, GitHubRepoSummary, LocalManagedModuleEntry, LocalModuleConfig, LocalModuleConfigEntry, LocalUnmanagedFolderEntry, ModuleApplyMethod, ModuleAuthSnapshot, ModuleBranchInfo, ModuleCacheSnapshot, ModuleCommitInfo, ModuleReleaseInfo, ModuleTagInfo, ModuleUpdateResult, ModuleVersionCacheEntry, ModuleVersionSelection } from './types';
 import { ModuleTreeItem } from './moduleTreeTypes';
@@ -70,6 +70,22 @@ type RepositoryVisibilityQuickPickItem = vscode.QuickPickItem & {
 	visibility: RepositoryVisibility;
 };
 
+/** 创建仓库时的归属：个人账号（user）或组织（org）。 */
+type RepositoryOwner = {
+	kind: 'user' | 'org';
+	login: string;
+};
+
+type RepositoryOwnerQuickPickItem = vscode.QuickPickItem & {
+	owner: RepositoryOwner;
+};
+
+/** 创建仓库时的归属候选：个人账号 + 有权限创建仓库的组织。 */
+interface RepositoryOwnerCandidates {
+	user: GitHubUserProfile;
+	orgs: GitHubOrganizationProfile[];
+}
+
 type RefreshMode = 'online' | 'local';
 
 type RefreshModeQuickPickItem = vscode.QuickPickItem & {
@@ -121,7 +137,7 @@ type ModuleManagerAuthService = Pick<AuthService, 'getSessionSilently' | 'getSes
 	& Partial<Pick<AuthService, 'signOut' | 'verifyScopes'>>;
 
 type ModuleManagerGithubService = Pick<GitHubModuleService, 'fetchModules' | 'fetchReadme'>
-	& Partial<Pick<GitHubModuleService, 'isRepositoryStarred' | 'setRepositoryStarred' | 'createRepository' | 'detectRemoteLabviewVersion'>>;
+	& Partial<Pick<GitHubModuleService, 'isRepositoryStarred' | 'setRepositoryStarred' | 'createRepository' | 'detectRemoteLabviewVersion' | 'getCurrentUser' | 'getUserOrganizations' | 'getOrganizationMembership'>>;
 
 type ModuleManagerVersionService = Pick<ModuleVersionService, 'listBranches' | 'listTags' | 'listReleases' | 'listCommits' | 'resolveCommitInfo'>;
 
@@ -1342,7 +1358,18 @@ export class ModuleManagerController {
 			return;
 		}
 
-		const repositoryConfig = await this.promptRepositoryCreation(targetFolder.name);
+		// 查询创建仓库的归属候选（个人账号 + 有权限的组织）；获取失败时中断创建流程
+		let ownerCandidates: RepositoryOwnerCandidates;
+		try {
+			ownerCandidates = await this.fetchRepositoryOwnerCandidates(token);
+		} catch (error) {
+			const message = getUserFacingErrorMessage(error, 'createRepo');
+			this.logger.error(`Failed to fetch repository owner candidates: ${message}`);
+			void vscode.window.showErrorMessage(t('createRepositoryOwnerFetchFailed', { message }));
+			return;
+		}
+
+		const repositoryConfig = await this.promptRepositoryCreation(targetFolder.name, ownerCandidates);
 		if (!repositoryConfig) {
 			return;
 		}
@@ -1350,6 +1377,7 @@ export class ModuleManagerController {
 		const confirmation = await vscode.window.showWarningMessage(
 			t('createRepositoryConfirmation', {
 				visibility: repositoryConfig.visibility === 'private' ? t('createRepositoryPrivateLabel') : t('createRepositoryPublicLabel'),
+				owner: repositoryConfig.owner.login,
 				name: repositoryConfig.name,
 				folder: targetFolder.path,
 				topics: repositoryConfig.topics.join(', '),
@@ -1381,6 +1409,7 @@ export class ModuleManagerController {
 				},
 				async () => {
 					const repository = await this.githubService.createRepository!(token, {
+						owner: repositoryConfig.owner.kind === 'org' ? repositoryConfig.owner.login : undefined,
 						name: repositoryConfig.name,
 						description: repositoryConfig.description,
 						private: repositoryConfig.visibility === 'private',
@@ -3370,12 +3399,26 @@ export class ModuleManagerController {
 		});
 	}
 
-	private async promptRepositoryCreation(folderName: string): Promise<{
+	private async promptRepositoryCreation(
+		folderName: string,
+		ownerCandidates: RepositoryOwnerCandidates,
+	): Promise<{
+		owner: RepositoryOwner;
 		name: string;
 		description: string;
 		visibility: RepositoryVisibility;
 		topics: string[];
 	} | undefined> {
+		// 第一步：选择创建仓库的归属（个人账号 / 有权限的组织）；无组织候选时默认个人账号
+		let owner: RepositoryOwner = { kind: 'user', login: ownerCandidates.user.login };
+		if (ownerCandidates.orgs.length > 0) {
+			const ownerPick = await this.promptRepositoryOwner(ownerCandidates);
+			if (!ownerPick) {
+				return undefined;
+			}
+			owner = ownerPick.owner;
+		}
+
 		const name = await vscode.window.showInputBox({
 			prompt: t('createRepositoryNamePrompt', { folder: folderName }),
 			value: folderName,
@@ -3421,11 +3464,58 @@ export class ModuleManagerController {
 		}
 
 		return {
+			owner,
 			name: name.trim(),
 			description: description.trim(),
 			visibility: visibilityPick.visibility,
 			topics: this.normalizeRepositoryTopics(topicsInput),
 		};
+	}
+
+	/** 选择创建仓库的归属：单个 QuickPick 同时列出个人账号与所有有权限的组织。 */
+	private async promptRepositoryOwner(candidates: RepositoryOwnerCandidates): Promise<RepositoryOwnerQuickPickItem | undefined> {
+		const items: RepositoryOwnerQuickPickItem[] = [
+			{
+				label: `@${candidates.user.login}`,
+				description: t('createRepositoryOwnerUserDescription'),
+				picked: true,
+				owner: { kind: 'user', login: candidates.user.login },
+			},
+			...candidates.orgs.map((org): RepositoryOwnerQuickPickItem => ({
+				label: org.login,
+				description: org.name ? `${org.name} · ${t('createRepositoryOwnerOrgDescription')}` : t('createRepositoryOwnerOrgDescription'),
+				owner: { kind: 'org', login: org.login },
+			})),
+		];
+		return vscode.window.showQuickPick(items, {
+			placeHolder: t('createRepositoryOwnerPlaceholder'),
+		});
+	}
+
+	/**
+	 * 获取创建仓库的归属候选：个人账号 + 有权限创建仓库的组织。
+	 *
+	 * 组织的判定：逐个查询用户在组织中的成员关系，仅 `state=active`（含 admin 与 member）
+	 * 的组织视为可选；单个组织查询失败只记录日志并跳过，不影响其余组织。
+	 * 用户信息或组织列表获取失败时向上抛错，由调用方中断创建流程。
+	 */
+	private async fetchRepositoryOwnerCandidates(token: string): Promise<RepositoryOwnerCandidates> {
+		const user = await this.githubService.getCurrentUser!(token);
+		const organizations = await this.githubService.getUserOrganizations!(token);
+		const orgs: GitHubOrganizationProfile[] = [];
+		for (const org of organizations) {
+			try {
+				const membership = await this.githubService.getOrganizationMembership!(token, org.login, user.login);
+				if (membership?.state === 'active') {
+					orgs.push(org);
+				}
+			} catch (error) {
+				this.logger.warn(
+					`Failed to check membership for organization ${org.login}: ${error instanceof Error ? error.message : String(error)}`,
+				);
+			}
+		}
+		return { user, orgs };
 	}
 
 	private async promptRepositoryLink(folder: LocalUnmanagedFolderEntry): Promise<CsmModuleEntry | undefined> {
