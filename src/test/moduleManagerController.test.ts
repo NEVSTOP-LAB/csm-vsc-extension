@@ -3943,7 +3943,11 @@ suite('ModuleManagerController Regression Tests', () => {
 			completed = true;
 		});
 
-		for (let attempt = 0; attempt < 40 && !loadStarted && !completed; attempt += 1) {
+		// 命令发布前会经过真实 fs.stat 与多级 await 链，固定轮数的 setImmediate 循环
+		// 在 CI 负载下可能不足以等到命令到达 loadModules 挂起点；改为在截止时间内轮询，
+		// 直到 loadModules 被调用（loadStarted）或命令意外提前完成（completed）。
+		const waitDeadline = Date.now() + 5000;
+		while (!loadStarted && !completed && Date.now() < waitDeadline) {
 			await new Promise<void>((resolve) => setImmediate(resolve));
 		}
 
