@@ -48,6 +48,7 @@ src/
 │       ├── normalizer.ts         # 行签名归一化引擎
 │       ├── detector.ts           # 三级递进重复检测算法
 │       ├── foldingProvider.ts    # VS Code FoldingRangeProvider
+│       ├── messages.ts           # 折叠功能本地化文案（中/英）
 │       └── decorations.ts        # 装饰器视觉呈现
 │
 ├── modules/                      # 模块管理域

@@ -42,6 +42,92 @@ function mapSingleUserFacingError(message: string, context: UserFacingErrorConte
 	if (/ENOTFOUND|ECONNRESET|ECONNREFUSED|ETIMEDOUT|fetch failed|network/i.test(message)) {
 		return t('networkRequestFailed');
 	}
+	// ---- 输入校验类错误（normalizeRootPath / normalizeNamespacePath）----
+	if (message === 'A relative directory is required.') {
+		return t('relativeDirectoryRequired');
+	}
+	if (message === 'Use a directory relative to the repository root.') {
+		return t('directoryMustBeRelative');
+	}
+	if (message === 'The directory cannot be the repository root.') {
+		return t('directoryCannotBeRoot');
+	}
+	if (message === 'The directory must stay inside the repository root.') {
+		return t('directoryInsideRoot');
+	}
+	if (message === 'Use a namespace path relative to the module root.') {
+		return t('namespaceRelativeRequired');
+	}
+	if (message === 'The namespace path must stay inside the module root.') {
+		return t('namespaceInsideRoot');
+	}
+	// ---- 底层操作错误（workspaceModuleService / gitService）----
+	if (message === 'git unavailable') {
+		return t('gitUnavailable');
+	}
+	if (message === 'Unknown command failure.') {
+		return t('unknownCommandFailure');
+	}
+	const localFolderNotDirectory = message.match(/^Local folder is not a directory: (.+)$/);
+	if (localFolderNotDirectory) {
+		return t('localFolderNotDirectory', { folder: localFolderNotDirectory[1] });
+	}
+	const publishedFolderNotDirectory = message.match(/^Published folder is not a directory: (.+)$/);
+	if (publishedFolderNotDirectory) {
+		return t('publishedFolderNotDirectory', { path: publishedFolderNotDirectory[1] });
+	}
+	if (message === 'A release must be selected to switch to release mode.') {
+		return t('releaseRequiredToSwitchToRelease');
+	}
+	const gitRepoRootToConvert = message.match(/^Git repository root is required to convert a (.+?) to (.+?) mode\.$/);
+	if (gitRepoRootToConvert) {
+		return t('gitRepoRootRequiredToConvert', { method: `${gitRepoRootToConvert[1]}→${gitRepoRootToConvert[2]}` });
+	}
+	if (message === 'The release has no downloadable assets.') {
+		return t('releaseHasNoAssets');
+	}
+	const copyTargetExists = message.match(/^Copy target already exists: (.+)$/);
+	if (copyTargetExists) {
+		return t('copyTargetExists');
+	}
+	const targetPathExists = message.match(/^Target path already exists: (.+)$/);
+	if (targetPathExists) {
+		return t('targetPathExists');
+	}
+	if (message === 'Target path must stay inside the repository root.') {
+		return t('targetPathInsideRoot');
+	}
+	const convertedMissing = message.match(/^Converted module target is (?:missing|not a directory) after switching to (.+?) mode: (.+)$/);
+	if (convertedMissing) {
+		return t('convertedModuleTargetMissing', { method: convertedMissing[1] });
+	}
+	const lockStateFailed = message.match(/^Failed to update lock state for (\d+) path\(s\): (.+)$/);
+	if (lockStateFailed) {
+		return t('lockStateUpdateFailed', { count: Number(lockStateFailed[1]) });
+	}
+	const lockedRevision = message.match(/^Unable to determine the locked revision for (.+)\.$/);
+	if (lockedRevision) {
+		return t('unableToDetermineLockedRevision', { path: lockedRevision[1] });
+	}
+	const missingTagReference = message.match(/^Missing tag reference for (.+?) update\.$/);
+	if (missingTagReference) {
+		return t('missingTagReference', { kind: missingTagReference[1] });
+	}
+	if (message === 'Missing commit reference for commit update.') {
+		return t('missingCommitReference');
+	}
+	const assetDownloadFailed = message.match(/^Failed to download release asset (.+): HTTP (\d+)$/);
+	if (assetDownloadFailed) {
+		return t('releaseAssetDownloadFailed', { name: assetDownloadFailed[1], status: assetDownloadFailed[2] });
+	}
+	const assetDownloadMissing = message.match(/^Downloaded release asset is missing: (.+)$/);
+	if (assetDownloadMissing) {
+		return t('releaseAssetDownloadMissing', { name: assetDownloadMissing[1] });
+	}
+	const latestRevision = message.match(/^Unable to determine the latest revision for branch (.+)\.$/);
+	if (latestRevision) {
+		return t('unableToDetermineLatestRevision', { branch: latestRevision[1] });
+	}
 	return message;
 }
 

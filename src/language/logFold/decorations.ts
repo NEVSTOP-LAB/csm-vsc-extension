@@ -4,6 +4,7 @@
 
 import * as vscode from 'vscode';
 import { FoldRegion, FoldOptions, DEFAULT_FOLD_OPTIONS, RepeatPattern } from './types';
+import { t } from './messages';
 
 // ---------------------------------------------------------------------------
 // 颜色常量（深色/浅色主题自适应）
@@ -246,7 +247,7 @@ function buildSummaryLabel(region: FoldRegion, options: FoldOptions): string {
     }
 
     const parts: string[] = [];
-    parts.push(`…重复 ${count} 次`);
+    parts.push(t('summaryRepeated', { count }));
 
     if (region.sampleLines.length >= 2) {
         const firstTime = extractTime(region.sampleLines[0]);
