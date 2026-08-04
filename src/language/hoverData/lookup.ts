@@ -13,20 +13,20 @@ function lookupOperator(line: string, pos: number): HoverEntry | undefined {
     // Ordered by length (longest first) to prefer specific matches.
     const candidates: [string, string][] = [
         ['-><register as interrupt>', '-><REGISTER AS INTERRUPT>'],
-        ['-><register as status>',    '-><REGISTER AS STATUS>'],
+        ['-><register as status>', '-><REGISTER AS STATUS>'],
         ['-><register as Interrupt>', '-><REGISTER AS INTERRUPT>'],
-        ['-><register as Status>',    '-><REGISTER AS STATUS>'],
-        ['-><register>',              '-><REGISTER>'],
-        ['-><unregister>',            '-><UNREGISTER>'],
-        ['->|',                       '->|'],
-        ['->',                        '->'],
-        ['-@',                        '-@'],
-        ['=>',                        '=>'],
-        ['>>',                        '>>'],
-        ['@',                         '@'],
-        ['!∈',                        '!∈'],
-        ['∈',                         '∈'],
-        ['??',                        '??'],
+        ['-><register as Status>', '-><REGISTER AS STATUS>'],
+        ['-><register>', '-><REGISTER>'],
+        ['-><unregister>', '-><UNREGISTER>'],
+        ['->|', '->|'],
+        ['->', '->'],
+        ['-@', '-@'],
+        ['=>', '=>'],
+        ['>>', '>>'],
+        ['@', '@'],
+        ['!∈', '!∈'],
+        ['∈', '∈'],
+        ['??', '??'],
     ];
     for (const [op, key] of candidates) {
         const searchStart = Math.max(0, pos - op.length + 1);

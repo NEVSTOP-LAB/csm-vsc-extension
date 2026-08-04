@@ -217,7 +217,7 @@ export function applyDecorations(
         editor.setDecorations(bgDecorations[pattern as RepeatPattern], ranges);
     }
     for (const pattern of Object.keys(bgDecorations)) {
-        if (!bgRanges[pattern]) {editor.setDecorations(bgDecorations[pattern as RepeatPattern], []);}
+        if (!bgRanges[pattern]) { editor.setDecorations(bgDecorations[pattern as RepeatPattern], []); }
     }
     editor.setDecorations(borderDecoration, borderRanges);
     editor.setDecorations(summaryLabelDecoration, summaryOptions);
