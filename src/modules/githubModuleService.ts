@@ -12,6 +12,24 @@ interface GitHubSearchResponse<T> {
 	items?: T[];
 }
 
+/** 当前登录用户的 GitHub 资料（GET /user）。 */
+export interface GitHubUserProfile {
+	login: string;
+	name?: string;
+}
+
+/** 用户所属组织的资料（GET /user/orgs）。 */
+export interface GitHubOrganizationProfile {
+	login: string;
+	name?: string;
+}
+
+/** 用户在组织中的成员关系（GET /orgs/{org}/memberships/{username}）。 */
+export interface GitHubOrganizationMembership {
+	state: string;
+	role: string;
+}
+
 function hasModuleTopic(repo: GitHubRepoSummary): boolean {
 	return (repo.topics ?? []).some((topic) => topic.toLowerCase() === MODULE_TOPIC);
 }
@@ -175,11 +193,76 @@ export class GitHubModuleService {
 		throw new Error(`GitHub ${starred ? 'star' : 'unstar'} request failed: ${response.status}`);
 	}
 
+	/**
+	 * 获取当前登录用户的 GitHub 资料。
+	 */
+	public async getCurrentUser(token: string): Promise<GitHubUserProfile> {
+		const response = await fetch(`${GITHUB_API_BASE}/user`, { headers: this.createHeaders(token) });
+		if (!response.ok) {
+			this.logger.warn(`GitHub current user request failed with HTTP ${response.status}`);
+			throw new Error(`GitHub current user request failed: ${response.status}`);
+		}
+		const payload = await response.json() as GitHubUserProfile;
+		return {
+			login: payload.login,
+			name: payload.name ?? undefined,
+		};
+	}
+
+	/**
+	 * 获取当前用户所属的组织列表（含分页）。
+	 */
+	public async getUserOrganizations(token: string): Promise<GitHubOrganizationProfile[]> {
+		const organizations: GitHubOrganizationProfile[] = [];
+		let url: string | undefined = `${GITHUB_API_BASE}/user/orgs?per_page=${PER_PAGE}`;
+		while (url) {
+			// 复制到局部变量再调用，规避 TS 在 while 循环中对 result 的隐式 any 推断（TS7022）
+			const currentUrl: string = url;
+			const result = await this.requestJson<GitHubOrganizationProfile[]>(currentUrl, token);
+			for (const organization of result.data) {
+				organizations.push({
+					login: organization.login,
+					name: organization.name ?? undefined,
+				});
+			}
+			url = result.next;
+		}
+		return organizations;
+	}
+
+	/**
+	 * 获取用户在指定组织中的成员关系。
+	 *
+	 * 返回 `undefined` 表示无法确认该用户对组织的权限（非成员 404 / 无权限查看 403），
+	 * 调用方应将其视为该组织不可用于创建仓库。
+	 */
+	public async getOrganizationMembership(token: string, org: string, username: string): Promise<GitHubOrganizationMembership | undefined> {
+		const url = `${GITHUB_API_BASE}/orgs/${encodeURIComponent(org)}/memberships/${encodeURIComponent(username)}`;
+		const response = await fetch(url, { headers: this.createHeaders(token) });
+		if (response.status === 404 || response.status === 403) {
+			return undefined;
+		}
+		if (!response.ok) {
+			this.logger.warn(`GitHub organization membership request for ${org} failed with HTTP ${response.status}`);
+			throw new Error(`GitHub organization membership request failed: ${response.status}`);
+		}
+		const payload = await response.json() as GitHubOrganizationMembership;
+		return {
+			state: payload.state,
+			role: payload.role,
+		};
+	}
+
 	public async createRepository(
 		token: string,
-		options: { name: string; description?: string; private: boolean; topics: string[] },
+		options: { owner?: string; name: string; description?: string; private: boolean; topics: string[] },
 	): Promise<GitHubRepoSummary> {
-		const createResponse = await fetch(`${GITHUB_API_BASE}/user/repos`, {
+		// owner 为空时创建到个人账号（/user/repos）；指定 owner 时创建到该组织（/orgs/{org}/repos）
+		const repoOwner = options.owner?.trim();
+		const createUrl = repoOwner
+			? `${GITHUB_API_BASE}/orgs/${encodeURIComponent(repoOwner)}/repos`
+			: `${GITHUB_API_BASE}/user/repos`;
+		const createResponse = await fetch(createUrl, {
 			method: 'POST',
 			headers: {
 				...this.createHeaders(token),

@@ -262,6 +262,170 @@ suite('GitHubModuleService Tests', () => {
 		]);
 	});
 
+	test('createRepository creates the repository under an organization when owner is provided', async () => {
+		const requests: Array<{ url: string; method: string | undefined; authorization?: string; body?: string }> = [];
+		globalThis.fetch = (async (input, init) => {
+			requests.push({
+				url: String(input),
+				method: init?.method,
+				authorization: ((init?.headers ?? {}) as Record<string, string>).Authorization,
+				body: typeof init?.body === 'string' ? init.body : undefined,
+			});
+			if (String(input).endsWith('/orgs/NEVSTOP-LAB/repos')) {
+				return {
+					ok: true,
+					status: 201,
+					headers: createHeaders(),
+					json: async () => ({
+						id: 10,
+						name: 'module-share',
+						full_name: 'NEVSTOP-LAB/module-share',
+						description: 'shared module',
+						private: true,
+						default_branch: 'main',
+						html_url: 'https://github.com/NEVSTOP-LAB/module-share',
+					}),
+				} as Response;
+			}
+			return {
+				ok: true,
+				status: 200,
+				headers: createHeaders(),
+				json: async () => ({ names: ['labview-csm', 'csm-modsets'] }),
+			} as Response;
+		}) as FetchFn;
+
+		const service = new GitHubModuleService();
+		const repository = await service.createRepository('token', {
+			owner: 'NEVSTOP-LAB',
+			name: 'module-share',
+			description: 'shared module',
+			private: true,
+			topics: ['labview-csm', 'csm-modsets'],
+		});
+
+		assert.strictEqual(repository.full_name, 'NEVSTOP-LAB/module-share');
+		assert.deepStrictEqual(requests[0], {
+			url: 'https://api.github.com/orgs/NEVSTOP-LAB/repos',
+			method: 'POST',
+			authorization: 'Bearer token',
+			body: JSON.stringify({
+				name: 'module-share',
+				description: 'shared module',
+				private: true,
+				auto_init: false,
+			}),
+		});
+		assert.strictEqual(requests[1]?.url, 'https://api.github.com/repos/NEVSTOP-LAB/module-share/topics');
+	});
+
+	test('getCurrentUser returns the authenticated user profile', async () => {
+		let authorizationHeader: string | undefined;
+		globalThis.fetch = (async (_input, init) => {
+			authorizationHeader = ((init?.headers ?? {}) as Record<string, string>).Authorization;
+			return {
+				ok: true,
+				status: 200,
+				headers: createHeaders(),
+				json: async () => ({
+					login: 'tester',
+					name: 'Test User',
+					id: 42,
+				}),
+			} as Response;
+		}) as FetchFn;
+
+		const service = new GitHubModuleService();
+		const user = await service.getCurrentUser('token');
+
+		assert.deepStrictEqual(user, { login: 'tester', name: 'Test User' });
+		assert.strictEqual(authorizationHeader, 'Bearer token');
+	});
+
+	test('getCurrentUser throws on non-OK response', async () => {
+		globalThis.fetch = (async () => ({
+			ok: false,
+			status: 401,
+			headers: createHeaders(),
+		}) as Response) as FetchFn;
+
+		const service = new GitHubModuleService();
+		await assert.rejects(() => service.getCurrentUser('token'), /401/);
+	});
+
+	test('getUserOrganizations returns all organizations across pages', async () => {
+		const requests: string[] = [];
+		globalThis.fetch = (async (input) => {
+			const url = String(input);
+			requests.push(url);
+			if (url.includes('page=2')) {
+				return {
+					ok: true,
+					status: 200,
+					headers: createHeaders(),
+					json: async () => [{ login: 'org-c', name: 'Org C' }],
+				} as Response;
+			}
+			return {
+				ok: true,
+				status: 200,
+				headers: createHeaders({ link: '<https://api.github.com/user/orgs?per_page=100&page=2>; rel="next"' }),
+				json: async () => [
+					{ login: 'org-a', name: 'Org A' },
+					{ login: 'org-b' },
+				],
+			} as Response;
+		}) as FetchFn;
+
+		const service = new GitHubModuleService();
+		const organizations = await service.getUserOrganizations('token');
+
+		assert.deepStrictEqual(organizations, [
+			{ login: 'org-a', name: 'Org A' },
+			{ login: 'org-b', name: undefined },
+			{ login: 'org-c', name: 'Org C' },
+		]);
+		assert.strictEqual(requests.length, 2);
+		assert.strictEqual(requests[0], 'https://api.github.com/user/orgs?per_page=100');
+		assert.strictEqual(requests[1], 'https://api.github.com/user/orgs?per_page=100&page=2');
+	});
+
+	test('getOrganizationMembership returns active membership and treats 404/403 as no permission', async () => {
+		const responses: Array<{ status: number; body?: unknown }> = [
+			{ status: 200, body: { state: 'active', role: 'member' } },
+			{ status: 404 },
+			{ status: 403 },
+			{ status: 500 },
+		];
+		const requests: string[] = [];
+		globalThis.fetch = (async (input) => {
+			requests.push(String(input));
+			const response = responses.shift()!;
+			return {
+				ok: response.status >= 200 && response.status < 300,
+				status: response.status,
+				headers: createHeaders(),
+				json: async () => response.body ?? {},
+			} as Response;
+		}) as FetchFn;
+
+		const service = new GitHubModuleService();
+		const active = await service.getOrganizationMembership('token', 'org-a', 'tester');
+		const notMember = await service.getOrganizationMembership('token', 'org-b', 'tester');
+		const forbidden = await service.getOrganizationMembership('token', 'org-c', 'tester');
+		await assert.rejects(() => service.getOrganizationMembership('token', 'org-d', 'tester'), /500/);
+
+		assert.deepStrictEqual(active, { state: 'active', role: 'member' });
+		assert.strictEqual(notMember, undefined);
+		assert.strictEqual(forbidden, undefined);
+		assert.deepStrictEqual(requests, [
+			'https://api.github.com/orgs/org-a/memberships/tester',
+			'https://api.github.com/orgs/org-b/memberships/tester',
+			'https://api.github.com/orgs/org-c/memberships/tester',
+			'https://api.github.com/orgs/org-d/memberships/tester',
+		]);
+	});
+
 	test('mapRepoToModuleEntry preserves fork and pushed_at fields', () => {
 		const repo = {
 			id: 1,

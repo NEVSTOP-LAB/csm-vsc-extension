@@ -156,3 +156,28 @@ suite('moduleSidebarHtml — 区域折叠（issue #80）', () => {
         assert.ok(html.includes('.list-section.collapsed .section-toggle .section-chevron {'), '折叠后 chevron 旋转');
     });
 });
+suite('moduleSidebarHtml — 本地已管理卡片摘要', () => {
+
+    test('描述为空时不渲染「已从…建立跟踪」摘要与空 summary 区域', () => {
+        const html = renderModuleSidebarHtml(makeState({
+            managedModules: [makeManaged()],
+        }));
+        assert.ok(!html.includes('Tracked from'), '不再显示 Tracked from 占位文案');
+        const localCardStart = html.indexOf('data-role="local-module-card"');
+        assert.ok(localCardStart >= 0, '应渲染本地已管理卡片');
+        const localCard = html.slice(localCardStart);
+        assert.ok(!localCard.includes('class="summary"'), '描述为空时省略 summary 区域');
+        assert.ok(localCard.includes('Path: csm&#47;test-module'), '卡片底部保留路径信息');
+    });
+
+    test('描述非空时正常渲染描述摘要', () => {
+        const html = renderModuleSidebarHtml(makeState({
+            managedModules: [makeManaged({ description: 'Shared HAL module' })],
+        }));
+        const localCardStart = html.indexOf('data-role="local-module-card"');
+        assert.ok(localCardStart >= 0, '应渲染本地已管理卡片');
+        const localCard = html.slice(localCardStart);
+        assert.ok(localCard.includes('class="summary"'), '描述非空时渲染 summary 区域');
+        assert.ok(localCard.includes('Shared HAL module'), '描述作为摘要展示');
+    });
+});

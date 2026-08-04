@@ -377,17 +377,20 @@ function renderModuleCardShell(options: ModuleCardShellOptions): string {
 	const metaRow = options.metaBadges && options.metaBadges.length > 0
 		? `<div class="meta-row">${options.metaBadges.join('')}</div>`
 		: '';
+	// 摘要为空时不渲染 summary 区域，避免出现带 margin 的空 div
+	const summary = options.summary
+		? `<div class="${joinClassNames('summary', ...(options.summaryClasses ?? []))}"${summaryAttributes}>${escapeHtml(options.summary)}</div>`
+		: '';
 
-	return `<article class="${joinClassNames('module-card', ...(options.articleClasses ?? []))}" data-role="${escapeHtml(options.dataRole)}"${articleAttributes}><div class="module-header"><div class="${joinClassNames('module-main', ...(options.mainClasses ?? []))}"${mainAttributes}><div class="title-row"><span class="module-name" title="${escapeHtml(options.title)}">${escapeHtml(options.titleDisplay ?? options.title)}</span>${titleBadges}</div><div class="module-owner">${escapeHtml(options.owner)}</div></div>${options.headerToolsHtml ?? ''}</div><div class="${joinClassNames('summary', ...(options.summaryClasses ?? []))}"${summaryAttributes}>${escapeHtml(options.summary)}</div>${footer}${options.bodyExtrasHtml ?? ''}${metaRow}</article>`;
+	return `<article class="${joinClassNames('module-card', ...(options.articleClasses ?? []))}" data-role="${escapeHtml(options.dataRole)}"${articleAttributes}><div class="module-header"><div class="${joinClassNames('module-main', ...(options.mainClasses ?? []))}"${mainAttributes}><div class="title-row"><span class="module-name" title="${escapeHtml(options.title)}">${escapeHtml(options.titleDisplay ?? options.title)}</span>${titleBadges}</div><div class="module-owner">${escapeHtml(options.owner)}</div></div>${options.headerToolsHtml ?? ''}</div>${summary}${footer}${options.bodyExtrasHtml ?? ''}${metaRow}</article>`;
 }
 
 function renderLocalManagedCard(entry: LocalManagedModuleEntry, state: LocalWorkspaceRenderState): string {
 	const topics = getVisibleModuleTopics(entry.topics).slice(0, 3);
 	const topicBadges = topics.map((topic) => renderBadge(topic));
 	const locked = entry.locked !== false;
-	const summary = entry.description.trim().length > 0
-		? entry.description.trim()
-		: t('localManagedFallbackSummary', { source: entry.source });
+	// 描述为空时摘要留空（不显示“已从 {source} 建立跟踪”占位），路径信息由卡片底部展示
+	const summary = entry.description.trim();
 	const searchText = escapeHtml(getLocalManagedSearchText(entry));
 	const vscodeContext = escapeHtml(JSON.stringify({
 		webviewSection: 'workspaceCard',
