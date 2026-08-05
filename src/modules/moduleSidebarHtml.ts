@@ -470,11 +470,22 @@ function renderLocalManagedCard(entry: LocalManagedModuleEntry, state: LocalWork
 
 function renderLocalUnmanagedCard(entry: LocalUnmanagedFolderEntry, state: LocalWorkspaceRenderState): string {
 	const canLinkRepository = hasAvailableOnlineRepositories(state);
-	const linkButton = `<button class="chip-button" data-action="linkLocalRepository" data-local-item-id="${escapeHtml(entry.id)}">${escapeHtml(t('linkGithubRepository'))}</button>`;
-	const createButton = state.signedIn
-		? `<button class="chip-button callout" data-action="createLocalRepository" data-local-item-id="${escapeHtml(entry.id)}">${escapeHtml(t('createGithubRepository'))}</button>`
-		: '';
-	const actions = `<div class="local-card-actions">${linkButton}${createButton}</div>`;
+	const actions = renderActionToolbar([
+		renderIconActionButton({
+			action: 'linkLocalRepository',
+			localItemId: entry.id,
+			title: t('linkGithubRepository'),
+			icon: 'link',
+		}),
+		...(state.signedIn
+			? [renderIconActionButton({
+				action: 'createLocalRepository',
+				localItemId: entry.id,
+				title: t('createGithubRepository'),
+				icon: 'plus',
+			})]
+			: []),
+	]);
 	const openFolderButton = renderActionToolbar([
 		renderIconActionButton({
 			action: 'openLocalFolder',
@@ -512,7 +523,7 @@ function renderLocalUnmanagedCard(entry: LocalUnmanagedFolderEntry, state: Local
 	});
 }
 
-type IconName = 'close' | 'external' | 'filter' | 'folder' | 'readme' | 'search' | 'update' | 'remove' | 'switch' | 'lock' | 'unlock';
+type IconName = 'close' | 'external' | 'filter' | 'folder' | 'link' | 'plus' | 'readme' | 'search' | 'update' | 'remove' | 'switch' | 'lock' | 'unlock';
 
 function renderIconActionButton(options: { action: string; title: string; icon: IconName; moduleKey?: string; localItemId?: string; disabled?: boolean }): string {
 	const moduleKeyAttribute = options.moduleKey ? ` data-module-key="${escapeHtml(options.moduleKey)}"` : '';
@@ -531,6 +542,10 @@ function renderIcon(name: IconName): string {
 			return '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 4h11"></path><path d="M4.75 8h6.5"></path><path d="M6.75 12h2.5"></path></svg>';
 		case 'folder':
 			return '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 4.5V12a1.5 1.5 0 0 0 1.5 1.5h9A1.5 1.5 0 0 0 14 12V6a1.5 1.5 0 0 0-1.5-1.5H8L6.5 3H3.5A1.5 1.5 0 0 0 2 4.5z"></path></svg>';
+		case 'link':
+			return '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6.75 9.25 9.25 6.75"></path><path d="M5.5 10.5 4 12a2.121 2.121 0 0 1-3-3l3-3a2.121 2.121 0 0 1 3 0"></path><path d="M10.5 5.5 12 4a2.121 2.121 0 0 1 3 3l-3 3a2.121 2.121 0 0 1-3 0"></path></svg>';
+		case 'plus':
+			return '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" aria-hidden="true"><path d="M8 3.5v9"></path><path d="M3.5 8h9"></path></svg>';
 		case 'readme':
 			return '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 2.5h4.5a2 2 0 0 1 2 2V13a2 2 0 0 0-2-2H3z"></path><path d="M13 2.5H8.5a2 2 0 0 0-2 2V13a2 2 0 0 1 2-2H13z"></path></svg>';
 		case 'search':
@@ -1117,33 +1132,11 @@ export function renderModuleSidebarHtml(state: ModuleSidebarRenderState): string
 			align-items: center;
 			gap: 2px;
 		}
-		.local-card-actions {
-			display: flex;
-			align-items: center;
-			gap: 6px;
-			flex-wrap: wrap;
-		}
 		.local-card-hint {
 			margin-top: 6px;
 			font-size: var(--module-font-xs);
 			line-height: 1.4;
 			color: var(--vscode-descriptionForeground);
-		}
-		.chip-button {
-			height: 24px;
-			padding: 0 8px;
-			border-radius: 999px;
-			font-size: var(--module-font-xs);
-			border: 1px solid var(--vscode-panel-border);
-			background: transparent;
-			color: var(--vscode-descriptionForeground);
-		}
-		.chip-button.callout {
-			color: var(--vscode-foreground);
-			background: var(--vscode-editorWidget-background, var(--vscode-button-secondaryBackground));
-		}
-		.chip-button:hover:not(:disabled) {
-			background: var(--vscode-toolbar-hoverBackground, var(--vscode-list-hoverBackground));
 		}
 		.select-toolbar-item {
 			display: inline-flex;
@@ -1835,33 +1828,11 @@ export function renderLocalWorkspaceViewHtml(state: LocalWorkspaceRenderState): 
 			opacity: 0.5;
 			cursor: default;
 		}
-		.local-card-actions {
-			display: flex;
-			align-items: center;
-			gap: 6px;
-			flex-wrap: wrap;
-		}
 		.local-card-hint {
 			margin-top: 6px;
 			font-size: var(--module-font-xs);
 			line-height: 1.4;
 			color: var(--vscode-descriptionForeground);
-		}
-		.chip-button {
-			height: 24px;
-			padding: 0 8px;
-			border-radius: 999px;
-			font-size: var(--module-font-xs);
-			border: 1px solid var(--vscode-panel-border);
-			background: transparent;
-			color: var(--vscode-descriptionForeground);
-		}
-		.chip-button.callout {
-			color: var(--vscode-foreground);
-			background: var(--vscode-editorWidget-background, var(--vscode-button-secondaryBackground));
-		}
-		.chip-button:hover:not(:disabled) {
-			background: var(--vscode-toolbar-hoverBackground, var(--vscode-list-hoverBackground));
 		}
 		.empty-state {
 			padding: 20px 16px;
