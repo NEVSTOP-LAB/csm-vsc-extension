@@ -6,7 +6,7 @@ import * as vscode from 'vscode';
 import { DEFAULT_LOCAL_MODULE_ROOT, IModuleViewProvider, LEGACY_LOCAL_MODULE_CONFIG_FILE, LOCAL_MODULE_CONFIG_FILE } from '../modules';
 import { ModuleManagerController, ModuleManagerControllerDeps } from '../modules/moduleManagerController';
 import { ModuleTreeItem } from '../modules/moduleTreeTypes';
-import { CsmModuleEntry, LocalModuleConfig, ModuleApplyMethod, ModuleCacheSnapshot } from '../modules/types';
+import { CsmModuleEntry, LocalManagedModuleEntry, LocalModuleConfig, LocalUnmanagedFolderEntry, ModuleApplyMethod, ModuleCacheSnapshot } from '../modules/types';
 
 type VscodeMock = typeof vscode & {
 	__getMessageLog: () => Array<{ level: 'info' | 'warn' | 'error'; text: string }>;
@@ -5319,6 +5319,123 @@ suite('ModuleManagerController Regression Tests', () => {
 		assert.strictEqual(removedModuleName, 'module-a');
 		assert.strictEqual(updatedModuleName, 'module-a');
 		assert.deepStrictEqual(selectionUpdates, [['org/module-a'], []]);
+	});
+
+	test('extended webview context commands forward to matching module/folder actions', async () => {
+		const controller = createController() as any;
+		const entry: CsmModuleEntry = {
+			id: 1,
+			owner: 'org',
+			name: 'module-a',
+			description: 'demo',
+			topics: ['csm-modsets'],
+			visibility: 'public',
+			defaultBranch: 'main',
+			repoUrl: 'https://github.com/org/module-a',
+		};
+		controller.availableModules = [entry];
+
+		const openedRepoNames: string[] = [];
+		const toggledStarNames: string[] = [];
+		const toggledLockIds: string[] = [];
+		const toggledSwitchIds: string[] = [];
+		const linkedFolderPaths: string[] = [];
+		const createdFolderPaths: string[] = [];
+
+		controller.openRepositoryCommand = async (target?: CsmModuleEntry) => {
+			if (target) {
+				openedRepoNames.push(target.name);
+			}
+		};
+		controller.toggleStarCommand = async (target?: CsmModuleEntry) => {
+			if (target) {
+				toggledStarNames.push(target.name);
+			}
+		};
+		controller.toggleLocalModuleLockCommand = async (target: LocalManagedModuleEntry) => {
+			toggledLockIds.push(target.id);
+		};
+		controller.switchLocalModuleMethodCommand = async (target: LocalManagedModuleEntry) => {
+			toggledSwitchIds.push(target.id);
+		};
+		controller.linkLocalFolderRepositoryCommand = async (folder: LocalUnmanagedFolderEntry) => {
+			linkedFolderPaths.push(folder.path);
+		};
+		controller.createLocalFolderRepositoryCommand = async (folder: LocalUnmanagedFolderEntry) => {
+			createdFolderPaths.push(folder.path);
+		};
+		controller.resolveWorkspaceContext = async () => ({
+			workspaceFolder: { name: 'repo', uri: vscode.Uri.file('d:/repo') },
+			repoRoot: 'd:/repo',
+			workspaceRoot: 'd:/repo',
+		});
+		controller.tryLoadSidebarLocalModuleConfig = async () => ({
+			version: '2',
+			root: 'csm',
+			configPath: 'd:/repo/csm/csm-modules.yaml',
+			modules: {
+				org__module_copy: {
+					key: 'org__module_copy',
+					name: 'module-copy',
+					owner: 'org',
+					source: 'https://github.com/org/module-copy',
+					method: 'copy',
+					path: 'csm/module-copy',
+					ref: 'abc123',
+					branch: 'main',
+					locked: true,
+				},
+			},
+		});
+
+		await controller.contextOpenRepositoryCommand({ moduleKey: 'org/module-a', webviewSection: 'moduleCard' });
+		await controller.contextStarModuleCommand({ moduleKey: 'org/module-a', webviewSection: 'moduleCard', moduleStarred: false });
+		await controller.contextUnstarModuleCommand({ moduleKey: 'org/module-a', webviewSection: 'moduleCard', moduleStarred: true });
+		await controller.contextLinkLocalRepositoryCommand({ localItemId: 'csm/module-b', localItemPath: 'csm/module-b', webviewSection: 'workspaceCard', workspaceCardKind: 'unmanaged' });
+		await controller.contextCreateLocalRepositoryCommand({ localItemId: 'csm/module-b', localItemPath: 'csm/module-b', webviewSection: 'workspaceCard', workspaceCardKind: 'unmanaged' });
+		await controller.contextLockLocalModuleCommand({ localItemId: 'org__module_copy', localItemPath: 'csm/module-copy', webviewSection: 'workspaceCard', workspaceCardKind: 'managed' });
+		await controller.contextUnlockLocalModuleCommand({ localItemId: 'org__module_copy', localItemPath: 'csm/module-copy', webviewSection: 'workspaceCard', workspaceCardKind: 'managed' });
+		await controller.contextSwitchLocalModuleMethodCommand({ localItemId: 'org__module_copy', localItemPath: 'csm/module-copy', webviewSection: 'workspaceCard', workspaceCardKind: 'managed' });
+
+		assert.deepStrictEqual(openedRepoNames, ['module-a']);
+		assert.deepStrictEqual(toggledStarNames, ['module-a', 'module-a']);
+		assert.deepStrictEqual(toggledLockIds, ['org__module_copy', 'org__module_copy']);
+		assert.deepStrictEqual(toggledSwitchIds, ['org__module_copy']);
+		assert.deepStrictEqual(linkedFolderPaths, ['csm/module-b']);
+		assert.deepStrictEqual(createdFolderPaths, ['csm/module-b']);
+	});
+
+	test('extended webview context commands resolve nothing without identifiers', async () => {
+		const controller = createController() as any;
+		let opened = false;
+		let starred = false;
+		let locked = false;
+		let switched = false;
+		let linked = false;
+		let created = false;
+
+		controller.openRepositoryCommand = async () => { opened = true; };
+		controller.toggleStarCommand = async () => { starred = true; };
+		controller.toggleLocalModuleLockCommand = async () => { locked = true; };
+		controller.switchLocalModuleMethodCommand = async () => { switched = true; };
+		controller.linkLocalFolderRepositoryCommand = async () => { linked = true; };
+		controller.createLocalFolderRepositoryCommand = async () => { created = true; };
+
+		await controller.contextOpenRepositoryCommand({ webviewSection: 'moduleCard' });
+		await controller.contextStarModuleCommand({ webviewSection: 'moduleCard' });
+		await controller.contextUnstarModuleCommand({ webviewSection: 'moduleCard' });
+		await controller.contextLockLocalModuleCommand({ webviewSection: 'workspaceCard' });
+		await controller.contextUnlockLocalModuleCommand({ webviewSection: 'workspaceCard' });
+		await controller.contextSwitchLocalModuleMethodCommand({ webviewSection: 'workspaceCard' });
+		await controller.contextLinkLocalRepositoryCommand({ webviewSection: 'workspaceCard' });
+		await controller.contextCreateLocalRepositoryCommand({ webviewSection: 'workspaceCard' });
+
+		assert.strictEqual(opened, false);
+		assert.strictEqual(starred, false);
+		assert.strictEqual(locked, false);
+		assert.strictEqual(switched, false);
+		assert.strictEqual(linked, false);
+		assert.strictEqual(created, false);
 	});
 
 	test('forkedReposHandling "exclude" (default) hides all fork modules from cache', async () => {

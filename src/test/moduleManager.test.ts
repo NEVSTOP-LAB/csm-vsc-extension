@@ -370,6 +370,17 @@ suite('Module Manager Tests', () => {
 		assert.ok(!rendered?.html.includes('labview-csm'));
 		assert.ok(!rendered?.html.includes('labview'));
 		assert.ok(rendered?.html.includes('data-action="toggleLocalModuleLock"'));
+		// 已管理卡片新增「在 GitHub 中打开」按钮（本地条目，区别于在线卡片的 module-key 按钮）
+		assert.ok(rendered?.html.includes('data-action="openRepository" data-local-item-id="'));
+		// 已管理卡片精简后：切换方式/移除仅保留在右键菜单，不再出现在卡片上
+		assert.ok(!rendered?.html.includes('data-action="switchLocalModuleMethod" data-local-item-id='));
+		assert.ok(!rendered?.html.includes('data-action="removeLocalModule" data-local-item-id='));
+		// data-vscode-context 携带状态键：moduleCard（star/signedIn）、workspaceCard managed（lock/gitAvailable）
+		assert.ok(rendered?.html.includes('moduleStarred&quot;:true'));
+		assert.ok(rendered?.html.includes('signedIn&quot;:true'));
+		assert.ok(rendered?.html.includes('localLocked&quot;:true'));
+		assert.ok(rendered?.html.includes('gitAvailable&quot;:'));
+		assert.ok(rendered?.html.includes('canLinkRepository&quot;:true'));
 		assert.ok(rendered?.html.includes('placeholder="Search modules"'));
 		assert.ok(rendered?.html.includes('data-role="search-box"'));
 		assert.ok(rendered?.html.includes('data-role="filter-button"'));

@@ -249,7 +249,13 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IM
 		// moduleKey 查找 → 动作分发
 		toggleStar: (msg) => this.withModuleEntry(msg, (e) => this.actions.onToggleStar(e)),
 		openReadme: (msg) => this.withModuleEntry(msg, (e) => this.actions.onOpenReadme(e)),
-		openRepository: (msg) => this.withModuleEntry(msg, (e) => this.actions.onOpenRepository?.(e)),
+		openRepository: (msg) => {
+			if (msg.moduleKey) {
+				this.withModuleEntry(msg, (e) => this.actions.onOpenRepository?.(e));
+			} else {
+				this.withLocalManagedEntry(msg, (e) => this.actions.onOpenRepository?.(e.moduleEntry));
+			}
+		},
 		togglePreview: (msg) => this.withModuleEntry(msg, (e) => this.actions.onOpenReadme(e)),
 		applyOne: (msg) => this.withModuleEntry(msg, (e) => this.actions.onApplySelection(e)),
 		removeModule: (msg) => this.withModuleEntry(msg, (e) => this.actions.onRemoveModule(e)),

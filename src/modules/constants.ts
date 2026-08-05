@@ -27,6 +27,14 @@ export const COMMAND_IDS = {
 	contextSelectModule: 'csmModules.contextSelectModule',
 	contextClearModuleSelection: 'csmModules.contextClearModuleSelection',
 	contextOpenFolder: 'csmModules.contextOpenFolder',
+	contextOpenRepository: 'csmModules.contextOpenRepository',
+	contextStarModule: 'csmModules.contextStarModule',
+	contextUnstarModule: 'csmModules.contextUnstarModule',
+	contextLockLocalModule: 'csmModules.contextLockLocalModule',
+	contextUnlockLocalModule: 'csmModules.contextUnlockLocalModule',
+	contextSwitchLocalModuleMethod: 'csmModules.contextSwitchLocalModuleMethod',
+	contextLinkLocalRepository: 'csmModules.contextLinkLocalRepository',
+	contextCreateLocalRepository: 'csmModules.contextCreateLocalRepository',
 	setSortOrder: 'csmModules.setSortOrder',
 } as const;
 

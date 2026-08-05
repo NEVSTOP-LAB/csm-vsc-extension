@@ -399,6 +399,8 @@ function renderLocalManagedCard(entry: LocalManagedModuleEntry, state: LocalWork
 		localItemId: entry.id,
 		localItemPath: entry.path,
 		moduleKey: entry.moduleKey,
+		localLocked: locked,
+		gitAvailable: state.gitAvailable,
 		preventDefaultContextMenuItems: true,
 	}));
 	const actionButtons = renderActionToolbar([
@@ -414,6 +416,14 @@ function renderLocalManagedCard(entry: LocalManagedModuleEntry, state: LocalWork
 			title: t('openReadme'),
 			icon: 'readme',
 		}),
+		...(entry.repoUrl
+			? [renderIconActionButton({
+				action: 'openRepository',
+				localItemId: entry.id,
+				title: t('openOnGitHub'),
+				icon: 'external',
+			})]
+			: []),
 		renderIconActionButton({
 			action: 'updateLocalModule',
 			localItemId: entry.id,
@@ -425,21 +435,6 @@ function renderLocalManagedCard(entry: LocalManagedModuleEntry, state: LocalWork
 			localItemId: entry.id,
 			title: locked ? t('unlockLocalFiles') : t('lockLocalFiles'),
 			icon: locked ? 'lock' : 'unlock',
-		}),
-		renderIconActionButton({
-			action: 'switchLocalModuleMethod',
-			localItemId: entry.id,
-			title: state.gitAvailable
-				? t('switchMethodButton')
-				: t('switchMethodRequiresGitRepo'),
-			icon: 'switch',
-			disabled: !state.gitAvailable,
-		}),
-		renderIconActionButton({
-			action: 'removeLocalModule',
-			localItemId: entry.id,
-			title: t('removeAction'),
-			icon: 'remove',
 		}),
 	]);
 	const metaBadges = [
@@ -504,6 +499,8 @@ function renderLocalUnmanagedCard(entry: LocalUnmanagedFolderEntry, state: Local
 		workspaceCardKind: 'unmanaged',
 		localItemId: entry.id,
 		localItemPath: entry.path,
+		signedIn: state.signedIn,
+		canLinkRepository,
 		preventDefaultContextMenuItems: true,
 	}));
 	return renderModuleCardShell({
@@ -2131,6 +2128,8 @@ function renderModuleCard(entry: CsmModuleEntry, state: ModuleSidebarRenderState
 		moduleKey,
 		moduleApplied: applied,
 		moduleSelected: selected,
+		moduleStarred: entry.starred === true,
+		signedIn: state.signedIn,
 		preventDefaultContextMenuItems: true,
 	}));
 
