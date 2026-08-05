@@ -2663,6 +2663,112 @@ suite('ModuleManagerController Regression Tests', () => {
 		assert.deepStrictEqual(capturedContext?.unmanagedFolders, []);
 	});
 
+	test('mapAppliedModuleKeys matches applied module across config variants', () => {
+		const controller = createController() as any;
+		const onlineEntry: CsmModuleEntry = {
+			id: 1,
+			owner: 'NEVSTOP-LAB',
+			name: 'CSM-HAL-Serial',
+			description: '',
+			topics: [],
+			visibility: 'private',
+			defaultBranch: 'main',
+			repoUrl: 'https://github.com/NEVSTOP-LAB/CSM-HAL-Serial',
+		};
+		controller.availableModules = [onlineEntry];
+
+		const entryTemplate: LocalModuleConfig['modules'][string] = {
+			key: 'NEVSTOP-LAB__CSM-HAL-Serial',
+			name: 'CSM-HAL-Serial',
+			owner: 'NEVSTOP-LAB',
+			source: 'https://github.com/NEVSTOP-LAB/CSM-HAL-Serial',
+			method: 'copy',
+			path: 'csm/HAL/serial',
+			ref: 'abc123',
+			branch: 'main',
+		};
+		const makeConfig = (entry: LocalModuleConfig['modules'][string]): LocalModuleConfig => ({
+			version: '2',
+			root: 'csm',
+			configPath: 'd:/repo/csm/csm-modules.yaml',
+			modules: {
+				'NEVSTOP-LAB__CSM-HAL-Serial': entry,
+			},
+		});
+
+		// 变体 1：扩展 apply 写入的标准条目
+		assert.deepStrictEqual(controller.mapAppliedModuleKeys(makeConfig(entryTemplate)), ['NEVSTOP-LAB/CSM-HAL-Serial']);
+
+		// 变体 2：source 带 .git 后缀
+		assert.deepStrictEqual(
+			controller.mapAppliedModuleKeys(makeConfig({ ...entryTemplate, source: 'https://github.com/NEVSTOP-LAB/CSM-HAL-Serial.git' })),
+			['NEVSTOP-LAB/CSM-HAL-Serial'],
+		);
+
+		// 变体 3：submodule 自动同步解析出空 owner（SSH/本地 URL），source 为 https
+		assert.deepStrictEqual(
+			controller.mapAppliedModuleKeys(makeConfig({ ...entryTemplate, owner: '', source: 'https://github.com/NEVSTOP-LAB/CSM-HAL-Serial' })),
+			['NEVSTOP-LAB/CSM-HAL-Serial'],
+		);
+
+		// 变体 4：GitHub 仓库转移——config 保留转移前的旧 owner/source，在线模块已是新 owner
+		assert.deepStrictEqual(
+			controller.mapAppliedModuleKeys(makeConfig({ ...entryTemplate, owner: 'nevstop', source: 'https://github.com/nevstop/CSM-HAL-Serial' })),
+			['NEVSTOP-LAB/CSM-HAL-Serial'],
+		);
+
+		// 变体 5：submodule 自动同步，owner 为空且 source 为 SSH URL（normalizeModuleSource 支持 SSH 格式）
+		assert.deepStrictEqual(
+			controller.mapAppliedModuleKeys(makeConfig({ ...entryTemplate, owner: '', source: 'git@github.com:NEVSTOP-LAB/CSM-HAL-Serial.git' })),
+			['NEVSTOP-LAB/CSM-HAL-Serial'],
+		);
+	});
+
+	test('mapAppliedModuleKeys does not mis-match duplicate repository names across owners', () => {
+		const controller = createController() as any;
+		controller.availableModules = [
+			{
+				id: 1,
+				owner: 'NEVSTOP-LAB',
+				name: 'CSM-HAL-Serial',
+				description: '',
+				topics: [],
+				visibility: 'private',
+				defaultBranch: 'main',
+				repoUrl: 'https://github.com/NEVSTOP-LAB/CSM-HAL-Serial',
+			},
+			{
+				id: 2,
+				owner: 'other-org',
+				name: 'CSM-HAL-Serial',
+				description: '',
+				topics: [],
+				visibility: 'public',
+				defaultBranch: 'main',
+				repoUrl: 'https://github.com/other-org/CSM-HAL-Serial',
+			},
+		];
+		const config: LocalModuleConfig = {
+			version: '2',
+			root: 'csm',
+			configPath: 'd:/repo/csm/csm-modules.yaml',
+			modules: {
+				'nevstop__CSM-HAL-Serial': {
+					key: 'nevstop__CSM-HAL-Serial',
+					name: 'CSM-HAL-Serial',
+					owner: 'nevstop',
+					source: 'https://github.com/nevstop/CSM-HAL-Serial',
+					method: 'submodule',
+					path: 'csm/HAL/serial',
+					ref: 'abc123',
+					branch: 'main',
+				},
+			},
+		};
+		// 在线列表存在同名不同 owner 的仓库时，禁止凭仓库名 fallback 匹配（避免误配）
+		assert.deepStrictEqual(controller.mapAppliedModuleKeys(config), []);
+	});
+
 	test('refreshSidebarWorkspaceState warns and continues when local module lock sync fails', async () => {
 		const loggedWarnings: string[] = [];
 		const controller = createController(undefined, {

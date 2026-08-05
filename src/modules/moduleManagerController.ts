@@ -3014,7 +3014,9 @@ export class ModuleManagerController {
 			.sort((left, right) => left.path.localeCompare(right.path))
 			.map((configEntry) => {
 				const availableModule = this.findAvailableModule(configEntry.owner, configEntry.name)
-					?? availableModulesBySource.get(this.normalizeModuleSource(configEntry.source));
+					?? availableModulesBySource.get(this.normalizeModuleSource(configEntry.source))
+					// GitHub 仓库转移：config 保留转移前旧 owner/source，仓库名相同即视为同一仓库
+					?? this.findAvailableModuleByRepoName(configEntry.name);
 				const moduleEntry = availableModule ?? this.synthesizeModuleEntry(configEntry);
 				const versionCacheEntry = this.versionCache[`${configEntry.owner}/${configEntry.name}`];
 				const cacheMatchesRef = Boolean(versionCacheEntry && versionCacheEntry.ref === configEntry.ref);
@@ -3401,6 +3403,14 @@ export class ModuleManagerController {
 			const sourceMatch = availableModulesBySource.get(this.normalizeModuleSource(configEntry.source));
 			if (sourceMatch) {
 				appliedModuleKeys.add(sourceMatch);
+				continue;
+			}
+
+			// GitHub 仓库转移：config 保留转移前旧 owner/source，仓库名相同即视为同一仓库
+			// （要求在线列表中该名称唯一，避免同名仓库误配）
+			const transferredMatch = this.findAvailableModuleByRepoName(configEntry.name);
+			if (transferredMatch) {
+				appliedModuleKeys.add(this.getModuleKey(transferredMatch));
 			}
 		}
 
@@ -3408,7 +3418,21 @@ export class ModuleManagerController {
 	}
 
 	private normalizeModuleSource(source: string): string {
-		return source.trim().replace(/\.git$/i, '').replace(/\/+$/g, '').toLowerCase();
+		const trimmed = source.trim().replace(/\.git$/i, '').replace(/\/+$/g, '');
+		// SSH 格式（git@github.com:owner/name）规范化为 https 形式，与在线模块 repoUrl 可比
+		const sshMatch = trimmed.match(/^git@([^:]+):(.+)$/);
+		return (sshMatch ? `https://${sshMatch[1]}/${sshMatch[2]}` : trimmed).toLowerCase();
+	}
+
+	/**
+	 * 按仓库名查找在线模块（大小写不敏感）。GitHub 仓库转移只改 owner、不改仓库名，
+	 * 用于匹配本地 config 中保留的转移前旧地址；仅当该名称在在线列表中唯一时返回，
+	 * 避免同名仓库误配。
+	 */
+	private findAvailableModuleByRepoName(name: string): CsmModuleEntry | undefined {
+		const normalized = name.toLowerCase();
+		const matches = this.availableModules.filter((m) => m.name.toLowerCase() === normalized);
+		return matches.length === 1 ? matches[0] : undefined;
 	}
 
 	private async promptPublishGitIdentity(folderAbsolutePath: string): Promise<Required<GitIdentity> | undefined> {
