@@ -2197,6 +2197,8 @@ export class ModuleManagerController {
 				});
 				this.applyCachedModules(nextSnapshot);
 				await this.refreshSidebarWorkspaceState();
+				// 后台补全已应用模块的版本提交信息（写入缓存，避免之后每次在线查询）
+				void this.backfillAppliedModuleVersionInfos(token);
 				if (fetchResult.etag) {
 					await this.cacheStore.setModuleEtag(fetchResult.etag);
 				}
@@ -2254,6 +2256,8 @@ export class ModuleManagerController {
 			}
 			// 后台检测未应用到本地的模块的远程 LabVIEW 版本
 			void this.detectRemoteVersionsBackground(token);
+			// 后台补全已应用模块的版本提交信息（写入缓存，避免之后每次在线查询）
+			void this.backfillAppliedModuleVersionInfos(token);
 		} catch (error) {
 			const message = getUserFacingErrorMessage(error, 'refresh');
 			this.logger.error(`Failed to refresh modules: ${message}`);
@@ -2319,6 +2323,80 @@ export class ModuleManagerController {
 			});
 			this.applyModuleSort();
 			this.treeDataProvider.setModules(this.availableModules);
+		}
+	}
+
+	/**
+	 * 后台补全本地已应用模块的版本提交信息（commitInfo/date）并写入缓存（issue #37）。
+	 * 仅在用户主动刷新在线目录时触发（避免启动时联网）；限流防止大量 API 请求。
+	 * 补全后重算本地工作区状态，让已应用卡片展示完整的 短SHA · 提交信息 · 相对日期。
+	 */
+	private async backfillAppliedModuleVersionInfos(token: string | undefined): Promise<void> {
+		const workspaceFolder = this.getPreferredWorkspaceFolder();
+		if (!workspaceFolder) {
+			return;
+		}
+		const repoRoot = await this.workspaceModuleService.resolveGitRepositoryRoot(workspaceFolder.uri.fsPath);
+		const workspaceRoot = repoRoot ?? workspaceFolder.uri.fsPath;
+		const config = await this.tryLoadSidebarLocalModuleConfig(workspaceFolder, workspaceRoot);
+		if (!config) {
+			return;
+		}
+
+		// 需要补全的模块：versionCache 中缺少与当前 ref 匹配的提交信息。
+		// release / tag 来源直接展示名称，无需提交信息。
+		const needsBackfill = Object.values(config.modules).filter((entry) => {
+			if (entry.versionKind === 'release') {
+				return false;
+			}
+			if (entry.versionKind === 'tag' && entry.versionRef) {
+				return false;
+			}
+			const cacheEntry = this.versionCache[`${entry.owner}/${entry.name}`];
+			return !(cacheEntry && cacheEntry.ref === entry.ref && cacheEntry.commitInfo);
+		});
+		if (needsBackfill.length === 0) {
+			return;
+		}
+
+		// 限流：每次最多补全 5 个模块，避免大量 API 请求
+		const toBackfill = needsBackfill.slice(0, 5);
+		let cacheChanged = false;
+
+		await Promise.all(
+			toBackfill.map(async (entry) => {
+				try {
+					const moduleEntry = this.findAvailableModule(entry.owner, entry.name)
+						?? this.synthesizeModuleEntry(entry);
+					const resolved = await this.versionService.resolveCommitInfo(
+						entry.owner,
+						entry.name,
+						entry.ref,
+						entry.source,
+						entry.branch || moduleEntry.defaultBranch || 'main',
+						token,
+					);
+					if (resolved.commitInfo || resolved.date) {
+						this.versionCache = {
+							...this.versionCache,
+							[`${entry.owner}/${entry.name}`]: {
+								ref: entry.ref,
+								commitInfo: resolved.commitInfo,
+								date: resolved.date,
+							},
+						};
+						cacheChanged = true;
+					}
+				} catch (error) {
+					this.logger.warn(`Failed to backfill version info for ${entry.owner}/${entry.name}: ${error instanceof Error ? error.message : String(error)}`);
+				}
+			}),
+		);
+
+		if (cacheChanged) {
+			await this.cacheStore.setModuleVersionCache(this.versionCache);
+			// 重新计算本地工作区状态，让已应用卡片读取到新的提交信息
+			await this.refreshSidebarWorkspaceState();
 		}
 	}
 

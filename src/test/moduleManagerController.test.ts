@@ -2769,6 +2769,132 @@ suite('ModuleManagerController Regression Tests', () => {
 		assert.deepStrictEqual(controller.mapAppliedModuleKeys(config), []);
 	});
 
+	test('backfillAppliedModuleVersionInfos caches commit info for applied modules missing from version cache', async () => {
+		const controller = createController() as any;
+		controller.versionCache = {};
+		const config: LocalModuleConfig = {
+			version: '2',
+			root: 'csm',
+			configPath: 'd:/repo/csm/csm-modules.yaml',
+			modules: {
+				'org__module-a': {
+					key: 'org__module-a',
+					name: 'module-a',
+					owner: 'org',
+					source: 'https://github.com/org/module-a',
+					method: 'copy',
+					path: 'csm/module-a',
+					ref: 'abc123',
+					branch: 'main',
+				},
+			},
+		};
+		let resolveCalls = 0;
+		let sidebarRefreshed = false;
+
+		controller.getPreferredWorkspaceFolder = () => ({ name: 'repo', uri: vscode.Uri.file('d:/repo') });
+		controller.workspaceModuleService = {
+			resolveGitRepositoryRoot: async () => 'd:/repo',
+		};
+		controller.tryLoadSidebarLocalModuleConfig = async () => config;
+		controller.versionService = {
+			resolveCommitInfo: async () => {
+				resolveCalls += 1;
+				return { commitInfo: 'Fix serial bug', date: '2026-01-01' };
+			},
+		};
+		controller.refreshSidebarWorkspaceState = async () => {
+			sidebarRefreshed = true;
+			return 0;
+		};
+
+		await controller.backfillAppliedModuleVersionInfos('token');
+
+		assert.strictEqual(resolveCalls, 1);
+		assert.deepStrictEqual(controller.versionCache['org/module-a'], {
+			ref: 'abc123',
+			commitInfo: 'Fix serial bug',
+			date: '2026-01-01',
+		});
+		assert.strictEqual(sidebarRefreshed, true);
+	});
+
+	test('backfillAppliedModuleVersionInfos skips cached, release and tag modules', async () => {
+		const controller = createController() as any;
+		controller.versionCache = {
+			'org/module-cached': {
+				ref: 'def456',
+				commitInfo: 'Already cached',
+				date: '2026-01-02',
+			},
+		};
+		const config: LocalModuleConfig = {
+			version: '2',
+			root: 'csm',
+			configPath: 'd:/repo/csm/csm-modules.yaml',
+			modules: {
+				'org__module-cached': {
+					key: 'org__module-cached',
+					name: 'module-cached',
+					owner: 'org',
+					source: 'https://github.com/org/module-cached',
+					method: 'copy',
+					path: 'csm/module-cached',
+					ref: 'def456',
+					branch: 'main',
+				},
+				'org__module-release': {
+					key: 'org__module-release',
+					name: 'module-release',
+					owner: 'org',
+					source: 'https://github.com/org/module-release',
+					method: 'release',
+					path: 'csm/module-release',
+					ref: '',
+					branch: 'main',
+					versionKind: 'release',
+					releaseName: 'v1.0.0',
+				},
+				'org__module-tag': {
+					key: 'org__module-tag',
+					name: 'module-tag',
+					owner: 'org',
+					source: 'https://github.com/org/module-tag',
+					method: 'copy',
+					path: 'csm/module-tag',
+					ref: 'tagsha',
+					branch: 'main',
+					versionKind: 'tag',
+					versionRef: 'v2.0.0',
+				},
+			},
+		};
+		let resolveCalls = 0;
+
+		controller.getPreferredWorkspaceFolder = () => ({ name: 'repo', uri: vscode.Uri.file('d:/repo') });
+		controller.workspaceModuleService = {
+			resolveGitRepositoryRoot: async () => 'd:/repo',
+		};
+		controller.tryLoadSidebarLocalModuleConfig = async () => config;
+		controller.versionService = {
+			resolveCommitInfo: async () => {
+				resolveCalls += 1;
+				return { commitInfo: 'Should not be called', date: undefined };
+			},
+		};
+		controller.refreshSidebarWorkspaceState = async () => 0;
+
+		await controller.backfillAppliedModuleVersionInfos('token');
+
+		// 已有缓存 / release / tag 模块都不需要补全
+		assert.strictEqual(resolveCalls, 0);
+		assert.deepStrictEqual(controller.versionCache['org/module-cached'], {
+			ref: 'def456',
+			commitInfo: 'Already cached',
+			date: '2026-01-02',
+		});
+	});
+
 	test('refreshSidebarWorkspaceState warns and continues when local module lock sync fails', async () => {
 		const loggedWarnings: string[] = [];
 		const controller = createController(undefined, {
