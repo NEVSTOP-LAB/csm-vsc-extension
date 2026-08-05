@@ -6,7 +6,7 @@ import * as vscode from 'vscode';
 import { DEFAULT_LOCAL_MODULE_ROOT, IModuleViewProvider, LEGACY_LOCAL_MODULE_CONFIG_FILE, LOCAL_MODULE_CONFIG_FILE } from '../modules';
 import { ModuleManagerController, ModuleManagerControllerDeps } from '../modules/moduleManagerController';
 import { ModuleTreeItem } from '../modules/moduleTreeTypes';
-import { CsmModuleEntry, LocalModuleConfig, ModuleApplyMethod, ModuleCacheSnapshot } from '../modules/types';
+import { CsmModuleEntry, LocalManagedModuleEntry, LocalModuleConfig, LocalUnmanagedFolderEntry, ModuleApplyMethod, ModuleCacheSnapshot } from '../modules/types';
 
 type VscodeMock = typeof vscode & {
 	__getMessageLog: () => Array<{ level: 'info' | 'warn' | 'error'; text: string }>;
@@ -2485,6 +2485,76 @@ suite('ModuleManagerController Regression Tests', () => {
 		assert.ok(rendered?.html.includes('module-b'));
 	});
 
+	test('register immediately renders the cached workspace context', async () => {
+		const memento = new FakeMemento();
+		await memento.update('csmModules.cache.modules', createCachedSnapshot([], new Date().toISOString()));
+		await memento.update('csmModules.cache.workspaceContext', {
+			workspaceLabel: 'repo',
+			moduleRoot: 'csm',
+			gitAvailable: true,
+			appliedModuleKeys: [],
+			managedModules: [],
+			unmanagedFolders: [],
+		});
+		const workspaceUpdates: Array<Record<string, unknown>> = [];
+		const controller = createController(memento, {
+			viewProvider: createViewProvider({
+				setWorkspaceContext: (context) => {
+					workspaceUpdates.push(context as unknown as Record<string, unknown>);
+				},
+			}),
+		});
+
+		controller.register([]);
+		await Promise.resolve();
+		await Promise.resolve();
+
+		// 微任务恢复阶段应以缓存工作区状态渲染本地区域（缓存渲染确实发生）
+		assert.strictEqual(workspaceUpdates.some((update) => update.workspaceLabel === 'repo'), true);
+		assert.strictEqual(workspaceUpdates.some((update) => update.moduleRoot === 'csm'), true);
+	});
+
+	test('refreshSidebarWorkspaceState caches the complete workspace context', async () => {
+		const controller = createController(undefined, {
+			viewProvider: createViewProvider(),
+		}) as any;
+		let capturedContext: Record<string, unknown> | undefined;
+		let cachedContext: Record<string, unknown> | undefined;
+
+		controller.availableModules = [];
+		controller.treeDataProvider = createViewProvider({
+			setWorkspaceContext: (context) => {
+				capturedContext = context as unknown as Record<string, unknown>;
+			},
+		});
+		controller.workspaceModuleService = {
+			resolveGitRepositoryRoot: async () => 'd:/repo',
+			loadConfig: async () => ({
+				version: '2',
+				root: 'csm',
+				configPath: 'd:/repo/csm/csm-modules.yaml',
+				modules: {},
+			}),
+			listModuleDirectories: async () => [],
+			syncSubmoduleEntriesToConfig: async (_repoRoot: string, cfg: LocalModuleConfig) => ({ config: cfg, addedCount: 0 }),
+		};
+		controller.cacheStore = {
+			setWorkspaceContextCache: async (context: Record<string, unknown>) => {
+				cachedContext = context;
+			},
+		};
+		controller.computeStaleModuleKeys = async () => [];
+		mocked.__setWorkspaceFolders([{ name: 'repo', uri: vscode.Uri.file('d:/repo') }]);
+		mocked.__setFindFilesResultForPattern(configSearchPattern, [vscode.Uri.file('d:/repo/csm/csm-modules.yaml')]);
+
+		await controller.refreshSidebarWorkspaceState();
+
+		// 完整刷新结果写入缓存，且同步渲染到视图
+		assert.strictEqual(cachedContext?.workspaceLabel, 'repo');
+		assert.strictEqual(cachedContext?.moduleRoot, 'csm');
+		assert.strictEqual(capturedContext?.workspaceLabel, 'repo');
+	});
+
 	test('refreshSidebarWorkspaceState exposes managed and unmanaged folders', async () => {
 		const controller = createController(undefined, {
 			viewProvider: createViewProvider(),
@@ -2661,6 +2731,238 @@ suite('ModuleManagerController Regression Tests', () => {
 			['csm/nested-repo'],
 		);
 		assert.deepStrictEqual(capturedContext?.unmanagedFolders, []);
+	});
+
+	test('mapAppliedModuleKeys matches applied module across config variants', () => {
+		const controller = createController() as any;
+		const onlineEntry: CsmModuleEntry = {
+			id: 1,
+			owner: 'NEVSTOP-LAB',
+			name: 'CSM-HAL-Serial',
+			description: '',
+			topics: [],
+			visibility: 'private',
+			defaultBranch: 'main',
+			repoUrl: 'https://github.com/NEVSTOP-LAB/CSM-HAL-Serial',
+		};
+		controller.availableModules = [onlineEntry];
+
+		const entryTemplate: LocalModuleConfig['modules'][string] = {
+			key: 'NEVSTOP-LAB__CSM-HAL-Serial',
+			name: 'CSM-HAL-Serial',
+			owner: 'NEVSTOP-LAB',
+			source: 'https://github.com/NEVSTOP-LAB/CSM-HAL-Serial',
+			method: 'copy',
+			path: 'csm/HAL/serial',
+			ref: 'abc123',
+			branch: 'main',
+		};
+		const makeConfig = (entry: LocalModuleConfig['modules'][string]): LocalModuleConfig => ({
+			version: '2',
+			root: 'csm',
+			configPath: 'd:/repo/csm/csm-modules.yaml',
+			modules: {
+				'NEVSTOP-LAB__CSM-HAL-Serial': entry,
+			},
+		});
+
+		// 变体 1：扩展 apply 写入的标准条目
+		assert.deepStrictEqual(controller.mapAppliedModuleKeys(makeConfig(entryTemplate)), ['NEVSTOP-LAB/CSM-HAL-Serial']);
+
+		// 变体 2：source 带 .git 后缀
+		assert.deepStrictEqual(
+			controller.mapAppliedModuleKeys(makeConfig({ ...entryTemplate, source: 'https://github.com/NEVSTOP-LAB/CSM-HAL-Serial.git' })),
+			['NEVSTOP-LAB/CSM-HAL-Serial'],
+		);
+
+		// 变体 3：submodule 自动同步解析出空 owner（SSH/本地 URL），source 为 https
+		assert.deepStrictEqual(
+			controller.mapAppliedModuleKeys(makeConfig({ ...entryTemplate, owner: '', source: 'https://github.com/NEVSTOP-LAB/CSM-HAL-Serial' })),
+			['NEVSTOP-LAB/CSM-HAL-Serial'],
+		);
+
+		// 变体 4：GitHub 仓库转移——config 保留转移前的旧 owner/source，在线模块已是新 owner
+		assert.deepStrictEqual(
+			controller.mapAppliedModuleKeys(makeConfig({ ...entryTemplate, owner: 'nevstop', source: 'https://github.com/nevstop/CSM-HAL-Serial' })),
+			['NEVSTOP-LAB/CSM-HAL-Serial'],
+		);
+
+		// 变体 5：submodule 自动同步，owner 为空且 source 为 SSH URL（normalizeModuleSource 支持 SSH 格式）
+		assert.deepStrictEqual(
+			controller.mapAppliedModuleKeys(makeConfig({ ...entryTemplate, owner: '', source: 'git@github.com:NEVSTOP-LAB/CSM-HAL-Serial.git' })),
+			['NEVSTOP-LAB/CSM-HAL-Serial'],
+		);
+	});
+
+	test('mapAppliedModuleKeys does not mis-match duplicate repository names across owners', () => {
+		const controller = createController() as any;
+		controller.availableModules = [
+			{
+				id: 1,
+				owner: 'NEVSTOP-LAB',
+				name: 'CSM-HAL-Serial',
+				description: '',
+				topics: [],
+				visibility: 'private',
+				defaultBranch: 'main',
+				repoUrl: 'https://github.com/NEVSTOP-LAB/CSM-HAL-Serial',
+			},
+			{
+				id: 2,
+				owner: 'other-org',
+				name: 'CSM-HAL-Serial',
+				description: '',
+				topics: [],
+				visibility: 'public',
+				defaultBranch: 'main',
+				repoUrl: 'https://github.com/other-org/CSM-HAL-Serial',
+			},
+		];
+		const config: LocalModuleConfig = {
+			version: '2',
+			root: 'csm',
+			configPath: 'd:/repo/csm/csm-modules.yaml',
+			modules: {
+				'nevstop__CSM-HAL-Serial': {
+					key: 'nevstop__CSM-HAL-Serial',
+					name: 'CSM-HAL-Serial',
+					owner: 'nevstop',
+					source: 'https://github.com/nevstop/CSM-HAL-Serial',
+					method: 'submodule',
+					path: 'csm/HAL/serial',
+					ref: 'abc123',
+					branch: 'main',
+				},
+			},
+		};
+		// 在线列表存在同名不同 owner 的仓库时，禁止凭仓库名 fallback 匹配（避免误配）
+		assert.deepStrictEqual(controller.mapAppliedModuleKeys(config), []);
+	});
+
+	test('backfillAppliedModuleVersionInfos caches commit info for applied modules missing from version cache', async () => {
+		const controller = createController() as any;
+		controller.versionCache = {};
+		const config: LocalModuleConfig = {
+			version: '2',
+			root: 'csm',
+			configPath: 'd:/repo/csm/csm-modules.yaml',
+			modules: {
+				'org__module-a': {
+					key: 'org__module-a',
+					name: 'module-a',
+					owner: 'org',
+					source: 'https://github.com/org/module-a',
+					method: 'copy',
+					path: 'csm/module-a',
+					ref: 'abc123',
+					branch: 'main',
+				},
+			},
+		};
+		let resolveCalls = 0;
+		let sidebarRefreshed = false;
+
+		controller.getPreferredWorkspaceFolder = () => ({ name: 'repo', uri: vscode.Uri.file('d:/repo') });
+		controller.workspaceModuleService = {
+			resolveGitRepositoryRoot: async () => 'd:/repo',
+		};
+		controller.tryLoadSidebarLocalModuleConfig = async () => config;
+		controller.versionService = {
+			resolveCommitInfo: async () => {
+				resolveCalls += 1;
+				return { commitInfo: 'Fix serial bug', date: '2026-01-01' };
+			},
+		};
+		controller.refreshSidebarWorkspaceState = async () => {
+			sidebarRefreshed = true;
+			return 0;
+		};
+
+		await controller.backfillAppliedModuleVersionInfos('token');
+
+		assert.strictEqual(resolveCalls, 1);
+		assert.deepStrictEqual(controller.versionCache['org/module-a'], {
+			ref: 'abc123',
+			commitInfo: 'Fix serial bug',
+			date: '2026-01-01',
+		});
+		assert.strictEqual(sidebarRefreshed, true);
+	});
+
+	test('backfillAppliedModuleVersionInfos skips cached, release and tag modules', async () => {
+		const controller = createController() as any;
+		controller.versionCache = {
+			'org/module-cached': {
+				ref: 'def456',
+				commitInfo: 'Already cached',
+				date: '2026-01-02',
+			},
+		};
+		const config: LocalModuleConfig = {
+			version: '2',
+			root: 'csm',
+			configPath: 'd:/repo/csm/csm-modules.yaml',
+			modules: {
+				'org__module-cached': {
+					key: 'org__module-cached',
+					name: 'module-cached',
+					owner: 'org',
+					source: 'https://github.com/org/module-cached',
+					method: 'copy',
+					path: 'csm/module-cached',
+					ref: 'def456',
+					branch: 'main',
+				},
+				'org__module-release': {
+					key: 'org__module-release',
+					name: 'module-release',
+					owner: 'org',
+					source: 'https://github.com/org/module-release',
+					method: 'release',
+					path: 'csm/module-release',
+					ref: '',
+					branch: 'main',
+					versionKind: 'release',
+					releaseName: 'v1.0.0',
+				},
+				'org__module-tag': {
+					key: 'org__module-tag',
+					name: 'module-tag',
+					owner: 'org',
+					source: 'https://github.com/org/module-tag',
+					method: 'copy',
+					path: 'csm/module-tag',
+					ref: 'tagsha',
+					branch: 'main',
+					versionKind: 'tag',
+					versionRef: 'v2.0.0',
+				},
+			},
+		};
+		let resolveCalls = 0;
+
+		controller.getPreferredWorkspaceFolder = () => ({ name: 'repo', uri: vscode.Uri.file('d:/repo') });
+		controller.workspaceModuleService = {
+			resolveGitRepositoryRoot: async () => 'd:/repo',
+		};
+		controller.tryLoadSidebarLocalModuleConfig = async () => config;
+		controller.versionService = {
+			resolveCommitInfo: async () => {
+				resolveCalls += 1;
+				return { commitInfo: 'Should not be called', date: undefined };
+			},
+		};
+		controller.refreshSidebarWorkspaceState = async () => 0;
+
+		await controller.backfillAppliedModuleVersionInfos('token');
+
+		// 已有缓存 / release / tag 模块都不需要补全
+		assert.strictEqual(resolveCalls, 0);
+		assert.deepStrictEqual(controller.versionCache['org/module-cached'], {
+			ref: 'def456',
+			commitInfo: 'Already cached',
+			date: '2026-01-02',
+		});
 	});
 
 	test('refreshSidebarWorkspaceState warns and continues when local module lock sync fails', async () => {
@@ -5319,6 +5621,123 @@ suite('ModuleManagerController Regression Tests', () => {
 		assert.strictEqual(removedModuleName, 'module-a');
 		assert.strictEqual(updatedModuleName, 'module-a');
 		assert.deepStrictEqual(selectionUpdates, [['org/module-a'], []]);
+	});
+
+	test('extended webview context commands forward to matching module/folder actions', async () => {
+		const controller = createController() as any;
+		const entry: CsmModuleEntry = {
+			id: 1,
+			owner: 'org',
+			name: 'module-a',
+			description: 'demo',
+			topics: ['csm-modsets'],
+			visibility: 'public',
+			defaultBranch: 'main',
+			repoUrl: 'https://github.com/org/module-a',
+		};
+		controller.availableModules = [entry];
+
+		const openedRepoNames: string[] = [];
+		const toggledStarNames: string[] = [];
+		const toggledLockIds: string[] = [];
+		const toggledSwitchIds: string[] = [];
+		const linkedFolderPaths: string[] = [];
+		const createdFolderPaths: string[] = [];
+
+		controller.openRepositoryCommand = async (target?: CsmModuleEntry) => {
+			if (target) {
+				openedRepoNames.push(target.name);
+			}
+		};
+		controller.toggleStarCommand = async (target?: CsmModuleEntry) => {
+			if (target) {
+				toggledStarNames.push(target.name);
+			}
+		};
+		controller.toggleLocalModuleLockCommand = async (target: LocalManagedModuleEntry) => {
+			toggledLockIds.push(target.id);
+		};
+		controller.switchLocalModuleMethodCommand = async (target: LocalManagedModuleEntry) => {
+			toggledSwitchIds.push(target.id);
+		};
+		controller.linkLocalFolderRepositoryCommand = async (folder: LocalUnmanagedFolderEntry) => {
+			linkedFolderPaths.push(folder.path);
+		};
+		controller.createLocalFolderRepositoryCommand = async (folder: LocalUnmanagedFolderEntry) => {
+			createdFolderPaths.push(folder.path);
+		};
+		controller.resolveWorkspaceContext = async () => ({
+			workspaceFolder: { name: 'repo', uri: vscode.Uri.file('d:/repo') },
+			repoRoot: 'd:/repo',
+			workspaceRoot: 'd:/repo',
+		});
+		controller.tryLoadSidebarLocalModuleConfig = async () => ({
+			version: '2',
+			root: 'csm',
+			configPath: 'd:/repo/csm/csm-modules.yaml',
+			modules: {
+				org__module_copy: {
+					key: 'org__module_copy',
+					name: 'module-copy',
+					owner: 'org',
+					source: 'https://github.com/org/module-copy',
+					method: 'copy',
+					path: 'csm/module-copy',
+					ref: 'abc123',
+					branch: 'main',
+					locked: true,
+				},
+			},
+		});
+
+		await controller.contextOpenRepositoryCommand({ moduleKey: 'org/module-a', webviewSection: 'moduleCard' });
+		await controller.contextStarModuleCommand({ moduleKey: 'org/module-a', webviewSection: 'moduleCard', moduleStarred: false });
+		await controller.contextUnstarModuleCommand({ moduleKey: 'org/module-a', webviewSection: 'moduleCard', moduleStarred: true });
+		await controller.contextLinkLocalRepositoryCommand({ localItemId: 'csm/module-b', localItemPath: 'csm/module-b', webviewSection: 'workspaceCard', workspaceCardKind: 'unmanaged' });
+		await controller.contextCreateLocalRepositoryCommand({ localItemId: 'csm/module-b', localItemPath: 'csm/module-b', webviewSection: 'workspaceCard', workspaceCardKind: 'unmanaged' });
+		await controller.contextLockLocalModuleCommand({ localItemId: 'org__module_copy', localItemPath: 'csm/module-copy', webviewSection: 'workspaceCard', workspaceCardKind: 'managed' });
+		await controller.contextUnlockLocalModuleCommand({ localItemId: 'org__module_copy', localItemPath: 'csm/module-copy', webviewSection: 'workspaceCard', workspaceCardKind: 'managed' });
+		await controller.contextSwitchLocalModuleMethodCommand({ localItemId: 'org__module_copy', localItemPath: 'csm/module-copy', webviewSection: 'workspaceCard', workspaceCardKind: 'managed' });
+
+		assert.deepStrictEqual(openedRepoNames, ['module-a']);
+		assert.deepStrictEqual(toggledStarNames, ['module-a', 'module-a']);
+		assert.deepStrictEqual(toggledLockIds, ['org__module_copy', 'org__module_copy']);
+		assert.deepStrictEqual(toggledSwitchIds, ['org__module_copy']);
+		assert.deepStrictEqual(linkedFolderPaths, ['csm/module-b']);
+		assert.deepStrictEqual(createdFolderPaths, ['csm/module-b']);
+	});
+
+	test('extended webview context commands resolve nothing without identifiers', async () => {
+		const controller = createController() as any;
+		let opened = false;
+		let starred = false;
+		let locked = false;
+		let switched = false;
+		let linked = false;
+		let created = false;
+
+		controller.openRepositoryCommand = async () => { opened = true; };
+		controller.toggleStarCommand = async () => { starred = true; };
+		controller.toggleLocalModuleLockCommand = async () => { locked = true; };
+		controller.switchLocalModuleMethodCommand = async () => { switched = true; };
+		controller.linkLocalFolderRepositoryCommand = async () => { linked = true; };
+		controller.createLocalFolderRepositoryCommand = async () => { created = true; };
+
+		await controller.contextOpenRepositoryCommand({ webviewSection: 'moduleCard' });
+		await controller.contextStarModuleCommand({ webviewSection: 'moduleCard' });
+		await controller.contextUnstarModuleCommand({ webviewSection: 'moduleCard' });
+		await controller.contextLockLocalModuleCommand({ webviewSection: 'workspaceCard' });
+		await controller.contextUnlockLocalModuleCommand({ webviewSection: 'workspaceCard' });
+		await controller.contextSwitchLocalModuleMethodCommand({ webviewSection: 'workspaceCard' });
+		await controller.contextLinkLocalRepositoryCommand({ webviewSection: 'workspaceCard' });
+		await controller.contextCreateLocalRepositoryCommand({ webviewSection: 'workspaceCard' });
+
+		assert.strictEqual(opened, false);
+		assert.strictEqual(starred, false);
+		assert.strictEqual(locked, false);
+		assert.strictEqual(switched, false);
+		assert.strictEqual(linked, false);
+		assert.strictEqual(created, false);
 	});
 
 	test('forkedReposHandling "exclude" (default) hides all fork modules from cache', async () => {

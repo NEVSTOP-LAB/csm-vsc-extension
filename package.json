@@ -124,6 +124,48 @@
         "icon": "$(folder-opened)"
       },
       {
+        "command": "csmModules.contextOpenRepository",
+        "title": "%commands.contextOpenRepository.title%",
+        "icon": "$(link-external)"
+      },
+      {
+        "command": "csmModules.contextStarModule",
+        "title": "%commands.contextStarModule.title%",
+        "icon": "$(star-full)",
+        "enablement": "!moduleStarred"
+      },
+      {
+        "command": "csmModules.contextUnstarModule",
+        "title": "%commands.contextUnstarModule.title%",
+        "icon": "$(star-empty)",
+        "enablement": "moduleStarred"
+      },
+      {
+        "command": "csmModules.contextLockLocalModule",
+        "title": "%commands.contextLockLocalModule.title%",
+        "icon": "$(lock)"
+      },
+      {
+        "command": "csmModules.contextUnlockLocalModule",
+        "title": "%commands.contextUnlockLocalModule.title%",
+        "icon": "$(unlock)"
+      },
+      {
+        "command": "csmModules.contextSwitchLocalModuleMethod",
+        "title": "%commands.contextSwitchLocalModuleMethod.title%",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "csmModules.contextLinkLocalRepository",
+        "title": "%commands.contextLinkLocalRepository.title%",
+        "icon": "$(link)"
+      },
+      {
+        "command": "csmModules.contextCreateLocalRepository",
+        "title": "%commands.contextCreateLocalRepository.title%",
+        "icon": "$(repo-create)"
+      },
+      {
         "command": "csmModules.setSortOrder",
         "title": "%commands.setSortOrder.title%",
         "icon": "$(list-ordered)"
@@ -229,19 +271,34 @@
           "group": "1_actions@3"
         },
         {
-          "command": "csmModules.contextOpenReadme",
+          "command": "csmModules.contextOpenRepository",
           "when": "webviewId == csmModules.view && webviewSection == moduleCard",
           "group": "2_open@1"
         },
         {
+          "command": "csmModules.contextOpenReadme",
+          "when": "webviewId == csmModules.view && webviewSection == moduleCard",
+          "group": "2_open@2"
+        },
+        {
+          "command": "csmModules.contextStarModule",
+          "when": "webviewId == csmModules.view && webviewSection == moduleCard && signedIn && !moduleStarred",
+          "group": "3_star@1"
+        },
+        {
+          "command": "csmModules.contextUnstarModule",
+          "when": "webviewId == csmModules.view && webviewSection == moduleCard && signedIn && moduleStarred",
+          "group": "3_star@2"
+        },
+        {
           "command": "csmModules.contextSelectModule",
           "when": "webviewId == csmModules.view && webviewSection == moduleCard && !moduleSelected",
-          "group": "3_selection@1"
+          "group": "4_selection@1"
         },
         {
           "command": "csmModules.contextClearModuleSelection",
           "when": "webviewId == csmModules.view && webviewSection == moduleCard && moduleSelected",
-          "group": "3_selection@2"
+          "group": "4_selection@2"
         },
         {
           "command": "csmModules.contextOpenFolder",
@@ -249,9 +306,24 @@
           "group": "1_actions@1"
         },
         {
-          "command": "csmModules.contextOpenReadme",
+          "command": "csmModules.contextOpenRepository",
           "when": "webviewId == csmModules.view && webviewSection == workspaceCard && workspaceCardKind == managed && moduleKey",
           "group": "1_actions@2"
+        },
+        {
+          "command": "csmModules.contextOpenReadme",
+          "when": "webviewId == csmModules.view && webviewSection == workspaceCard && workspaceCardKind == managed && moduleKey",
+          "group": "1_actions@3"
+        },
+        {
+          "command": "csmModules.contextLinkLocalRepository",
+          "when": "webviewId == csmModules.view && webviewSection == workspaceCard && workspaceCardKind == unmanaged && canLinkRepository",
+          "group": "1_actions@2"
+        },
+        {
+          "command": "csmModules.contextCreateLocalRepository",
+          "when": "webviewId == csmModules.view && webviewSection == workspaceCard && workspaceCardKind == unmanaged && signedIn",
+          "group": "1_actions@3"
         },
         {
           "command": "csmModules.contextUpdateModule",
@@ -259,9 +331,24 @@
           "group": "2_actions@1"
         },
         {
+          "command": "csmModules.contextLockLocalModule",
+          "when": "webviewId == csmModules.view && webviewSection == workspaceCard && workspaceCardKind == managed && !localLocked",
+          "group": "2_actions@2"
+        },
+        {
+          "command": "csmModules.contextUnlockLocalModule",
+          "when": "webviewId == csmModules.view && webviewSection == workspaceCard && workspaceCardKind == managed && localLocked",
+          "group": "2_actions@3"
+        },
+        {
+          "command": "csmModules.contextSwitchLocalModuleMethod",
+          "when": "webviewId == csmModules.view && webviewSection == workspaceCard && workspaceCardKind == managed && gitAvailable",
+          "group": "2_actions@4"
+        },
+        {
           "command": "csmModules.contextRemoveModule",
           "when": "webviewId == csmModules.view && webviewSection == workspaceCard && workspaceCardKind == managed && moduleKey",
-          "group": "2_actions@2"
+          "group": "3_actions@1"
         }
       ],
       "editor/title": [
@@ -308,6 +395,38 @@
         },
         {
           "command": "csmModules.contextOpenFolder",
+          "when": "false"
+        },
+        {
+          "command": "csmModules.contextOpenRepository",
+          "when": "false"
+        },
+        {
+          "command": "csmModules.contextStarModule",
+          "when": "false"
+        },
+        {
+          "command": "csmModules.contextUnstarModule",
+          "when": "false"
+        },
+        {
+          "command": "csmModules.contextLockLocalModule",
+          "when": "false"
+        },
+        {
+          "command": "csmModules.contextUnlockLocalModule",
+          "when": "false"
+        },
+        {
+          "command": "csmModules.contextSwitchLocalModuleMethod",
+          "when": "false"
+        },
+        {
+          "command": "csmModules.contextLinkLocalRepository",
+          "when": "false"
+        },
+        {
+          "command": "csmModules.contextCreateLocalRepository",
           "when": "false"
         },
         {

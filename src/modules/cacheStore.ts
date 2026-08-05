@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { ModuleSortState } from './types';
+import { ModuleSortState, SidebarWorkspaceContext } from './types';
 import { normalizeModuleSortState } from './sort';
 import { CsmModuleEntry, ModuleAuthSnapshot, ModuleCacheSnapshot, ModuleVersionCacheEntry } from './types';
 import { STORAGE_KEYS } from './constants';
@@ -12,6 +12,7 @@ const MODULE_SORT_STATE_KEY = STORAGE_KEYS.moduleSortState;
 const MODULE_LV_VERSION_KEY = STORAGE_KEYS.moduleLvVersion;
 const RECENT_NAMESPACE_BY_WORKSPACE_KEY = STORAGE_KEYS.recentNamespaceByWorkspace;
 const MODULE_VERSION_CACHE_KEY = STORAGE_KEYS.moduleVersionCache;
+const WORKSPACE_CONTEXT_CACHE_KEY = STORAGE_KEYS.workspaceContextCache;
 const MODULE_CACHE_SCHEMA_VERSION = 1;
 
 function isModuleSnapshotShape(value: unknown): value is ModuleCacheSnapshot {
@@ -185,6 +186,23 @@ export class ModuleCacheStore {
 		await this.globalState.update(MODULE_VERSION_CACHE_KEY, cache);
 	}
 
+	/**
+	 * 获取缓存的本地工作区状态（managed/unmanaged 模块、appliedModuleKeys 等）。
+	 * 打开侧边栏视图时先渲染缓存，再后台刷新替换，避免本地工作区慢一拍出现。
+	 */
+	public getWorkspaceContextCache(): SidebarWorkspaceContext | undefined {
+		const value = this.globalState.get<unknown>(WORKSPACE_CONTEXT_CACHE_KEY);
+		if (!value || typeof value !== 'object' || Array.isArray(value)) {
+			return undefined;
+		}
+		return value as SidebarWorkspaceContext;
+	}
+
+	/** 更新本地工作区状态缓存（整体替换，仅保存完整刷新结果）。 */
+	public async setWorkspaceContextCache(context: SidebarWorkspaceContext): Promise<void> {
+		await this.globalState.update(WORKSPACE_CONTEXT_CACHE_KEY, context);
+	}
+
 	public async clear(): Promise<void> {
 		await this.globalState.update(MODULE_CACHE_KEY, undefined);
 		await this.globalState.update(README_CACHE_KEY, undefined);
@@ -194,5 +212,6 @@ export class ModuleCacheStore {
 		await this.globalState.update(MODULE_LV_VERSION_KEY, undefined);
 		await this.globalState.update(RECENT_NAMESPACE_BY_WORKSPACE_KEY, undefined);
 		await this.globalState.update(MODULE_VERSION_CACHE_KEY, undefined);
+		await this.globalState.update(WORKSPACE_CONTEXT_CACHE_KEY, undefined);
 	}
 }

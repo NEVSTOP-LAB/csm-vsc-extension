@@ -27,6 +27,14 @@ export const COMMAND_IDS = {
 	contextSelectModule: 'csmModules.contextSelectModule',
 	contextClearModuleSelection: 'csmModules.contextClearModuleSelection',
 	contextOpenFolder: 'csmModules.contextOpenFolder',
+	contextOpenRepository: 'csmModules.contextOpenRepository',
+	contextStarModule: 'csmModules.contextStarModule',
+	contextUnstarModule: 'csmModules.contextUnstarModule',
+	contextLockLocalModule: 'csmModules.contextLockLocalModule',
+	contextUnlockLocalModule: 'csmModules.contextUnlockLocalModule',
+	contextSwitchLocalModuleMethod: 'csmModules.contextSwitchLocalModuleMethod',
+	contextLinkLocalRepository: 'csmModules.contextLinkLocalRepository',
+	contextCreateLocalRepository: 'csmModules.contextCreateLocalRepository',
 	setSortOrder: 'csmModules.setSortOrder',
 } as const;
 
@@ -55,6 +63,7 @@ export const STORAGE_KEYS = {
 	moduleLvVersion: 'csmModules.cache.lvVersions',
 	recentNamespaceByWorkspace: 'csmModules.cache.recentNamespaceByWorkspace',
 	moduleVersionCache: 'csmModules.cache.moduleVersions',
+	workspaceContextCache: 'csmModules.cache.workspaceContext',
 } as const;
 
 export const CONTEXT_KEYS = {

@@ -44,6 +44,11 @@ type WebviewModuleContext = {
 	moduleKey?: string;
 	moduleApplied?: boolean;
 	moduleSelected?: boolean;
+	moduleStarred?: boolean;
+	signedIn?: boolean;
+	canLinkRepository?: boolean;
+	localLocked?: boolean;
+	gitAvailable?: boolean;
 	webviewSection?: string;
 	workspaceCardKind?: string;
 	localItemId?: string;
@@ -295,6 +300,14 @@ export class ModuleManagerController {
 		this.registerCommand(subscriptions, COMMAND_IDS.contextSelectModule, (context?: WebviewModuleContext) => this.contextSelectModuleCommand(context));
 		this.registerCommand(subscriptions, COMMAND_IDS.contextClearModuleSelection, (context?: WebviewModuleContext) => this.contextClearModuleSelectionCommand(context));
 		this.registerCommand(subscriptions, COMMAND_IDS.contextOpenFolder, (context?: WebviewModuleContext) => this.contextOpenFolderCommand(context));
+		this.registerCommand(subscriptions, COMMAND_IDS.contextOpenRepository, (context?: WebviewModuleContext) => this.contextOpenRepositoryCommand(context));
+		this.registerCommand(subscriptions, COMMAND_IDS.contextStarModule, (context?: WebviewModuleContext) => this.contextStarModuleCommand(context));
+		this.registerCommand(subscriptions, COMMAND_IDS.contextUnstarModule, (context?: WebviewModuleContext) => this.contextUnstarModuleCommand(context));
+		this.registerCommand(subscriptions, COMMAND_IDS.contextLockLocalModule, (context?: WebviewModuleContext) => this.contextLockLocalModuleCommand(context));
+		this.registerCommand(subscriptions, COMMAND_IDS.contextUnlockLocalModule, (context?: WebviewModuleContext) => this.contextUnlockLocalModuleCommand(context));
+		this.registerCommand(subscriptions, COMMAND_IDS.contextSwitchLocalModuleMethod, (context?: WebviewModuleContext) => this.contextSwitchLocalModuleMethodCommand(context));
+		this.registerCommand(subscriptions, COMMAND_IDS.contextLinkLocalRepository, (context?: WebviewModuleContext) => this.contextLinkLocalRepositoryCommand(context));
+		this.registerCommand(subscriptions, COMMAND_IDS.contextCreateLocalRepository, (context?: WebviewModuleContext) => this.contextCreateLocalRepositoryCommand(context));
 		this.registerCommand(subscriptions, COMMAND_IDS.setSortOrder, (field?: ModuleSortField) => this.setSortOrderCommand(field));
 
 		// 延迟读取缓存快照，让 Webview 先渲染骨架屏，提升启动感知速度
@@ -315,6 +328,12 @@ export class ModuleManagerController {
 			}
 			if (typeof this.treeDataProvider.setSortOrder === 'function') {
 				this.treeDataProvider.setSortOrder(this.currentSortState);
+			}
+			// 立即用缓存的工作区状态渲染本地区域，避免首次打开视图时慢一拍；
+			// 后台 refreshSidebarWorkspaceState 完成后会用最新结果覆盖。
+			const cachedWorkspace = this.cacheStore.getWorkspaceContextCache();
+			if (cachedWorkspace && typeof this.treeDataProvider.setWorkspaceContext === 'function') {
+				this.treeDataProvider.setWorkspaceContext(cachedWorkspace);
 			}
 		});
 		void this.setSelectionContexts();
@@ -2184,6 +2203,8 @@ export class ModuleManagerController {
 				});
 				this.applyCachedModules(nextSnapshot);
 				await this.refreshSidebarWorkspaceState();
+				// 后台补全已应用模块的版本提交信息（写入缓存，避免之后每次在线查询）
+				void this.backfillAppliedModuleVersionInfos(token);
 				if (fetchResult.etag) {
 					await this.cacheStore.setModuleEtag(fetchResult.etag);
 				}
@@ -2241,6 +2262,8 @@ export class ModuleManagerController {
 			}
 			// 后台检测未应用到本地的模块的远程 LabVIEW 版本
 			void this.detectRemoteVersionsBackground(token);
+			// 后台补全已应用模块的版本提交信息（写入缓存，避免之后每次在线查询）
+			void this.backfillAppliedModuleVersionInfos(token);
 		} catch (error) {
 			const message = getUserFacingErrorMessage(error, 'refresh');
 			this.logger.error(`Failed to refresh modules: ${message}`);
@@ -2306,6 +2329,80 @@ export class ModuleManagerController {
 			});
 			this.applyModuleSort();
 			this.treeDataProvider.setModules(this.availableModules);
+		}
+	}
+
+	/**
+	 * 后台补全本地已应用模块的版本提交信息（commitInfo/date）并写入缓存（issue #37）。
+	 * 仅在用户主动刷新在线目录时触发（避免启动时联网）；限流防止大量 API 请求。
+	 * 补全后重算本地工作区状态，让已应用卡片展示完整的 短SHA · 提交信息 · 相对日期。
+	 */
+	private async backfillAppliedModuleVersionInfos(token: string | undefined): Promise<void> {
+		const workspaceFolder = this.getPreferredWorkspaceFolder();
+		if (!workspaceFolder) {
+			return;
+		}
+		const repoRoot = await this.workspaceModuleService.resolveGitRepositoryRoot(workspaceFolder.uri.fsPath);
+		const workspaceRoot = repoRoot ?? workspaceFolder.uri.fsPath;
+		const config = await this.tryLoadSidebarLocalModuleConfig(workspaceFolder, workspaceRoot);
+		if (!config) {
+			return;
+		}
+
+		// 需要补全的模块：versionCache 中缺少与当前 ref 匹配的提交信息。
+		// release / tag 来源直接展示名称，无需提交信息。
+		const needsBackfill = Object.values(config.modules).filter((entry) => {
+			if (entry.versionKind === 'release') {
+				return false;
+			}
+			if (entry.versionKind === 'tag' && entry.versionRef) {
+				return false;
+			}
+			const cacheEntry = this.versionCache[`${entry.owner}/${entry.name}`];
+			return !(cacheEntry && cacheEntry.ref === entry.ref && cacheEntry.commitInfo);
+		});
+		if (needsBackfill.length === 0) {
+			return;
+		}
+
+		// 限流：每次最多补全 5 个模块，避免大量 API 请求
+		const toBackfill = needsBackfill.slice(0, 5);
+		let cacheChanged = false;
+
+		await Promise.all(
+			toBackfill.map(async (entry) => {
+				try {
+					const moduleEntry = this.findAvailableModule(entry.owner, entry.name)
+						?? this.synthesizeModuleEntry(entry);
+					const resolved = await this.versionService.resolveCommitInfo(
+						entry.owner,
+						entry.name,
+						entry.ref,
+						entry.source,
+						entry.branch || moduleEntry.defaultBranch || 'main',
+						token,
+					);
+					if (resolved.commitInfo || resolved.date) {
+						this.versionCache = {
+							...this.versionCache,
+							[`${entry.owner}/${entry.name}`]: {
+								ref: entry.ref,
+								commitInfo: resolved.commitInfo,
+								date: resolved.date,
+							},
+						};
+						cacheChanged = true;
+					}
+				} catch (error) {
+					this.logger.warn(`Failed to backfill version info for ${entry.owner}/${entry.name}: ${error instanceof Error ? error.message : String(error)}`);
+				}
+			}),
+		);
+
+		if (cacheChanged) {
+			await this.cacheStore.setModuleVersionCache(this.versionCache);
+			// 重新计算本地工作区状态，让已应用卡片读取到新的提交信息
+			await this.refreshSidebarWorkspaceState();
 		}
 	}
 
@@ -2413,6 +2510,70 @@ export class ModuleManagerController {
 		await this.openLocalFolderByPath(context.localItemPath ?? context.localItemId!);
 	}
 
+	public async contextOpenRepositoryCommand(context?: WebviewModuleContext): Promise<void> {
+		const entry = this.resolveContextModuleEntry(context);
+		if (!entry) {
+			return;
+		}
+		await this.openRepositoryCommand(entry);
+	}
+
+	public async contextStarModuleCommand(context?: WebviewModuleContext): Promise<void> {
+		const entry = this.resolveContextModuleEntry(context);
+		if (!entry) {
+			return;
+		}
+		await this.toggleStarCommand(entry);
+	}
+
+	public async contextUnstarModuleCommand(context?: WebviewModuleContext): Promise<void> {
+		const entry = this.resolveContextModuleEntry(context);
+		if (!entry) {
+			return;
+		}
+		await this.toggleStarCommand(entry);
+	}
+
+	public async contextLockLocalModuleCommand(context?: WebviewModuleContext): Promise<void> {
+		const entry = await this.resolveContextLocalManagedEntry(context);
+		if (!entry) {
+			return;
+		}
+		await this.toggleLocalModuleLockCommand(entry);
+	}
+
+	public async contextUnlockLocalModuleCommand(context?: WebviewModuleContext): Promise<void> {
+		const entry = await this.resolveContextLocalManagedEntry(context);
+		if (!entry) {
+			return;
+		}
+		await this.toggleLocalModuleLockCommand(entry);
+	}
+
+	public async contextSwitchLocalModuleMethodCommand(context?: WebviewModuleContext): Promise<void> {
+		const entry = await this.resolveContextLocalManagedEntry(context);
+		if (!entry) {
+			return;
+		}
+		await this.switchLocalModuleMethodCommand(entry);
+	}
+
+	public async contextLinkLocalRepositoryCommand(context?: WebviewModuleContext): Promise<void> {
+		const folder = await this.resolveContextLocalUnmanagedEntry(context);
+		if (!folder) {
+			return;
+		}
+		await this.linkLocalFolderRepositoryCommand(folder);
+	}
+
+	public async contextCreateLocalRepositoryCommand(context?: WebviewModuleContext): Promise<void> {
+		const folder = await this.resolveContextLocalUnmanagedEntry(context);
+		if (!folder) {
+			return;
+		}
+		await this.createLocalFolderRepositoryCommand(folder);
+	}
+
 	public async openLocalFolderCommand(entry: LocalManagedModuleEntry | LocalUnmanagedFolderEntry): Promise<void> {
 		await this.openLocalFolderByPath(entry.path);
 	}
@@ -2433,6 +2594,71 @@ export class ModuleManagerController {
 			return undefined;
 		}
 		return this.findAvailableModuleByKey(context.moduleKey);
+	}
+
+	/**
+	 * 从右键菜单的 data-vscode-context 解析本地已管理模块条目。
+	 * 通过 localItemId 匹配配置项，并复用在线模块数据构造完整条目。
+	 */
+	private async resolveContextLocalManagedEntry(context?: WebviewModuleContext): Promise<LocalManagedModuleEntry | undefined> {
+		if (!context?.localItemId) {
+			return undefined;
+		}
+		const ctx = await this.resolveWorkspaceContext();
+		if (!ctx) {
+			return undefined;
+		}
+		const { workspaceFolder, workspaceRoot } = ctx;
+		const config = await this.tryLoadSidebarLocalModuleConfig(workspaceFolder, workspaceRoot);
+		if (!config) {
+			return undefined;
+		}
+		const configEntry = config.modules[context.localItemId]
+			?? Object.values(config.modules).find((module) => module.key === context.localItemId);
+		if (!configEntry) {
+			return undefined;
+		}
+		const moduleEntry = this.findAvailableModule(configEntry.owner, configEntry.name)
+			?? this.synthesizeModuleEntry(configEntry);
+		return {
+			id: configEntry.key,
+			kind: 'managed',
+			owner: configEntry.owner,
+			name: configEntry.name,
+			path: configEntry.path,
+			source: configEntry.source,
+			method: configEntry.method,
+			branch: configEntry.branch,
+			ref: configEntry.ref,
+			versionKind: configEntry.versionKind,
+			versionRef: configEntry.versionRef,
+			releaseName: configEntry.releaseName,
+			locked: configEntry.locked !== false,
+			repoUrl: moduleEntry.repoUrl,
+			description: moduleEntry.description,
+			visibility: moduleEntry.visibility,
+			topics: moduleEntry.topics,
+			moduleEntry,
+			moduleKey: this.getModuleKey(moduleEntry),
+			stale: false,
+		};
+	}
+
+	/**
+	 * 从右键菜单的 data-vscode-context 解析本地未管理文件夹条目。
+	 * 名称由路径最后一段推导，供创建/关联仓库流程展示使用。
+	 */
+	private async resolveContextLocalUnmanagedEntry(context?: WebviewModuleContext): Promise<LocalUnmanagedFolderEntry | undefined> {
+		const folderPath = context?.localItemPath ?? context?.localItemId;
+		if (!folderPath || !context) {
+			return undefined;
+		}
+		return {
+			id: context.localItemId ?? folderPath,
+			kind: 'unmanaged',
+			name: folderPath.split('/').pop() ?? folderPath,
+			path: folderPath,
+		};
 	}
 
 	private setContextModuleSelection(context: WebviewModuleContext | undefined, selected: boolean): void {
@@ -2784,6 +3010,10 @@ export class ModuleManagerController {
 			if (typeof this.treeDataProvider.setWorkspaceContext === 'function') {
 				this.treeDataProvider.setWorkspaceContext(context);
 			}
+			// 仅缓存完整刷新结果（含 workspaceLabel），供下次打开视图立即渲染
+			if (context.workspaceLabel) {
+				void this.cacheStore.setWorkspaceContextCache(context);
+			}
 			void this.setSelectionContexts();
 		};
 		const workspaceFolder = this.getPreferredWorkspaceFolder();
@@ -2872,7 +3102,9 @@ export class ModuleManagerController {
 			.sort((left, right) => left.path.localeCompare(right.path))
 			.map((configEntry) => {
 				const availableModule = this.findAvailableModule(configEntry.owner, configEntry.name)
-					?? availableModulesBySource.get(this.normalizeModuleSource(configEntry.source));
+					?? availableModulesBySource.get(this.normalizeModuleSource(configEntry.source))
+					// GitHub 仓库转移：config 保留转移前旧 owner/source，仓库名相同即视为同一仓库
+					?? this.findAvailableModuleByRepoName(configEntry.name);
 				const moduleEntry = availableModule ?? this.synthesizeModuleEntry(configEntry);
 				const versionCacheEntry = this.versionCache[`${configEntry.owner}/${configEntry.name}`];
 				const cacheMatchesRef = Boolean(versionCacheEntry && versionCacheEntry.ref === configEntry.ref);
@@ -3259,6 +3491,14 @@ export class ModuleManagerController {
 			const sourceMatch = availableModulesBySource.get(this.normalizeModuleSource(configEntry.source));
 			if (sourceMatch) {
 				appliedModuleKeys.add(sourceMatch);
+				continue;
+			}
+
+			// GitHub 仓库转移：config 保留转移前旧 owner/source，仓库名相同即视为同一仓库
+			// （要求在线列表中该名称唯一，避免同名仓库误配）
+			const transferredMatch = this.findAvailableModuleByRepoName(configEntry.name);
+			if (transferredMatch) {
+				appliedModuleKeys.add(this.getModuleKey(transferredMatch));
 			}
 		}
 
@@ -3266,7 +3506,21 @@ export class ModuleManagerController {
 	}
 
 	private normalizeModuleSource(source: string): string {
-		return source.trim().replace(/\.git$/i, '').replace(/\/+$/g, '').toLowerCase();
+		const trimmed = source.trim().replace(/\.git$/i, '').replace(/\/+$/g, '');
+		// SSH 格式（git@github.com:owner/name）规范化为 https 形式，与在线模块 repoUrl 可比
+		const sshMatch = trimmed.match(/^git@([^:]+):(.+)$/);
+		return (sshMatch ? `https://${sshMatch[1]}/${sshMatch[2]}` : trimmed).toLowerCase();
+	}
+
+	/**
+	 * 按仓库名查找在线模块（大小写不敏感）。GitHub 仓库转移只改 owner、不改仓库名，
+	 * 用于匹配本地 config 中保留的转移前旧地址；仅当该名称在在线列表中唯一时返回，
+	 * 避免同名仓库误配。
+	 */
+	private findAvailableModuleByRepoName(name: string): CsmModuleEntry | undefined {
+		const normalized = name.toLowerCase();
+		const matches = this.availableModules.filter((m) => m.name.toLowerCase() === normalized);
+		return matches.length === 1 ? matches[0] : undefined;
 	}
 
 	private async promptPublishGitIdentity(folderAbsolutePath: string): Promise<Required<GitIdentity> | undefined> {
