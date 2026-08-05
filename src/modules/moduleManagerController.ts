@@ -329,6 +329,12 @@ export class ModuleManagerController {
 			if (typeof this.treeDataProvider.setSortOrder === 'function') {
 				this.treeDataProvider.setSortOrder(this.currentSortState);
 			}
+			// 立即用缓存的工作区状态渲染本地区域，避免首次打开视图时慢一拍；
+			// 后台 refreshSidebarWorkspaceState 完成后会用最新结果覆盖。
+			const cachedWorkspace = this.cacheStore.getWorkspaceContextCache();
+			if (cachedWorkspace && typeof this.treeDataProvider.setWorkspaceContext === 'function') {
+				this.treeDataProvider.setWorkspaceContext(cachedWorkspace);
+			}
 		});
 		void this.setSelectionContexts();
 		// 后台刷新时在侧边栏标题显示同步状态
@@ -3003,6 +3009,10 @@ export class ModuleManagerController {
 			}
 			if (typeof this.treeDataProvider.setWorkspaceContext === 'function') {
 				this.treeDataProvider.setWorkspaceContext(context);
+			}
+			// 仅缓存完整刷新结果（含 workspaceLabel），供下次打开视图立即渲染
+			if (context.workspaceLabel) {
+				void this.cacheStore.setWorkspaceContextCache(context);
 			}
 			void this.setSelectionContexts();
 		};

@@ -63,6 +63,7 @@ export const STORAGE_KEYS = {
 	moduleLvVersion: 'csmModules.cache.lvVersions',
 	recentNamespaceByWorkspace: 'csmModules.cache.recentNamespaceByWorkspace',
 	moduleVersionCache: 'csmModules.cache.moduleVersions',
+	workspaceContextCache: 'csmModules.cache.workspaceContext',
 } as const;
 
 export const CONTEXT_KEYS = {

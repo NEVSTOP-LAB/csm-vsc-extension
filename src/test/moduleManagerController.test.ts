@@ -2485,6 +2485,76 @@ suite('ModuleManagerController Regression Tests', () => {
 		assert.ok(rendered?.html.includes('module-b'));
 	});
 
+	test('register immediately renders the cached workspace context', async () => {
+		const memento = new FakeMemento();
+		await memento.update('csmModules.cache.modules', createCachedSnapshot([], new Date().toISOString()));
+		await memento.update('csmModules.cache.workspaceContext', {
+			workspaceLabel: 'repo',
+			moduleRoot: 'csm',
+			gitAvailable: true,
+			appliedModuleKeys: [],
+			managedModules: [],
+			unmanagedFolders: [],
+		});
+		const workspaceUpdates: Array<Record<string, unknown>> = [];
+		const controller = createController(memento, {
+			viewProvider: createViewProvider({
+				setWorkspaceContext: (context) => {
+					workspaceUpdates.push(context as unknown as Record<string, unknown>);
+				},
+			}),
+		});
+
+		controller.register([]);
+		await Promise.resolve();
+		await Promise.resolve();
+
+		// 微任务恢复阶段应以缓存工作区状态渲染本地区域（缓存渲染确实发生）
+		assert.strictEqual(workspaceUpdates.some((update) => update.workspaceLabel === 'repo'), true);
+		assert.strictEqual(workspaceUpdates.some((update) => update.moduleRoot === 'csm'), true);
+	});
+
+	test('refreshSidebarWorkspaceState caches the complete workspace context', async () => {
+		const controller = createController(undefined, {
+			viewProvider: createViewProvider(),
+		}) as any;
+		let capturedContext: Record<string, unknown> | undefined;
+		let cachedContext: Record<string, unknown> | undefined;
+
+		controller.availableModules = [];
+		controller.treeDataProvider = createViewProvider({
+			setWorkspaceContext: (context) => {
+				capturedContext = context as unknown as Record<string, unknown>;
+			},
+		});
+		controller.workspaceModuleService = {
+			resolveGitRepositoryRoot: async () => 'd:/repo',
+			loadConfig: async () => ({
+				version: '2',
+				root: 'csm',
+				configPath: 'd:/repo/csm/csm-modules.yaml',
+				modules: {},
+			}),
+			listModuleDirectories: async () => [],
+			syncSubmoduleEntriesToConfig: async (_repoRoot: string, cfg: LocalModuleConfig) => ({ config: cfg, addedCount: 0 }),
+		};
+		controller.cacheStore = {
+			setWorkspaceContextCache: async (context: Record<string, unknown>) => {
+				cachedContext = context;
+			},
+		};
+		controller.computeStaleModuleKeys = async () => [];
+		mocked.__setWorkspaceFolders([{ name: 'repo', uri: vscode.Uri.file('d:/repo') }]);
+		mocked.__setFindFilesResultForPattern(configSearchPattern, [vscode.Uri.file('d:/repo/csm/csm-modules.yaml')]);
+
+		await controller.refreshSidebarWorkspaceState();
+
+		// 完整刷新结果写入缓存，且同步渲染到视图
+		assert.strictEqual(cachedContext?.workspaceLabel, 'repo');
+		assert.strictEqual(cachedContext?.moduleRoot, 'csm');
+		assert.strictEqual(capturedContext?.workspaceLabel, 'repo');
+	});
+
 	test('refreshSidebarWorkspaceState exposes managed and unmanaged folders', async () => {
 		const controller = createController(undefined, {
 			viewProvider: createViewProvider(),

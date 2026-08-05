@@ -201,6 +201,68 @@ suite('Module Manager Tests', () => {
 		assert.strictEqual(store.isModuleSnapshotExpired(snapshot, 1), true);
 	});
 
+	test('ModuleCacheStore stores and clears workspace context cache', async () => {
+		const memento = new FakeMemento();
+		const store = new ModuleCacheStore(memento as never);
+
+		const context = {
+			workspaceLabel: 'repo',
+			moduleRoot: 'csm',
+			gitAvailable: true,
+			appliedModuleKeys: ['org/module-a'],
+			staleModuleKeys: [],
+			managedModules: [
+				{
+					id: 'org__module-a',
+					kind: 'managed',
+					owner: 'org',
+					name: 'module-a',
+					path: 'csm/module-a',
+					source: 'https://github.com/org/module-a',
+					method: 'copy',
+					branch: 'main',
+					ref: 'abc123',
+					repoUrl: 'https://github.com/org/module-a',
+					description: 'demo',
+					visibility: 'public',
+					topics: [],
+					moduleEntry: {
+						id: 1,
+						owner: 'org',
+						name: 'module-a',
+						description: 'demo',
+						topics: [],
+						visibility: 'public',
+						defaultBranch: 'main',
+						repoUrl: 'https://github.com/org/module-a',
+					},
+					stale: false,
+				},
+			],
+			unmanagedFolders: [
+				{
+					id: 'csm/custom-module',
+					kind: 'unmanaged',
+					name: 'custom-module',
+					path: 'csm/custom-module',
+				},
+			],
+			workspaceLabviewVersion: 'lv2020',
+		};
+
+		await store.setWorkspaceContextCache(context as never);
+		const cached = store.getWorkspaceContextCache();
+		assert.ok(cached);
+		assert.strictEqual(cached?.workspaceLabel, 'repo');
+		assert.deepStrictEqual(cached?.appliedModuleKeys, ['org/module-a']);
+		assert.strictEqual(cached?.managedModules?.length, 1);
+		assert.strictEqual(cached?.unmanagedFolders?.length, 1);
+		assert.strictEqual(cached?.workspaceLabviewVersion, 'lv2020');
+
+		await store.clear();
+		assert.strictEqual(store.getWorkspaceContextCache(), undefined);
+	});
+
 	test('ReadmeAssetCache saves and reads markdown to/from cache', async () => {
 		const storageRoot = vscode.Uri.file(path.join(getTempRoot(), `csm-readme-assets-${Date.now()}`));
 		const cache = new ReadmeAssetCache(storageRoot);
