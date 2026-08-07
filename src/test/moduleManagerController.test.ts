@@ -3876,6 +3876,183 @@ suite('ModuleManagerController Regression Tests', () => {
 		assert.ok(infos.some((text) => text.includes('Recorded local-module as a local module.')));
 	});
 
+	test('recordLocalModuleCommand lets the user pick an ancestor folder as the module directory for nested folders', async () => {
+		const workspaceRoot = fs.mkdtempSync(path.join(getTempRoot(), 'csm-record-nested-'));
+		fs.mkdirSync(path.join(workspaceRoot, 'csm', 'patha', 'pathb', 'module'), { recursive: true });
+		const controller = createController() as any;
+		const existingConfig: LocalModuleConfig = {
+			version: '2',
+			root: 'csm',
+			configPath: path.join(workspaceRoot, 'csm', 'csm-modules.yaml'),
+			modules: {},
+		};
+		let writtenConfig: LocalModuleConfig | undefined;
+		controller.workspaceModuleService = {
+			normalizeRootPath: (value: string) => value.replace(/\\/g, '/'),
+			listModuleDirectories: async () => [],
+			withAppliedModule: (config: LocalModuleConfig, entry: LocalModuleConfig['modules'][string]) => ({
+				...config,
+				modules: {
+					...config.modules,
+					[entry.key]: entry,
+				},
+			}),
+			writeConfig: async (config: LocalModuleConfig) => {
+				writtenConfig = config;
+			},
+		};
+		controller.resolveWorkspaceContext = async () => ({
+			workspaceFolder: { name: 'repo', uri: vscode.Uri.file(workspaceRoot) },
+			repoRoot: workspaceRoot,
+			workspaceRoot,
+		});
+		controller.tryLoadSidebarLocalModuleConfig = async () => existingConfig;
+		controller.refreshSidebarWorkspaceState = async () => undefined;
+		// 用户选择祖先目录 csm/patha/pathb 作为模块目录
+		mocked.__setQuickPickResponse({
+			root: {
+				id: 'csm/patha/pathb',
+				kind: 'unmanaged',
+				name: 'pathb',
+				path: 'csm/patha/pathb',
+			},
+		});
+
+		await controller.recordLocalModuleCommand({
+			id: 'csm/patha/pathb/module',
+			kind: 'unmanaged',
+			name: 'module',
+			path: 'csm/patha/pathb/module',
+		});
+
+		assert.deepStrictEqual(writtenConfig?.modules['pathb'], {
+			key: 'pathb',
+			name: 'pathb',
+			owner: '',
+			source: '',
+			method: 'local',
+			path: 'csm/patha/pathb',
+			ref: '',
+			branch: '',
+			locked: false,
+		});
+		const quickPick = mocked.__getLastQuickPick();
+		assert.ok(quickPick, '应弹出目录层级选择器');
+		const quickPickOptions = quickPick?.options as { placeHolder?: string } | undefined;
+		assert.ok(String(quickPickOptions?.placeHolder).includes('Choose the folder level to record as the local module'), '选择器使用记录本地模块文案');
+	});
+
+	test('recordLocalModuleCommand blocks an ancestor folder that contains managed modules', async () => {
+		const workspaceRoot = fs.mkdtempSync(path.join(getTempRoot(), 'csm-record-managed-under-'));
+		fs.mkdirSync(path.join(workspaceRoot, 'csm', 'patha', 'pathb', 'module'), { recursive: true });
+		const controller = createController() as any;
+		const existingConfig: LocalModuleConfig = {
+			version: '2',
+			root: 'csm',
+			configPath: path.join(workspaceRoot, 'csm', 'csm-modules.yaml'),
+			modules: {
+				'org__managed': {
+					key: 'org__managed',
+					name: 'managed',
+					owner: 'org',
+					source: 'https://github.com/org/managed',
+					method: 'copy',
+					path: 'csm/patha/pathb/managed',
+					ref: 'abc',
+					branch: 'main',
+					locked: true,
+				},
+			},
+		};
+		let writtenConfig: LocalModuleConfig | undefined;
+		controller.workspaceModuleService = {
+			normalizeRootPath: (value: string) => value.replace(/\\/g, '/'),
+			listModuleDirectories: async () => [],
+			withAppliedModule: (config: LocalModuleConfig, entry: LocalModuleConfig['modules'][string]) => ({
+				...config,
+				modules: {
+					...config.modules,
+					[entry.key]: entry,
+				},
+			}),
+			writeConfig: async (config: LocalModuleConfig) => {
+				writtenConfig = config;
+			},
+		};
+		controller.resolveWorkspaceContext = async () => ({
+			workspaceFolder: { name: 'repo', uri: vscode.Uri.file(workspaceRoot) },
+			repoRoot: workspaceRoot,
+			workspaceRoot,
+		});
+		controller.tryLoadSidebarLocalModuleConfig = async () => existingConfig;
+		controller.refreshSidebarWorkspaceState = async () => undefined;
+		// 用户选择祖先目录 csm/patha/pathb，其下含已管理模块 managed
+		mocked.__setQuickPickResponse({
+			root: {
+				id: 'csm/patha/pathb',
+				kind: 'unmanaged',
+				name: 'pathb',
+				path: 'csm/patha/pathb',
+			},
+		});
+
+		await controller.recordLocalModuleCommand({
+			id: 'csm/patha/pathb/module',
+			kind: 'unmanaged',
+			name: 'module',
+			path: 'csm/patha/pathb/module',
+		});
+
+		assert.strictEqual(writtenConfig, undefined, '含已管理模块的祖先目录不应写入记录');
+		const warnings = mocked.__getMessageLog().filter((message) => message.level === 'warn').map((message) => message.text);
+		assert.ok(warnings.some((text) => text.includes('Cannot record csm/patha/pathb as a local module because it contains managed CSM modules.')));
+	});
+
+	test('recordLocalModuleCommand aborts when the module directory selection is cancelled', async () => {
+		const workspaceRoot = fs.mkdtempSync(path.join(getTempRoot(), 'csm-record-cancel-'));
+		fs.mkdirSync(path.join(workspaceRoot, 'csm', 'patha', 'pathb', 'module'), { recursive: true });
+		const controller = createController() as any;
+		const existingConfig: LocalModuleConfig = {
+			version: '2',
+			root: 'csm',
+			configPath: path.join(workspaceRoot, 'csm', 'csm-modules.yaml'),
+			modules: {},
+		};
+		let writtenConfig: LocalModuleConfig | undefined;
+		controller.workspaceModuleService = {
+			normalizeRootPath: (value: string) => value.replace(/\\/g, '/'),
+			listModuleDirectories: async () => [],
+			withAppliedModule: (config: LocalModuleConfig, entry: LocalModuleConfig['modules'][string]) => ({
+				...config,
+				modules: {
+					...config.modules,
+					[entry.key]: entry,
+				},
+			}),
+			writeConfig: async (config: LocalModuleConfig) => {
+				writtenConfig = config;
+			},
+		};
+		controller.resolveWorkspaceContext = async () => ({
+			workspaceFolder: { name: 'repo', uri: vscode.Uri.file(workspaceRoot) },
+			repoRoot: workspaceRoot,
+			workspaceRoot,
+		});
+		controller.tryLoadSidebarLocalModuleConfig = async () => existingConfig;
+		controller.refreshSidebarWorkspaceState = async () => undefined;
+		// 取消选择器（返回 undefined）
+		mocked.__setQuickPickResponse(undefined);
+
+		await controller.recordLocalModuleCommand({
+			id: 'csm/patha/pathb/module',
+			kind: 'unmanaged',
+			name: 'module',
+			path: 'csm/patha/pathb/module',
+		});
+
+		assert.strictEqual(writtenConfig, undefined, '取消选择器后不应写入记录');
+	});
+
 	test('recordLocalModuleCommand warns when the folder is already recorded', async () => {
 		const workspaceRoot = fs.mkdtempSync(path.join(getTempRoot(), 'csm-record-conflict-'));
 		fs.mkdirSync(path.join(workspaceRoot, 'csm', 'local-module'), { recursive: true });

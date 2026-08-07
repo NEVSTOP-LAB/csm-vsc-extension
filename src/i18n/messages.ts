@@ -689,6 +689,22 @@ const messages = {
 		en: 'Cannot create a repository rooted at {folder} because it contains managed CSM modules. Choose a more specific folder instead.',
 		zh: '无法以 {folder} 为根创建仓库，因为该目录下包含已管理的 CSM 模块，请选择更具体的目录。',
 	},
+	recordLocalModuleDirectorySelectionPlaceholder: {
+		en: 'Choose the folder level to record as the local module.',
+		zh: '请选择将哪一级目录记录为本地模块。',
+	},
+	recordLocalModuleCurrentModuleDetail: {
+		en: 'Record this module folder only.',
+		zh: '仅将该模块目录记录为本地模块。',
+	},
+	recordLocalModuleAncestorDetail: {
+		en: 'Record this folder as the local module (contains {count} module folder(s)).',
+		zh: '以该目录作为本地模块记录（包含 {count} 个模块目录）。',
+	},
+	recordLocalModuleContainsManagedModules: {
+		en: 'Cannot record {folder} as a local module because it contains managed CSM modules. Choose a more specific folder instead.',
+		zh: '无法将 {folder} 记录为本地模块，因为该目录下包含已管理的 CSM 模块，请选择更具体的目录。',
+	},
 	createRepositoryConfirmation: {
 		en: 'Create a {visibility} GitHub repository named {owner}/{name} for local folder {folder}, then publish the current folder contents? Topics: {topics}',
 		zh: '要为本地文件夹 {folder} 创建属于 {owner} 的名为 {name} 的 {visibility} GitHub 仓库，并发布当前文件夹内容吗？Topics：{topics}',

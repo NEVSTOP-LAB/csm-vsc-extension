@@ -1354,6 +1354,7 @@ export class ModuleManagerController {
 	/**
 	 * 把未管理文件夹记录为「本地模块」（method: local，无 GitHub 源）。
 	 * 仅在配置中登记路径，不改变目录内容；记录后该目录不再作为未管理文件夹展示。
+	 * 深层目录（如 csm/patha/pathb/module）会先选择以哪一级目录作为模块目录。
 	 */
 	public async recordLocalModuleCommand(folder: LocalUnmanagedFolderEntry): Promise<void> {
 		const ctx = await this.resolveWorkspaceContext();
@@ -1362,17 +1363,6 @@ export class ModuleManagerController {
 			return;
 		}
 		const { workspaceFolder, workspaceRoot } = ctx;
-		const folderAbsolutePath = path.resolve(workspaceRoot, folder.path);
-		try {
-			const stat = await fs.stat(folderAbsolutePath);
-			if (!stat.isDirectory()) {
-				void vscode.window.showWarningMessage(t('localFolderMissing', { folder: folder.path }));
-				return;
-			}
-		} catch {
-			void vscode.window.showWarningMessage(t('localFolderMissing', { folder: folder.path }));
-			return;
-		}
 
 		let config = await this.tryLoadSidebarLocalModuleConfig(workspaceFolder, workspaceRoot);
 		if (!config) {
@@ -1383,25 +1373,52 @@ export class ModuleManagerController {
 			config = initialized;
 		}
 
+		// 深层目录时先询问以哪一级目录作为模块目录（当前模块 vs 各级祖先目录）
+		const targetFolder = await this.promptLocalModuleDirectorySelection(
+			folder,
+			config.root,
+			config,
+			workspaceRoot,
+		);
+		if (!targetFolder) {
+			return;
+		}
+		if (config && this.containsManagedModuleUnder(config, targetFolder.path)) {
+			void vscode.window.showWarningMessage(t('recordLocalModuleContainsManagedModules', { folder: targetFolder.path }));
+			return;
+		}
+
+		const folderAbsolutePath = path.resolve(workspaceRoot, targetFolder.path);
+		try {
+			const stat = await fs.stat(folderAbsolutePath);
+			if (!stat.isDirectory()) {
+				void vscode.window.showWarningMessage(t('localFolderMissing', { folder: targetFolder.path }));
+				return;
+			}
+		} catch {
+			void vscode.window.showWarningMessage(t('localFolderMissing', { folder: targetFolder.path }));
+			return;
+		}
+
 		// 检查目标路径是否已被记录（无论已管理还是本地模块）
-		const targetPath = this.workspaceModuleService.normalizeRootPath(folder.path);
+		const targetPath = this.workspaceModuleService.normalizeRootPath(targetFolder.path);
 		const existingEntry = Object.values(config.modules).find(
 			(entry) => this.workspaceModuleService.normalizeRootPath(entry.path) === targetPath,
 		);
 		if (existingEntry) {
-			void vscode.window.showWarningMessage(t('recordLocalModuleConflict', { path: folder.path }));
+			void vscode.window.showWarningMessage(t('recordLocalModuleConflict', { path: targetFolder.path }));
 			return;
 		}
 
-		const key = folder.name;
+		const key = targetFolder.name;
 		if (config.modules[key]) {
-			void vscode.window.showWarningMessage(t('recordLocalModuleConflict', { path: folder.path }));
+			void vscode.window.showWarningMessage(t('recordLocalModuleConflict', { path: targetFolder.path }));
 			return;
 		}
 
 		const entry: LocalModuleConfigEntry = {
 			key,
-			name: folder.name,
+			name: targetFolder.name,
 			owner: '',
 			source: '',
 			method: 'local',
@@ -1413,10 +1430,10 @@ export class ModuleManagerController {
 		try {
 			config = this.workspaceModuleService.withAppliedModule(config, entry);
 			await this.workspaceModuleService.writeConfig(config);
-			void vscode.window.showInformationMessage(t('recordLocalModuleSuccess', { name: folder.name }));
+			void vscode.window.showInformationMessage(t('recordLocalModuleSuccess', { name: targetFolder.name }));
 		} catch (error) {
 			const message = getUserFacingErrorMessage(error, 'config');
-			this.logger.error(`Failed to record local module ${folder.path}: ${message}`);
+			this.logger.error(`Failed to record local module ${targetFolder.path}: ${message}`);
 			void vscode.window.showErrorMessage(t('recordLocalModuleFailed', { message }));
 			return;
 		}
@@ -3773,14 +3790,19 @@ export class ModuleManagerController {
 
 	/**
 	 * 当未管理模块位于 moduleRoot 更深层级时（如 csm/DMM/NI），先询问用户以哪一级
-	 * 目录作为新 GitHub 仓库的根：当前模块自身，或其各级祖先目录（如 DMM，可把
-	 * NI/Agilent 等兄弟模块一并纳入仓库）。模块直接位于 moduleRoot 下时无需询问。
+	 * 目录作为目标目录：当前模块自身，或其各级祖先目录（如 DMM）。模块直接位于
+	 * moduleRoot 下时无需询问。创建 GitHub 仓库与记录本地模块两处复用。
 	 */
-	private async promptRepositoryRootSelection(
+	private async promptDirectoryLevelSelection(
 		folder: LocalUnmanagedFolderEntry,
 		moduleRoot: string,
 		config: LocalModuleConfig | undefined,
 		workspaceRoot: string,
+		labels: {
+			placeholder: string;
+			currentModuleDetail: string;
+			ancestorDetail: (count: string) => string;
+		},
 	): Promise<LocalUnmanagedFolderEntry | undefined> {
 		const normalizedModuleRoot = this.workspaceModuleService.normalizeRootPath(moduleRoot);
 		const normalizedFolderPath = this.workspaceModuleService.normalizeRootPath(folder.path);
@@ -3803,7 +3825,7 @@ export class ModuleManagerController {
 			{
 				label: folder.name,
 				description: folder.path,
-				detail: t('createRepositoryRootCurrentModuleDetail'),
+				detail: labels.currentModuleDetail,
 				picked: true,
 				root: folder,
 			},
@@ -3826,13 +3848,13 @@ export class ModuleManagerController {
 				childModuleCount = discovered.length;
 			} catch (error) {
 				this.logger.warn(
-					`Failed to count module folders under ${ancestorPath} for repository root selection: ${error instanceof Error ? error.message : String(error)}`,
+					`Failed to count module folders under ${ancestorPath} for directory level selection: ${error instanceof Error ? error.message : String(error)}`,
 				);
 			}
 			items.push({
 				label: ancestorSegments[ancestorSegments.length - 1],
 				description: ancestorPath,
-				detail: t('createRepositoryRootAncestorDetail', { count: String(childModuleCount) }),
+				detail: labels.ancestorDetail(String(childModuleCount)),
 				root: {
 					id: ancestorPath,
 					kind: 'unmanaged',
@@ -3843,9 +3865,37 @@ export class ModuleManagerController {
 		}
 
 		const pick = await vscode.window.showQuickPick(items, {
-			placeHolder: t('createRepositoryRootSelectionPlaceholder'),
+			placeHolder: labels.placeholder,
 		});
 		return pick?.root;
+	}
+
+	/** 创建 GitHub 仓库时的目录层级选择（文案为建仓场景）。 */
+	private async promptRepositoryRootSelection(
+		folder: LocalUnmanagedFolderEntry,
+		moduleRoot: string,
+		config: LocalModuleConfig | undefined,
+		workspaceRoot: string,
+	): Promise<LocalUnmanagedFolderEntry | undefined> {
+		return this.promptDirectoryLevelSelection(folder, moduleRoot, config, workspaceRoot, {
+			placeholder: t('createRepositoryRootSelectionPlaceholder'),
+			currentModuleDetail: t('createRepositoryRootCurrentModuleDetail'),
+			ancestorDetail: (count) => t('createRepositoryRootAncestorDetail', { count }),
+		});
+	}
+
+	/** 记录本地模块时的目录层级选择（文案为记录场景）。 */
+	private async promptLocalModuleDirectorySelection(
+		folder: LocalUnmanagedFolderEntry,
+		moduleRoot: string,
+		config: LocalModuleConfig | undefined,
+		workspaceRoot: string,
+	): Promise<LocalUnmanagedFolderEntry | undefined> {
+		return this.promptDirectoryLevelSelection(folder, moduleRoot, config, workspaceRoot, {
+			placeholder: t('recordLocalModuleDirectorySelectionPlaceholder'),
+			currentModuleDetail: t('recordLocalModuleCurrentModuleDetail'),
+			ancestorDetail: (count) => t('recordLocalModuleAncestorDetail', { count }),
+		});
 	}
 
 	/** 判断目标根目录（严格子路径）下是否包含已管理的 CSM 模块。 */
