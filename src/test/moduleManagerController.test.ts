@@ -3818,6 +3818,215 @@ suite('ModuleManagerController Regression Tests', () => {
 		assert.strictEqual(renderedModules[renderedModules.length - 1]?.[0]?.starred, true);
 	});
 
+	test('recordLocalModuleCommand records an unmanaged folder as method=local and writes config', async () => {
+		const workspaceRoot = fs.mkdtempSync(path.join(getTempRoot(), 'csm-record-local-'));
+		fs.mkdirSync(path.join(workspaceRoot, 'csm', 'local-module'), { recursive: true });
+		const controller = createController() as any;
+		const existingConfig: LocalModuleConfig = {
+			version: '2',
+			root: 'csm',
+			configPath: path.join(workspaceRoot, 'csm', 'csm-modules.yaml'),
+			modules: {},
+		};
+		let writtenConfig: LocalModuleConfig | undefined;
+		let sidebarRefreshed = false;
+		controller.workspaceModuleService = {
+			normalizeRootPath: (value: string) => value.replace(/\\/g, '/'),
+			withAppliedModule: (config: LocalModuleConfig, entry: LocalModuleConfig['modules'][string]) => ({
+				...config,
+				modules: {
+					...config.modules,
+					[entry.key]: entry,
+				},
+			}),
+			writeConfig: async (config: LocalModuleConfig) => {
+				writtenConfig = config;
+			},
+		};
+		controller.resolveWorkspaceContext = async () => ({
+			workspaceFolder: { name: 'repo', uri: vscode.Uri.file(workspaceRoot) },
+			repoRoot: workspaceRoot,
+			workspaceRoot,
+		});
+		controller.tryLoadSidebarLocalModuleConfig = async () => existingConfig;
+		controller.refreshSidebarWorkspaceState = async () => {
+			sidebarRefreshed = true;
+		};
+
+		await controller.recordLocalModuleCommand({
+			id: 'csm/local-module',
+			kind: 'unmanaged',
+			name: 'local-module',
+			path: 'csm/local-module',
+		});
+
+		assert.deepStrictEqual(writtenConfig?.modules['local-module'], {
+			key: 'local-module',
+			name: 'local-module',
+			owner: '',
+			source: '',
+			method: 'local',
+			path: 'csm/local-module',
+			ref: '',
+			branch: '',
+			locked: false,
+		});
+		assert.strictEqual(sidebarRefreshed, true);
+		const infos = mocked.__getMessageLog().filter((message) => message.level === 'info').map((message) => message.text);
+		assert.ok(infos.some((text) => text.includes('Recorded local-module as a local module.')));
+	});
+
+	test('recordLocalModuleCommand warns when the folder is already recorded', async () => {
+		const workspaceRoot = fs.mkdtempSync(path.join(getTempRoot(), 'csm-record-conflict-'));
+		fs.mkdirSync(path.join(workspaceRoot, 'csm', 'local-module'), { recursive: true });
+		const controller = createController() as any;
+		const existingConfig: LocalModuleConfig = {
+			version: '2',
+			root: 'csm',
+			configPath: path.join(workspaceRoot, 'csm', 'csm-modules.yaml'),
+			modules: {
+				'local-module': {
+					key: 'local-module',
+					name: 'local-module',
+					owner: '',
+					source: '',
+					method: 'local',
+					path: 'csm/local-module',
+					ref: '',
+					branch: '',
+					locked: false,
+				},
+			},
+		};
+		controller.workspaceModuleService = {
+			normalizeRootPath: (value: string) => value.replace(/\\/g, '/'),
+			withAppliedModule: (config: LocalModuleConfig, entry: LocalModuleConfig['modules'][string]) => ({
+				...config,
+				modules: {
+					...config.modules,
+					[entry.key]: entry,
+				},
+			}),
+			writeConfig: async () => undefined,
+		};
+		controller.resolveWorkspaceContext = async () => ({
+			workspaceFolder: { name: 'repo', uri: vscode.Uri.file(workspaceRoot) },
+			repoRoot: workspaceRoot,
+			workspaceRoot,
+		});
+		controller.tryLoadSidebarLocalModuleConfig = async () => existingConfig;
+		controller.refreshSidebarWorkspaceState = async () => undefined;
+
+		await controller.recordLocalModuleCommand({
+			id: 'csm/local-module',
+			kind: 'unmanaged',
+			name: 'local-module',
+			path: 'csm/local-module',
+		});
+
+		const warnings = mocked.__getMessageLog().filter((message) => message.level === 'warn').map((message) => message.text);
+		assert.ok(warnings.some((text) => text.includes('The folder csm/local-module is already recorded as a module.')));
+	});
+
+	test('recordLocalModuleCommand warns when the folder is missing on disk', async () => {
+		const workspaceRoot = fs.mkdtempSync(path.join(getTempRoot(), 'csm-record-missing-'));
+		const controller = createController() as any;
+		const existingConfig: LocalModuleConfig = {
+			version: '2',
+			root: 'csm',
+			configPath: path.join(workspaceRoot, 'csm', 'csm-modules.yaml'),
+			modules: {},
+		};
+		controller.workspaceModuleService = {
+			normalizeRootPath: (value: string) => value.replace(/\\/g, '/'),
+		};
+		controller.resolveWorkspaceContext = async () => ({
+			workspaceFolder: { name: 'repo', uri: vscode.Uri.file(workspaceRoot) },
+			repoRoot: workspaceRoot,
+			workspaceRoot,
+		});
+		controller.tryLoadSidebarLocalModuleConfig = async () => existingConfig;
+
+		await controller.recordLocalModuleCommand({
+			id: 'csm/missing',
+			kind: 'unmanaged',
+			name: 'missing',
+			path: 'csm/missing',
+		});
+
+		const warnings = mocked.__getMessageLog().filter((message) => message.level === 'warn').map((message) => message.text);
+		assert.ok(warnings.some((text) => text.includes('The local folder csm/missing no longer exists.')));
+	});
+
+	test('removeLocalModuleRecordCommand removes only the config record and keeps the folder', async () => {
+		const workspaceRoot = fs.mkdtempSync(path.join(getTempRoot(), 'csm-remove-local-'));
+		fs.mkdirSync(path.join(workspaceRoot, 'csm', 'local-module'), { recursive: true });
+		const controller = createController() as any;
+		const existingConfig: LocalModuleConfig = {
+			version: '2',
+			root: 'csm',
+			configPath: path.join(workspaceRoot, 'csm', 'csm-modules.yaml'),
+			modules: {
+				'local-module': {
+					key: 'local-module',
+					name: 'local-module',
+					owner: '',
+					source: '',
+					method: 'local',
+					path: 'csm/local-module',
+					ref: '',
+					branch: '',
+					locked: false,
+				},
+			},
+		};
+		let writtenConfig: LocalModuleConfig | undefined;
+		let sidebarRefreshed = false;
+		controller.workspaceModuleService = {
+			normalizeRootPath: (value: string) => value.replace(/\\/g, '/'),
+			withoutModule: (config: LocalModuleConfig, moduleKey: string) => {
+				const { [moduleKey]: _omitted, ...rest } = config.modules;
+				return { ...config, modules: rest };
+			},
+			writeConfig: async (config: LocalModuleConfig) => {
+				writtenConfig = config;
+			},
+		};
+		controller.resolveWorkspaceContext = async () => ({
+			workspaceFolder: { name: 'repo', uri: vscode.Uri.file(workspaceRoot) },
+			repoRoot: workspaceRoot,
+			workspaceRoot,
+		});
+		controller.tryLoadSidebarLocalModuleConfig = async () => existingConfig;
+		controller.refreshSidebarWorkspaceState = async () => {
+			sidebarRefreshed = true;
+		};
+		mocked.__setWarningMessageResponse('Remove Record');
+
+		await controller.removeLocalModuleRecordCommand({
+			id: 'local-module',
+			kind: 'local',
+			name: 'local-module',
+			path: 'csm/local-module',
+			source: '',
+			method: 'local',
+			branch: '',
+			ref: '',
+			repoUrl: '',
+			description: '',
+			visibility: 'public',
+			topics: [],
+			moduleEntry: {} as CsmModuleEntry,
+			stale: false,
+		});
+
+		assert.deepStrictEqual(writtenConfig?.modules, {});
+		assert.strictEqual(sidebarRefreshed, true);
+		assert.ok(fs.existsSync(path.join(workspaceRoot, 'csm', 'local-module')), '移除记录后目录内容保留');
+		const infos = mocked.__getMessageLog().filter((message) => message.level === 'info').map((message) => message.text);
+		assert.ok(infos.some((text) => text.includes('Removed local module record for local-module.')));
+	});
+
 	test('createLocalFolderRepositoryCommand runs the GitHub creation wizard with default topics', async () => {
 		const workspaceRoot = fs.mkdtempSync(path.join(getTempRoot(), 'csm-share-module-'));
 		fs.mkdirSync(path.join(workspaceRoot, 'csm', 'custom-module'), { recursive: true });
@@ -5643,6 +5852,8 @@ suite('ModuleManagerController Regression Tests', () => {
 		const toggledSwitchIds: string[] = [];
 		const linkedFolderPaths: string[] = [];
 		const createdFolderPaths: string[] = [];
+		const recordedFolderPaths: string[] = [];
+		const removedRecordIds: string[] = [];
 
 		controller.openRepositoryCommand = async (target?: CsmModuleEntry) => {
 			if (target) {
@@ -5666,6 +5877,12 @@ suite('ModuleManagerController Regression Tests', () => {
 		controller.createLocalFolderRepositoryCommand = async (folder: LocalUnmanagedFolderEntry) => {
 			createdFolderPaths.push(folder.path);
 		};
+		controller.recordLocalModuleCommand = async (folder: LocalUnmanagedFolderEntry) => {
+			recordedFolderPaths.push(folder.path);
+		};
+		controller.removeLocalModuleRecordCommand = async (target: LocalManagedModuleEntry) => {
+			removedRecordIds.push(target.id);
+		};
 		controller.resolveWorkspaceContext = async () => ({
 			workspaceFolder: { name: 'repo', uri: vscode.Uri.file('d:/repo') },
 			repoRoot: 'd:/repo',
@@ -5687,6 +5904,17 @@ suite('ModuleManagerController Regression Tests', () => {
 					branch: 'main',
 					locked: true,
 				},
+				local_module: {
+					key: 'local_module',
+					name: 'local_module',
+					owner: '',
+					source: '',
+					method: 'local',
+					path: 'csm/local_module',
+					ref: '',
+					branch: '',
+					locked: false,
+				},
 			},
 		});
 
@@ -5698,6 +5926,8 @@ suite('ModuleManagerController Regression Tests', () => {
 		await controller.contextLockLocalModuleCommand({ localItemId: 'org__module_copy', localItemPath: 'csm/module-copy', webviewSection: 'workspaceCard', workspaceCardKind: 'managed' });
 		await controller.contextUnlockLocalModuleCommand({ localItemId: 'org__module_copy', localItemPath: 'csm/module-copy', webviewSection: 'workspaceCard', workspaceCardKind: 'managed' });
 		await controller.contextSwitchLocalModuleMethodCommand({ localItemId: 'org__module_copy', localItemPath: 'csm/module-copy', webviewSection: 'workspaceCard', workspaceCardKind: 'managed' });
+		await controller.contextRecordLocalModuleCommand({ localItemId: 'csm/module-b', localItemPath: 'csm/module-b', webviewSection: 'workspaceCard', workspaceCardKind: 'unmanaged' });
+		await controller.contextRemoveLocalModuleRecordCommand({ localItemId: 'local_module', localItemPath: 'csm/local_module', webviewSection: 'workspaceCard', workspaceCardKind: 'local' });
 
 		assert.deepStrictEqual(openedRepoNames, ['module-a']);
 		assert.deepStrictEqual(toggledStarNames, ['module-a', 'module-a']);
@@ -5705,6 +5935,8 @@ suite('ModuleManagerController Regression Tests', () => {
 		assert.deepStrictEqual(toggledSwitchIds, ['org__module_copy']);
 		assert.deepStrictEqual(linkedFolderPaths, ['csm/module-b']);
 		assert.deepStrictEqual(createdFolderPaths, ['csm/module-b']);
+		assert.deepStrictEqual(recordedFolderPaths, ['csm/module-b']);
+		assert.deepStrictEqual(removedRecordIds, ['local_module']);
 	});
 
 	test('extended webview context commands resolve nothing without identifiers', async () => {

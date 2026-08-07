@@ -389,6 +389,8 @@ suite('Language Definition Tests', () => {
         assert.ok(contextApplyCommand, 'csmModules.contextApplyModule command should be declared');
         assert.ok(contextRemoveCommand, 'csmModules.contextRemoveModule command should be declared');
         assert.ok(contextUpdateCommand, 'csmModules.contextUpdateModule command should be declared');
+        assert.ok(commands.some((c) => c.command === 'csmModules.contextRecordLocalModule'), 'csmModules.contextRecordLocalModule command should be declared');
+        assert.ok(commands.some((c) => c.command === 'csmModules.contextRemoveLocalModuleRecord'), 'csmModules.contextRemoveLocalModuleRecord command should be declared');
         assert.ok(commands.every((c) => typeof c.icon === 'string' && c.icon.startsWith('$(')), 'module manager commands should declare product icons for toolbar buttons');
         assert.ok(viewContainers.some((v: { id: string }) => v.id === 'csmModules'), 'csmModules activity bar container should be declared');
         assert.ok(views.some((v: { id: string }) => v.id === 'csmModules.view'), 'csmModules.view should be declared');

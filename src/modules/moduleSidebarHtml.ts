@@ -386,6 +386,10 @@ function renderModuleCardShell(options: ModuleCardShellOptions): string {
 }
 
 function renderLocalManagedCard(entry: LocalManagedModuleEntry, state: LocalWorkspaceRenderState): string {
+	// 本地模块（method: local）：无 GitHub 源，使用独立的卡片渲染
+	if (entry.kind === 'local') {
+		return renderLocalLocalCard(entry, state);
+	}
 	const topics = getVisibleModuleTopics(entry.topics).slice(0, 3);
 	const topicBadges = topics.map((topic) => renderBadge(topic));
 	const locked = entry.locked !== false;
@@ -463,6 +467,65 @@ function renderLocalManagedCard(entry: LocalManagedModuleEntry, state: LocalWork
 	});
 }
 
+/**
+ * 渲染本地模块卡片（method: local，无 GitHub 源）。
+ * 操作：打开目录 / 锁定或解锁 / 创建 GitHub 仓库；不提供更新、切换方式与 GitHub 打开。
+ */
+function renderLocalLocalCard(entry: LocalManagedModuleEntry, state: LocalWorkspaceRenderState): string {
+	const locked = entry.locked !== false;
+	const searchText = escapeHtml(getLocalManagedSearchText(entry));
+	const vscodeContext = escapeHtml(JSON.stringify({
+		webviewSection: 'workspaceCard',
+		workspaceCardKind: 'local',
+		localItemId: entry.id,
+		localItemPath: entry.path,
+		localLocked: locked,
+		signedIn: state.signedIn,
+		preventDefaultContextMenuItems: true,
+	}));
+	const actionButtons = renderActionToolbar([
+		renderIconActionButton({
+			action: 'openLocalFolder',
+			localItemId: entry.id,
+			title: t('openFolder'),
+			icon: 'folder',
+		}),
+		...(state.signedIn
+			? [renderIconActionButton({
+				action: 'createLocalRepository',
+				localItemId: entry.id,
+				title: t('createGithubRepository'),
+				icon: 'plus',
+			})]
+			: []),
+		renderIconActionButton({
+			action: 'toggleLocalModuleLock',
+			localItemId: entry.id,
+			title: locked ? t('unlockLocalFiles') : t('lockLocalFiles'),
+			icon: locked ? 'lock' : 'unlock',
+		}),
+	]);
+	const metaBadges = [
+		...(entry.labviewVersion ? [renderBadge(entry.labviewVersion, 'lv-version')] : []),
+		renderBadge(t('localBadge'), 'local'),
+		renderBadge(locked ? t('lockedBadge') : t('unlockedBadge')),
+		renderBadge(getApplyMethodLabel(entry.method), entry.method),
+		...(entry.stale ? [renderBadge(t('staleDirectoryMissing'), 'stale')] : []),
+	];
+	return renderModuleCardShell({
+		articleClasses: ['local-module-card', 'managed'],
+		dataRole: 'local-module-card',
+		articleAttributes: `data-search-text="${searchText}" data-card-scope="workspace" data-vscode-context="${vscodeContext}"`,
+		title: entry.name,
+		titleDisplay: truncate(entry.name, 44),
+		owner: entry.path,
+		headerToolsHtml: renderModuleHeaderTools([actionButtons]),
+		summary: t('localModuleSummary'),
+		footerHtml: `<div class="card-footer-note">${escapeHtml(t('localFolderPathLabel', { path: entry.path }))}</div>`,
+		metaBadges,
+	});
+}
+
 function renderLocalUnmanagedCard(entry: LocalUnmanagedFolderEntry, state: LocalWorkspaceRenderState): string {
 	const canLinkRepository = hasAvailableOnlineRepositories(state);
 	const actions = renderActionToolbar([
@@ -480,6 +543,12 @@ function renderLocalUnmanagedCard(entry: LocalUnmanagedFolderEntry, state: Local
 				icon: 'plus',
 			})]
 			: []),
+		renderIconActionButton({
+			action: 'recordLocalModule',
+			localItemId: entry.id,
+			title: t('recordLocalModule'),
+			icon: 'bookmark',
+		}),
 	]);
 	const openFolderButton = renderActionToolbar([
 		renderIconActionButton({
@@ -520,7 +589,7 @@ function renderLocalUnmanagedCard(entry: LocalUnmanagedFolderEntry, state: Local
 	});
 }
 
-type IconName = 'close' | 'external' | 'filter' | 'folder' | 'link' | 'plus' | 'readme' | 'search' | 'update' | 'remove' | 'switch' | 'lock' | 'unlock';
+type IconName = 'bookmark' | 'close' | 'external' | 'filter' | 'folder' | 'link' | 'plus' | 'readme' | 'search' | 'update' | 'remove' | 'switch' | 'lock' | 'unlock';
 
 function renderIconActionButton(options: { action: string; title: string; icon: IconName; moduleKey?: string; localItemId?: string; disabled?: boolean }): string {
 	const moduleKeyAttribute = options.moduleKey ? ` data-module-key="${escapeHtml(options.moduleKey)}"` : '';
@@ -531,6 +600,8 @@ function renderIconActionButton(options: { action: string; title: string; icon: 
 
 function renderIcon(name: IconName): string {
 	switch (name) {
+		case 'bookmark':
+			return '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 2.5h8v11L8 11l-4 2.5z"></path></svg>';
 		case 'close':
 			return '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" aria-hidden="true"><path d="M4 4l8 8"></path><path d="M12 4l-8 8"></path></svg>';
 		case 'external':

@@ -869,6 +869,10 @@ const messages = {
 		en: 'Downloads the assets of a chosen GitHub release into the local module directory.',
 		zh: '把所选 GitHub Release 的附件下载到本地模块目录。',
 	},
+	applyMethodLocalLabel: {
+		en: 'Local',
+		zh: '本地',
+	},
 	loadingModules: {
 		en: 'Loading modules...',
 		zh: '正在加载模块...',
@@ -1049,6 +1053,10 @@ const messages = {
 		en: 'Unmanaged',
 		zh: '未管理',
 	},
+	localBadge: {
+		en: 'Local',
+		zh: '本地',
+	},
 	localFolderPathLabel: {
 		en: 'Path: {path}',
 		zh: '路径：{path}',
@@ -1056,6 +1064,58 @@ const messages = {
 	localUnmanagedSummary: {
 		en: 'This folder exists under the current local module root but is not recorded in the CSM module config.',
 		zh: '该文件夹位于当前本地模块根目录下，但尚未记录到 CSM 模块配置中。',
+	},
+	localModuleSummary: {
+		en: 'This folder is recorded as a local module and is not reused from GitHub.',
+		zh: '该文件夹已记录为本地模块，不从 GitHub 复用。',
+	},
+	recordLocalModule: {
+		en: 'Record as Local Module',
+		zh: '记录为本地模块',
+	},
+	recordLocalModuleDescription: {
+		en: 'Record this folder as a local module that is not reused from GitHub.',
+		zh: '将该文件夹记录为不从 GitHub 复用的本地模块。',
+	},
+	removeLocalModuleRecord: {
+		en: 'Remove Record',
+		zh: '移除记录',
+	},
+	removeLocalModuleRecordConfirmation: {
+		en: 'Remove the local module record for {name}? The folder contents will be kept on disk.',
+		zh: '移除本地模块 {name} 的记录？文件夹内容将保留在磁盘上。',
+	},
+	removeLocalModuleRecordSuccess: {
+		en: 'Removed local module record for {name}.',
+		zh: '已移除本地模块 {name} 的记录。',
+	},
+	removeLocalModuleRecordFailed: {
+		en: 'Failed to remove local module record: {message}',
+		zh: '移除本地模块记录失败：{message}',
+	},
+	recordLocalModuleSuccess: {
+		en: 'Recorded {name} as a local module.',
+		zh: '已将 {name} 记录为本地模块。',
+	},
+	recordLocalModuleFailed: {
+		en: 'Failed to record local module: {message}',
+		zh: '记录本地模块失败：{message}',
+	},
+	recordLocalModuleConflict: {
+		en: 'The folder {path} is already recorded as a module.',
+		zh: '文件夹 {path} 已记录为模块。',
+	},
+	recordLocalModuleNeedsInit: {
+		en: 'Initialize local CSM module management before recording a local module.',
+		zh: '请先初始化本地 CSM 模块管理，再记录本地模块。',
+	},
+	openWorkspaceBeforeRecordLocalModule: {
+		en: 'Open a workspace before recording a local module.',
+		zh: '请先打开工作区，再记录本地模块。',
+	},
+	openWorkspaceBeforeRemoveLocalModuleRecord: {
+		en: 'Open a workspace before removing a local module record.',
+		zh: '请先打开工作区，再移除本地模块记录。',
 	},
 	signInToCreateRepositoryHint: {
 		en: 'Sign in to GitHub to create a shared repository for this folder.',
@@ -1470,6 +1530,9 @@ export function getApplyMethodLabel(method: ModuleApplyMethod): string {
 	}
 	if (method === 'release') {
 		return t('applyMethodReleaseLabel');
+	}
+	if (method === 'local') {
+		return t('applyMethodLocalLabel');
 	}
 	return t('applyMethodSubmoduleLabel');
 }

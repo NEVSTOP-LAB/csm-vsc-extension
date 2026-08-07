@@ -17,7 +17,7 @@ export interface CsmModuleEntry {
 	labviewVersion?: string;
 }
 
-export type ModuleApplyMethod = 'submodule' | 'copy' | 'release';
+export type ModuleApplyMethod = 'submodule' | 'copy' | 'release' | 'local';
 
 /**
  * 版本来源类型（issue #37）：
@@ -57,7 +57,7 @@ export interface LocalModuleConfig {
 
 export interface LocalManagedModuleEntry {
 	id: string;
-	kind: 'managed';
+	kind: 'managed' | 'local';
 	owner: string;
 	name: string;
 	path: string;

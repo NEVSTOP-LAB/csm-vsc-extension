@@ -24,6 +24,8 @@
   "commands.contextSwitchLocalModuleMethod.title": "切换引入方式",
   "commands.contextLinkLocalRepository.title": "关联在线仓库",
   "commands.contextCreateLocalRepository.title": "创建 GitHub 仓库",
+  "commands.contextRecordLocalModule.title": "记录为本地模块",
+  "commands.contextRemoveLocalModuleRecord.title": "移除本地模块记录",
   "commands.setSortOrder.title": "CSM 模块：更改排序方式",
   "commands.csmlog.folding.toggleAllFolds.title": "CSMLog：切换全部重复折叠",
   "commands.csmlog.folding.showStats.title": "CSMLog：显示折叠统计",

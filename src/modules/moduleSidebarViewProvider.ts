@@ -22,6 +22,8 @@ interface ModuleSidebarActions {
 	onSwitchLocalModuleMethod?: (entry: LocalManagedModuleEntry) => void;
 	onCreateLocalRepository?: (entry: LocalUnmanagedFolderEntry) => void;
 	onLinkLocalRepository?: (entry: LocalUnmanagedFolderEntry) => void;
+	onRecordLocalModule?: (entry: LocalUnmanagedFolderEntry) => void;
+	onRemoveLocalModuleRecord?: (entry: LocalManagedModuleEntry) => void;
 	onOpenLocalFolder?: (entry: LocalManagedModuleEntry | LocalUnmanagedFolderEntry) => void;
 	onSelectionChange: (moduleKeys: string[]) => void;
 	onSortChange: (sortState: Partial<ModuleSortState>) => void;
@@ -32,7 +34,7 @@ interface ModuleSidebarViewProviderOptions {
 }
 
 type WebviewMessage = {
-	type: 'login' | 'refresh' | 'initializeWorkspace' | 'applySelected' | 'toggleStar' | 'openReadme' | 'openRepository' | 'togglePreview' | 'applyOne' | 'toggleSelection' | 'setFilterQuery' | 'clearFilter' | 'setIncludeApplied' | 'setScope' | 'dismissIntroTip' | 'removeModule' | 'updateModule' | 'setSortField' | 'setSortDirection' | 'showMore' | 'openLocalReadme' | 'openLocalFolder' | 'removeLocalModule' | 'updateLocalModule' | 'toggleLocalModuleLock' | 'switchLocalModuleMethod' | 'createLocalRepository' | 'linkLocalRepository';
+	type: 'login' | 'refresh' | 'initializeWorkspace' | 'applySelected' | 'toggleStar' | 'openReadme' | 'openRepository' | 'togglePreview' | 'applyOne' | 'toggleSelection' | 'setFilterQuery' | 'clearFilter' | 'setIncludeApplied' | 'setScope' | 'dismissIntroTip' | 'removeModule' | 'updateModule' | 'setSortField' | 'setSortDirection' | 'showMore' | 'openLocalReadme' | 'openLocalFolder' | 'removeLocalModule' | 'updateLocalModule' | 'toggleLocalModuleLock' | 'switchLocalModuleMethod' | 'createLocalRepository' | 'linkLocalRepository' | 'recordLocalModule' | 'removeLocalModuleRecord';
 	moduleKey?: string;
 	localItemId?: string;
 	selected?: boolean;
@@ -280,8 +282,24 @@ export class ModuleSidebarViewProvider implements vscode.WebviewViewProvider, IM
 		updateLocalModule: (msg) => this.withLocalManagedEntry(msg, (e) => this.actions.onUpdateModule(e.moduleEntry)),
 		toggleLocalModuleLock: (msg) => this.withLocalManagedEntry(msg, (e) => this.actions.onToggleLocalModuleLock?.(e)),
 		switchLocalModuleMethod: (msg) => this.withLocalManagedEntry(msg, (e) => this.actions.onSwitchLocalModuleMethod?.(e)),
-		createLocalRepository: (msg) => this.withLocalUnmanagedEntry(msg, (e) => this.actions.onCreateLocalRepository?.(e)),
+		createLocalRepository: (msg) => {
+			// 本地模块（method: local）卡片复用创建 GitHub 仓库入口：转换为未管理条目
+			const local = msg.localItemId ? this.localManagedModulesById.get(msg.localItemId) : undefined;
+			if (local && local.kind === 'local') {
+				this.actions.onCreateLocalRepository?.({
+					id: local.id,
+					kind: 'unmanaged',
+					name: local.name,
+					path: local.path,
+					labviewVersion: local.labviewVersion,
+				});
+				return;
+			}
+			this.withLocalUnmanagedEntry(msg, (e) => this.actions.onCreateLocalRepository?.(e));
+		},
 		linkLocalRepository: (msg) => this.withLocalUnmanagedEntry(msg, (e) => this.actions.onLinkLocalRepository?.(e)),
+		recordLocalModule: (msg) => this.withLocalUnmanagedEntry(msg, (e) => this.actions.onRecordLocalModule?.(e)),
+		removeLocalModuleRecord: (msg) => this.withLocalManagedEntry(msg, (e) => this.actions.onRemoveLocalModuleRecord?.(e)),
 
 		openLocalFolder: (msg) => {
 			const managed = msg.localItemId ? this.localManagedModulesById.get(msg.localItemId) : undefined;
