@@ -211,6 +211,12 @@ export class ModuleManagerController {
 		onLinkLocalRepository: (entry) => {
 			void this.linkLocalFolderRepositoryCommand(entry);
 		},
+		onRecordLocalModule: (entry) => {
+			void this.recordLocalModuleCommand(entry);
+		},
+		onRemoveLocalModuleRecord: (entry) => {
+			void this.removeLocalModuleRecordCommand(entry);
+		},
 		onOpenLocalFolder: (entry) => {
 			void this.openLocalFolderCommand(entry);
 		},
@@ -308,6 +314,8 @@ export class ModuleManagerController {
 		this.registerCommand(subscriptions, COMMAND_IDS.contextSwitchLocalModuleMethod, (context?: WebviewModuleContext) => this.contextSwitchLocalModuleMethodCommand(context));
 		this.registerCommand(subscriptions, COMMAND_IDS.contextLinkLocalRepository, (context?: WebviewModuleContext) => this.contextLinkLocalRepositoryCommand(context));
 		this.registerCommand(subscriptions, COMMAND_IDS.contextCreateLocalRepository, (context?: WebviewModuleContext) => this.contextCreateLocalRepositoryCommand(context));
+		this.registerCommand(subscriptions, COMMAND_IDS.contextRecordLocalModule, (context?: WebviewModuleContext) => this.contextRecordLocalModuleCommand(context));
+		this.registerCommand(subscriptions, COMMAND_IDS.contextRemoveLocalModuleRecord, (context?: WebviewModuleContext) => this.contextRemoveLocalModuleRecordCommand(context));
 		this.registerCommand(subscriptions, COMMAND_IDS.setSortOrder, (field?: ModuleSortField) => this.setSortOrderCommand(field));
 
 		// 延迟读取缓存快照，让 Webview 先渲染骨架屏，提升启动感知速度
@@ -1141,6 +1149,10 @@ export class ModuleManagerController {
 			void vscode.window.showWarningMessage(t('openWorkspaceBeforeSwitchMethod'));
 			return;
 		}
+		// 本地模块（method: local）无 GitHub 源，不支持切换引入方式
+		if (entry.method === 'local') {
+			return;
+		}
 		const { workspaceFolder, repoRoot } = ctx;
 		if (!repoRoot) {
 			void vscode.window.showWarningMessage(t('switchMethodRequiresGitRepo'));
@@ -1295,7 +1307,7 @@ export class ModuleManagerController {
 		}
 
 		const nextLocked = !this.isLocalModuleLocked(target);
-		const moduleLabel = `${target.owner}/${target.name}`;
+		const moduleLabel = target.owner ? `${target.owner}/${target.name}` : target.name;
 		if (!nextLocked) {
 			const repository = path.basename(workspaceRoot) || workspaceFolder.name;
 			const confirmation = await vscode.window.showWarningMessage(
@@ -1333,6 +1345,142 @@ export class ModuleManagerController {
 			const message = getUserFacingErrorMessage(error, 'config');
 			this.logger.error(`Failed to change lock state for ${target.owner}/${target.name}: ${message}`);
 			void vscode.window.showErrorMessage(t('toggleLockFailed', { message }));
+			return;
+		}
+
+		await this.refreshSidebarWorkspaceState();
+	}
+
+	/**
+	 * 把未管理文件夹记录为「本地模块」（method: local，无 GitHub 源）。
+	 * 仅在配置中登记路径，不改变目录内容；记录后该目录不再作为未管理文件夹展示。
+	 * 深层目录（如 csm/patha/pathb/module）会先选择以哪一级目录作为模块目录。
+	 */
+	public async recordLocalModuleCommand(folder: LocalUnmanagedFolderEntry): Promise<void> {
+		const ctx = await this.resolveWorkspaceContext();
+		if (!ctx) {
+			void vscode.window.showWarningMessage(t('openWorkspaceBeforeRecordLocalModule'));
+			return;
+		}
+		const { workspaceFolder, workspaceRoot } = ctx;
+
+		let config = await this.tryLoadSidebarLocalModuleConfig(workspaceFolder, workspaceRoot);
+		if (!config) {
+			const initialized = await this.initializeLocalModuleConfig(workspaceRoot, t('recordLocalModuleNeedsInit'));
+			if (!initialized) {
+				return;
+			}
+			config = initialized;
+		}
+
+		// 深层目录时先询问以哪一级目录作为模块目录（当前模块 vs 各级祖先目录）
+		const targetFolder = await this.promptLocalModuleDirectorySelection(
+			folder,
+			config.root,
+			config,
+			workspaceRoot,
+		);
+		if (!targetFolder) {
+			return;
+		}
+		if (config && this.containsManagedModuleUnder(config, targetFolder.path)) {
+			void vscode.window.showWarningMessage(t('recordLocalModuleContainsManagedModules', { folder: targetFolder.path }));
+			return;
+		}
+
+		const folderAbsolutePath = path.resolve(workspaceRoot, targetFolder.path);
+		try {
+			const stat = await fs.stat(folderAbsolutePath);
+			if (!stat.isDirectory()) {
+				void vscode.window.showWarningMessage(t('localFolderMissing', { folder: targetFolder.path }));
+				return;
+			}
+		} catch {
+			void vscode.window.showWarningMessage(t('localFolderMissing', { folder: targetFolder.path }));
+			return;
+		}
+
+		// 检查目标路径是否已被记录（无论已管理还是本地模块）
+		const targetPath = this.workspaceModuleService.normalizeRootPath(targetFolder.path);
+		const existingEntry = Object.values(config.modules).find(
+			(entry) => this.workspaceModuleService.normalizeRootPath(entry.path) === targetPath,
+		);
+		if (existingEntry) {
+			void vscode.window.showWarningMessage(t('recordLocalModuleConflict', { path: targetFolder.path }));
+			return;
+		}
+
+		const key = targetFolder.name;
+		if (config.modules[key]) {
+			void vscode.window.showWarningMessage(t('recordLocalModuleConflict', { path: targetFolder.path }));
+			return;
+		}
+
+		const entry: LocalModuleConfigEntry = {
+			key,
+			name: targetFolder.name,
+			owner: '',
+			source: '',
+			method: 'local',
+			path: targetPath,
+			ref: '',
+			branch: '',
+			locked: false,
+		};
+		try {
+			config = this.workspaceModuleService.withAppliedModule(config, entry);
+			await this.workspaceModuleService.writeConfig(config);
+			void vscode.window.showInformationMessage(t('recordLocalModuleSuccess', { name: targetFolder.name }));
+		} catch (error) {
+			const message = getUserFacingErrorMessage(error, 'config');
+			this.logger.error(`Failed to record local module ${targetFolder.path}: ${message}`);
+			void vscode.window.showErrorMessage(t('recordLocalModuleFailed', { message }));
+			return;
+		}
+
+		await this.refreshSidebarWorkspaceState();
+	}
+
+	/**
+	 * 移除本地模块的记录（method: local）。仅删除配置记录，目录内容保留，
+	 * 移除后该目录恢复为未管理文件夹。
+	 */
+	public async removeLocalModuleRecordCommand(entry: LocalManagedModuleEntry): Promise<void> {
+		const ctx = await this.resolveWorkspaceContext();
+		if (!ctx) {
+			void vscode.window.showWarningMessage(t('openWorkspaceBeforeRemoveLocalModuleRecord'));
+			return;
+		}
+		const { workspaceFolder, workspaceRoot } = ctx;
+		let config = await this.tryLoadSidebarLocalModuleConfig(workspaceFolder, workspaceRoot);
+		if (!config) {
+			void vscode.window.showWarningMessage(t('noWorkspaceConfig'));
+			return;
+		}
+
+		const target = this.findAppliedLocalManagedEntry(config, entry);
+		if (!target || target.method !== 'local') {
+			void vscode.window.showWarningMessage(t('selectedModuleNotApplied'));
+			return;
+		}
+
+		const confirmation = await vscode.window.showWarningMessage(
+			t('removeLocalModuleRecordConfirmation', { name: target.name }),
+			{ modal: true },
+			t('removeLocalModuleRecord'),
+		);
+		if (confirmation !== t('removeLocalModuleRecord')) {
+			return;
+		}
+
+		try {
+			config = this.workspaceModuleService.withoutModule(config, target.key);
+			await this.workspaceModuleService.writeConfig(config);
+			void vscode.window.showInformationMessage(t('removeLocalModuleRecordSuccess', { name: target.name }));
+		} catch (error) {
+			const message = getUserFacingErrorMessage(error, 'config');
+			this.logger.error(`Failed to remove local module record ${target.path}: ${message}`);
+			void vscode.window.showErrorMessage(t('removeLocalModuleRecordFailed', { message }));
 			return;
 		}
 
@@ -1651,7 +1799,15 @@ export class ModuleManagerController {
 			locked: true,
 		};
 		const lockedEntry = await this.setLocalModuleLockState(workspaceRoot, nextEntry, true);
-		const nextConfig = this.workspaceModuleService.withAppliedModule(config, lockedEntry);
+		// 本地模块（method: local）创建 GitHub 仓库成功后升级为已管理：先移除原 local 记录
+		const existingLocalAtPath = Object.values(config.modules).find(
+			(entry) => entry.method === 'local' && this.workspaceModuleService.normalizeRootPath(entry.path) === targetPath,
+		);
+		let nextConfig = config;
+		if (existingLocalAtPath) {
+			nextConfig = this.workspaceModuleService.withoutModule(nextConfig, existingLocalAtPath.key);
+		}
+		nextConfig = this.workspaceModuleService.withAppliedModule(nextConfig, lockedEntry);
 		await this.workspaceModuleService.writeConfig(nextConfig);
 	}
 
@@ -2574,6 +2730,22 @@ export class ModuleManagerController {
 		await this.createLocalFolderRepositoryCommand(folder);
 	}
 
+	public async contextRecordLocalModuleCommand(context?: WebviewModuleContext): Promise<void> {
+		const folder = await this.resolveContextLocalUnmanagedEntry(context);
+		if (!folder) {
+			return;
+		}
+		await this.recordLocalModuleCommand(folder);
+	}
+
+	public async contextRemoveLocalModuleRecordCommand(context?: WebviewModuleContext): Promise<void> {
+		const entry = await this.resolveContextLocalManagedEntry(context);
+		if (!entry) {
+			return;
+		}
+		await this.removeLocalModuleRecordCommand(entry);
+	}
+
 	public async openLocalFolderCommand(entry: LocalManagedModuleEntry | LocalUnmanagedFolderEntry): Promise<void> {
 		await this.openLocalFolderByPath(entry.path);
 	}
@@ -2617,6 +2789,28 @@ export class ModuleManagerController {
 			?? Object.values(config.modules).find((module) => module.key === context.localItemId);
 		if (!configEntry) {
 			return undefined;
+		}
+		// 本地模块（method: local）：无 GitHub 源，直接构造 kind:'local' 条目
+		if (configEntry.method === 'local') {
+			return {
+				id: configEntry.key,
+				kind: 'local',
+				owner: '',
+				name: configEntry.name,
+				path: configEntry.path,
+				source: '',
+				method: 'local',
+				branch: '',
+				ref: '',
+				locked: configEntry.locked !== false,
+				repoUrl: '',
+				description: '',
+				visibility: 'public',
+				topics: [],
+				moduleEntry: this.synthesizeModuleEntry(configEntry),
+				stale: false,
+				labviewVersion: configEntry.labviewVersion,
+			};
 		}
 		const moduleEntry = this.findAvailableModule(configEntry.owner, configEntry.name)
 			?? this.synthesizeModuleEntry(configEntry);
@@ -3101,6 +3295,29 @@ export class ModuleManagerController {
 		const entries: LocalManagedModuleEntry[] = Object.values(config.modules)
 			.sort((left, right) => left.path.localeCompare(right.path))
 			.map((configEntry) => {
+				// 本地模块（method: local）：无 GitHub 源，不查在线目录
+				if (configEntry.method === 'local') {
+					const result: LocalManagedModuleEntry = {
+						id: configEntry.key,
+						kind: 'local',
+						owner: '',
+						name: configEntry.name,
+						path: configEntry.path,
+						source: '',
+						method: 'local',
+						branch: '',
+						ref: '',
+						locked: this.isLocalModuleLocked(configEntry),
+						repoUrl: '',
+						description: '',
+						visibility: 'public',
+						topics: [],
+						moduleEntry: this.synthesizeModuleEntry(configEntry),
+						stale: staleSet.has(configEntry.path),
+						labviewVersion: configEntry.labviewVersion,
+					};
+					return result;
+				}
 				const availableModule = this.findAvailableModule(configEntry.owner, configEntry.name)
 					?? availableModulesBySource.get(this.normalizeModuleSource(configEntry.source))
 					// GitHub 仓库转移：config 保留转移前旧 owner/source，仓库名相同即视为同一仓库
@@ -3216,7 +3433,8 @@ export class ModuleManagerController {
 			try {
 				await fs.access(target);
 			} catch {
-				stale.push(`${module.owner}/${module.name}`);
+				// 本地模块（method: local）无 owner/name，按路径判定 stale
+				stale.push(module.method === 'local' ? module.path : `${module.owner}/${module.name}`);
 			}
 		}));
 		return stale;
@@ -3482,6 +3700,10 @@ export class ModuleManagerController {
 
 		const appliedModuleKeys = new Set<string>();
 		for (const configEntry of Object.values(config.modules)) {
+			// 本地模块（method: local）无 GitHub 源，不属于在线模块
+			if (configEntry.method === 'local') {
+				continue;
+			}
 			const directMatch = availableModulesByName.get(`${configEntry.owner.toLowerCase()}/${configEntry.name.toLowerCase()}`);
 			if (directMatch) {
 				appliedModuleKeys.add(directMatch);
@@ -3568,14 +3790,19 @@ export class ModuleManagerController {
 
 	/**
 	 * 当未管理模块位于 moduleRoot 更深层级时（如 csm/DMM/NI），先询问用户以哪一级
-	 * 目录作为新 GitHub 仓库的根：当前模块自身，或其各级祖先目录（如 DMM，可把
-	 * NI/Agilent 等兄弟模块一并纳入仓库）。模块直接位于 moduleRoot 下时无需询问。
+	 * 目录作为目标目录：当前模块自身，或其各级祖先目录（如 DMM）。模块直接位于
+	 * moduleRoot 下时无需询问。创建 GitHub 仓库与记录本地模块两处复用。
 	 */
-	private async promptRepositoryRootSelection(
+	private async promptDirectoryLevelSelection(
 		folder: LocalUnmanagedFolderEntry,
 		moduleRoot: string,
 		config: LocalModuleConfig | undefined,
 		workspaceRoot: string,
+		labels: {
+			placeholder: string;
+			currentModuleDetail: string;
+			ancestorDetail: (count: string) => string;
+		},
 	): Promise<LocalUnmanagedFolderEntry | undefined> {
 		const normalizedModuleRoot = this.workspaceModuleService.normalizeRootPath(moduleRoot);
 		const normalizedFolderPath = this.workspaceModuleService.normalizeRootPath(folder.path);
@@ -3598,7 +3825,7 @@ export class ModuleManagerController {
 			{
 				label: folder.name,
 				description: folder.path,
-				detail: t('createRepositoryRootCurrentModuleDetail'),
+				detail: labels.currentModuleDetail,
 				picked: true,
 				root: folder,
 			},
@@ -3621,13 +3848,13 @@ export class ModuleManagerController {
 				childModuleCount = discovered.length;
 			} catch (error) {
 				this.logger.warn(
-					`Failed to count module folders under ${ancestorPath} for repository root selection: ${error instanceof Error ? error.message : String(error)}`,
+					`Failed to count module folders under ${ancestorPath} for directory level selection: ${error instanceof Error ? error.message : String(error)}`,
 				);
 			}
 			items.push({
 				label: ancestorSegments[ancestorSegments.length - 1],
 				description: ancestorPath,
-				detail: t('createRepositoryRootAncestorDetail', { count: String(childModuleCount) }),
+				detail: labels.ancestorDetail(String(childModuleCount)),
 				root: {
 					id: ancestorPath,
 					kind: 'unmanaged',
@@ -3638,9 +3865,37 @@ export class ModuleManagerController {
 		}
 
 		const pick = await vscode.window.showQuickPick(items, {
-			placeHolder: t('createRepositoryRootSelectionPlaceholder'),
+			placeHolder: labels.placeholder,
 		});
 		return pick?.root;
+	}
+
+	/** 创建 GitHub 仓库时的目录层级选择（文案为建仓场景）。 */
+	private async promptRepositoryRootSelection(
+		folder: LocalUnmanagedFolderEntry,
+		moduleRoot: string,
+		config: LocalModuleConfig | undefined,
+		workspaceRoot: string,
+	): Promise<LocalUnmanagedFolderEntry | undefined> {
+		return this.promptDirectoryLevelSelection(folder, moduleRoot, config, workspaceRoot, {
+			placeholder: t('createRepositoryRootSelectionPlaceholder'),
+			currentModuleDetail: t('createRepositoryRootCurrentModuleDetail'),
+			ancestorDetail: (count) => t('createRepositoryRootAncestorDetail', { count }),
+		});
+	}
+
+	/** 记录本地模块时的目录层级选择（文案为记录场景）。 */
+	private async promptLocalModuleDirectorySelection(
+		folder: LocalUnmanagedFolderEntry,
+		moduleRoot: string,
+		config: LocalModuleConfig | undefined,
+		workspaceRoot: string,
+	): Promise<LocalUnmanagedFolderEntry | undefined> {
+		return this.promptDirectoryLevelSelection(folder, moduleRoot, config, workspaceRoot, {
+			placeholder: t('recordLocalModuleDirectorySelectionPlaceholder'),
+			currentModuleDetail: t('recordLocalModuleCurrentModuleDetail'),
+			ancestorDetail: (count) => t('recordLocalModuleAncestorDetail', { count }),
+		});
 	}
 
 	/** 判断目标根目录（严格子路径）下是否包含已管理的 CSM 模块。 */

@@ -166,6 +166,16 @@
         "icon": "$(repo-create)"
       },
       {
+        "command": "csmModules.contextRecordLocalModule",
+        "title": "%commands.contextRecordLocalModule.title%",
+        "icon": "$(bookmark)"
+      },
+      {
+        "command": "csmModules.contextRemoveLocalModuleRecord",
+        "title": "%commands.contextRemoveLocalModuleRecord.title%",
+        "icon": "$(trash)"
+      },
+      {
         "command": "csmModules.setSortOrder",
         "title": "%commands.setSortOrder.title%",
         "icon": "$(list-ordered)"
@@ -326,6 +336,11 @@
           "group": "1_actions@3"
         },
         {
+          "command": "csmModules.contextRecordLocalModule",
+          "when": "webviewId == csmModules.view && webviewSection == workspaceCard && workspaceCardKind == unmanaged",
+          "group": "1_actions@4"
+        },
+        {
           "command": "csmModules.contextUpdateModule",
           "when": "webviewId == csmModules.view && webviewSection == workspaceCard && workspaceCardKind == managed && moduleKey",
           "group": "2_actions@1"
@@ -348,6 +363,26 @@
         {
           "command": "csmModules.contextRemoveModule",
           "when": "webviewId == csmModules.view && webviewSection == workspaceCard && workspaceCardKind == managed && moduleKey",
+          "group": "3_actions@1"
+        },
+        {
+          "command": "csmModules.contextCreateLocalRepository",
+          "when": "webviewId == csmModules.view && webviewSection == workspaceCard && workspaceCardKind == local && signedIn",
+          "group": "1_actions@2"
+        },
+        {
+          "command": "csmModules.contextLockLocalModule",
+          "when": "webviewId == csmModules.view && webviewSection == workspaceCard && workspaceCardKind == local && !localLocked",
+          "group": "2_actions@1"
+        },
+        {
+          "command": "csmModules.contextUnlockLocalModule",
+          "when": "webviewId == csmModules.view && webviewSection == workspaceCard && workspaceCardKind == local && localLocked",
+          "group": "2_actions@2"
+        },
+        {
+          "command": "csmModules.contextRemoveLocalModuleRecord",
+          "when": "webviewId == csmModules.view && webviewSection == workspaceCard && workspaceCardKind == local",
           "group": "3_actions@1"
         }
       ],
@@ -427,6 +462,14 @@
         },
         {
           "command": "csmModules.contextCreateLocalRepository",
+          "when": "false"
+        },
+        {
+          "command": "csmModules.contextRecordLocalModule",
+          "when": "false"
+        },
+        {
+          "command": "csmModules.contextRemoveLocalModuleRecord",
           "when": "false"
         },
         {

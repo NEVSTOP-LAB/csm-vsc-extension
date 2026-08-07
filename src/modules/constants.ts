@@ -35,6 +35,8 @@ export const COMMAND_IDS = {
 	contextSwitchLocalModuleMethod: 'csmModules.contextSwitchLocalModuleMethod',
 	contextLinkLocalRepository: 'csmModules.contextLinkLocalRepository',
 	contextCreateLocalRepository: 'csmModules.contextCreateLocalRepository',
+	contextRecordLocalModule: 'csmModules.contextRecordLocalModule',
+	contextRemoveLocalModuleRecord: 'csmModules.contextRemoveLocalModuleRecord',
 	setSortOrder: 'csmModules.setSortOrder',
 } as const;
 

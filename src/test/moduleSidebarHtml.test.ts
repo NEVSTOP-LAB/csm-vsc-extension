@@ -181,3 +181,75 @@ suite('moduleSidebarHtml — 本地已管理卡片摘要', () => {
         assert.ok(localCard.includes('Shared HAL module'), '描述作为摘要展示');
     });
 });
+suite('moduleSidebarHtml — 本地模块卡片（method: local）', () => {
+
+    function makeLocal(overrides: Partial<LocalManagedModuleEntry> = {}): LocalManagedModuleEntry {
+        return {
+            id: overrides.id ?? 'local-1',
+            kind: 'local',
+            owner: '',
+            name: overrides.name ?? 'folder-a',
+            path: overrides.path ?? 'csm/folder-a',
+            source: '',
+            method: 'local',
+            branch: '',
+            ref: '',
+            repoUrl: '',
+            description: '',
+            visibility: 'public',
+            topics: [],
+            moduleEntry: makeModule({ owner: '', name: overrides.name ?? 'folder-a', repoUrl: '' }),
+            stale: overrides.stale ?? false,
+            locked: overrides.locked,
+            labviewVersion: overrides.labviewVersion,
+        };
+    }
+
+    test('渲染 Local 徽章、方法徽章与路径，不渲染 GitHub/更新按钮', () => {
+        const html = renderModuleSidebarHtml(makeState({
+            managedModules: [makeLocal()],
+        }));
+        const localCardStart = html.indexOf('data-role="local-module-card"');
+        assert.ok(localCardStart >= 0, '应渲染本地模块卡片');
+        const localCard = html.slice(localCardStart);
+        assert.ok(localCard.includes('>Local<'), '应渲染 Local 徽章');
+        assert.ok(localCard.includes('>Local</span>'), '方法徽章显示 Local');
+        assert.ok(localCard.includes('Path: csm&#47;folder-a'), '卡片底部保留路径信息');
+        assert.ok(!localCard.includes('data-action="updateLocalModule"'), '本地模块不提供更新按钮');
+        assert.ok(!localCard.includes('data-action="switchLocalModuleMethod"'), '本地模块不提供切换按钮');
+        assert.ok(!localCard.includes('data-action="openRepository"'), '本地模块不提供 GitHub 打开按钮');
+        assert.ok(localCard.includes('data-action="openLocalFolder"'), '本地模块提供打开目录按钮');
+        assert.ok(localCard.includes('data-action="toggleLocalModuleLock"'), '本地模块提供锁定/解锁按钮');
+    });
+
+    test('本地模块卡片 data-vscode-context 标记 workspaceCardKind=local 与 localItemId', () => {
+        const html = renderModuleSidebarHtml(makeState({
+            managedModules: [makeLocal({ id: 'local-7' })],
+        }));
+        const localCardStart = html.indexOf('data-role="local-module-card"');
+        const localCard = html.slice(localCardStart);
+        const contextStart = localCard.indexOf('data-vscode-context="');
+        const contextEnd = localCard.indexOf('"', contextStart + 'data-vscode-context="'.length);
+        const context = localCard.slice(contextStart, contextEnd);
+        assert.ok(context.includes('&quot;workspaceCardKind&quot;:&quot;local&quot;'), 'context 标记为 local 卡片类型');
+        assert.ok(context.includes('&quot;localItemId&quot;:&quot;local-7&quot;'), 'context 携带 localItemId');
+        assert.ok(!context.includes('moduleKey'), '本地模块 context 不含 moduleKey');
+    });
+
+    test('本地模块支持 LabVIEW 版本徽章（与已管理一致）', () => {
+        const html = renderModuleSidebarHtml(makeState({
+            managedModules: [makeLocal({ labviewVersion: 'lv2020' })],
+        }));
+        assert.ok(html.includes('lv2020'), '应渲染 LabVIEW 版本徽章');
+    });
+
+    test('未管理卡片提供「记录为本地模块」按钮', () => {
+        const html = renderModuleSidebarHtml(makeState({
+            unmanagedFolders: [makeUnmanaged()],
+        }));
+        const localCardStart = html.indexOf('data-role="local-module-card"');
+        assert.ok(localCardStart >= 0, '应渲染未管理卡片');
+        const localCard = html.slice(localCardStart);
+        assert.ok(localCard.includes('data-action="recordLocalModule"'), '未管理卡片提供记录为本地模块按钮');
+    });
+});
