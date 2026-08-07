@@ -1087,6 +1087,65 @@ suite('Module Manager Tests', () => {
 		}
 	});
 
+	test('WorkspaceModuleService persists and reloads a local module (method: local) entry', async () => {
+		const repoRoot = await fs.mkdtemp(path.join(getTempRoot(), 'csm-modules-local-'));
+		const service = new WorkspaceModuleService();
+		try {
+			const initialConfig = await service.initializeConfig(repoRoot, 'csm');
+			const updatedConfig = service.withAppliedModule(initialConfig, {
+				key: 'local-tool',
+				name: 'local-tool',
+				owner: '',
+				source: '',
+				method: 'local',
+				path: 'csm/local-tool',
+				ref: '',
+				branch: '',
+				locked: false,
+			});
+			await service.writeConfig(updatedConfig);
+
+			const reloadedConfig = await service.loadConfig(repoRoot, initialConfig.configPath);
+			assert.strictEqual(reloadedConfig.modules['local-tool']?.method, 'local');
+			assert.strictEqual(reloadedConfig.modules['local-tool']?.owner, '');
+			assert.strictEqual(reloadedConfig.modules['local-tool']?.source, '');
+			assert.strictEqual(reloadedConfig.modules['local-tool']?.path, 'csm/local-tool');
+			assert.strictEqual(reloadedConfig.modules['local-tool']?.locked, false);
+		} finally {
+			await removeWritableTree(repoRoot);
+		}
+	});
+
+	test('WorkspaceModuleService parses a legacy config entry whose method defaults to submodule', async () => {
+		const repoRoot = await fs.mkdtemp(path.join(getTempRoot(), 'csm-modules-legacy-'));
+		const service = new WorkspaceModuleService();
+		try {
+			const configPath = path.join(repoRoot, 'csm', 'csm-modules.yaml');
+			await fs.mkdir(path.dirname(configPath), { recursive: true });
+			// 旧配置缺省 method（无 method 字段）应解析为 submodule，不受 local 新增影响
+			const raw = [
+				'version: "2"',
+				'root: csm',
+				'modules:',
+				'  org__module_a:',
+				'    name: module-a',
+				'    owner: org',
+				'    source: https://github.com/org/module-a',
+				'    path: csm/module-a',
+				'    ref: abc123',
+				'    branch: main',
+				'',
+			].join('\n');
+			await fs.writeFile(configPath, raw, 'utf8');
+
+			const config = await service.loadConfig(repoRoot, configPath);
+			assert.strictEqual(config.modules.org__module_a?.method, 'submodule');
+			assert.strictEqual(config.modules.org__module_a?.locked, true);
+		} finally {
+			await removeWritableTree(repoRoot);
+		}
+	});
+
 	test('WorkspaceModuleService toggles local module files between readonly and writable', async () => {
 		const workspaceRoot = await fs.mkdtemp(path.join(getTempRoot(), 'csm-lock-toggle-'));
 		const service = new WorkspaceModuleService();

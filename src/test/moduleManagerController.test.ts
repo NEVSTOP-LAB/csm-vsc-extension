@@ -4382,6 +4382,118 @@ suite('ModuleManagerController Regression Tests', () => {
 		});
 	});
 
+	test('createLocalFolderRepositoryCommand upgrades a local module (method: local) to managed and removes the local record', async () => {
+		const workspaceRoot = fs.mkdtempSync(path.join(getTempRoot(), 'csm-share-local-upgrade-'));
+		fs.mkdirSync(path.join(workspaceRoot, 'csm', 'local-module'), { recursive: true });
+		const controller = createController() as any;
+		const existingConfig: LocalModuleConfig = {
+			version: '2',
+			root: 'csm',
+			configPath: path.join(workspaceRoot, 'csm', 'csm-modules.yaml'),
+			modules: {
+				'local-module': {
+					key: 'local-module',
+					name: 'local-module',
+					owner: '',
+					source: '',
+					method: 'local',
+					path: 'csm/local-module',
+					ref: '',
+					branch: '',
+					locked: false,
+				},
+			},
+		};
+		let writtenConfig: LocalModuleConfig | undefined;
+		controller.authService = {
+			getSessionSilently: async () => createSession('token', 'tester'),
+			getSessionInteractively: async () => createSession('token', 'tester'),
+		};
+		controller.githubService = {
+			fetchModules: async () => ({ modules: [] }),
+			fetchReadme: async () => '',
+			getCurrentUser: async () => ({ login: 'tester', name: 'Tester' }),
+			getUserOrganizations: async () => [],
+			getOrganizationMembership: async () => undefined,
+			createRepository: async (_token: string, options: { name: string; description?: string; private: boolean; topics: string[] }) => ({
+				id: 1,
+				name: options.name,
+				full_name: `tester/${options.name}`,
+				description: options.description ?? '',
+				private: options.private,
+				default_branch: 'main',
+				html_url: `https://github.com/tester/${options.name}`,
+				topics: options.topics,
+			}),
+		};
+		controller.workspaceModuleService = {
+			resolveGitRepositoryRoot: async () => workspaceRoot,
+			getGitIdentity: async () => ({
+				name: 'Tester',
+				email: 'tester@example.com',
+			}),
+			publishLocalFolder: async (options: { remoteUrl: string; defaultBranch?: string }) => ({
+				branch: options.defaultBranch ?? 'main',
+				remoteName: 'origin',
+				remoteUrl: options.remoteUrl,
+				headRef: 'abc123',
+				createdCommit: true,
+			}),
+			convertPublishedFolderToSubmodule: async (options: { targetRelativePath: string; branch?: string }) => ({
+				branch: options.branch ?? 'main',
+				headRef: 'def456',
+			}),
+			normalizeRootPath: (value: string) => value.replace(/\\/g, '/'),
+			getModuleKey: (entry: CsmModuleEntry) => `${entry.owner}__${entry.name}`,
+			setModuleLocked: async (_workspaceRoot: string, entry: LocalModuleConfig['modules'][string], locked: boolean) => ({
+				...entry,
+				locked,
+			}),
+			withoutModule: (config: LocalModuleConfig, moduleKey: string) => {
+				const { [moduleKey]: _omitted, ...rest } = config.modules;
+				return { ...config, modules: rest };
+			},
+			withAppliedModule: (config: LocalModuleConfig, entry: LocalModuleConfig['modules'][string]) => ({
+				...config,
+				modules: {
+					...config.modules,
+					[entry.key]: entry,
+				},
+			}),
+			writeConfig: async (config: LocalModuleConfig) => {
+				writtenConfig = config;
+			},
+		};
+		controller.resolveWorkspaceFolder = async () => ({ name: 'repo', uri: vscode.Uri.file(workspaceRoot) });
+		controller.tryLoadSidebarLocalModuleConfig = async () => existingConfig;
+		controller.refreshSidebarWorkspaceState = async () => undefined;
+		controller.loadModules = async () => undefined;
+		mocked.__setInputBoxResponses(['shared-module', 'Demo repo', 'labview-csm, csm-modsets']);
+		mocked.__setQuickPickResponse({ label: 'Private', visibility: 'private' });
+		mocked.__setWarningMessageResponse('Create Repository');
+
+		await controller.createLocalFolderRepositoryCommand({
+			id: 'csm/local-module',
+			kind: 'unmanaged',
+			name: 'local-module',
+			path: 'csm/local-module',
+		});
+
+		// 原 local 记录被移除，写入 submodule 已管理条目
+		assert.deepStrictEqual(writtenConfig?.modules['local-module'], undefined);
+		assert.deepStrictEqual(writtenConfig?.modules['tester__shared-module'], {
+			key: 'tester__shared-module',
+			name: 'shared-module',
+			owner: 'tester',
+			source: 'https://github.com/tester/shared-module',
+			method: 'submodule',
+			path: 'csm/local-module',
+			ref: 'def456',
+			branch: 'main',
+			locked: true,
+		});
+	});
+
 	test('createLocalFolderRepositoryCommand waits for catalog refresh before resolving', async () => {
 		const workspaceRoot = fs.mkdtempSync(path.join(getTempRoot(), 'csm-share-module-refresh-order-'));
 		fs.mkdirSync(path.join(workspaceRoot, 'csm', 'custom-module'), { recursive: true });
