@@ -58,18 +58,8 @@ export class GitService implements IGitRunner {
 	}
 
 	public async exec(options: GitExecOptions): Promise<string> {
-		const { cwd, args, authToken, repoUrl } = options;
-		const env = { ...process.env };
-
-		if (authToken && this.usesHttpsRemote(repoUrl)) {
-			const askpass = await this.ensureAskpassScript();
-			env.GIT_ASKPASS = askpass;
-			env.GIT_TERMINAL_PROMPT = '0';
-			// The askpass script reads the token from a per-invocation env var so the
-			// secret never appears in argv or in any persistent file.
-			env.CSM_GIT_TOKEN = authToken;
-			env.CSM_GIT_USERNAME = 'x-access-token';
-		}
+		const { cwd, args } = options;
+		const env = await this.buildEnv(options);
 
 		try {
 			const { stdout } = await execFileAsync(this.resolveGitBinary(), args, {
@@ -81,6 +71,36 @@ export class GitService implements IGitRunner {
 		} catch (error) {
 			throw new Error(formatCommandError(error));
 		}
+	}
+
+	/**
+	 * 构造 git 进程的环境变量：复用已登录账号的权限、绝不弹授权窗。
+	 *
+	 * - GIT_TERMINAL_PROMPT=0：git 永不进入交互式凭据提示（terminal prompt）。
+	 * - GCM_INTERACTIVE=never：禁止 Git Credential Manager 弹出 GUI/浏览器授权窗。
+	 *   已存储的凭据仍会被静默复用（不弹窗）；缺少凭据时 git 直接失败，
+	 *   由调用方把错误转成提示，而不是弹出 GitHub 权限验证窗口。
+	 * - 携带 token 且为 https 远程时，额外通过 GIT_ASKPASS 传入 token
+	 *   （secret 不出现于命令行，也不写入任何持久化文件）。
+	 *
+	 * 独立成方法以便单元测试直接断言环境（避免在 Windows 上启动假 git 子进程）。
+	 */
+	public async buildEnv(options: { authToken?: string; repoUrl?: string }): Promise<NodeJS.ProcessEnv> {
+		const { authToken, repoUrl } = options;
+		const env = { ...process.env };
+		env.GIT_TERMINAL_PROMPT = '0';
+		env.GCM_INTERACTIVE = 'never';
+
+		if (authToken && this.usesHttpsRemote(repoUrl)) {
+			const askpass = await this.ensureAskpassScript();
+			env.GIT_ASKPASS = askpass;
+			// The askpass script reads the token from a per-invocation env var so the
+			// secret never appears in argv or in any persistent file.
+			env.CSM_GIT_TOKEN = authToken;
+			env.CSM_GIT_USERNAME = 'x-access-token';
+		}
+
+		return env;
 	}
 
 	private resolveGitBinary(): string {
