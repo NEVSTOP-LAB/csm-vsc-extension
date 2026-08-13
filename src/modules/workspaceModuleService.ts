@@ -16,6 +16,7 @@ import {
 	withAppliedModule as configWithAppliedModule,
 	withoutModule as configWithoutModule,
 	normalizeRootPath as configNormalizeRootPath,
+	ConfigMigrationOutcome,
 	CONFIG_VERSION,
 	DEFAULT_LOCAL_MODULE_ROOT,
 	LOCAL_MODULE_CONFIG_FILE,
@@ -134,8 +135,6 @@ function isSpecialCharacterPrefixedDirectoryName(name: string): boolean {
 export class WorkspaceModuleService {
 	constructor(
 		private readonly gitRunner: IGitRunner = new GitService(),
-		/** 插件版本：写入配置 version 字段，加载旧配置时触发迁移 */
-		private readonly extensionVersion?: string,
 	) { }
 
 	public normalizeRootPath(value: string): string {
@@ -351,11 +350,14 @@ export class WorkspaceModuleService {
 	}
 
 	public async initializeConfig(repoRoot: string, rootRelativePath: string): Promise<LocalModuleConfig> {
-		return configInitializeConfig(repoRoot, rootRelativePath, this.extensionVersion);
+		return configInitializeConfig(repoRoot, rootRelativePath);
 	}
 
-	public async loadConfig(repoRoot: string, configPath: string): Promise<LocalModuleConfig> {
-		return configLoadConfig(repoRoot, configPath, this.extensionVersion);
+	/**
+	 * 加载本地模块配置；迁移 / 重建结果通过 `onMigration` 回调上报（issue #94）。
+	 */
+	public async loadConfig(repoRoot: string, configPath: string, onMigration?: (outcome: ConfigMigrationOutcome) => void): Promise<LocalModuleConfig> {
+		return configLoadConfig(repoRoot, configPath, CONFIG_VERSION, onMigration);
 	}
 
 	public async recoverConfigFromExistingSubmodules(
@@ -369,7 +371,7 @@ export class WorkspaceModuleService {
 		}
 
 		const config: LocalModuleConfig = {
-			version: this.extensionVersion ?? CONFIG_VERSION,
+			version: CONFIG_VERSION,
 			root,
 			configPath: getConfigPath(repoRoot, root),
 			modules: {},

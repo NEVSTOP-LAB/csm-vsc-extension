@@ -1,20 +1,20 @@
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as yaml from 'js-yaml';
-import { lt, valid } from 'semver';
 import { LocalModuleConfig, LocalModuleConfigEntry } from './types';
 
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
-export const CONFIG_VERSION = '2';
+export const CONFIG_VERSION = '3';
 const SECTION_ROOT = 'csmModules';
 
 /**
- * `version` 字段语义：插件（扩展）版本（如 "0.0.26"）。
- * `CONFIG_VERSION` 仅作为没有传入扩展版本信息时的兜底值（测试 / 旧代码），
- * 旧配置写入的非语义化版本（如 "1" / "2"）会被视为旧版，加载时自动迁移。
+ * `version` 字段语义：配置文件自身的 schema 版本（非负整数，如 "1" / "2" / "3"）。
+ * 与插件版本彻底解耦——插件升级不会改写配置文件（避免无意义的 git 变更）。
+ * 仅当配置格式发生变更（含不兼容变更）时递增该版本号，并配套迁移 / 重建逻辑。
+ * 旧配置（缺失 version / 旧插件版本如 "0.0.26" / 低于当前 schema 版本）加载时自动迁移到当前版本。
  */
 
 export const DEFAULT_LOCAL_MODULE_ROOT = 'csm';
@@ -277,27 +277,36 @@ export interface ConfigMigrationStep {
 	migrate(config: LocalModuleConfig): void | Promise<void>;
 }
 
-function isSemverLikeVersion(value: string | undefined): boolean {
-	return Boolean(value && valid(value.trim()) !== null);
+/** 解析配置 schema 版本号为非负整数；非纯数字（缺失 / 旧插件版本 / 损坏）返回 undefined。 */
+function parseSchemaVersion(value: string): number | undefined {
+	const trimmed = value.trim();
+	if (!/^\d+$/.test(trimmed)) {
+		return undefined;
+	}
+	return Number(trimmed);
 }
 
 /**
- * 判断从 oldVersion 升级到 currentVersion 是否需要迁移：
- * 缺失版本、非语义化版本（旧 schema 的 "1" / "2"）、低于当前版本均需要。
+ * 判断从 oldVersion 升级到 currentVersion 是否需要迁移（issue #94）：
+ * 缺失版本、无法解析为整数的旧版本（旧插件版本如 "0.0.26"）、低于当前 schema 版本均需要。
+ * 同版本或更高版本（如手写的未来版本）不需要，避免改写文件。
  */
 export function shouldMigrateConfig(oldVersion: string | undefined, currentVersion: string): boolean {
-	if (!oldVersion) {
+	const current = parseSchemaVersion(currentVersion);
+	if (current === undefined) {
+		return false;
+	}
+	if (oldVersion === undefined || oldVersion.trim() === '') {
 		return true;
 	}
-	const trimmed = oldVersion.trim();
-	if (!isSemverLikeVersion(trimmed)) {
-		return true;
-	}
-	return lt(trimmed, currentVersion);
+	const old = parseSchemaVersion(oldVersion);
+	return old === undefined || old < current;
 }
 
 /**
- * 默认迁移步骤列表：新版本需要追加迁移时在数组尾部新增步骤。
+ * 默认迁移步骤列表：配置 schema 版本递增时在数组尾部追加步骤即可（issue #94）。
+ * 设计新配置时尽量向前兼容（通过迁移步骤保留旧数据）；若某一步骤抛错（无法兼容），
+ * loadConfig 会自动备份旧文件并重建为新版本配置。
  */
 export const DEFAULT_CONFIG_MIGRATIONS: ConfigMigrationStep[] = [
 	{
@@ -313,7 +322,7 @@ export const DEFAULT_CONFIG_MIGRATIONS: ConfigMigrationStep[] = [
 ];
 
 /**
- * 按序执行适用的迁移步骤，并把 config.version 更新为当前插件版本。
+ * 按序执行适用的迁移步骤，并把 config.version 更新为当前 schema 版本。
  * 返回已执行步骤名列表。
  */
 export async function runConfigMigrations(
@@ -335,19 +344,59 @@ export async function runConfigMigrations(
 }
 
 // ---------------------------------------------------------------------------
+// 配置加载结果（迁移 / 重建）上报
+// ---------------------------------------------------------------------------
+
+/** 配置加载时迁移 / 重建的结果信息（供调用方记录日志与提示用户）。 */
+export interface ConfigMigrationOutcome {
+	/** 是否执行了迁移步骤（向前兼容） */
+	migrated: boolean;
+	/** 是否因旧配置无法兼容而自动重建（备份旧文件 + 生成空配置） */
+	rebuilt: boolean;
+	/** 迁移前的旧版本（可能缺失） */
+	oldVersion?: string;
+	/** 已执行的迁移步骤名列表 */
+	executedSteps: string[];
+	/** 重建时的备份文件路径（rebuilt=true 时存在） */
+	backupPath?: string;
+}
+
+/** 生成旧配置备份路径：`<configPath>.bak-<oldVersion>-<timestamp>`。 */
+export function buildConfigBackupPath(configPath: string, oldVersion: string | undefined, timestamp = Date.now()): string {
+	const suffix = (oldVersion?.trim() || 'unknown').replace(/[^\w.-]/g, '_');
+	return `${configPath}.bak-${suffix}-${timestamp}`;
+}
+
+async function backupConfigFile(configPath: string, oldVersion: string | undefined): Promise<string> {
+	const backupPath = buildConfigBackupPath(configPath, oldVersion);
+	await fs.copyFile(configPath, backupPath);
+	return backupPath;
+}
+
+/** 旧配置无法兼容时：保留 root，重建为空配置（modules 清空，旧数据见备份文件）。 */
+function rebuildConfig(original: LocalModuleConfig, currentVersion: string): LocalModuleConfig {
+	return {
+		version: currentVersion,
+		root: original.root,
+		configPath: original.configPath,
+		modules: {},
+	};
+}
+
+// ---------------------------------------------------------------------------
 // File I/O functions (stateless — depend only on the filesystem)
 // ---------------------------------------------------------------------------
 
 /**
  * Create a new config file on disk and return the in-memory config object.
- * `currentVersion`（插件版本）写入 `version` 字段，供后续加载时判断是否需要迁移。
+ * `currentVersion`（配置 schema 版本）写入 `version` 字段，供后续加载时判断是否需要迁移。
  */
-export async function initializeConfig(repoRoot: string, rootRelativePath: string, currentVersion?: string): Promise<LocalModuleConfig> {
+export async function initializeConfig(repoRoot: string, rootRelativePath: string, currentVersion: string = CONFIG_VERSION): Promise<LocalModuleConfig> {
 	const root = normalizeRootPath(rootRelativePath);
 	const configPath = getConfigPath(repoRoot, root);
 	await fs.mkdir(path.dirname(configPath), { recursive: true });
 	const config: LocalModuleConfig = {
-		version: currentVersion ?? CONFIG_VERSION,
+		version: currentVersion,
 		root,
 		configPath,
 		modules: {},
@@ -358,10 +407,17 @@ export async function initializeConfig(repoRoot: string, rootRelativePath: strin
 
 /**
  * Read and parse a config file from disk, returning the in-memory config object.
- * 传入 `currentVersion` 时：旧版本（含旧 schema 的非语义化 version）加载后静默执行
- * 迁移步骤并写回当前插件版本，使配置随插件升级自动更新。
+ * 加载时比较配置 schema 版本（issue #94）：旧版本（缺失 / 旧插件版本 / 低于当前 schema 版本）
+ * 自动执行迁移步骤并写回当前版本；若迁移步骤失败（旧配置无法兼容），备份旧文件并自动重建为
+ * 新版本的空配置。`onMigration` 可选回调上报迁移 / 重建结果，供调用方记录日志与提示用户。
  */
-export async function loadConfig(repoRoot: string, configPath: string, currentVersion?: string): Promise<LocalModuleConfig> {
+export async function loadConfig(
+	repoRoot: string,
+	configPath: string,
+	currentVersion: string = CONFIG_VERSION,
+	onMigration?: (outcome: ConfigMigrationOutcome) => void,
+	steps: ConfigMigrationStep[] = DEFAULT_CONFIG_MIGRATIONS,
+): Promise<LocalModuleConfig> {
 	const raw = await fs.readFile(configPath, 'utf8');
 	const parsed = isLegacyConfigPath(configPath) ? parseLegacyConfig(raw) : parseYamlConfig(raw);
 	const derivedRoot = toPosixPath(path.relative(repoRoot, path.dirname(configPath)));
@@ -372,10 +428,20 @@ export async function loadConfig(repoRoot: string, configPath: string, currentVe
 		configPath: getConfigPath(repoRoot, root),
 		modules: parsed.modules,
 	};
-	const needsMigration = typeof currentVersion === 'string' && shouldMigrateConfig(parsed.version, currentVersion);
+	const needsMigration = shouldMigrateConfig(parsed.version, currentVersion);
 	if (needsMigration) {
-		await runConfigMigrations(config, parsed.version, currentVersion);
-		await writeConfig(config);
+		try {
+			const executedSteps = await runConfigMigrations(config, parsed.version, currentVersion, steps);
+			await writeConfig(config);
+			onMigration?.({ migrated: true, rebuilt: false, oldVersion: parsed.version, executedSteps });
+		} catch (error) {
+			// 旧配置无法兼容（迁移步骤失败）：备份旧文件并自动重建到当前 schema 版本。
+			const backupPath = await backupConfigFile(configPath, parsed.version);
+			const rebuilt = rebuildConfig(config, currentVersion);
+			await writeConfig(rebuilt);
+			onMigration?.({ migrated: false, rebuilt: true, oldVersion: parsed.version, executedSteps: [], backupPath });
+			return rebuilt;
+		}
 	} else if (parsed.needsLockedMigration) {
 		await writeConfig(config);
 	}

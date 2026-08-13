@@ -3483,6 +3483,61 @@ suite('ModuleManagerController Regression Tests', () => {
 		assert.strictEqual((capturedContext as { managedModules: Array<{ path: string }> }).managedModules[0].path, 'csm/module-a');
 	});
 
+	test('loadLocalModuleConfig logs migration and notifies when config is rebuilt (issue #94)', async () => {
+		const loggedWarnings: string[] = [];
+		const loggedInfos: string[] = [];
+		const controller = createController(undefined, {
+			logger: {
+				name: 'test',
+				appendLine: () => undefined,
+				append: () => undefined,
+				clear: () => undefined,
+				dispose: () => undefined,
+				replace: () => undefined,
+				show: () => undefined,
+				hide: () => undefined,
+				info: (message: string) => { loggedInfos.push(message); },
+				warn: (message: string) => { loggedWarnings.push(message); },
+				error: () => undefined,
+				debug: () => undefined,
+				trace: () => undefined,
+			} as any,
+		}) as any;
+
+		let capturedCallback: ((outcome: { migrated: boolean; rebuilt: boolean; oldVersion?: string; executedSteps: string[]; backupPath?: string }) => void) | undefined;
+		controller.workspaceModuleService = {
+			loadConfig: async (_repoRoot: string, _configPath: string, onMigration?: typeof capturedCallback) => {
+				capturedCallback = onMigration;
+				return { version: '3', root: 'csm', configPath: 'd:/repo/csm/csm-modules.yaml', modules: {} };
+			},
+		};
+
+		// 向前兼容迁移：仅记录 info 日志，不弹 toast
+		await controller.loadLocalModuleConfig('d:/repo', 'd:/repo/csm/csm-modules.yaml');
+		capturedCallback?.({
+			migrated: true,
+			rebuilt: false,
+			oldVersion: '2',
+			executedSteps: ['normalize-module-entries'],
+		});
+		assert.ok(loggedInfos.some((text) => text.includes('migrated to schema version')), '迁移记录 info 日志');
+		assert.strictEqual(mocked.__getMessageLog().filter((m) => m.level === 'info').length, 0, '迁移不弹 toast');
+
+		// 不兼容重建：记录 warn 日志 + 弹轻量提示（本地化文案）
+		mocked.__resetMessageLog();
+		await controller.loadLocalModuleConfig('d:/repo', 'd:/repo/csm/csm-modules.yaml');
+		capturedCallback?.({
+			migrated: false,
+			rebuilt: true,
+			oldVersion: '1',
+			executedSteps: [],
+			backupPath: 'd:/repo/csm/csm-modules.yaml.bak-1-123',
+		});
+		assert.ok(loggedWarnings.some((text) => text.includes('incompatible and was rebuilt')), '重建记录 warn 日志');
+		const infos = mocked.__getMessageLog().filter((m) => m.level === 'info').map((m) => m.text);
+		assert.ok(infos.some((text) => text.includes('was backed up to')), '重建弹轻量提示（本地化文案）');
+	});
+
 	test('register marks copy modules as applied in a non-git workspace from config file', async () => {
 		const memento = new FakeMemento();
 		await memento.update('csmModules.cache.modules', createCachedSnapshot([

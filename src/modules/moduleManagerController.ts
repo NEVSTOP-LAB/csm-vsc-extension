@@ -10,6 +10,7 @@ import { ModuleSidebarViewProvider } from './moduleSidebarViewProvider';
 import { IModuleViewProvider, ModuleSortField, ModuleSortState, SidebarWorkspaceContext } from './types';
 import { ReadmeAssetCache } from './readmeAssetCache';
 import { DEFAULT_EXCLUDED_DIRECTORY_NAMES, DEFAULT_LOCAL_MODULE_ROOT, GitIdentity, LEGACY_LOCAL_MODULE_CONFIG_FILE, LOCAL_MODULE_CONFIG_FILE, UpdateModuleOptions, WorkspaceModuleService } from './workspaceModuleService';
+import { CONFIG_VERSION, ConfigMigrationOutcome } from './configService';
 import { COMMAND_IDS, CONFIG_KEYS, CONFIG_SECTIONS, CONTEXT_KEYS, GITHUB, VIEW_IDS } from './constants';
 import { Logger, getLogger, wrapCommand } from './logger';
 import { formatRelativeDate, getApplyMethodLabel, t } from '../i18n';
@@ -262,7 +263,7 @@ export class ModuleManagerController {
 		this.authService = deps.authService ?? new AuthService(this.logger);
 		this.githubService = deps.githubService ?? new GitHubModuleService(this.logger);
 		this.versionService = deps.versionService ?? new ModuleVersionService(this.githubService as unknown as ConstructorParameters<typeof ModuleVersionService>[0], undefined, this.logger);
-		this.workspaceModuleService = deps.workspaceModuleService ?? new WorkspaceModuleService(undefined, this.getExtensionVersion());
+		this.workspaceModuleService = deps.workspaceModuleService ?? new WorkspaceModuleService(undefined);
 		this.treeDataProvider = deps.viewProvider ?? this.sidebarViewProvider;
 		this.cacheStore = new ModuleCacheStore(context.globalState);
 		this.readmeAssetCache = new ReadmeAssetCache(context.globalStorageUri);
@@ -284,12 +285,6 @@ export class ModuleManagerController {
 			logger: this.logger,
 			ensureToken: (interactive) => this.ensureToken(interactive),
 		};
-	}
-
-	/** 插件版本（写入配置 version 字段，加载旧配置时触发迁移） */
-	private getExtensionVersion(): string | undefined {
-		const version = this.context.extension?.packageJSON?.version;
-		return typeof version === 'string' ? version : undefined;
 	}
 
 	private registerCommand<T extends unknown[]>(
@@ -3765,6 +3760,23 @@ export class ModuleManagerController {
 		return { workspaceFolder, repoRoot, workspaceRoot: repoRoot ?? workspaceFolder.uri.fsPath };
 	}
 
+	/**
+	 * 加载本地模块配置，并处理迁移 / 重建的上报（issue #94）：
+	 * 向前兼容的迁移仅记录日志；不兼容重建时记录警告并弹轻量提示。
+	 */
+	private async loadLocalModuleConfig(repoRoot: string, configPath: string): Promise<LocalModuleConfig> {
+		return this.workspaceModuleService.loadConfig(repoRoot, configPath, (outcome: ConfigMigrationOutcome) => {
+			if (outcome.rebuilt) {
+				this.logger.warn(`Local CSM module config at ${configPath} is incompatible and was rebuilt; previous config backed up to ${outcome.backupPath ?? '(unknown)'}`);
+				void vscode.window.showInformationMessage(
+					t('configRebuiltFromIncompatible', { backupPath: outcome.backupPath ?? '(unknown)' }),
+				);
+			} else if (outcome.migrated) {
+				this.logger.info(`Local CSM module config at ${configPath} migrated to schema version ${CONFIG_VERSION} (old: ${outcome.oldVersion ?? '(missing)'}; steps: ${outcome.executedSteps.join(', ') || 'none'})`);
+			}
+		});
+	}
+
 	private async resolveLocalModuleConfig(
 		workspaceFolder: vscode.WorkspaceFolder,
 		repoRoot: string,
@@ -3791,7 +3803,7 @@ export class ModuleManagerController {
 			&& path.basename(sortedMatches[0].fsPath).toLowerCase() === LOCAL_MODULE_CONFIG_FILE.toLowerCase()
 			&& path.basename(sortedMatches[1].fsPath).toLowerCase() === LEGACY_LOCAL_MODULE_CONFIG_FILE.toLowerCase()
 		) {
-			return this.workspaceModuleService.loadConfig(repoRoot, sortedMatches[0].fsPath);
+			return this.loadLocalModuleConfig(repoRoot, sortedMatches[0].fsPath);
 		}
 
 		let configUri = sortedMatches[0];
@@ -3810,7 +3822,7 @@ export class ModuleManagerController {
 		}
 
 		await this.setWorkspaceInitializationContext(false);
-		return this.workspaceModuleService.loadConfig(repoRoot, configUri.fsPath);
+		return this.loadLocalModuleConfig(repoRoot, configUri.fsPath);
 	}
 
 	private async tryLoadSidebarLocalModuleConfig(
@@ -3823,7 +3835,7 @@ export class ModuleManagerController {
 		}
 
 		try {
-			return await this.workspaceModuleService.loadConfig(repoRoot, matches[0].fsPath);
+			return await this.loadLocalModuleConfig(repoRoot, matches[0].fsPath);
 		} catch (error) {
 			this.logger.warn(`Failed to load local module config at ${matches[0].fsPath}: ${error instanceof Error ? error.message : String(error)}`);
 			return undefined;
