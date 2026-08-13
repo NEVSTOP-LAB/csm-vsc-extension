@@ -2657,7 +2657,9 @@ export class ModuleManagerController {
 	}
 
 	private normalizeWorkspacePath(value: string): string {
-		return path.resolve(value).replace(/\\/g, '/').toLowerCase();
+		// 不用 path.resolve（平台相关：Linux 下会把测试里的 d:/... 假路径解析到 cwd 下），
+		// 只做路径规范化 + 斜杠/大小写统一，保证跨平台一致
+		return path.normalize(value).replace(/\\/g, '/').toLowerCase();
 	}
 
 	/** 远端新提交检测结果是否有变化（比较 workspace 与逐模块 ref）。 */
