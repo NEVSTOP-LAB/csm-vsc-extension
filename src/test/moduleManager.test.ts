@@ -12,7 +12,7 @@ import { ModuleTreeItem } from '../modules/moduleTreeTypes';
 import { GitHubRepoSummary } from '../modules';
 import { getVisibleModuleTopics } from '../modules/topics';
 import { CsmModuleEntry, LocalModuleConfig } from '../modules/types';
-import { DEFAULT_CONFIG_MIGRATIONS, runConfigMigrations, shouldMigrateConfig } from '../modules/configService';
+import { CONFIG_VERSION, DEFAULT_CONFIG_MIGRATIONS, loadConfig as configLoadConfig, runConfigMigrations, shouldMigrateConfig } from '../modules/configService';
 import { LEGACY_LOCAL_MODULE_CONFIG_FILE, LOCAL_MODULE_CONFIG_FILE, WorkspaceModuleService } from '../modules/workspaceModuleService';
 import * as vscode from 'vscode';
 
@@ -1080,7 +1080,7 @@ suite('Module Manager Tests', () => {
 			const reloadedConfig = await service.loadConfig(repoRoot, initialConfig.configPath);
 			assert.strictEqual(path.basename(initialConfig.configPath), LOCAL_MODULE_CONFIG_FILE);
 			assert.strictEqual(reloadedConfig.root, 'csm');
-			assert.strictEqual(reloadedConfig.version, '2');
+			assert.strictEqual(reloadedConfig.version, CONFIG_VERSION);
 			assert.strictEqual(reloadedConfig.modules.org__module_a?.locked, true);
 			assert.deepStrictEqual(reloadedConfig.modules.org__module_a, updatedConfig.modules.org__module_a);
 		} finally {
@@ -1147,22 +1147,22 @@ suite('Module Manager Tests', () => {
 		}
 	});
 
-	test('WorkspaceModuleService stamps the extension version into initializeConfig', async () => {
+	test('WorkspaceModuleService stamps the config schema version into initializeConfig (issue #94)', async () => {
 		const repoRoot = await fs.mkdtemp(path.join(getTempRoot(), 'csm-modules-ver-init-'));
-		const service = new WorkspaceModuleService(undefined, '0.0.26');
+		const service = new WorkspaceModuleService();
 		try {
 			const config = await service.initializeConfig(repoRoot, 'csm');
-			assert.strictEqual(config.version, '0.0.26');
+			assert.strictEqual(config.version, CONFIG_VERSION, '新配置写入当前 schema 版本');
 			const raw = await fs.readFile(config.configPath, 'utf8');
-			assert.ok(raw.includes('version: "0.0.26"'), 'YAML 写入插件版本');
+			assert.ok(raw.includes(`version: "${CONFIG_VERSION}"`), 'YAML 写入配置 schema 版本');
 		} finally {
 			await removeWritableTree(repoRoot);
 		}
 	});
 
-	test('WorkspaceModuleService migrates a legacy schema version config to the extension version on load', async () => {
+	test('WorkspaceModuleService migrates a legacy schema version config to the current schema version on load (issue #94)', async () => {
 		const repoRoot = await fs.mkdtemp(path.join(getTempRoot(), 'csm-modules-ver-migrate-'));
-		const service = new WorkspaceModuleService(undefined, '0.0.26');
+		const service = new WorkspaceModuleService();
 		try {
 			const configPath = path.join(repoRoot, 'csm', 'csm-modules.yaml');
 			await fs.mkdir(path.dirname(configPath), { recursive: true });
@@ -1183,10 +1183,10 @@ suite('Module Manager Tests', () => {
 			await fs.writeFile(configPath, raw, 'utf8');
 
 			const config = await service.loadConfig(repoRoot, configPath);
-			assert.strictEqual(config.version, '0.0.26', '旧配置加载后迁移为插件版本');
-			// 迁移后写回：locked 补齐为显式布尔值，version 更新为插件版本
+			assert.strictEqual(config.version, CONFIG_VERSION, '旧配置加载后迁移为当前 schema 版本');
+			// 迁移后写回：locked 补齐为显式布尔值，version 更新为当前 schema 版本
 			const rawAfter = await fs.readFile(configPath, 'utf8');
-			assert.ok(rawAfter.includes('version: "0.0.26"'), '写回插件版本');
+			assert.ok(rawAfter.includes(`version: "${CONFIG_VERSION}"`), '写回当前 schema 版本');
 			assert.ok(rawAfter.includes('locked: true'), '迁移步骤补齐 locked 字段');
 			assert.ok(!rawAfter.includes('version: "2"'), '旧 schema 版本被替换');
 		} finally {
@@ -1194,9 +1194,41 @@ suite('Module Manager Tests', () => {
 		}
 	});
 
-	test('WorkspaceModuleService keeps same-version configs untouched on load', async () => {
+	test('WorkspaceModuleService keeps same-schema-version configs untouched on load (issue #94)', async () => {
 		const repoRoot = await fs.mkdtemp(path.join(getTempRoot(), 'csm-modules-ver-same-'));
-		const service = new WorkspaceModuleService(undefined, '0.0.26');
+		const service = new WorkspaceModuleService();
+		try {
+			const configPath = path.join(repoRoot, 'csm', 'csm-modules.yaml');
+			await fs.mkdir(path.dirname(configPath), { recursive: true });
+			const raw = [
+				`version: "${CONFIG_VERSION}"`,
+				'root: csm',
+				'modules:',
+				'  org__module_a:',
+				'    name: module-a',
+				'    owner: org',
+				'    source: https://github.com/org/module-a',
+				'    method: copy',
+				'    path: csm/module-a',
+				'    ref: abc123',
+				'    branch: main',
+				'    locked: true',
+				'',
+			].join('\n');
+			await fs.writeFile(configPath, raw, 'utf8');
+
+			const config = await service.loadConfig(repoRoot, configPath);
+			assert.strictEqual(config.version, CONFIG_VERSION, '同版本不迁移');
+			const rawAfter = await fs.readFile(configPath, 'utf8');
+			assert.strictEqual(rawAfter, raw, '同版本配置原样保留');
+		} finally {
+			await removeWritableTree(repoRoot);
+		}
+	});
+
+	test('WorkspaceModuleService migrates a legacy extension-version config to the current schema version on load (issue #94)', async () => {
+		const repoRoot = await fs.mkdtemp(path.join(getTempRoot(), 'csm-modules-ver-plugin-'));
+		const service = new WorkspaceModuleService();
 		try {
 			const configPath = path.join(repoRoot, 'csm', 'csm-modules.yaml');
 			await fs.mkdir(path.dirname(configPath), { recursive: true });
@@ -1218,37 +1250,107 @@ suite('Module Manager Tests', () => {
 			await fs.writeFile(configPath, raw, 'utf8');
 
 			const config = await service.loadConfig(repoRoot, configPath);
-			assert.strictEqual(config.version, '0.0.26', '同版本不迁移');
+			assert.strictEqual(config.version, CONFIG_VERSION, '旧插件版本配置迁移为当前 schema 版本');
 			const rawAfter = await fs.readFile(configPath, 'utf8');
-			assert.strictEqual(rawAfter, raw, '同版本配置原样保留');
+			assert.ok(rawAfter.includes(`version: "${CONFIG_VERSION}"`), '写回当前 schema 版本');
+			assert.ok(!rawAfter.includes('version: "0.0.26"'), '旧插件版本被替换');
+		} finally {
+			await removeWritableTree(repoRoot);
+		}
+	});
+
+	test('loadConfig reports migration outcome via onMigration callback (issue #94)', async () => {
+		const repoRoot = await fs.mkdtemp(path.join(getTempRoot(), 'csm-modules-ver-report-'));
+		const service = new WorkspaceModuleService();
+		try {
+			const configPath = path.join(repoRoot, 'csm', 'csm-modules.yaml');
+			await fs.mkdir(path.dirname(configPath), { recursive: true });
+			await fs.writeFile(configPath, 'version: "2"\nroot: csm\nmodules: {}\n', 'utf8');
+
+			const outcomes: Array<{ migrated: boolean; rebuilt: boolean; oldVersion?: string; executedSteps: string[] }> = [];
+			await service.loadConfig(repoRoot, configPath, (outcome) => outcomes.push(outcome));
+			assert.strictEqual(outcomes.length, 1, '迁移时上报一次结果');
+			assert.strictEqual(outcomes[0].migrated, true);
+			assert.strictEqual(outcomes[0].rebuilt, false);
+			assert.strictEqual(outcomes[0].oldVersion, '2');
+			assert.deepStrictEqual(outcomes[0].executedSteps, ['normalize-module-entries']);
+		} finally {
+			await removeWritableTree(repoRoot);
+		}
+	});
+
+	test('loadConfig backs up and rebuilds config when a migration step fails (issue #94)', async () => {
+		const repoRoot = await fs.mkdtemp(path.join(getTempRoot(), 'csm-modules-ver-rebuild-'));
+		try {
+			const configPath = path.join(repoRoot, 'csm', 'csm-modules.yaml');
+			await fs.mkdir(path.dirname(configPath), { recursive: true });
+			const raw = [
+				'version: "1"',
+				'root: csm',
+				'modules:',
+				'  org__module_a:',
+				'    name: module-a',
+				'    owner: org',
+				'    source: https://github.com/org/module-a',
+				'    method: copy',
+				'    path: csm/module-a',
+				'    ref: abc123',
+				'    branch: main',
+				'',
+			].join('\n');
+			await fs.writeFile(configPath, raw, 'utf8');
+
+			// 注入必然失败的迁移步骤，模拟“无法兼容”的旧配置
+			const failingSteps = [
+				{ name: 'explode', appliesTo: () => true, migrate: () => { throw new Error('incompatible config'); } },
+			];
+			const outcomes: Array<{ migrated: boolean; rebuilt: boolean; oldVersion?: string; backupPath?: string }> = [];
+			const config = await configLoadConfig(repoRoot, configPath, CONFIG_VERSION, (outcome) => outcomes.push(outcome), failingSteps);
+
+			// 重建结果：保留 root，清空模块条目，写入当前版本
+			assert.strictEqual(config.version, CONFIG_VERSION);
+			assert.strictEqual(config.root, 'csm');
+			assert.deepStrictEqual(config.modules, {}, '无法兼容时清空模块条目');
+			// 上报 rebuilt 结果与备份路径
+			assert.strictEqual(outcomes.length, 1);
+			assert.strictEqual(outcomes[0].migrated, false);
+			assert.strictEqual(outcomes[0].rebuilt, true);
+			assert.strictEqual(outcomes[0].oldVersion, '1');
+			assert.ok(outcomes[0].backupPath?.startsWith(`${configPath}.bak-1-`), '备份文件路径格式');
+			// 备份保留旧内容，新配置已写回当前版本
+			const backup = await fs.readFile(outcomes[0].backupPath!, 'utf8');
+			assert.ok(backup.includes('org__module_a'), '备份保留旧内容');
+			const rawAfter = await fs.readFile(configPath, 'utf8');
+			assert.ok(rawAfter.includes(`version: "${CONFIG_VERSION}"`), '新配置写回当前版本');
 		} finally {
 			await removeWritableTree(repoRoot);
 		}
 	});
 
 	test('config migrations gate and run applicable steps in order', async () => {
-		// 迁移判定：缺失 / 非语义化（旧 schema）/ 更旧版本需要迁移；同版本 / 更新版本不需要
-		assert.strictEqual(shouldMigrateConfig(undefined, '0.0.26'), true);
-		assert.strictEqual(shouldMigrateConfig('2', '0.0.26'), true);
-		assert.strictEqual(shouldMigrateConfig('0.0.25', '0.0.26'), true);
-		assert.strictEqual(shouldMigrateConfig('0.0.26', '0.0.26'), false);
-		assert.strictEqual(shouldMigrateConfig('0.0.27', '0.0.26'), false);
+		// 迁移判定（issue #94）：缺失 / 无法解析为整数的旧版本（旧插件版本）/ 更低 schema 版本需要迁移；同版本 / 更高版本不需要
+		assert.strictEqual(shouldMigrateConfig(undefined, CONFIG_VERSION), true);
+		assert.strictEqual(shouldMigrateConfig('2', CONFIG_VERSION), true);
+		assert.strictEqual(shouldMigrateConfig('0.0.26', CONFIG_VERSION), true);
+		assert.strictEqual(shouldMigrateConfig('0.0.25', CONFIG_VERSION), true);
+		assert.strictEqual(shouldMigrateConfig(CONFIG_VERSION, CONFIG_VERSION), false);
+		assert.strictEqual(shouldMigrateConfig('4', CONFIG_VERSION), false);
 
 		// 自定义步骤按序执行、仅执行适用步骤、最终写入当前版本
 		const config: LocalModuleConfig = {
-			version: '0.0.25',
+			version: '2',
 			root: 'csm',
 			configPath: 'd:/repo/csm/csm-modules.yaml',
 			modules: {},
 		};
 		const executed: string[] = [];
-		await runConfigMigrations(config, '0.0.25', '0.0.26', [
+		await runConfigMigrations(config, '2', CONFIG_VERSION, [
 			{ name: 'always', appliesTo: () => true, migrate: () => { executed.push('always'); } },
-			{ name: 'only-025', appliesTo: (oldVersion) => oldVersion === '0.0.25', migrate: () => { executed.push('only-025'); } },
-			{ name: 'only-026', appliesTo: (oldVersion) => oldVersion === '0.0.26', migrate: () => { executed.push('only-026'); } },
+			{ name: 'only-2', appliesTo: (oldVersion) => oldVersion === '2', migrate: () => { executed.push('only-2'); } },
+			{ name: 'only-current', appliesTo: (oldVersion) => oldVersion === CONFIG_VERSION, migrate: () => { executed.push('only-current'); } },
 		]);
-		assert.deepStrictEqual(executed, ['always', 'only-025'], '按序执行适用步骤');
-		assert.strictEqual(config.version, '0.0.26', '迁移后写入当前版本');
+		assert.deepStrictEqual(executed, ['always', 'only-2'], '按序执行适用步骤');
+		assert.strictEqual(config.version, CONFIG_VERSION, '迁移后写入当前版本');
 
 		// 默认迁移列表正常化模块条目（补齐 locked 默认值）
 		const normalizedConfig: LocalModuleConfig = {
@@ -1268,15 +1370,18 @@ suite('Module Manager Tests', () => {
 				},
 			},
 		};
-		const executedDefaults = await runConfigMigrations(normalizedConfig, '2', '0.0.26', DEFAULT_CONFIG_MIGRATIONS);
+		const executedDefaults = await runConfigMigrations(normalizedConfig, '2', CONFIG_VERSION, DEFAULT_CONFIG_MIGRATIONS);
 		assert.deepStrictEqual(executedDefaults, ['normalize-module-entries']);
 		assert.strictEqual(normalizedConfig.modules.org__module_a.locked, true, '迁移补齐 locked 默认值');
 	});
 
-	test('config migration gate uses strict semver validation', () => {
-		assert.strictEqual(shouldMigrateConfig('1.2.3-invalid!', '0.0.26'), true, '非法 SemVer 视为旧版本');
-		assert.strictEqual(shouldMigrateConfig('1.0.0-beta.1', '1.0.0'), true, '预发布版本低于正式版本');
-		assert.strictEqual(shouldMigrateConfig('0.0.26', '0.0.26'), false);
+	test('config migration gate treats non-integer old versions as legacy (issue #94)', () => {
+		// 旧插件版本（非整数）一律视为旧版本，需迁移到当前 schema 版本
+		assert.strictEqual(shouldMigrateConfig('0.0.26', CONFIG_VERSION), true, '旧插件版本视为旧版本');
+		assert.strictEqual(shouldMigrateConfig('1.2.3-invalid!', CONFIG_VERSION), true, '非法版本视为旧版本');
+		assert.strictEqual(shouldMigrateConfig('2', CONFIG_VERSION), true, '更低 schema 版本需要迁移');
+		assert.strictEqual(shouldMigrateConfig(CONFIG_VERSION, CONFIG_VERSION), false, '同版本不迁移');
+		assert.strictEqual(shouldMigrateConfig('4', CONFIG_VERSION), false, '更高版本不迁移');
 	});
 
 	test('WorkspaceModuleService resolves submodule HEAD via git output parsing', async () => {

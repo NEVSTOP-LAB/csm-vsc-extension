@@ -793,6 +793,10 @@ const messages = {
 		en: 'Recovered local CSM module config from existing git module folders at {configPath}.',
 		zh: '已从现有 Git 模块目录恢复本地 CSM 模块配置：{configPath}。',
 	},
+	configRebuiltFromIncompatible: {
+		en: 'The local CSM module config is incompatible with this version and was rebuilt. The previous config was backed up to {backupPath}.',
+		zh: '本地 CSM 模块配置与当前版本不兼容，已自动重建。原配置已备份到 {backupPath}。',
+	},
 	submodulesAutoSyncedToConfig: {
 		en: 'Auto-added {count} existing git module folder(s) to CSM module config: {configPath}.',
 		zh: '已自动将 {count} 个现有 Git 模块目录添加到 CSM 模块配置：{configPath}。',
