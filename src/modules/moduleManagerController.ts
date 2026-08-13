@@ -3769,7 +3769,7 @@ export class ModuleManagerController {
 			if (outcome.rebuilt) {
 				this.logger.warn(`Local CSM module config at ${configPath} is incompatible and was rebuilt; previous config backed up to ${outcome.backupPath ?? '(unknown)'}`);
 				void vscode.window.showInformationMessage(
-					t('configRebuiltFromIncompatible', { backupPath: outcome.backupPath ?? configPath }),
+					t('configRebuiltFromIncompatible', { backupPath: outcome.backupPath ?? '(unknown)' }),
 				);
 			} else if (outcome.migrated) {
 				this.logger.info(`Local CSM module config at ${configPath} migrated to schema version ${CONFIG_VERSION} (old: ${outcome.oldVersion ?? '(missing)'}; steps: ${outcome.executedSteps.join(', ') || 'none'})`);
