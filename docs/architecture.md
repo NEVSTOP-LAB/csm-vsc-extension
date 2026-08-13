@@ -196,6 +196,10 @@ extension.ts activate()
 
 重算时 `syncTrackedSubmoduleVersions` 对 `method=submodule` 且 `versionKind=branch` 的条目读取子模块实际 HEAD（本地 git log，无需网络），与配置 `ref` 不一致时写回 `csm-modules.yaml` 并更新版本缓存；`backfillAppliedModuleVersionInfos`（仅手动刷新在线目录时）对 branch 条目比较远端分支 HEAD（`git ls-remote`）与本地 HEAD，不一致时在卡片提示「远端有新提交」。
 
+### 4.6 配置版本自动迁移
+
+`csm-modules.yaml` 的 `version` 字段记录写入时的插件版本（`WorkspaceModuleService` 构造时从 `context.extension.packageJSON.version` 注入）。`configService.loadConfig` 每次加载时比较：旧版本（缺失 / 非语义化旧 schema / 低于当前版本）时按 `DEFAULT_CONFIG_MIGRATIONS` 步骤列表就地迁移（如 `normalize-module-entries` 补齐默认字段）并静默写回当前版本；插件升级时在列表尾部追加步骤即可。同版本加载不改写文件。
+
 ---
 
 ## 5. 构建与测试
@@ -211,7 +215,7 @@ extension.ts activate()
 
 ### 测试统计
 
-- **434** 个独立单元测试（Mocha TDD）
+- **438** 个独立单元测试（Mocha TDD）
 - **2** 个集成测试（需 VS Code 宿主）
 - 纯函数覆盖 100%，核心算法有性能测试约束
 

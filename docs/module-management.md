@@ -116,6 +116,7 @@
 - **默认配置文件**：`csm/csm-modules.yaml`
 - **主动初始化提醒**：当仓库存在默认模块根目录（默认 `csm/`）和 `*.lvproj`、但尚未创建配置文件时，打开 `CSM Modules` 侧边栏会弹出初始化提示；若稍后处理，标题栏会保留初始化按钮入口
 - **兼容旧配置**：若仓库中仍保留 `csm-modules.lvcsm`，扩展会读取旧文件并在后续写回时迁移到 YAML
+- **配置版本自动迁移**：配置文件的 `version` 字段记录写入时的插件版本；加载时发现旧版本（含旧 schema 的 `"2"`）会自动执行迁移步骤（如补齐 `locked` 等默认字段）并静默写回当前版本；插件升级时只需在迁移步骤列表（`configService.DEFAULT_CONFIG_MIGRATIONS`）追加新步骤
 - **配置格式**：当前以 YAML 为规范格式，配置文件始终写回 `csm-modules.yaml`
 - **自定义目录**：通过 `Apply to Current Repository` 流程输入仓库根目录下的相对路径，或通过 `csmModules.defaultModuleRoot` 为首次初始化预设默认目录
 - **配置内容**：记录每个模块的引入方式（`submodule` / `copy` / `release` / `local`）、锁定提交、默认分支、源仓库地址、本地相对路径，以及本地文件是否处于 lock（只读）状态

@@ -8,6 +8,7 @@
 
 ### 新增
 
+- **配置文件版本自动迁移**：`csm-modules.yaml` 的 `version` 字段改为记录写入时的插件版本；加载时发现旧版本（含旧 schema 的 `"2"`）自动按可扩展迁移步骤列表（`configService.DEFAULT_CONFIG_MIGRATIONS`）静默补齐默认字段并写回当前版本，未来插件升级只需在列表追加新步骤
 - **git 操作后自动同步与刷新侧边栏工作区状态**（issue #90）：监听当前仓库 `.git` 目录的变化，父仓库或子模块中提交 / pull / checkout 后去抖自动重算侧边栏，无需手动刷新
 
 - **模块版本概念**（issue #37）：更新模块时支持选择具体版本——更新到分支最新，或从提交记录 / git 标签 / GitHub Release / 分支中选择目标版本（含回退到旧版本）；版本来源数据优先走 GitHub REST API，未登录或网络受限时用 git CLI 兜底

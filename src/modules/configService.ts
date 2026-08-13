@@ -10,6 +10,13 @@ import { LocalModuleConfig, LocalModuleConfigEntry } from './types';
 export const CONFIG_VERSION = '2';
 const SECTION_ROOT = 'csmModules';
 
+/**
+ * `version` 字段语义：插件（扩展）版本（如 "0.0.26"）。
+ * `CONFIG_VERSION` 仅作为没有传入扩展版本信息时的兜底值（测试 / 旧代码），
+ * 旧配置写入的非语义化版本（如 "1" / "2"）会被视为旧版，加载时自动迁移。
+ */
+const SEMVER_PATTERN = /^\d+\.\d+\.\d+/;
+
 export const DEFAULT_LOCAL_MODULE_ROOT = 'csm';
 export const LOCAL_MODULE_CONFIG_FILE = 'csm-modules.yaml';
 export const LEGACY_LOCAL_MODULE_CONFIG_FILE = 'csm-modules.lvcsm';
@@ -257,18 +264,104 @@ export function parseLegacyConfig(raw: string): ParsedConfigShape {
 }
 
 // ---------------------------------------------------------------------------
+// 配置迁移（插件版本写入 version 字段，加载时静默升级旧配置）
+// ---------------------------------------------------------------------------
+
+/** 一次配置迁移步骤：从旧版本升级到当前版本时执行。 */
+export interface ConfigMigrationStep {
+	/** 步骤名（日志 / 测试标识用） */
+	name: string;
+	/** 判断该步骤是否适用于从 oldVersion 升级 */
+	appliesTo(oldVersion: string | undefined): boolean;
+	/** 就地迁移 config（迁移完成后统一写回） */
+	migrate(config: LocalModuleConfig): void | Promise<void>;
+}
+
+function isSemverLikeVersion(value: string | undefined): boolean {
+	return Boolean(value && SEMVER_PATTERN.test(value.trim()));
+}
+
+function compareSemverParts(left: string, right: string): number {
+	const parse = (value: string) => value.split('.').map((part) => parseInt(part, 10) || 0);
+	const leftParts = parse(left);
+	const rightParts = parse(right);
+	for (let index = 0; index < 3; index += 1) {
+		const leftPart = leftParts[index] ?? 0;
+		const rightPart = rightParts[index] ?? 0;
+		if (leftPart !== rightPart) {
+			return leftPart < rightPart ? -1 : 1;
+		}
+	}
+	return 0;
+}
+
+/**
+ * 判断从 oldVersion 升级到 currentVersion 是否需要迁移：
+ * 缺失版本、非语义化版本（旧 schema 的 "1" / "2"）、低于当前版本均需要。
+ */
+export function shouldMigrateConfig(oldVersion: string | undefined, currentVersion: string): boolean {
+	if (!oldVersion) {
+		return true;
+	}
+	const trimmed = oldVersion.trim();
+	if (!isSemverLikeVersion(trimmed)) {
+		return true;
+	}
+	return compareSemverParts(trimmed, currentVersion) < 0;
+}
+
+/**
+ * 默认迁移步骤列表：新版本需要追加迁移时在数组尾部新增步骤。
+ */
+export const DEFAULT_CONFIG_MIGRATIONS: ConfigMigrationStep[] = [
+	{
+		name: 'normalize-module-entries',
+		// 所有旧版本都执行：补齐后续新增字段的默认值（locked / versionKind 等）
+		appliesTo: () => true,
+		migrate: (config) => {
+			for (const [key, module] of Object.entries(config.modules)) {
+				config.modules[key] = finalizeModuleSection(module);
+			}
+		},
+	},
+];
+
+/**
+ * 按序执行适用的迁移步骤，并把 config.version 更新为当前插件版本。
+ * 返回已执行步骤名列表。
+ */
+export async function runConfigMigrations(
+	config: LocalModuleConfig,
+	oldVersion: string | undefined,
+	currentVersion: string,
+	steps: ConfigMigrationStep[] = DEFAULT_CONFIG_MIGRATIONS,
+): Promise<string[]> {
+	const executed: string[] = [];
+	for (const step of steps) {
+		if (!step.appliesTo(oldVersion)) {
+			continue;
+		}
+		await step.migrate(config);
+		executed.push(step.name);
+	}
+	config.version = currentVersion;
+	return executed;
+}
+
+// ---------------------------------------------------------------------------
 // File I/O functions (stateless — depend only on the filesystem)
 // ---------------------------------------------------------------------------
 
 /**
  * Create a new config file on disk and return the in-memory config object.
+ * `currentVersion`（插件版本）写入 `version` 字段，供后续加载时判断是否需要迁移。
  */
-export async function initializeConfig(repoRoot: string, rootRelativePath: string): Promise<LocalModuleConfig> {
+export async function initializeConfig(repoRoot: string, rootRelativePath: string, currentVersion?: string): Promise<LocalModuleConfig> {
 	const root = normalizeRootPath(rootRelativePath);
 	const configPath = getConfigPath(repoRoot, root);
 	await fs.mkdir(path.dirname(configPath), { recursive: true });
 	const config: LocalModuleConfig = {
-		version: CONFIG_VERSION,
+		version: currentVersion ?? CONFIG_VERSION,
 		root,
 		configPath,
 		modules: {},
@@ -279,19 +372,25 @@ export async function initializeConfig(repoRoot: string, rootRelativePath: strin
 
 /**
  * Read and parse a config file from disk, returning the in-memory config object.
+ * 传入 `currentVersion` 时：旧版本（含旧 schema 的非语义化 version）加载后静默执行
+ * 迁移步骤并写回当前插件版本，使配置随插件升级自动更新。
  */
-export async function loadConfig(repoRoot: string, configPath: string): Promise<LocalModuleConfig> {
+export async function loadConfig(repoRoot: string, configPath: string, currentVersion?: string): Promise<LocalModuleConfig> {
 	const raw = await fs.readFile(configPath, 'utf8');
 	const parsed = isLegacyConfigPath(configPath) ? parseLegacyConfig(raw) : parseYamlConfig(raw);
 	const derivedRoot = toPosixPath(path.relative(repoRoot, path.dirname(configPath)));
 	const root = parsed.root ? normalizeRootPath(parsed.root) : normalizeRootPath(derivedRoot || DEFAULT_LOCAL_MODULE_ROOT);
 	const config: LocalModuleConfig = {
-		version: CONFIG_VERSION,
+		version: parsed.version ?? CONFIG_VERSION,
 		root,
 		configPath: getConfigPath(repoRoot, root),
 		modules: parsed.modules,
 	};
-	if (parsed.needsLockedMigration) {
+	const needsMigration = typeof currentVersion === 'string' && shouldMigrateConfig(parsed.version, currentVersion);
+	if (needsMigration) {
+		await runConfigMigrations(config, parsed.version, currentVersion);
+		await writeConfig(config);
+	} else if (parsed.needsLockedMigration) {
 		await writeConfig(config);
 	}
 	return config;

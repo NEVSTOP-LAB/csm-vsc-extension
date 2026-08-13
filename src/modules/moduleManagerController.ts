@@ -260,7 +260,7 @@ export class ModuleManagerController {
 		this.authService = deps.authService ?? new AuthService(this.logger);
 		this.githubService = deps.githubService ?? new GitHubModuleService(this.logger);
 		this.versionService = deps.versionService ?? new ModuleVersionService(this.githubService as unknown as ConstructorParameters<typeof ModuleVersionService>[0], undefined, this.logger);
-		this.workspaceModuleService = deps.workspaceModuleService ?? new WorkspaceModuleService();
+		this.workspaceModuleService = deps.workspaceModuleService ?? new WorkspaceModuleService(undefined, this.getExtensionVersion());
 		this.treeDataProvider = deps.viewProvider ?? this.sidebarViewProvider;
 		this.cacheStore = new ModuleCacheStore(context.globalState);
 		this.readmeAssetCache = new ReadmeAssetCache(context.globalStorageUri);
@@ -282,6 +282,12 @@ export class ModuleManagerController {
 			logger: this.logger,
 			ensureToken: (interactive) => this.ensureToken(interactive),
 		};
+	}
+
+	/** 插件版本（写入配置 version 字段，加载旧配置时触发迁移） */
+	private getExtensionVersion(): string | undefined {
+		const version = this.context.extension?.packageJSON?.version;
+		return typeof version === 'string' ? version : undefined;
 	}
 
 	private registerCommand<T extends unknown[]>(

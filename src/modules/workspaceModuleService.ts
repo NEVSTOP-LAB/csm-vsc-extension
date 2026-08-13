@@ -132,7 +132,11 @@ function isSpecialCharacterPrefixedDirectoryName(name: string): boolean {
 }
 
 export class WorkspaceModuleService {
-	constructor(private readonly gitRunner: IGitRunner = new GitService()) { }
+	constructor(
+		private readonly gitRunner: IGitRunner = new GitService(),
+		/** 插件版本：写入配置 version 字段，加载旧配置时触发迁移 */
+		private readonly extensionVersion?: string,
+	) { }
 
 	public normalizeRootPath(value: string): string {
 		return configNormalizeRootPath(value);
@@ -347,11 +351,11 @@ export class WorkspaceModuleService {
 	}
 
 	public async initializeConfig(repoRoot: string, rootRelativePath: string): Promise<LocalModuleConfig> {
-		return configInitializeConfig(repoRoot, rootRelativePath);
+		return configInitializeConfig(repoRoot, rootRelativePath, this.extensionVersion);
 	}
 
 	public async loadConfig(repoRoot: string, configPath: string): Promise<LocalModuleConfig> {
-		return configLoadConfig(repoRoot, configPath);
+		return configLoadConfig(repoRoot, configPath, this.extensionVersion);
 	}
 
 	public async recoverConfigFromExistingSubmodules(
@@ -365,7 +369,7 @@ export class WorkspaceModuleService {
 		}
 
 		const config: LocalModuleConfig = {
-			version: CONFIG_VERSION,
+			version: this.extensionVersion ?? CONFIG_VERSION,
 			root,
 			configPath: getConfigPath(repoRoot, root),
 			modules: {},

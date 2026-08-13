@@ -11,7 +11,8 @@ import { ModuleSidebarViewProvider } from '../modules/moduleSidebarViewProvider'
 import { ModuleTreeItem } from '../modules/moduleTreeTypes';
 import { GitHubRepoSummary } from '../modules';
 import { getVisibleModuleTopics } from '../modules/topics';
-import { CsmModuleEntry } from '../modules/types';
+import { CsmModuleEntry, LocalModuleConfig } from '../modules/types';
+import { DEFAULT_CONFIG_MIGRATIONS, runConfigMigrations, shouldMigrateConfig } from '../modules/configService';
 import { LEGACY_LOCAL_MODULE_CONFIG_FILE, LOCAL_MODULE_CONFIG_FILE, WorkspaceModuleService } from '../modules/workspaceModuleService';
 import * as vscode from 'vscode';
 
@@ -1144,6 +1145,132 @@ suite('Module Manager Tests', () => {
 		} finally {
 			await removeWritableTree(repoRoot);
 		}
+	});
+
+	test('WorkspaceModuleService stamps the extension version into initializeConfig', async () => {
+		const repoRoot = await fs.mkdtemp(path.join(getTempRoot(), 'csm-modules-ver-init-'));
+		const service = new WorkspaceModuleService(undefined, '0.0.26');
+		try {
+			const config = await service.initializeConfig(repoRoot, 'csm');
+			assert.strictEqual(config.version, '0.0.26');
+			const raw = await fs.readFile(config.configPath, 'utf8');
+			assert.ok(raw.includes('version: "0.0.26"'), 'YAML 写入插件版本');
+		} finally {
+			await removeWritableTree(repoRoot);
+		}
+	});
+
+	test('WorkspaceModuleService migrates a legacy schema version config to the extension version on load', async () => {
+		const repoRoot = await fs.mkdtemp(path.join(getTempRoot(), 'csm-modules-ver-migrate-'));
+		const service = new WorkspaceModuleService(undefined, '0.0.26');
+		try {
+			const configPath = path.join(repoRoot, 'csm', 'csm-modules.yaml');
+			await fs.mkdir(path.dirname(configPath), { recursive: true });
+			const raw = [
+				'version: "2"',
+				'root: csm',
+				'modules:',
+				'  org__module_a:',
+				'    name: module-a',
+				'    owner: org',
+				'    source: https://github.com/org/module-a',
+				'    method: copy',
+				'    path: csm/module-a',
+				'    ref: abc123',
+				'    branch: main',
+				'',
+			].join('\n');
+			await fs.writeFile(configPath, raw, 'utf8');
+
+			const config = await service.loadConfig(repoRoot, configPath);
+			assert.strictEqual(config.version, '0.0.26', '旧配置加载后迁移为插件版本');
+			// 迁移后写回：locked 补齐为显式布尔值，version 更新为插件版本
+			const rawAfter = await fs.readFile(configPath, 'utf8');
+			assert.ok(rawAfter.includes('version: "0.0.26"'), '写回插件版本');
+			assert.ok(rawAfter.includes('locked: true'), '迁移步骤补齐 locked 字段');
+			assert.ok(!rawAfter.includes('version: "2"'), '旧 schema 版本被替换');
+		} finally {
+			await removeWritableTree(repoRoot);
+		}
+	});
+
+	test('WorkspaceModuleService keeps same-version configs untouched on load', async () => {
+		const repoRoot = await fs.mkdtemp(path.join(getTempRoot(), 'csm-modules-ver-same-'));
+		const service = new WorkspaceModuleService(undefined, '0.0.26');
+		try {
+			const configPath = path.join(repoRoot, 'csm', 'csm-modules.yaml');
+			await fs.mkdir(path.dirname(configPath), { recursive: true });
+			const raw = [
+				'version: "0.0.26"',
+				'root: csm',
+				'modules:',
+				'  org__module_a:',
+				'    name: module-a',
+				'    owner: org',
+				'    source: https://github.com/org/module-a',
+				'    method: copy',
+				'    path: csm/module-a',
+				'    ref: abc123',
+				'    branch: main',
+				'    locked: true',
+				'',
+			].join('\n');
+			await fs.writeFile(configPath, raw, 'utf8');
+
+			const config = await service.loadConfig(repoRoot, configPath);
+			assert.strictEqual(config.version, '0.0.26', '同版本不迁移');
+			const rawAfter = await fs.readFile(configPath, 'utf8');
+			assert.strictEqual(rawAfter, raw, '同版本配置原样保留');
+		} finally {
+			await removeWritableTree(repoRoot);
+		}
+	});
+
+	test('config migrations gate and run applicable steps in order', async () => {
+		// 迁移判定：缺失 / 非语义化（旧 schema）/ 更旧版本需要迁移；同版本 / 更新版本不需要
+		assert.strictEqual(shouldMigrateConfig(undefined, '0.0.26'), true);
+		assert.strictEqual(shouldMigrateConfig('2', '0.0.26'), true);
+		assert.strictEqual(shouldMigrateConfig('0.0.25', '0.0.26'), true);
+		assert.strictEqual(shouldMigrateConfig('0.0.26', '0.0.26'), false);
+		assert.strictEqual(shouldMigrateConfig('0.0.27', '0.0.26'), false);
+
+		// 自定义步骤按序执行、仅执行适用步骤、最终写入当前版本
+		const config: LocalModuleConfig = {
+			version: '0.0.25',
+			root: 'csm',
+			configPath: 'd:/repo/csm/csm-modules.yaml',
+			modules: {},
+		};
+		const executed: string[] = [];
+		await runConfigMigrations(config, '0.0.25', '0.0.26', [
+			{ name: 'always', appliesTo: () => true, migrate: () => { executed.push('always'); } },
+			{ name: 'only-025', appliesTo: (oldVersion) => oldVersion === '0.0.25', migrate: () => { executed.push('only-025'); } },
+			{ name: 'only-026', appliesTo: (oldVersion) => oldVersion === '0.0.26', migrate: () => { executed.push('only-026'); } },
+		]);
+		assert.deepStrictEqual(executed, ['always', 'only-025'], '按序执行适用步骤');
+		assert.strictEqual(config.version, '0.0.26', '迁移后写入当前版本');
+
+		// 默认迁移列表正常化模块条目（补齐 locked 默认值）
+		const normalizedConfig: LocalModuleConfig = {
+			version: '2',
+			root: 'csm',
+			configPath: 'd:/repo/csm/csm-modules.yaml',
+			modules: {
+				org__module_a: {
+					key: 'org__module_a',
+					name: 'module-a',
+					owner: 'org',
+					source: 'https://github.com/org/module-a',
+					method: 'copy',
+					path: 'csm/module-a',
+					ref: 'abc123',
+					branch: 'main',
+				},
+			},
+		};
+		const executedDefaults = await runConfigMigrations(normalizedConfig, '2', '0.0.26', DEFAULT_CONFIG_MIGRATIONS);
+		assert.deepStrictEqual(executedDefaults, ['normalize-module-entries']);
+		assert.strictEqual(normalizedConfig.modules.org__module_a.locked, true, '迁移补齐 locked 默认值');
 	});
 
 	test('WorkspaceModuleService toggles local module files between readonly and writable', async () => {
