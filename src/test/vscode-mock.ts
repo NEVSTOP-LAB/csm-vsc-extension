@@ -342,6 +342,56 @@ export class RelativePattern {
     ) { }
 }
 
+/**
+ * 可编程触发的文件系统 watcher mock：记录注册的 watcher，
+ * 测试可通过 `__fire(kind, uri)` 模拟 git 提交等文件事件（issue #90）。
+ */
+export class MockFileSystemWatcher {
+    private readonly changeListeners: Array<(uri: Uri) => void> = [];
+    private readonly createListeners: Array<(uri: Uri) => void> = [];
+    private readonly deleteListeners: Array<(uri: Uri) => void> = [];
+    public disposed = false;
+    public readonly ignoreCreateEvents = false;
+    public readonly ignoreChangeEvents = false;
+    public readonly ignoreDeleteEvents = false;
+
+    constructor(public readonly pattern: unknown) { }
+
+    public get onDidCreate(): (listener: (uri: Uri) => void) => unknown {
+        return (listener: (uri: Uri) => void) => {
+            this.createListeners.push(listener);
+            return new Disposable(() => undefined);
+        };
+    }
+
+    public get onDidChange(): (listener: (uri: Uri) => void) => unknown {
+        return (listener: (uri: Uri) => void) => {
+            this.changeListeners.push(listener);
+            return new Disposable(() => undefined);
+        };
+    }
+
+    public get onDidDelete(): (listener: (uri: Uri) => void) => unknown {
+        return (listener: (uri: Uri) => void) => {
+            this.deleteListeners.push(listener);
+            return new Disposable(() => undefined);
+        };
+    }
+
+    public dispose(): void {
+        this.disposed = true;
+    }
+
+    public __fire(kind: 'create' | 'change' | 'delete', uri = new Uri('mock-file')): void {
+        const listeners = kind === 'create' ? this.createListeners : kind === 'change' ? this.changeListeners : this.deleteListeners;
+        for (const listener of [...listeners]) {
+            listener(uri);
+        }
+    }
+}
+
+const fileWatchers: MockFileSystemWatcher[] = [];
+
 type MessageLevel = 'info' | 'warn' | 'error';
 
 const messageLog: Array<{ level: MessageLevel; text: string }> = [];
@@ -542,7 +592,16 @@ export const workspace = {
             languageId: options.language,
         };
     },
+    createFileSystemWatcher(pattern: unknown): MockFileSystemWatcher {
+        const watcher = new MockFileSystemWatcher(pattern);
+        fileWatchers.push(watcher);
+        return watcher;
+    },
 };
+
+export function __getFileSystemWatchers(): MockFileSystemWatcher[] {
+    return [...fileWatchers];
+}
 
 export function __getMessageLog(): Array<{ level: MessageLevel; text: string }> {
     return [...messageLog];
@@ -674,6 +733,7 @@ export function __resetUiState(): void {
     executedCommands.length = 0;
     webviewViewProviders.clear();
     webviewViews.clear();
+    fileWatchers.length = 0;
     workspace.workspaceFolders = undefined;
     window.activeTextEditor = undefined;
 }

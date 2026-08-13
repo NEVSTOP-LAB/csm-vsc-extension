@@ -8,6 +8,9 @@
 
 ### 新增
 
+- **配置文件版本自动迁移**：`csm-modules.yaml` 的 `version` 字段改为记录写入时的插件版本；加载时发现旧版本（含旧 schema 的 `"2"`）自动按可扩展迁移步骤列表（`configService.DEFAULT_CONFIG_MIGRATIONS`）静默补齐默认字段并写回当前版本，未来插件升级只需在列表追加新步骤
+- **git 操作后自动同步与刷新侧边栏工作区状态**（issue #90）：监听当前仓库 `.git` 目录的变化，父仓库或子模块中提交 / pull / checkout 后去抖自动重算侧边栏，无需手动刷新
+
 - **模块版本概念**（issue #37）：更新模块时支持选择具体版本——更新到分支最新，或从提交记录 / git 标签 / GitHub Release / 分支中选择目标版本（含回退到旧版本）；版本来源数据优先走 GitHub REST API，未登录或网络受限时用 git CLI 兜底
 - **应用模块时（单选）支持选择具体版本**（issue #37）：应用单个模块时可选择版本来源（置顶「使用默认分支」，与更新一致）；多选批量应用沿用默认分支；确认框展示目标版本；`submodule` / `copy` 均支持指定分支 / 提交 / 标签 / Release 应用
 - **使用 GitHub Release = 下载其附件**（issue #37）：选择 Release 后下载该 Release 的全部附件（排除 `Source code` 自动附件）；zip / tar.gz 自动解压（剥离顶层单目录），其它格式直接复制；单附件放模块根、多附件各自放独立子目录；submodule 方式回退为 git tag 检出
@@ -24,6 +27,7 @@
 
 ### 变更
 
+- **branch 版本来源的子模块随本地实际 HEAD 展示并同步管理信息**（issue #90）：卡片显示 `分支名 · 短SHA · 提交信息 · 相对日期`；子模块通过扩展之外的 git 操作（提交 / pull / checkout / submodule update --remote）更新后，刷新时自动读取实际 HEAD 写回配置 `ref` 并缓存提交信息（来自本地 git log，未推送的提交也能展示）；手动刷新在线目录时检测远端分支，有新提交则卡片提示 `远端有新提交`
 - 更新模块流程改为两步 QuickPick（版本来源 → 具体版本）+ 确认对话框（当前版本 → 目标版本，copy 方式附 zip 备份提示）
 - `copy` / `submodule` 更新均支持指定版本：copy 按目标版本拉取后整体覆盖，submodule 通过 fetch + checkout 检出到指定提交（detached HEAD）
 - 升级 `engines.vscode` 最低版本至 `^1.63.0`，以支持 pre-release 发布

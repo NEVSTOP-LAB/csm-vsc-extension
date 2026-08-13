@@ -125,6 +125,7 @@ extension.ts activate()
         ├── 注册 19 个 VS Code 命令
         ├── 创建 ModuleSidebarViewProvider（WebView）
         ├── 依赖注入：authService, githubService, workspaceService, configService
+        ├── git watcher：监听仓库 .git 目录，提交后去抖自动重算侧边栏工作区状态（issue #90）
         └── 状态机：认证 → 缓存恢复 → 模块列表渲染 → 用户交互
 ```
 
@@ -165,6 +166,8 @@ extension.ts activate()
     → 刷新侧边栏
 ```
 
+**branch 版本来源展示**（issue #90）：`versionKind=branch` 的子模块卡片与更新确认对话框显示 `分支名 · 短SHA · 提交信息 · 相对日期`，跟随本地实际 HEAD——每次刷新时 `syncTrackedSubmoduleVersions` 读取子模块实际 HEAD（`git rev-parse` + `git log`），与配置 `ref` 不一致时写回配置并更新版本缓存；手动刷新在线目录时 `backfillAppliedModuleVersionInfos` 比较远端分支 HEAD 与本地 HEAD，标记「远端有新提交」；commit / tag / release 保持固定版本语义。
+
 ---
 
 ## 4. 关键设计决策
@@ -187,6 +190,16 @@ extension.ts activate()
 
 重构后的旧路径（`src/moduleManager/`、`src/hoverData/`、`src/logFold/`）保留 `export * from '../new-path'` 重导出，确保持有旧导入路径的代码不受影响。
 
+### 4.5 git 自动刷新与 submodule 版本同步（issue #90）
+
+`ModuleManagerController` 为当前仓库的**真实 git 目录**（经 `git rev-parse --absolute-git-dir` 解析，兼容 linked worktree / 子模块中 `.git` 为文件的情况）创建递归 `FileSystemWatcher`，在父仓库或子模块中提交 / pull / checkout 后去抖 1.5s（`GIT_CHANGE_REFRESH_DEBOUNCE_MS`）自动重算侧边栏工作区状态；watcher 随 gitDir 变化幂等重建，非 git 工作区不创建，扩展停用时通过 register 的 Disposable 清理。
+
+重算时 `syncTrackedSubmoduleVersions` 对 `method=submodule` 且 `versionKind=branch` 的条目读取子模块实际 HEAD（本地 git log，无需网络），与配置 `ref` 不一致时写回 `csm-modules.yaml`；版本缓存无论 HEAD 是否变化都会在缺失时填充（本地提交信息，不依赖在线补全）。`backfillAppliedModuleVersionInfos`（仅手动刷新在线目录时）对有界并发（5）地对 branch 条目比较远端分支 HEAD（`git ls-remote`）与本地状态：仅当本地与远端跟踪引用一致且落后于远端时（`isRemoteAheadOfLocal`）才提示「远端有新提交」，本地未推送提交不会被误报；检测结果绑定检测时的 workspace 与本地 `ref`，两者仍匹配时才透传到卡片，避免过期徽章。
+
+### 4.6 配置版本自动迁移
+
+`csm-modules.yaml` 的 `version` 字段记录写入时的插件版本（`WorkspaceModuleService` 构造时从 `context.extension.packageJSON.version` 注入）。`configService.loadConfig` 每次加载时比较：旧版本（缺失 / 非语义化旧 schema / 低于当前版本）时按 `DEFAULT_CONFIG_MIGRATIONS` 步骤列表就地迁移（如 `normalize-module-entries` 补齐默认字段）并静默写回当前版本；插件升级时在列表尾部追加步骤即可。同版本加载不改写文件。
+
 ---
 
 ## 5. 构建与测试
@@ -202,7 +215,7 @@ extension.ts activate()
 
 ### 测试统计
 
-- **352** 个独立单元测试（Mocha TDD）
+- **444** 个独立单元测试（Mocha TDD）
 - **2** 个集成测试（需 VS Code 宿主）
 - 纯函数覆盖 100%，核心算法有性能测试约束
 

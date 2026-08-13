@@ -31,6 +31,16 @@ interface GitSubmoduleDefinition {
 	branch?: string;
 }
 
+/** 子模块工作目录实际 HEAD 的版本信息（issue #90）。 */
+export interface SubmoduleHeadInfo {
+	/** 实际 HEAD 提交 SHA */
+	head: string;
+	/** 提交信息首行（从本地仓库解析，未推送的提交也能展示） */
+	commitInfo?: string;
+	/** 作者日期（ISO 8601 严格格式） */
+	date?: string;
+}
+
 export interface GitIdentity {
 	name?: string;
 	email?: string;
@@ -122,7 +132,11 @@ function isSpecialCharacterPrefixedDirectoryName(name: string): boolean {
 }
 
 export class WorkspaceModuleService {
-	constructor(private readonly gitRunner: IGitRunner = new GitService()) { }
+	constructor(
+		private readonly gitRunner: IGitRunner = new GitService(),
+		/** 插件版本：写入配置 version 字段，加载旧配置时触发迁移 */
+		private readonly extensionVersion?: string,
+	) { }
 
 	public normalizeRootPath(value: string): string {
 		return configNormalizeRootPath(value);
@@ -337,11 +351,11 @@ export class WorkspaceModuleService {
 	}
 
 	public async initializeConfig(repoRoot: string, rootRelativePath: string): Promise<LocalModuleConfig> {
-		return configInitializeConfig(repoRoot, rootRelativePath);
+		return configInitializeConfig(repoRoot, rootRelativePath, this.extensionVersion);
 	}
 
 	public async loadConfig(repoRoot: string, configPath: string): Promise<LocalModuleConfig> {
-		return configLoadConfig(repoRoot, configPath);
+		return configLoadConfig(repoRoot, configPath, this.extensionVersion);
 	}
 
 	public async recoverConfigFromExistingSubmodules(
@@ -355,7 +369,7 @@ export class WorkspaceModuleService {
 		}
 
 		const config: LocalModuleConfig = {
-			version: CONFIG_VERSION,
+			version: this.extensionVersion ?? CONFIG_VERSION,
 			root,
 			configPath: getConfigPath(repoRoot, root),
 			modules: {},
@@ -414,6 +428,74 @@ export class WorkspaceModuleService {
 		}
 
 		return this.buildExistingSubmoduleEntry(repoRoot, submodule);
+	}
+
+	/**
+	 * 读取子模块工作目录的实际 HEAD 与提交信息（issue #90）。
+	 * 直接从子模块仓库读取（`git rev-parse HEAD` + `git log -1`），
+	 * 本地未推送的提交也能解析，不依赖网络。
+	 * 目录不存在 / 不是 git 仓库 / 解析失败时返回 undefined。
+	 */
+	public async resolveSubmoduleHead(targetPath: string): Promise<SubmoduleHeadInfo | undefined> {
+		try {
+			const head = (await this.runGit(targetPath, ['rev-parse', 'HEAD'])).trim();
+			if (!head || !/^[0-9a-f]{40,64}$/i.test(head)) {
+				return undefined;
+			}
+			const stdout = await this.runGit(targetPath, ['log', '-n', '1', '--format=%s%x09%aI', head]);
+			const [message, date] = stdout.split('\t');
+			return { head, commitInfo: message || undefined, date: date || undefined };
+		} catch {
+			return undefined;
+		}
+	}
+
+	/**
+	 * 解析仓库的真实 git 目录（issue #90 watcher 用）：
+	 * linked worktree / 工作区本身是 submodule 时 `.git` 是指向真实 gitdir 的文件，
+	 * `git rev-parse --absolute-git-dir` 返回真实目录，watcher 才能监听实际的 HEAD/refs。
+	 */
+	public async resolveGitDir(repoRoot: string): Promise<string | undefined> {
+		try {
+			const gitDir = (await this.runGit(repoRoot, ['rev-parse', '--absolute-git-dir'])).trim();
+			return gitDir || undefined;
+		} catch {
+			return undefined;
+		}
+	}
+
+	/**
+	 * 判断远端分支是否领先本地（issue #90「远端有新提交」提示）：
+	 * 仅凭 SHA 不同无法区分「远端领先」与「本地领先（未推送提交）」，因此：
+	 * - 取本地远端跟踪引用 `origin/<branch>`；
+	 * - 无法解析跟踪引用或本地与跟踪引用不一致（本地有未推送提交）时保守返回 false，避免误报；
+	 * - 本地与跟踪引用一致且跟踪引用落后于远端 → 远端确实有新提交。
+	 * 全程只读本地仓库，不联网、不改动 .git。
+	 */
+	public async isRemoteAheadOfLocal(
+		targetPath: string,
+		branch: string,
+		localRef: string,
+		remoteRef: string,
+	): Promise<boolean> {
+		if (!remoteRef || !localRef || remoteRef === localRef) {
+			return false;
+		}
+		let trackingRef: string | undefined;
+		try {
+			trackingRef = (await this.runGit(targetPath, ['rev-parse', '-q', `refs/remotes/origin/${branch}`])).trim() || undefined;
+		} catch {
+			trackingRef = undefined;
+		}
+		// 拿不到本地远端跟踪引用：无法验证本地相对远端的状态，保守不提示
+		if (!trackingRef) {
+			return false;
+		}
+		// 本地与跟踪引用不同（存在未推送的本地提交）：不提示「远端有新提交」
+		if (trackingRef !== localRef) {
+			return false;
+		}
+		return trackingRef !== remoteRef;
 	}
 
 	public withAppliedModule(config: LocalModuleConfig, entry: LocalModuleConfigEntry): LocalModuleConfig {

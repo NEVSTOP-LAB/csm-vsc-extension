@@ -30,6 +30,10 @@ const DEFAULT_SHARED_MODULE_TOPICS = ['labview-csm', 'csm-modsets'] as const;
 const ROOT_NAMESPACE_VALUE = '';
 /** 版本来源列表每类最多展示的条数（issue #37） */
 const VERSION_LIST_LIMIT = 20;
+/** git 变更后自动刷新侧边栏工作区状态的去抖时长（issue #90） */
+const GIT_CHANGE_REFRESH_DEBOUNCE_MS = 1500;
+/** 手动刷新在线目录时 branch 子模块远端检测的有界并发数（review 修正） */
+const REMOTE_CHECK_CONCURRENCY = 5;
 
 function getWorkspaceInitPrompt(rootPath: string): string {
 	return t('workspaceInitPrompt', { rootPath });
@@ -240,11 +244,17 @@ export class ModuleManagerController {
 	private readonly selectedModuleKeys = new Set<string>();
 	/** 模块当前版本提交信息缓存（key=`owner/name`，issue #37） */
 	private versionCache: Record<string, ModuleVersionCacheEntry> = {};
+	/** 远端有新提交的检测结果（issue #90）：绑定检测时的 workspace 与本地 ref，避免过期误报 */
+	private remoteAheadRefs: { workspaceRoot: string; refs: Map<string, string> } | undefined;
 	private currentToken: string | undefined;
 	private currentAccountId: string | undefined;
 	private currentAccountLabel: string | undefined;
 	private lastTokenVerifiedAt = 0;
 	private recentNamespaceByWorkspace: Record<string, string>;
+	/** 监听仓库 .git 目录变更，提交后自动刷新侧边栏工作区状态（issue #90） */
+	private gitWatcher: vscode.FileSystemWatcher | undefined;
+	private gitWatcherRoot: string | undefined;
+	private gitWatcherDebounce: ReturnType<typeof setTimeout> | undefined;
 	private static readonly TOKEN_VERIFY_INTERVAL_MS = 10 * 60 * 1000; // 10 minutes
 
 	constructor(private readonly context: vscode.ExtensionContext, deps: ModuleManagerControllerDeps = {}) {
@@ -252,7 +262,7 @@ export class ModuleManagerController {
 		this.authService = deps.authService ?? new AuthService(this.logger);
 		this.githubService = deps.githubService ?? new GitHubModuleService(this.logger);
 		this.versionService = deps.versionService ?? new ModuleVersionService(this.githubService as unknown as ConstructorParameters<typeof ModuleVersionService>[0], undefined, this.logger);
-		this.workspaceModuleService = deps.workspaceModuleService ?? new WorkspaceModuleService();
+		this.workspaceModuleService = deps.workspaceModuleService ?? new WorkspaceModuleService(undefined, this.getExtensionVersion());
 		this.treeDataProvider = deps.viewProvider ?? this.sidebarViewProvider;
 		this.cacheStore = new ModuleCacheStore(context.globalState);
 		this.readmeAssetCache = new ReadmeAssetCache(context.globalStorageUri);
@@ -276,6 +286,12 @@ export class ModuleManagerController {
 		};
 	}
 
+	/** 插件版本（写入配置 version 字段，加载旧配置时触发迁移） */
+	private getExtensionVersion(): string | undefined {
+		const version = this.context.extension?.packageJSON?.version;
+		return typeof version === 'string' ? version : undefined;
+	}
+
 	private registerCommand<T extends unknown[]>(
 		subscriptions: vscode.Disposable[],
 		commandId: string,
@@ -290,6 +306,8 @@ export class ModuleManagerController {
 		subscriptions.push(vscode.window.registerWebviewViewProvider(VIEW_IDS.moduleSidebar, this.sidebarViewProvider, {
 			webviewOptions: { retainContextWhenHidden: true },
 		}));
+		// 扩展停用时清理 git watcher 与待执行的去抖刷新（issue #90）
+		subscriptions.push(new vscode.Disposable(() => this.disposeGitWatcher()));
 
 		this.registerCommand(subscriptions, COMMAND_IDS.login, () => this.loginCommand());
 		this.registerCommand(subscriptions, COMMAND_IDS.logout, () => this.logoutCommand());
@@ -1051,7 +1069,8 @@ export class ModuleManagerController {
 
 	/**
 	 * 构建当前版本展示文本（确认对话框与侧边栏共用）：
-	 * tag / release 优先显示来源名称，否则读本地缓存显示 短SHA · 提交信息 · 相对日期。
+	 * tag / release 优先显示来源名称；branch 显示 分支名 · 短SHA · 提交信息 · 相对日期
+	 * （跟随本地实际 HEAD，issue #90）；其余读本地缓存显示 短SHA · 提交信息 · 相对日期。
 	 */
 	private formatCurrentVersionLabel(target: LocalModuleConfigEntry): string {
 		if (target.versionKind === 'release') {
@@ -1060,6 +1079,23 @@ export class ModuleManagerController {
 		}
 		if (target.versionKind === 'tag' && target.versionRef) {
 			return target.versionRef;
+		}
+		if (target.versionKind === 'branch') {
+			// branch 类型跟随本地实际 HEAD 展示（issue #90）：
+			// ref 与提交信息由 syncTrackedSubmoduleVersions 在刷新时同步
+			const parts = [target.versionRef || target.branch || t('versionUnknown')];
+			if (target.ref) {
+				parts.push(this.formatShortSha(target.ref));
+			}
+			const cacheEntry = this.versionCache[`${target.owner}/${target.name}`];
+			if (cacheEntry && cacheEntry.ref === target.ref && cacheEntry.commitInfo) {
+				parts.push(this.truncateCommitMessage(cacheEntry.commitInfo));
+				const relative = formatRelativeDate(cacheEntry.date);
+				if (relative) {
+					parts.push(relative);
+				}
+			}
+			return parts.join(' · ');
 		}
 		const cacheEntry = this.versionCache[`${target.owner}/${target.name}`];
 		const ref = this.formatShortSha(target.ref);
@@ -2489,9 +2525,10 @@ export class ModuleManagerController {
 	}
 
 	/**
-	 * 后台补全本地已应用模块的版本提交信息（commitInfo/date）并写入缓存（issue #37）。
+	 * 后台补全本地已应用模块的版本提交信息（commitInfo/date）并写入缓存（issue #37），
+	 * 同时为 branch 类型的 submodule 检测远端分支是否有新提交（issue #90）。
 	 * 仅在用户主动刷新在线目录时触发（避免启动时联网）；限流防止大量 API 请求。
-	 * 补全后重算本地工作区状态，让已应用卡片展示完整的 短SHA · 提交信息 · 相对日期。
+	 * 完成后重算本地工作区状态，让卡片展示完整版本信息与「远端有新提交」提示。
 	 */
 	private async backfillAppliedModuleVersionInfos(token: string | undefined): Promise<void> {
 		const workspaceFolder = this.getPreferredWorkspaceFolder();
@@ -2506,7 +2543,7 @@ export class ModuleManagerController {
 		}
 
 		// 需要补全的模块：versionCache 中缺少与当前 ref 匹配的提交信息。
-		// release / tag 来源直接展示名称，无需提交信息。
+		// release / tag 直接展示名称；branch 的提交信息由本地 HEAD 同步（issue #90），无需在线补全。
 		const needsBackfill = Object.values(config.modules).filter((entry) => {
 			if (entry.versionKind === 'release') {
 				return false;
@@ -2514,19 +2551,30 @@ export class ModuleManagerController {
 			if (entry.versionKind === 'tag' && entry.versionRef) {
 				return false;
 			}
+			if (entry.versionKind === 'branch') {
+				return false;
+			}
 			const cacheEntry = this.versionCache[`${entry.owner}/${entry.name}`];
 			return !(cacheEntry && cacheEntry.ref === entry.ref && cacheEntry.commitInfo);
 		});
-		if (needsBackfill.length === 0) {
+
+		// branch 类型 submodule：比较远端分支 HEAD 与本地实际 HEAD，标记「远端有新提交」（issue #90）
+		const branchEntries = Object.values(config.modules).filter(
+			(entry) => entry.method === 'submodule' && (entry.versionKind ?? 'commit') === 'branch',
+		);
+
+		if (needsBackfill.length === 0 && branchEntries.length === 0) {
 			return;
 		}
 
 		// 限流：每次最多补全 5 个模块，避免大量 API 请求
 		const toBackfill = needsBackfill.slice(0, 5);
 		let cacheChanged = false;
+		// key=`owner/name`，value=检测时的本地 ref（透传时校验，避免过期误报）
+		const nextRemoteAhead = new Map<string, string>();
 
-		await Promise.all(
-			toBackfill.map(async (entry) => {
+		await Promise.all([
+			...toBackfill.map(async (entry) => {
 				try {
 					const moduleEntry = this.findAvailableModule(entry.owner, entry.name)
 						?? this.synthesizeModuleEntry(entry);
@@ -2553,13 +2601,89 @@ export class ModuleManagerController {
 					this.logger.warn(`Failed to backfill version info for ${entry.owner}/${entry.name}: ${error instanceof Error ? error.message : String(error)}`);
 				}
 			}),
-		);
+			// 远端检测同样使用有界并发（review 修正），避免同时启动大量 ls-remote 进程
+			this.mapWithConcurrency(branchEntries, REMOTE_CHECK_CONCURRENCY, async (entry) => {
+				try {
+					const branch = entry.branch || 'main';
+					const remoteRef = await this.workspaceModuleService.resolveRemoteBranchRef(
+						workspaceRoot,
+						entry.source,
+						branch,
+						token,
+					);
+					if (!remoteRef) {
+						return;
+					}
+					const targetPath = path.resolve(workspaceRoot, entry.path);
+					// SHA 不同 ≠ 远端有新提交（可能只是本地未推送提交），做本地领先排除后再标记（review 修正）
+					if (await this.workspaceModuleService.isRemoteAheadOfLocal(targetPath, branch, entry.ref, remoteRef)) {
+						nextRemoteAhead.set(`${entry.owner}/${entry.name}`, entry.ref);
+					}
+				} catch (error) {
+					this.logger.warn(`Failed to check remote branch for ${entry.owner}/${entry.name}: ${error instanceof Error ? error.message : String(error)}`);
+				}
+			}),
+		]);
 
+		const remoteAheadChanged = this.remoteAheadStateDiffer(workspaceRoot, nextRemoteAhead);
+		if (!cacheChanged && !remoteAheadChanged) {
+			return;
+		}
 		if (cacheChanged) {
 			await this.cacheStore.setModuleVersionCache(this.versionCache);
-			// 重新计算本地工作区状态，让已应用卡片读取到新的提交信息
-			await this.refreshSidebarWorkspaceState();
 		}
+		if (remoteAheadChanged) {
+			this.remoteAheadRefs = {
+				workspaceRoot: this.normalizeWorkspacePath(workspaceRoot),
+				refs: nextRemoteAhead,
+			};
+		}
+		// 重新计算本地工作区状态，让已应用卡片读取到新的提交信息与远端提示
+		await this.refreshSidebarWorkspaceState();
+	}
+
+	/** 有界并发执行异步任务（review 修正：branch 远端检测限流用）。 */
+	private mapWithConcurrency<T, R>(items: T[], limit: number, task: (item: T) => Promise<R>): Promise<R[]> {
+		const results: R[] = new Array<R>(items.length);
+		let nextIndex = 0;
+		const workers = Array.from({ length: Math.max(1, Math.min(limit, items.length)) }, async () => {
+			while (nextIndex < items.length) {
+				const index = nextIndex;
+				nextIndex += 1;
+				results[index] = await task(items[index]);
+			}
+		});
+		return Promise.all(workers).then(() => results);
+	}
+
+	private normalizeWorkspacePath(value: string): string {
+		// 不用 path.resolve（平台相关：Linux 下会把测试里的 d:/... 假路径解析到 cwd 下），
+		// 只做路径规范化 + 斜杠/大小写统一，保证跨平台一致
+		return path.normalize(value).replace(/\\/g, '/').toLowerCase();
+	}
+
+	/** 远端新提交检测结果是否有变化（比较 workspace 与逐模块 ref）。 */
+	private remoteAheadStateDiffer(workspaceRoot: string, next: Map<string, string>): boolean {
+		const normalizedRoot = this.normalizeWorkspacePath(workspaceRoot);
+		const current = this.remoteAheadRefs;
+		if (!current || current.workspaceRoot !== normalizedRoot || current.refs.size !== next.size) {
+			return true;
+		}
+		for (const [key, ref] of next) {
+			if (current.refs.get(key) !== ref) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/** 检测结果仅在与检测时的 workspace 和本地 ref 仍匹配时透传（review 修正，避免过期徽章）。 */
+	private isRemoteAheadMarked(workspaceRoot: string, entry: LocalModuleConfigEntry): boolean {
+		const state = this.remoteAheadRefs;
+		if (!state || state.workspaceRoot !== this.normalizeWorkspacePath(workspaceRoot)) {
+			return false;
+		}
+		return state.refs.get(`${entry.owner}/${entry.name}`) === entry.ref;
 	}
 
 	/**
@@ -3218,6 +3342,8 @@ export class ModuleManagerController {
 
 		const repoRoot = await this.workspaceModuleService.resolveGitRepositoryRoot(workspaceFolder.uri.fsPath);
 		const workspaceRoot = repoRoot ?? workspaceFolder.uri.fsPath;
+		// 确保 .git watcher 存在：本地提交后自动刷新侧边栏工作区状态（issue #90）
+		await this.ensureGitWatcher(repoRoot);
 
 		let config = await this.tryLoadSidebarLocalModuleConfig(workspaceFolder, workspaceRoot);
 		if (config && repoRoot) {
@@ -3241,6 +3367,14 @@ export class ModuleManagerController {
 				await this.syncWorkspaceModuleLockStates(workspaceRoot, config);
 			} catch (error) {
 				this.logger.warn(`Failed to synchronize local module lock states: ${error instanceof Error ? error.message : String(error)}`);
+			}
+			if (repoRoot) {
+				try {
+					// 同步 branch 模式 submodule 的实际 HEAD 到配置与版本缓存（issue #90）
+					await this.syncTrackedSubmoduleVersions(workspaceRoot, config);
+				} catch (error) {
+					this.logger.warn(`Failed to sync tracked submodule versions: ${error instanceof Error ? error.message : String(error)}`);
+				}
 			}
 		}
 		const moduleRoot = await this.resolveSidebarModuleRoot(workspaceRoot, config);
@@ -3341,6 +3475,8 @@ export class ModuleManagerController {
 					releaseName: configEntry.releaseName,
 					commitInfo: cacheMatchesRef ? versionCacheEntry.commitInfo : undefined,
 					commitDate: cacheMatchesRef ? versionCacheEntry.date : undefined,
+					// 远端分支有新提交（issue #90，仅在手动刷新在线目录时检测；透传前校验 workspace 与 ref）
+					remoteAhead: this.isRemoteAheadMarked(workspaceRoot, configEntry),
 					locked: this.isLocalModuleLocked(configEntry),
 					repoUrl: moduleEntry.repoUrl,
 					description: moduleEntry.description,
@@ -3416,6 +3552,136 @@ export class ModuleManagerController {
 		);
 
 		return entries;
+	}
+
+	/**
+	 * 同步 branch 模式 submodule 的实际 HEAD 到配置与版本缓存（issue #90）。
+	 *
+	 * 子模块通过扩展之外的 git 操作（子模块内提交 / pull / checkout / submodule update --remote）
+	 * 更新后，其 HEAD 前进，但配置 ref 与版本缓存仍记录旧提交，导致卡片展示过期。
+	 * 这里读取子模块实际 HEAD：
+	 * - 与配置 ref 一致：跳过；
+	 * - 不一致：更新 config.ref（写回 YAML），并用本地 git log 解析提交信息写入版本缓存
+	 *   （信息来自本地仓库，未推送的提交也能展示，不依赖网络）。
+	 *
+	 * 仅处理 method === 'submodule' 且 versionKind === 'branch'（追踪分支）的条目；
+	 * commit / tag / release 是固定版本，不随本地提交漂移。
+	 */
+	private async syncTrackedSubmoduleVersions(
+		workspaceRoot: string,
+		config: LocalModuleConfig,
+	): Promise<{ updated: number }> {
+		let updated = 0;
+		let cacheChanged = false;
+		const entries = Object.values(config.modules).filter(
+			(entry) => entry.method === 'submodule' && (entry.versionKind ?? 'commit') === 'branch',
+		);
+		for (const entry of entries) {
+			try {
+				const targetPath = path.resolve(workspaceRoot, entry.path);
+				const headInfo = await this.workspaceModuleService.resolveSubmoduleHead(targetPath);
+				if (!headInfo?.head) {
+					continue;
+				}
+				const cacheKey = `${entry.owner}/${entry.name}`;
+				const cacheEntry = this.versionCache[cacheKey];
+				const cacheMatches = Boolean(cacheEntry && cacheEntry.ref === headInfo.head && cacheEntry.commitInfo);
+				// 配置 ref 与缓存分别判断（review 修正）：
+				// - HEAD 与配置不一致：写回配置 ref；
+				// - 缓存缺失 / 与 HEAD 不匹配：无论 HEAD 是否变化都填充缓存（旧配置首次加载时
+				//   在线补全已排除 branch 条目，这里必须把提交信息补上）。
+				if (headInfo.head !== entry.ref) {
+					entry.ref = headInfo.head;
+					updated += 1;
+				} else if (cacheMatches) {
+					continue;
+				}
+				this.versionCache = {
+					...this.versionCache,
+					[cacheKey]: {
+						ref: headInfo.head,
+						commitInfo: headInfo.commitInfo,
+						date: headInfo.date,
+					},
+				};
+				cacheChanged = true;
+			} catch (error) {
+				this.logger.warn(`Failed to sync submodule HEAD for ${entry.owner}/${entry.name}: ${error instanceof Error ? error.message : String(error)}`);
+			}
+		}
+		if (updated > 0) {
+			await this.workspaceModuleService.writeConfig(config);
+		}
+		if (cacheChanged) {
+			await this.cacheStore.setModuleVersionCache(this.versionCache);
+		}
+		return { updated };
+	}
+
+	/**
+	 * 确保存在监听仓库真实 git 目录的 watcher（issue #90）：
+	 * 用户在父仓库或子模块中提交 / pull / checkout 会改变 .git 下的 refs/index 等文件，
+	 * 去抖后自动重算侧边栏工作区状态；刷新时会同步 branch 模式 submodule 的实际 HEAD
+	 * 到配置与版本缓存，让卡片版本信息随其他 git 操作自动更新。
+	 * linked worktree / 子模块场景 `.git` 是指向真实 gitdir 的文件（review 修正），
+	 * 先经 `git rev-parse --absolute-git-dir` 解析真实 git 目录再创建 watcher。
+	 * repoRoot 变化时 dispose 旧 watcher 并重建；无 git 仓库时清理。
+	 */
+	private async ensureGitWatcher(repoRoot: string | undefined): Promise<void> {
+		if (!repoRoot) {
+			this.disposeGitWatcher();
+			return;
+		}
+		if (typeof vscode.workspace.createFileSystemWatcher !== 'function') {
+			return;
+		}
+		try {
+			const gitDir = await this.workspaceModuleService.resolveGitDir(repoRoot);
+			if (!gitDir) {
+				this.disposeGitWatcher();
+				return;
+			}
+			const normalizedGitDir = this.normalizeWorkspacePath(gitDir);
+			if (this.gitWatcher && this.gitWatcherRoot === normalizedGitDir) {
+				return;
+			}
+			this.disposeGitWatcher();
+			const watcher = vscode.workspace.createFileSystemWatcher(
+				new vscode.RelativePattern(vscode.Uri.file(gitDir), '**'),
+			);
+			watcher.onDidChange(() => this.scheduleGitWatcherRefresh());
+			watcher.onDidCreate(() => this.scheduleGitWatcherRefresh());
+			watcher.onDidDelete(() => this.scheduleGitWatcherRefresh());
+			this.gitWatcher = watcher;
+			this.gitWatcherRoot = normalizedGitDir;
+		} catch (error) {
+			this.logger.warn(`Failed to watch git directory for ${repoRoot}: ${error instanceof Error ? error.message : String(error)}`);
+		}
+	}
+
+	private disposeGitWatcher(): void {
+		if (this.gitWatcherDebounce !== undefined) {
+			clearTimeout(this.gitWatcherDebounce);
+			this.gitWatcherDebounce = undefined;
+		}
+		if (this.gitWatcher) {
+			this.gitWatcher.dispose();
+			this.gitWatcher = undefined;
+		}
+		this.gitWatcherRoot = undefined;
+	}
+
+	/** git 变更后去抖触发侧边栏工作区状态重算（issue #90）。 */
+	private scheduleGitWatcherRefresh(): void {
+		if (this.gitWatcherDebounce !== undefined) {
+			clearTimeout(this.gitWatcherDebounce);
+		}
+		this.gitWatcherDebounce = setTimeout(() => {
+			this.gitWatcherDebounce = undefined;
+			void this.refreshSidebarWorkspaceState().catch((error) => {
+				this.logger.warn(`Failed to refresh sidebar workspace state after git change: ${error instanceof Error ? error.message : String(error)}`);
+			});
+		}, GIT_CHANGE_REFRESH_DEBOUNCE_MS);
 	}
 
 	/**
