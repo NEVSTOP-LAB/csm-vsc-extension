@@ -75,6 +75,8 @@ export interface LocalManagedModuleEntry {
 	commitInfo?: string;
 	/** 当前版本提交日期（ISO 字符串，来自本地缓存） */
 	commitDate?: string;
+	/** 远端分支有新提交、本地尚未同步（issue #90，仅在手动刷新在线目录时检测） */
+	remoteAhead?: boolean;
 	locked?: boolean;
 	repoUrl: string;
 	description: string;

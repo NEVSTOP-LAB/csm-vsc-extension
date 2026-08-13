@@ -1433,6 +1433,10 @@ const messages = {
 		en: 'Branch: {branch}',
 		zh: '分支：{branch}',
 	},
+	remoteHasNewCommits: {
+		en: 'Remote has new commits',
+		zh: '远端有新提交',
+	},
 	readmePreviewTitle: {
 		en: 'README Preview',
 		zh: 'README 预览',

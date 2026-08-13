@@ -242,6 +242,8 @@ export class ModuleManagerController {
 	private readonly selectedModuleKeys = new Set<string>();
 	/** 模块当前版本提交信息缓存（key=`owner/name`，issue #37） */
 	private versionCache: Record<string, ModuleVersionCacheEntry> = {};
+	/** 远端分支有新提交的模块（key=`owner/name`，issue #90，仅在手动刷新在线目录时检测） */
+	private remoteAheadKeys = new Set<string>();
 	private currentToken: string | undefined;
 	private currentAccountId: string | undefined;
 	private currentAccountLabel: string | undefined;
@@ -1059,7 +1061,8 @@ export class ModuleManagerController {
 
 	/**
 	 * 构建当前版本展示文本（确认对话框与侧边栏共用）：
-	 * tag / release 优先显示来源名称，否则读本地缓存显示 短SHA · 提交信息 · 相对日期。
+	 * tag / release 优先显示来源名称；branch 显示 分支名 · 短SHA · 提交信息 · 相对日期
+	 * （跟随本地实际 HEAD，issue #90）；其余读本地缓存显示 短SHA · 提交信息 · 相对日期。
 	 */
 	private formatCurrentVersionLabel(target: LocalModuleConfigEntry): string {
 		if (target.versionKind === 'release') {
@@ -1069,9 +1072,22 @@ export class ModuleManagerController {
 		if (target.versionKind === 'tag' && target.versionRef) {
 			return target.versionRef;
 		}
-		// branch 类型直接显示追踪的分支名，不追踪 commit SHA（issue #90）
-		if (target.versionKind === 'branch' && (target.versionRef || target.branch)) {
-			return target.versionRef || target.branch;
+		if (target.versionKind === 'branch') {
+			// branch 类型跟随本地实际 HEAD 展示（issue #90）：
+			// ref 与提交信息由 syncTrackedSubmoduleVersions 在刷新时同步
+			const parts = [target.versionRef || target.branch || t('versionUnknown')];
+			if (target.ref) {
+				parts.push(this.formatShortSha(target.ref));
+			}
+			const cacheEntry = this.versionCache[`${target.owner}/${target.name}`];
+			if (cacheEntry && cacheEntry.ref === target.ref && cacheEntry.commitInfo) {
+				parts.push(this.truncateCommitMessage(cacheEntry.commitInfo));
+				const relative = formatRelativeDate(cacheEntry.date);
+				if (relative) {
+					parts.push(relative);
+				}
+			}
+			return parts.join(' · ');
 		}
 		const cacheEntry = this.versionCache[`${target.owner}/${target.name}`];
 		const ref = this.formatShortSha(target.ref);
@@ -2501,9 +2517,10 @@ export class ModuleManagerController {
 	}
 
 	/**
-	 * 后台补全本地已应用模块的版本提交信息（commitInfo/date）并写入缓存（issue #37）。
+	 * 后台补全本地已应用模块的版本提交信息（commitInfo/date）并写入缓存（issue #37），
+	 * 同时为 branch 类型的 submodule 检测远端分支是否有新提交（issue #90）。
 	 * 仅在用户主动刷新在线目录时触发（避免启动时联网）；限流防止大量 API 请求。
-	 * 补全后重算本地工作区状态，让已应用卡片展示完整的 短SHA · 提交信息 · 相对日期。
+	 * 完成后重算本地工作区状态，让卡片展示完整版本信息与「远端有新提交」提示。
 	 */
 	private async backfillAppliedModuleVersionInfos(token: string | undefined): Promise<void> {
 		const workspaceFolder = this.getPreferredWorkspaceFolder();
@@ -2518,7 +2535,7 @@ export class ModuleManagerController {
 		}
 
 		// 需要补全的模块：versionCache 中缺少与当前 ref 匹配的提交信息。
-		// release / tag 直接展示名称，branch 直接展示分支名（issue #90），均无需提交信息。
+		// release / tag 直接展示名称；branch 的提交信息由本地 HEAD 同步（issue #90），无需在线补全。
 		const needsBackfill = Object.values(config.modules).filter((entry) => {
 			if (entry.versionKind === 'release') {
 				return false;
@@ -2532,16 +2549,23 @@ export class ModuleManagerController {
 			const cacheEntry = this.versionCache[`${entry.owner}/${entry.name}`];
 			return !(cacheEntry && cacheEntry.ref === entry.ref && cacheEntry.commitInfo);
 		});
-		if (needsBackfill.length === 0) {
+
+		// branch 类型 submodule：比较远端分支 HEAD 与本地实际 HEAD，标记「远端有新提交」（issue #90）
+		const branchEntries = Object.values(config.modules).filter(
+			(entry) => entry.method === 'submodule' && (entry.versionKind ?? 'commit') === 'branch',
+		);
+
+		if (needsBackfill.length === 0 && branchEntries.length === 0) {
 			return;
 		}
 
 		// 限流：每次最多补全 5 个模块，避免大量 API 请求
 		const toBackfill = needsBackfill.slice(0, 5);
 		let cacheChanged = false;
+		const nextRemoteAhead = new Set<string>();
 
-		await Promise.all(
-			toBackfill.map(async (entry) => {
+		await Promise.all([
+			...toBackfill.map(async (entry) => {
 				try {
 					const moduleEntry = this.findAvailableModule(entry.owner, entry.name)
 						?? this.synthesizeModuleEntry(entry);
@@ -2568,13 +2592,49 @@ export class ModuleManagerController {
 					this.logger.warn(`Failed to backfill version info for ${entry.owner}/${entry.name}: ${error instanceof Error ? error.message : String(error)}`);
 				}
 			}),
-		);
+			...branchEntries.map(async (entry) => {
+				try {
+					const branch = entry.branch || 'main';
+					const remoteRef = await this.workspaceModuleService.resolveRemoteBranchRef(
+						workspaceRoot,
+						entry.source,
+						branch,
+						token,
+					);
+					if (remoteRef && remoteRef !== entry.ref) {
+						nextRemoteAhead.add(`${entry.owner}/${entry.name}`);
+					}
+				} catch (error) {
+					this.logger.warn(`Failed to check remote branch for ${entry.owner}/${entry.name}: ${error instanceof Error ? error.message : String(error)}`);
+				}
+			}),
+		]);
 
+		const remoteAheadChanged = this.setsDiffer(this.remoteAheadKeys, nextRemoteAhead);
+		if (!cacheChanged && !remoteAheadChanged) {
+			return;
+		}
 		if (cacheChanged) {
 			await this.cacheStore.setModuleVersionCache(this.versionCache);
-			// 重新计算本地工作区状态，让已应用卡片读取到新的提交信息
-			await this.refreshSidebarWorkspaceState();
 		}
+		if (remoteAheadChanged) {
+			this.remoteAheadKeys = nextRemoteAhead;
+		}
+		// 重新计算本地工作区状态，让已应用卡片读取到新的提交信息与远端提示
+		await this.refreshSidebarWorkspaceState();
+	}
+
+	/** 比较两个字符串集合是否内容一致（issue #90）。 */
+	private setsDiffer(left: Set<string>, right: Set<string>): boolean {
+		if (left.size !== right.size) {
+			return true;
+		}
+		for (const value of left) {
+			if (!right.has(value)) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	/**
@@ -3259,6 +3319,14 @@ export class ModuleManagerController {
 			} catch (error) {
 				this.logger.warn(`Failed to synchronize local module lock states: ${error instanceof Error ? error.message : String(error)}`);
 			}
+			if (repoRoot) {
+				try {
+					// 同步 branch 模式 submodule 的实际 HEAD 到配置与版本缓存（issue #90）
+					await this.syncTrackedSubmoduleVersions(workspaceRoot, config);
+				} catch (error) {
+					this.logger.warn(`Failed to sync tracked submodule versions: ${error instanceof Error ? error.message : String(error)}`);
+				}
+			}
 		}
 		const moduleRoot = await this.resolveSidebarModuleRoot(workspaceRoot, config);
 		const staleModuleKeys = await this.computeStaleModuleKeys(workspaceRoot, config);
@@ -3358,6 +3426,8 @@ export class ModuleManagerController {
 					releaseName: configEntry.releaseName,
 					commitInfo: cacheMatchesRef ? versionCacheEntry.commitInfo : undefined,
 					commitDate: cacheMatchesRef ? versionCacheEntry.date : undefined,
+					// 远端分支有新提交（issue #90，仅在手动刷新在线目录时检测）
+					remoteAhead: this.remoteAheadKeys.has(`${configEntry.owner}/${configEntry.name}`),
 					locked: this.isLocalModuleLocked(configEntry),
 					repoUrl: moduleEntry.repoUrl,
 					description: moduleEntry.description,
@@ -3436,10 +3506,63 @@ export class ModuleManagerController {
 	}
 
 	/**
+	 * 同步 branch 模式 submodule 的实际 HEAD 到配置与版本缓存（issue #90）。
+	 *
+	 * 子模块通过扩展之外的 git 操作（子模块内提交 / pull / checkout / submodule update --remote）
+	 * 更新后，其 HEAD 前进，但配置 ref 与版本缓存仍记录旧提交，导致卡片展示过期。
+	 * 这里读取子模块实际 HEAD：
+	 * - 与配置 ref 一致：跳过；
+	 * - 不一致：更新 config.ref（写回 YAML），并用本地 git log 解析提交信息写入版本缓存
+	 *   （信息来自本地仓库，未推送的提交也能展示，不依赖网络）。
+	 *
+	 * 仅处理 method === 'submodule' 且 versionKind === 'branch'（追踪分支）的条目；
+	 * commit / tag / release 是固定版本，不随本地提交漂移。
+	 */
+	private async syncTrackedSubmoduleVersions(
+		workspaceRoot: string,
+		config: LocalModuleConfig,
+	): Promise<{ updated: number }> {
+		let updated = 0;
+		let cacheChanged = false;
+		const entries = Object.values(config.modules).filter(
+			(entry) => entry.method === 'submodule' && (entry.versionKind ?? 'commit') === 'branch',
+		);
+		for (const entry of entries) {
+			try {
+				const targetPath = path.resolve(workspaceRoot, entry.path);
+				const headInfo = await this.workspaceModuleService.resolveSubmoduleHead(targetPath);
+				if (!headInfo?.head || headInfo.head === entry.ref) {
+					continue;
+				}
+				entry.ref = headInfo.head;
+				updated += 1;
+				this.versionCache = {
+					...this.versionCache,
+					[`${entry.owner}/${entry.name}`]: {
+						ref: headInfo.head,
+						commitInfo: headInfo.commitInfo,
+						date: headInfo.date,
+					},
+				};
+				cacheChanged = true;
+			} catch (error) {
+				this.logger.warn(`Failed to sync submodule HEAD for ${entry.owner}/${entry.name}: ${error instanceof Error ? error.message : String(error)}`);
+			}
+		}
+		if (updated > 0) {
+			await this.workspaceModuleService.writeConfig(config);
+		}
+		if (cacheChanged) {
+			await this.cacheStore.setModuleVersionCache(this.versionCache);
+		}
+		return { updated };
+	}
+
+	/**
 	 * 确保存在监听仓库 .git 目录的 watcher（issue #90）：
-	 * 用户在父仓库或子模块中提交代码会改变 .git 下的 refs/index 等文件，
-	 * 去抖后自动重算侧边栏工作区状态。branch 模式的模块卡片展示追踪的分支名
-	 * （不追踪 commit SHA），因此本地提交后卡片展示始终保持最新。
+	 * 用户在父仓库或子模块中提交 / pull / checkout 会改变 .git 下的 refs/index 等文件，
+	 * 去抖后自动重算侧边栏工作区状态；刷新时会同步 branch 模式 submodule 的实际 HEAD
+	 * 到配置与版本缓存，让卡片版本信息随其他 git 操作自动更新。
 	 * repoRoot 变化时 dispose 旧 watcher 并重建；无 git 仓库时清理。
 	 */
 	private ensureGitWatcher(repoRoot: string | undefined): void {

@@ -2738,7 +2738,7 @@ suite('ModuleManagerController Regression Tests', () => {
 		assert.deepStrictEqual(capturedContext?.unmanagedFolders, []);
 	});
 
-	test('formatCurrentVersionLabel 对 branch 版本来源显示追踪的分支名（issue #90）', () => {
+	test('formatCurrentVersionLabel 对 branch 版本来源显示 分支名 · 短SHA · 提交信息（issue #90）', () => {
 		const controller = createController() as any;
 		const baseEntry = {
 			key: 'org__module_a',
@@ -2755,20 +2755,250 @@ suite('ModuleManagerController Regression Tests', () => {
 			versionKind: 'branch',
 			versionRef: 'develop',
 		});
-		assert.strictEqual(withVersionRef, 'develop');
+		assert.strictEqual(withVersionRef, 'develop · abc1234', '显示 分支名 · 短SHA');
 
 		const withoutVersionRef = controller.formatCurrentVersionLabel({
 			...baseEntry,
 			versionKind: 'branch',
 		});
-		assert.strictEqual(withoutVersionRef, 'develop', '缺少 versionRef 时回退 entry.branch');
+		assert.strictEqual(withoutVersionRef, 'develop · abc1234', '缺少 versionRef 时回退 entry.branch');
+
+		// 版本缓存有匹配提交信息时追加 提交信息 · 相对日期
+		controller.versionCache = {
+			'org/module-a': { ref: 'abc1234', commitInfo: 'local commit', date: new Date().toISOString() },
+		};
+		const withCommitInfo = controller.formatCurrentVersionLabel({
+			...baseEntry,
+			versionKind: 'branch',
+			versionRef: 'develop',
+		});
+		assert.ok(withCommitInfo.startsWith('develop · abc1234 · local commit'), '追加提交信息');
 
 		const commitKind = controller.formatCurrentVersionLabel({
 			...baseEntry,
 			versionKind: 'commit',
 			versionRef: 'abc1234',
 		});
-		assert.ok(commitKind.includes('abc123'), 'commit 类型仍显示短 SHA');
+		assert.ok(commitKind.startsWith('abc1234'), 'commit 类型仍显示短 SHA');
+	});
+
+	test('refreshSidebarWorkspaceState 同步 branch 子模块实际 HEAD 到配置与版本缓存（issue #90）', async () => {
+		const controller = createController(undefined, {
+			viewProvider: createViewProvider(),
+		}) as any;
+		let capturedContext: Record<string, unknown> | undefined;
+		const config: LocalModuleConfig = {
+			version: '2',
+			root: 'csm',
+			configPath: 'd:/repo/csm/csm-modules.yaml',
+			modules: {
+				org__module_a: {
+					key: 'org__module_a',
+					name: 'module-a',
+					owner: 'org',
+					source: 'https://github.com/org/module-a',
+					method: 'submodule',
+					path: 'csm/module-a',
+					ref: 'abc123',
+					branch: 'main',
+					versionKind: 'branch',
+					versionRef: 'main',
+					locked: false,
+				},
+			},
+		};
+		let writtenConfig: LocalModuleConfig | undefined;
+		let headResolveCalls = 0;
+		controller.availableModules = [];
+		controller.treeDataProvider = createViewProvider({
+			setWorkspaceContext: (context) => {
+				capturedContext = context as unknown as Record<string, unknown>;
+			},
+		});
+		controller.workspaceModuleService = {
+			resolveGitRepositoryRoot: async () => 'd:/repo',
+			loadConfig: async () => config,
+			listModuleDirectories: async () => [],
+			syncSubmoduleEntriesToConfig: async (_repoRoot: string, cfg: LocalModuleConfig) => ({ config: cfg, addedCount: 0 }),
+			syncModuleLockStates: async () => undefined,
+			resolveSubmoduleHead: async () => {
+				headResolveCalls += 1;
+				return { head: 'def456', commitInfo: 'local commit', date: '2026-08-01T00:00:00Z' };
+			},
+			writeConfig: async (cfg: LocalModuleConfig) => {
+				writtenConfig = cfg;
+			},
+		};
+		controller.computeStaleModuleKeys = async () => [];
+		mocked.__setWorkspaceFolders([{ name: 'repo', uri: vscode.Uri.file('d:/repo') }]);
+		mocked.__setFindFilesResultForPattern(configSearchPattern, [vscode.Uri.file('d:/repo/csm/csm-modules.yaml')]);
+
+		await controller.refreshSidebarWorkspaceState();
+
+		assert.strictEqual(headResolveCalls, 1, '仅同步 branch 类型的 submodule');
+		assert.strictEqual(config.modules.org__module_a.ref, 'def456', '配置条目 ref 更新为实际 HEAD');
+		assert.strictEqual(writtenConfig?.modules.org__module_a.ref, 'def456', '新 ref 写回配置文件');
+		assert.deepStrictEqual(controller.versionCache['org/module-a'], {
+			ref: 'def456',
+			commitInfo: 'local commit',
+			date: '2026-08-01T00:00:00Z',
+		}, '版本缓存同步为实际 HEAD');
+		const managed = capturedContext?.managedModules as Array<{ ref: string; commitInfo?: string }> | undefined;
+		assert.strictEqual(managed?.[0]?.ref, 'def456', '卡片展示实际 HEAD');
+		assert.strictEqual(managed?.[0]?.commitInfo, 'local commit', '卡片展示本地提交信息');
+	});
+
+	test('branch 子模块 HEAD 未变化时不写回配置（issue #90）', async () => {
+		const controller = createController(undefined, {
+			viewProvider: createViewProvider(),
+		}) as any;
+		const config: LocalModuleConfig = {
+			version: '2',
+			root: 'csm',
+			configPath: 'd:/repo/csm/csm-modules.yaml',
+			modules: {
+				org__module_a: {
+					key: 'org__module_a',
+					name: 'module-a',
+					owner: 'org',
+					source: 'https://github.com/org/module-a',
+					method: 'submodule',
+					path: 'csm/module-a',
+					ref: 'abc123',
+					branch: 'main',
+					versionKind: 'branch',
+					versionRef: 'main',
+					locked: false,
+				},
+			},
+		};
+		let writeConfigCalls = 0;
+		controller.availableModules = [];
+		controller.treeDataProvider = createViewProvider();
+		controller.workspaceModuleService = {
+			resolveGitRepositoryRoot: async () => 'd:/repo',
+			loadConfig: async () => config,
+			listModuleDirectories: async () => [],
+			syncSubmoduleEntriesToConfig: async (_repoRoot: string, cfg: LocalModuleConfig) => ({ config: cfg, addedCount: 0 }),
+			syncModuleLockStates: async () => undefined,
+			resolveSubmoduleHead: async () => ({ head: 'abc123', commitInfo: 'same', date: '2026-08-01T00:00:00Z' }),
+			writeConfig: async () => {
+				writeConfigCalls += 1;
+			},
+		};
+		controller.computeStaleModuleKeys = async () => [];
+		mocked.__setWorkspaceFolders([{ name: 'repo', uri: vscode.Uri.file('d:/repo') }]);
+		mocked.__setFindFilesResultForPattern(configSearchPattern, [vscode.Uri.file('d:/repo/csm/csm-modules.yaml')]);
+
+		await controller.refreshSidebarWorkspaceState();
+
+		assert.strictEqual(writeConfigCalls, 0, 'HEAD 与配置一致时不写回');
+	});
+
+	test('backfillAppliedModuleVersionInfos 标记远端有新提交的 branch 子模块（issue #90）', async () => {
+		const controller = createController() as any;
+		controller.versionCache = {};
+		const config: LocalModuleConfig = {
+			version: '2',
+			root: 'csm',
+			configPath: 'd:/repo/csm/csm-modules.yaml',
+			modules: {
+				'org__module-branch': {
+					key: 'org__module-branch',
+					name: 'module-branch',
+					owner: 'org',
+					source: 'https://github.com/org/module-branch',
+					method: 'submodule',
+					path: 'csm/module-branch',
+					ref: 'abc123',
+					branch: 'main',
+					versionKind: 'branch',
+					versionRef: 'main',
+				},
+				'org__module-copy': {
+					key: 'org__module-copy',
+					name: 'module-copy',
+					owner: 'org',
+					source: 'https://github.com/org/module-copy',
+					method: 'copy',
+					path: 'csm/module-copy',
+					ref: 'abc123',
+					branch: 'main',
+					versionKind: 'branch',
+					versionRef: 'main',
+				},
+			},
+		};
+		let sidebarRefreshed = false;
+
+		controller.getPreferredWorkspaceFolder = () => ({ name: 'repo', uri: vscode.Uri.file('d:/repo') });
+		controller.workspaceModuleService = {
+			resolveGitRepositoryRoot: async () => 'd:/repo',
+			resolveRemoteBranchRef: async (_cwd: string, repoUrl: string, branch: string) => {
+				// 仅 branch 子模块参与远端比较；远端分支已前进
+				assert.strictEqual(branch, 'main');
+				return repoUrl.endsWith('module-branch') ? 'def456' : 'abc123';
+			},
+		};
+		controller.tryLoadSidebarLocalModuleConfig = async () => config;
+		controller.refreshSidebarWorkspaceState = async () => {
+			sidebarRefreshed = true;
+			return 0;
+		};
+
+		await controller.backfillAppliedModuleVersionInfos('token');
+
+		assert.strictEqual(sidebarRefreshed, true, '远端状态变化后重算侧边栏');
+		assert.deepStrictEqual([...controller.remoteAheadKeys], ['org/module-branch'], '仅标记远端前进的 branch 子模块');
+	});
+
+	test('mapManagedModules 将远端新提交状态透传到卡片条目（issue #90）', async () => {
+		const controller = createController(undefined, {
+			viewProvider: createViewProvider(),
+		}) as any;
+		let capturedContext: Record<string, unknown> | undefined;
+		controller.remoteAheadKeys = new Set(['org/module-a']);
+		controller.availableModules = [];
+		controller.treeDataProvider = createViewProvider({
+			setWorkspaceContext: (context) => {
+				capturedContext = context as unknown as Record<string, unknown>;
+			},
+		});
+		controller.workspaceModuleService = {
+			resolveGitRepositoryRoot: async () => 'd:/repo',
+			loadConfig: async () => ({
+				version: '2',
+				root: 'csm',
+				configPath: 'd:/repo/csm/csm-modules.yaml',
+				modules: {
+					org__module_a: {
+						key: 'org__module_a',
+						name: 'module-a',
+						owner: 'org',
+						source: 'https://github.com/org/module-a',
+						method: 'submodule',
+						path: 'csm/module-a',
+						ref: 'abc123',
+						branch: 'main',
+						versionKind: 'branch',
+						versionRef: 'main',
+						locked: false,
+					},
+				},
+			}),
+			listModuleDirectories: async () => [],
+			syncSubmoduleEntriesToConfig: async (_repoRoot: string, cfg: LocalModuleConfig) => ({ config: cfg, addedCount: 0 }),
+			syncModuleLockStates: async () => undefined,
+			resolveSubmoduleHead: async () => ({ head: 'abc123', commitInfo: 'same', date: undefined }),
+		};
+		controller.computeStaleModuleKeys = async () => [];
+		mocked.__setWorkspaceFolders([{ name: 'repo', uri: vscode.Uri.file('d:/repo') }]);
+		mocked.__setFindFilesResultForPattern(configSearchPattern, [vscode.Uri.file('d:/repo/csm/csm-modules.yaml')]);
+
+		await controller.refreshSidebarWorkspaceState();
+
+		const managed = capturedContext?.managedModules as Array<{ remoteAhead?: boolean }> | undefined;
+		assert.strictEqual(managed?.[0]?.remoteAhead, true, '远端新提交状态透传到卡片条目');
 	});
 
 	test('refreshSidebarWorkspaceState 为 git 仓库创建 .git watcher（issue #90）', async () => {

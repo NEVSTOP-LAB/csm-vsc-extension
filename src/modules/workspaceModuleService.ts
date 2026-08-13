@@ -31,6 +31,16 @@ interface GitSubmoduleDefinition {
 	branch?: string;
 }
 
+/** 子模块工作目录实际 HEAD 的版本信息（issue #90）。 */
+export interface SubmoduleHeadInfo {
+	/** 实际 HEAD 提交 SHA */
+	head: string;
+	/** 提交信息首行（从本地仓库解析，未推送的提交也能展示） */
+	commitInfo?: string;
+	/** 作者日期（ISO 8601 严格格式） */
+	date?: string;
+}
+
 export interface GitIdentity {
 	name?: string;
 	email?: string;
@@ -414,6 +424,26 @@ export class WorkspaceModuleService {
 		}
 
 		return this.buildExistingSubmoduleEntry(repoRoot, submodule);
+	}
+
+	/**
+	 * 读取子模块工作目录的实际 HEAD 与提交信息（issue #90）。
+	 * 直接从子模块仓库读取（`git rev-parse HEAD` + `git log -1`），
+	 * 本地未推送的提交也能解析，不依赖网络。
+	 * 目录不存在 / 不是 git 仓库 / 解析失败时返回 undefined。
+	 */
+	public async resolveSubmoduleHead(targetPath: string): Promise<SubmoduleHeadInfo | undefined> {
+		try {
+			const head = (await this.runGit(targetPath, ['rev-parse', 'HEAD'])).trim();
+			if (!head || !/^[0-9a-f]{40,64}$/i.test(head)) {
+				return undefined;
+			}
+			const stdout = await this.runGit(targetPath, ['log', '-n', '1', '--format=%s%x09%aI', head]);
+			const [message, date] = stdout.split('\t');
+			return { head, commitInfo: message || undefined, date: date || undefined };
+		} catch {
+			return undefined;
+		}
 	}
 
 	public withAppliedModule(config: LocalModuleConfig, entry: LocalModuleConfigEntry): LocalModuleConfig {

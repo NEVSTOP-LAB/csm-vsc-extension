@@ -449,7 +449,9 @@ function renderLocalManagedCard(entry: LocalManagedModuleEntry, state: LocalWork
 		...(entry.stale ? [renderBadge(t('staleDirectoryMissing'), 'stale')] : []),
 		renderBadge(getVisibilityLabel(entry.visibility), entry.visibility === 'private' ? 'private' : undefined),
 		renderBadge(getLocalManagedVersionLabel(entry), 'module-version'),
-		// release 引入方式不依赖分支；branch 版本来源的版本标签已直接显示分支名，均不重复展示“分支：xxx”徽章
+		// 远端分支有新提交、本地尚未同步（issue #90，手动刷新在线目录时检测）
+		...(entry.remoteAhead ? [renderBadge(t('remoteHasNewCommits'), 'remote-update')] : []),
+		// release 引入方式不依赖分支；branch 版本来源的版本标签已包含分支名，均不重复展示“分支：xxx”徽章
 		...(entry.method === 'release' || (entry.versionKind === 'branch' && entry.versionRef)
 			? []
 			: [renderBadge(t('branchBadge', { branch: entry.branch }))]),
@@ -1161,6 +1163,10 @@ export function renderModuleSidebarHtml(state: ModuleSidebarRenderState): string
 			border-color: var(--vscode-inputValidation-warningBorder, var(--vscode-panel-border));
 			color: var(--vscode-editorWarning-foreground, var(--vscode-foreground));
 		}
+		.badge.remote-update {
+			border-color: rgba(255, 152, 0, 0.45);
+			color: var(--vscode-terminal-ansiYellow, #c69026);
+		}
 		.badge.copy {
 			border-color: rgba(14, 99, 156, 0.5);
 			color: var(--vscode-terminal-ansiBlue, #0e639c);
@@ -1843,6 +1849,10 @@ export function renderLocalWorkspaceViewHtml(state: LocalWorkspaceRenderState): 
 			border-color: var(--vscode-inputValidation-warningBorder, var(--vscode-panel-border));
 			color: var(--vscode-editorWarning-foreground, var(--vscode-foreground));
 		}
+		.badge.remote-update {
+			border-color: rgba(255, 152, 0, 0.45);
+			color: var(--vscode-terminal-ansiYellow, #c69026);
+		}
 		.badge.copy {
 			border-color: rgba(14, 99, 156, 0.5);
 			color: var(--vscode-terminal-ansiBlue, #0e639c);
@@ -2160,9 +2170,9 @@ function formatShortSha(sha: string | undefined): string {
 }
 
 /**
- * 构建本地管理模块的当前版本展示文本（issue #37）：
- * tag / release / branch 优先显示来源名称（branch 显示追踪的分支名，issue #90），
- * 否则显示 短SHA · 提交信息 · 相对日期（读本地缓存）。
+ * 构建本地管理模块的当前版本展示文本（issue #37 / #90）：
+ * tag / release 优先显示来源名称；branch 显示 分支名 · 短SHA · 提交信息 · 相对日期
+ * （跟随本地实际 HEAD，提交后由刷新同步）；其余显示 短SHA · 提交信息 · 相对日期（读本地缓存）。
  */
 function getLocalManagedVersionLabel(entry: LocalManagedModuleEntry): string {
 	if (entry.versionKind === 'release') {
@@ -2172,10 +2182,21 @@ function getLocalManagedVersionLabel(entry: LocalManagedModuleEntry): string {
 	if (entry.versionKind === 'tag' && entry.versionRef) {
 		return entry.versionRef;
 	}
-	// branch 类型直接展示追踪的分支名，不追踪 commit SHA（issue #90）：
-	// 本地提交只会推进子模块 HEAD，分支名不变，卡片展示不会过期
-	if (entry.versionKind === 'branch' && (entry.versionRef || entry.branch)) {
-		return entry.versionRef || entry.branch;
+	// branch 类型跟随本地实际 HEAD 展示（issue #90）：
+	// 子模块通过其他 git 操作（提交 / pull / checkout）更新后，刷新时同步 ref 与提交信息
+	if (entry.versionKind === 'branch') {
+		const parts = [entry.versionRef || entry.branch || formatShortSha(undefined)];
+		if (entry.ref) {
+			parts.push(formatShortSha(entry.ref));
+		}
+		if (entry.commitInfo) {
+			parts.push(truncate(entry.commitInfo, 40));
+			const relative = formatRelativeDate(entry.commitDate);
+			if (relative) {
+				parts.push(relative);
+			}
+		}
+		return parts.join(' · ');
 	}
 	const ref = formatShortSha(entry.ref);
 	if (entry.commitInfo) {

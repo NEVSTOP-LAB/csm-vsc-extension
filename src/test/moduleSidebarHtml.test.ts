@@ -36,6 +36,7 @@ function makeManaged(overrides: Partial<LocalManagedModuleEntry> = {}): LocalMan
         releaseName: overrides.releaseName,
         commitInfo: overrides.commitInfo,
         commitDate: overrides.commitDate,
+        remoteAhead: overrides.remoteAhead,
         locked: overrides.locked,
         labviewVersion: overrides.labviewVersion,
         repoUrl: overrides.repoUrl ?? 'https://github.com/test-owner/test-module',
@@ -263,7 +264,7 @@ suite('moduleSidebarHtml — 本地模块卡片（method: local）', () => {
 
 suite('moduleSidebarHtml — 模块版本展示（issue #37 / #90）', () => {
 
-    test('branch 版本来源的模块卡片显示分支名，不追踪/展示 commit SHA', () => {
+    test('branch 版本来源的模块卡片显示 分支名 · 短SHA · 提交信息', () => {
         const html = renderModuleSidebarHtml(makeState({
             managedModules: [makeManaged({
                 method: 'submodule',
@@ -275,23 +276,39 @@ suite('moduleSidebarHtml — 模块版本展示（issue #37 / #90）', () => {
             })],
         }));
         assert.ok(html.includes('badge module-version'), '应渲染版本徽章');
-        assert.ok(html.includes('>develop</span>'), '版本徽章直接显示追踪的分支名');
-        assert.ok(!html.includes('abc1234'), '不应展示 commit SHA');
-        assert.ok(!html.includes('local commit message'), '不应展示提交信息');
+        assert.ok(html.includes('develop'), '版本徽章包含追踪的分支名');
+        assert.ok(html.includes('abc1234'), '版本徽章包含本地实际 HEAD 的短 SHA');
+        assert.ok(html.includes('local commit message'), '版本徽章包含提交信息');
         assert.ok(!html.includes('Branch: develop'), '不再重复渲染「分支」徽章');
+        assert.ok(!html.includes('Remote has new commits'), '无远端更新时不渲染提示徽章');
     });
 
-    test('branch 版本来源缺少 versionRef 时回退显示 entry.branch', () => {
+    test('branch 版本来源缺少 versionRef 时回退显示 entry.branch 与 SHA', () => {
         const html = renderModuleSidebarHtml(makeState({
             managedModules: [makeManaged({
                 method: 'submodule',
                 versionKind: 'branch',
                 versionRef: undefined,
                 branch: 'main',
+                ref: 'abc123',
             })],
         }));
         assert.ok(html.includes('badge module-version'), '应渲染版本徽章');
-        assert.ok(html.includes('>main</span>'), '回退显示 entry.branch');
+        assert.ok(html.includes('main'), '回退显示 entry.branch');
+        assert.ok(html.includes('abc123'), '仍显示本地实际 HEAD 的短 SHA');
+    });
+
+    test('branch 版本来源远端有新提交时渲染提示徽章（issue #90）', () => {
+        const html = renderModuleSidebarHtml(makeState({
+            managedModules: [makeManaged({
+                method: 'submodule',
+                versionKind: 'branch',
+                versionRef: 'main',
+                remoteAhead: true,
+            })],
+        }));
+        assert.ok(html.includes('Remote has new commits'), '渲染远端有新提交徽章');
+        assert.ok(html.includes('badge remote-update'), '徽章带 remote-update 样式');
     });
 
     test('commit 版本来源仍显示 短SHA · 提交信息', () => {
