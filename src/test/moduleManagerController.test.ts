@@ -28,6 +28,11 @@ type VscodeMock = typeof vscode & {
 	__resolveWebviewView: (viewId: string) => { html: string; fireMessage: (message: unknown) => void } | undefined;
 	__getLastWebviewView: () => { viewId: string; html: string } | undefined;
 	__getExecutedCommands: () => Array<{ command: string; args: unknown[] }>;
+	__getFileSystemWatchers: () => Array<{
+		disposed: boolean;
+		pattern: unknown;
+		__fire: (kind: 'create' | 'change' | 'delete', uri?: vscode.Uri) => void;
+	}>;
 };
 
 class FakeMemento {
@@ -2731,6 +2736,146 @@ suite('ModuleManagerController Regression Tests', () => {
 			['csm/nested-repo'],
 		);
 		assert.deepStrictEqual(capturedContext?.unmanagedFolders, []);
+	});
+
+	test('formatCurrentVersionLabel 对 branch 版本来源显示追踪的分支名（issue #90）', () => {
+		const controller = createController() as any;
+		const baseEntry = {
+			key: 'org__module_a',
+			name: 'module-a',
+			owner: 'org',
+			source: 'https://github.com/org/module-a',
+			method: 'submodule',
+			path: 'csm/module-a',
+			ref: 'abc1234',
+			branch: 'develop',
+		};
+		const withVersionRef = controller.formatCurrentVersionLabel({
+			...baseEntry,
+			versionKind: 'branch',
+			versionRef: 'develop',
+		});
+		assert.strictEqual(withVersionRef, 'develop');
+
+		const withoutVersionRef = controller.formatCurrentVersionLabel({
+			...baseEntry,
+			versionKind: 'branch',
+		});
+		assert.strictEqual(withoutVersionRef, 'develop', '缺少 versionRef 时回退 entry.branch');
+
+		const commitKind = controller.formatCurrentVersionLabel({
+			...baseEntry,
+			versionKind: 'commit',
+			versionRef: 'abc1234',
+		});
+		assert.ok(commitKind.includes('abc123'), 'commit 类型仍显示短 SHA');
+	});
+
+	test('refreshSidebarWorkspaceState 为 git 仓库创建 .git watcher（issue #90）', async () => {
+		const controller = createController(undefined, {
+			viewProvider: createViewProvider(),
+		}) as any;
+		controller.availableModules = [];
+		controller.treeDataProvider = createViewProvider();
+		controller.workspaceModuleService = {
+			resolveGitRepositoryRoot: async () => 'd:/repo',
+			loadConfig: async () => ({
+				version: '2',
+				root: 'csm',
+				configPath: 'd:/repo/csm/csm-modules.yaml',
+				modules: {},
+			}),
+			listModuleDirectories: async () => [],
+			syncSubmoduleEntriesToConfig: async (_repoRoot: string, cfg: LocalModuleConfig) => ({ config: cfg, addedCount: 0 }),
+			syncModuleLockStates: async () => undefined,
+		};
+		controller.computeStaleModuleKeys = async () => [];
+		mocked.__setWorkspaceFolders([{ name: 'repo', uri: vscode.Uri.file('d:/repo') }]);
+		mocked.__setFindFilesResultForPattern(configSearchPattern, [vscode.Uri.file('d:/repo/csm/csm-modules.yaml')]);
+
+		await controller.refreshSidebarWorkspaceState();
+
+		const watchers = mocked.__getFileSystemWatchers();
+		assert.strictEqual(watchers.length, 1, '应为 git 仓库创建唯一 watcher');
+		assert.strictEqual(watchers[0].disposed, false);
+
+		// 重复刷新不应重建 watcher
+		await controller.refreshSidebarWorkspaceState();
+		assert.strictEqual(mocked.__getFileSystemWatchers().length, 1, '相同 repoRoot 下复用 watcher');
+	});
+
+	test('git 变更去抖后自动重算侧边栏工作区状态（issue #90）', async () => {
+		const controller = createController(undefined, {
+			viewProvider: createViewProvider(),
+		}) as any;
+		controller.availableModules = [];
+		controller.treeDataProvider = createViewProvider();
+		controller.workspaceModuleService = {
+			resolveGitRepositoryRoot: async () => 'd:/repo',
+			loadConfig: async () => ({
+				version: '2',
+				root: 'csm',
+				configPath: 'd:/repo/csm/csm-modules.yaml',
+				modules: {},
+			}),
+			listModuleDirectories: async () => [],
+			syncSubmoduleEntriesToConfig: async (_repoRoot: string, cfg: LocalModuleConfig) => ({ config: cfg, addedCount: 0 }),
+			syncModuleLockStates: async () => undefined,
+		};
+		controller.computeStaleModuleKeys = async () => [];
+		mocked.__setWorkspaceFolders([{ name: 'repo', uri: vscode.Uri.file('d:/repo') }]);
+		mocked.__setFindFilesResultForPattern(configSearchPattern, [vscode.Uri.file('d:/repo/csm/csm-modules.yaml')]);
+
+		await controller.refreshSidebarWorkspaceState();
+		const watcher = mocked.__getFileSystemWatchers()[0];
+		let refreshCount = 0;
+		const originalRefresh = controller.refreshSidebarWorkspaceState.bind(controller);
+		controller.refreshSidebarWorkspaceState = async () => {
+			refreshCount += 1;
+			return originalRefresh();
+		};
+
+		// 多次变更应合并为一次去抖刷新
+		watcher.__fire('change');
+		watcher.__fire('change');
+		watcher.__fire('create');
+		await new Promise((resolve) => setTimeout(resolve, 100));
+		assert.strictEqual(refreshCount, 0, '去抖窗口内不应立即刷新');
+		await new Promise((resolve) => setTimeout(resolve, 1800));
+		assert.strictEqual(refreshCount, 1, '去抖结束后应刷新一次');
+	});
+
+	test('workspace 非 git 仓库时清理 .git watcher（issue #90）', async () => {
+		const controller = createController(undefined, {
+			viewProvider: createViewProvider(),
+		}) as any;
+		controller.availableModules = [];
+		controller.treeDataProvider = createViewProvider();
+		controller.workspaceModuleService = {
+			resolveGitRepositoryRoot: async () => 'd:/repo',
+			loadConfig: async () => ({
+				version: '2',
+				root: 'csm',
+				configPath: 'd:/repo/csm/csm-modules.yaml',
+				modules: {},
+			}),
+			listModuleDirectories: async () => [],
+			syncSubmoduleEntriesToConfig: async (_repoRoot: string, cfg: LocalModuleConfig) => ({ config: cfg, addedCount: 0 }),
+			syncModuleLockStates: async () => undefined,
+		};
+		controller.computeStaleModuleKeys = async () => [];
+		mocked.__setWorkspaceFolders([{ name: 'repo', uri: vscode.Uri.file('d:/repo') }]);
+		mocked.__setFindFilesResultForPattern(configSearchPattern, [vscode.Uri.file('d:/repo/csm/csm-modules.yaml')]);
+
+		await controller.refreshSidebarWorkspaceState();
+		const watchers = mocked.__getFileSystemWatchers();
+		assert.strictEqual(watchers[0].disposed, false);
+
+		// 工作区不再是 git 仓库：watcher 应被 dispose
+		controller.workspaceModuleService.resolveGitRepositoryRoot = async () => undefined;
+		await controller.refreshSidebarWorkspaceState();
+		assert.strictEqual(watchers[0].disposed, true, '非 git 仓库时应清理 watcher');
+		assert.strictEqual(mocked.__getFileSystemWatchers().length, 1, '清理后不再创建新 watcher');
 	});
 
 	test('mapAppliedModuleKeys matches applied module across config variants', () => {

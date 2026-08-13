@@ -30,6 +30,8 @@ const DEFAULT_SHARED_MODULE_TOPICS = ['labview-csm', 'csm-modsets'] as const;
 const ROOT_NAMESPACE_VALUE = '';
 /** 版本来源列表每类最多展示的条数（issue #37） */
 const VERSION_LIST_LIMIT = 20;
+/** git 变更后自动刷新侧边栏工作区状态的去抖时长（issue #90） */
+const GIT_CHANGE_REFRESH_DEBOUNCE_MS = 1500;
 
 function getWorkspaceInitPrompt(rootPath: string): string {
 	return t('workspaceInitPrompt', { rootPath });
@@ -245,6 +247,10 @@ export class ModuleManagerController {
 	private currentAccountLabel: string | undefined;
 	private lastTokenVerifiedAt = 0;
 	private recentNamespaceByWorkspace: Record<string, string>;
+	/** 监听仓库 .git 目录变更，提交后自动刷新侧边栏工作区状态（issue #90） */
+	private gitWatcher: vscode.FileSystemWatcher | undefined;
+	private gitWatcherRoot: string | undefined;
+	private gitWatcherDebounce: ReturnType<typeof setTimeout> | undefined;
 	private static readonly TOKEN_VERIFY_INTERVAL_MS = 10 * 60 * 1000; // 10 minutes
 
 	constructor(private readonly context: vscode.ExtensionContext, deps: ModuleManagerControllerDeps = {}) {
@@ -290,6 +296,8 @@ export class ModuleManagerController {
 		subscriptions.push(vscode.window.registerWebviewViewProvider(VIEW_IDS.moduleSidebar, this.sidebarViewProvider, {
 			webviewOptions: { retainContextWhenHidden: true },
 		}));
+		// 扩展停用时清理 git watcher 与待执行的去抖刷新（issue #90）
+		subscriptions.push(new vscode.Disposable(() => this.disposeGitWatcher()));
 
 		this.registerCommand(subscriptions, COMMAND_IDS.login, () => this.loginCommand());
 		this.registerCommand(subscriptions, COMMAND_IDS.logout, () => this.logoutCommand());
@@ -1060,6 +1068,10 @@ export class ModuleManagerController {
 		}
 		if (target.versionKind === 'tag' && target.versionRef) {
 			return target.versionRef;
+		}
+		// branch 类型直接显示追踪的分支名，不追踪 commit SHA（issue #90）
+		if (target.versionKind === 'branch' && (target.versionRef || target.branch)) {
+			return target.versionRef || target.branch;
 		}
 		const cacheEntry = this.versionCache[`${target.owner}/${target.name}`];
 		const ref = this.formatShortSha(target.ref);
@@ -2506,12 +2518,15 @@ export class ModuleManagerController {
 		}
 
 		// 需要补全的模块：versionCache 中缺少与当前 ref 匹配的提交信息。
-		// release / tag 来源直接展示名称，无需提交信息。
+		// release / tag 直接展示名称，branch 直接展示分支名（issue #90），均无需提交信息。
 		const needsBackfill = Object.values(config.modules).filter((entry) => {
 			if (entry.versionKind === 'release') {
 				return false;
 			}
 			if (entry.versionKind === 'tag' && entry.versionRef) {
+				return false;
+			}
+			if (entry.versionKind === 'branch') {
 				return false;
 			}
 			const cacheEntry = this.versionCache[`${entry.owner}/${entry.name}`];
@@ -3218,6 +3233,8 @@ export class ModuleManagerController {
 
 		const repoRoot = await this.workspaceModuleService.resolveGitRepositoryRoot(workspaceFolder.uri.fsPath);
 		const workspaceRoot = repoRoot ?? workspaceFolder.uri.fsPath;
+		// 确保 .git watcher 存在：本地提交后自动刷新侧边栏工作区状态（issue #90）
+		this.ensureGitWatcher(repoRoot);
 
 		let config = await this.tryLoadSidebarLocalModuleConfig(workspaceFolder, workspaceRoot);
 		if (config && repoRoot) {
@@ -3416,6 +3433,66 @@ export class ModuleManagerController {
 		);
 
 		return entries;
+	}
+
+	/**
+	 * 确保存在监听仓库 .git 目录的 watcher（issue #90）：
+	 * 用户在父仓库或子模块中提交代码会改变 .git 下的 refs/index 等文件，
+	 * 去抖后自动重算侧边栏工作区状态。branch 模式的模块卡片展示追踪的分支名
+	 * （不追踪 commit SHA），因此本地提交后卡片展示始终保持最新。
+	 * repoRoot 变化时 dispose 旧 watcher 并重建；无 git 仓库时清理。
+	 */
+	private ensureGitWatcher(repoRoot: string | undefined): void {
+		if (!repoRoot) {
+			this.disposeGitWatcher();
+			return;
+		}
+		const normalizedRoot = path.resolve(repoRoot).replace(/\\/g, '/').toLowerCase();
+		if (this.gitWatcher && this.gitWatcherRoot === normalizedRoot) {
+			return;
+		}
+		this.disposeGitWatcher();
+		if (typeof vscode.workspace.createFileSystemWatcher !== 'function') {
+			return;
+		}
+		try {
+			const gitDir = path.join(repoRoot, '.git');
+			const watcher = vscode.workspace.createFileSystemWatcher(
+				new vscode.RelativePattern(vscode.Uri.file(gitDir), '**'),
+			);
+			watcher.onDidChange(() => this.scheduleGitWatcherRefresh());
+			watcher.onDidCreate(() => this.scheduleGitWatcherRefresh());
+			watcher.onDidDelete(() => this.scheduleGitWatcherRefresh());
+			this.gitWatcher = watcher;
+			this.gitWatcherRoot = normalizedRoot;
+		} catch (error) {
+			this.logger.warn(`Failed to watch git directory for ${repoRoot}: ${error instanceof Error ? error.message : String(error)}`);
+		}
+	}
+
+	private disposeGitWatcher(): void {
+		if (this.gitWatcherDebounce !== undefined) {
+			clearTimeout(this.gitWatcherDebounce);
+			this.gitWatcherDebounce = undefined;
+		}
+		if (this.gitWatcher) {
+			this.gitWatcher.dispose();
+			this.gitWatcher = undefined;
+		}
+		this.gitWatcherRoot = undefined;
+	}
+
+	/** git 变更后去抖触发侧边栏工作区状态重算（issue #90）。 */
+	private scheduleGitWatcherRefresh(): void {
+		if (this.gitWatcherDebounce !== undefined) {
+			clearTimeout(this.gitWatcherDebounce);
+		}
+		this.gitWatcherDebounce = setTimeout(() => {
+			this.gitWatcherDebounce = undefined;
+			void this.refreshSidebarWorkspaceState().catch((error) => {
+				this.logger.warn(`Failed to refresh sidebar workspace state after git change: ${error instanceof Error ? error.message : String(error)}`);
+			});
+		}, GIT_CHANGE_REFRESH_DEBOUNCE_MS);
 	}
 
 	/**

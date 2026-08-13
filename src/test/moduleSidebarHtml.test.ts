@@ -31,6 +31,13 @@ function makeManaged(overrides: Partial<LocalManagedModuleEntry> = {}): LocalMan
         method: overrides.method ?? 'copy',
         branch: overrides.branch ?? 'main',
         ref: overrides.ref ?? 'abc123',
+        versionKind: overrides.versionKind,
+        versionRef: overrides.versionRef,
+        releaseName: overrides.releaseName,
+        commitInfo: overrides.commitInfo,
+        commitDate: overrides.commitDate,
+        locked: overrides.locked,
+        labviewVersion: overrides.labviewVersion,
         repoUrl: overrides.repoUrl ?? 'https://github.com/test-owner/test-module',
         description: overrides.description ?? '',
         visibility: overrides.visibility ?? 'public',
@@ -251,5 +258,67 @@ suite('moduleSidebarHtml — 本地模块卡片（method: local）', () => {
         assert.ok(localCardStart >= 0, '应渲染未管理卡片');
         const localCard = html.slice(localCardStart);
         assert.ok(localCard.includes('data-action="recordLocalModule"'), '未管理卡片提供记录为本地模块按钮');
+    });
+});
+
+suite('moduleSidebarHtml — 模块版本展示（issue #37 / #90）', () => {
+
+    test('branch 版本来源的模块卡片显示分支名，不追踪/展示 commit SHA', () => {
+        const html = renderModuleSidebarHtml(makeState({
+            managedModules: [makeManaged({
+                method: 'submodule',
+                versionKind: 'branch',
+                versionRef: 'develop',
+                ref: 'abc1234',
+                commitInfo: 'local commit message',
+                commitDate: new Date().toISOString(),
+            })],
+        }));
+        assert.ok(html.includes('badge module-version'), '应渲染版本徽章');
+        assert.ok(html.includes('>develop</span>'), '版本徽章直接显示追踪的分支名');
+        assert.ok(!html.includes('abc1234'), '不应展示 commit SHA');
+        assert.ok(!html.includes('local commit message'), '不应展示提交信息');
+        assert.ok(!html.includes('Branch: develop'), '不再重复渲染「分支」徽章');
+    });
+
+    test('branch 版本来源缺少 versionRef 时回退显示 entry.branch', () => {
+        const html = renderModuleSidebarHtml(makeState({
+            managedModules: [makeManaged({
+                method: 'submodule',
+                versionKind: 'branch',
+                versionRef: undefined,
+                branch: 'main',
+            })],
+        }));
+        assert.ok(html.includes('badge module-version'), '应渲染版本徽章');
+        assert.ok(html.includes('>main</span>'), '回退显示 entry.branch');
+    });
+
+    test('commit 版本来源仍显示 短SHA · 提交信息', () => {
+        const html = renderModuleSidebarHtml(makeState({
+            managedModules: [makeManaged({
+                method: 'submodule',
+                versionKind: 'commit',
+                versionRef: 'abc1234',
+                ref: 'abc1234',
+                commitInfo: 'pinned commit',
+                commitDate: new Date().toISOString(),
+            })],
+        }));
+        assert.ok(html.includes('abc1234'), 'commit 类型仍显示 SHA');
+        assert.ok(html.includes('pinned commit'), 'commit 类型仍显示提交信息');
+    });
+
+    test('tag 版本来源仍显示 tag 名', () => {
+        const html = renderModuleSidebarHtml(makeState({
+            managedModules: [makeManaged({
+                method: 'copy',
+                versionKind: 'tag',
+                versionRef: 'v1.0',
+                ref: 'abc1234',
+            })],
+        }));
+        assert.ok(html.includes('>v1.0</span>'), 'tag 类型显示 tag 名');
+        assert.ok(!html.includes('abc1234'), 'tag 类型不显示 SHA');
     });
 });

@@ -449,8 +449,10 @@ function renderLocalManagedCard(entry: LocalManagedModuleEntry, state: LocalWork
 		...(entry.stale ? [renderBadge(t('staleDirectoryMissing'), 'stale')] : []),
 		renderBadge(getVisibilityLabel(entry.visibility), entry.visibility === 'private' ? 'private' : undefined),
 		renderBadge(getLocalManagedVersionLabel(entry), 'module-version'),
-		// release 引入方式不依赖分支，不显示“分支：xxx”徽章
-		...(entry.method === 'release' ? [] : [renderBadge(t('branchBadge', { branch: entry.branch }))]),
+		// release 引入方式不依赖分支；branch 版本来源的版本标签已直接显示分支名，均不重复展示“分支：xxx”徽章
+		...(entry.method === 'release' || (entry.versionKind === 'branch' && entry.versionRef)
+			? []
+			: [renderBadge(t('branchBadge', { branch: entry.branch }))]),
 		...topicBadges,
 	];
 	return renderModuleCardShell({
@@ -2159,7 +2161,8 @@ function formatShortSha(sha: string | undefined): string {
 
 /**
  * 构建本地管理模块的当前版本展示文本（issue #37）：
- * tag / release 优先显示来源名称，否则显示 短SHA · 提交信息 · 相对日期（读本地缓存）。
+ * tag / release / branch 优先显示来源名称（branch 显示追踪的分支名，issue #90），
+ * 否则显示 短SHA · 提交信息 · 相对日期（读本地缓存）。
  */
 function getLocalManagedVersionLabel(entry: LocalManagedModuleEntry): string {
 	if (entry.versionKind === 'release') {
@@ -2168,6 +2171,11 @@ function getLocalManagedVersionLabel(entry: LocalManagedModuleEntry): string {
 	}
 	if (entry.versionKind === 'tag' && entry.versionRef) {
 		return entry.versionRef;
+	}
+	// branch 类型直接展示追踪的分支名，不追踪 commit SHA（issue #90）：
+	// 本地提交只会推进子模块 HEAD，分支名不变，卡片展示不会过期
+	if (entry.versionKind === 'branch' && (entry.versionRef || entry.branch)) {
+		return entry.versionRef || entry.branch;
 	}
 	const ref = formatShortSha(entry.ref);
 	if (entry.commitInfo) {
