@@ -125,6 +125,7 @@ extension.ts activate()
         ├── 注册 19 个 VS Code 命令
         ├── 创建 ModuleSidebarViewProvider（WebView）
         ├── 依赖注入：authService, githubService, workspaceService, configService
+        ├── git watcher：监听仓库 .git 目录，提交后去抖自动重算侧边栏工作区状态（issue #90）
         └── 状态机：认证 → 缓存恢复 → 模块列表渲染 → 用户交互
 ```
 
@@ -165,6 +166,8 @@ extension.ts activate()
     → 刷新侧边栏
 ```
 
+**branch 版本来源展示**（issue #90）：`versionKind=branch` 的模块卡片与更新确认对话框直接显示追踪的分支名（`versionRef || branch`），不追踪 / 展示 commit SHA——本地提交只推进子模块 HEAD、分支名不变，展示不会过期；`backfillAppliedModuleVersionInfos` 跳过 branch 条目；commit / tag / release 保持固定版本语义（短SHA / tag 名 / release 名）。
+
 ---
 
 ## 4. 关键设计决策
@@ -187,6 +190,10 @@ extension.ts activate()
 
 重构后的旧路径（`src/moduleManager/`、`src/hoverData/`、`src/logFold/`）保留 `export * from '../new-path'` 重导出，确保持有旧导入路径的代码不受影响。
 
+### 4.5 git 自动刷新（issue #90）
+
+`ModuleManagerController` 为当前仓库的 `.git` 目录创建递归 `FileSystemWatcher`（`RelativePattern(Uri.file(<repoRoot>/.git), '**')`），在父仓库或子模块中提交后去抖 1.5s（`GIT_CHANGE_REFRESH_DEBOUNCE_MS`）自动重算侧边栏工作区状态；watcher 随 `repoRoot` 变化幂等重建，非 git 工作区不创建，扩展停用时通过 register 的 Disposable 清理。
+
 ---
 
 ## 5. 构建与测试
@@ -202,7 +209,7 @@ extension.ts activate()
 
 ### 测试统计
 
-- **352** 个独立单元测试（Mocha TDD）
+- **429** 个独立单元测试（Mocha TDD）
 - **2** 个集成测试（需 VS Code 宿主）
 - 纯函数覆盖 100%，核心算法有性能测试约束
 
