@@ -1273,6 +1273,90 @@ suite('Module Manager Tests', () => {
 		assert.strictEqual(normalizedConfig.modules.org__module_a.locked, true, '迁移补齐 locked 默认值');
 	});
 
+	test('config migration gate uses strict semver validation', () => {
+		assert.strictEqual(shouldMigrateConfig('1.2.3-invalid!', '0.0.26'), true, '非法 SemVer 视为旧版本');
+		assert.strictEqual(shouldMigrateConfig('1.0.0-beta.1', '1.0.0'), true, '预发布版本低于正式版本');
+		assert.strictEqual(shouldMigrateConfig('0.0.26', '0.0.26'), false);
+	});
+
+	test('WorkspaceModuleService resolves submodule HEAD via git output parsing', async () => {
+		const calls: GitExecOptions[] = [];
+		const gitRunner: IGitRunner = {
+			isAvailable: async () => true,
+			exec: async (options: GitExecOptions) => {
+				calls.push(options);
+				if (options.args.includes('log')) {
+					return 'local commit message\t2026-08-01T10:00:00Z';
+				}
+				return 'def4567890123456789012345678901234567890\n';
+			},
+		};
+		const service = new WorkspaceModuleService(gitRunner);
+		const info = await service.resolveSubmoduleHead('d:/repo/csm/module-a');
+		assert.deepStrictEqual(info, {
+			head: 'def4567890123456789012345678901234567890',
+			commitInfo: 'local commit message',
+			date: '2026-08-01T10:00:00Z',
+		});
+		assert.strictEqual(calls.length, 2);
+		assert.deepStrictEqual(calls[0].args, ['rev-parse', 'HEAD']);
+		assert.deepStrictEqual(calls[1].args, ['log', '-n', '1', '--format=%s%x09%aI', 'def4567890123456789012345678901234567890']);
+	});
+
+	test('WorkspaceModuleService resolveSubmoduleHead returns undefined for invalid HEAD or git failure', async () => {
+		const invalid = new WorkspaceModuleService({
+			isAvailable: async () => true,
+			exec: async () => 'not-a-sha\n',
+		});
+		assert.strictEqual(await invalid.resolveSubmoduleHead('d:/repo/csm/module-a'), undefined);
+
+		const failing = new WorkspaceModuleService({
+			isAvailable: async () => true,
+			exec: async () => {
+				throw new Error('not a git repository');
+			},
+		});
+		assert.strictEqual(await failing.resolveSubmoduleHead('d:/repo/csm/module-a'), undefined);
+	});
+
+	test('WorkspaceModuleService isRemoteAheadOfLocal only marks true remote advance', async () => {
+		const makeService = (tracking?: string) => new WorkspaceModuleService({
+			isAvailable: async () => true,
+			exec: async (options: GitExecOptions) => {
+				if (options.args[0] === 'rev-parse' && options.args.includes('-q')) {
+					return tracking ?? '';
+				}
+				return '';
+			},
+		});
+		// 拿不到跟踪引用 → 保守 false
+		assert.strictEqual(await makeService(undefined).isRemoteAheadOfLocal('p', 'main', 'abc', 'def'), false);
+		// 本地与跟踪一致且跟踪落后于远端 → 远端确实有新提交
+		assert.strictEqual(await makeService('abc').isRemoteAheadOfLocal('p', 'main', 'abc', 'def'), true);
+		// 本地有未推送提交（与跟踪不同）→ 不误报
+		assert.strictEqual(await makeService('abc').isRemoteAheadOfLocal('p', 'main', 'local123', 'def'), false);
+		// 本地已同步远端 → false
+		assert.strictEqual(await makeService('def').isRemoteAheadOfLocal('p', 'main', 'def', 'def'), false);
+		// 远端与本地相同 → false
+		assert.strictEqual(await makeService('abc').isRemoteAheadOfLocal('p', 'main', 'abc', 'abc'), false);
+	});
+
+	test('WorkspaceModuleService resolves the real git dir for the watcher', async () => {
+		const service = new WorkspaceModuleService({
+			isAvailable: async () => true,
+			exec: async () => 'D:/repo/.git/worktrees/wt\n',
+		});
+		assert.strictEqual(await service.resolveGitDir('d:/repo'), 'D:/repo/.git/worktrees/wt');
+
+		const failing = new WorkspaceModuleService({
+			isAvailable: async () => true,
+			exec: async () => {
+				throw new Error('no repo');
+			},
+		});
+		assert.strictEqual(await failing.resolveGitDir('d:/plain'), undefined);
+	});
+
 	test('WorkspaceModuleService toggles local module files between readonly and writable', async () => {
 		const workspaceRoot = await fs.mkdtemp(path.join(getTempRoot(), 'csm-lock-toggle-'));
 		const service = new WorkspaceModuleService();

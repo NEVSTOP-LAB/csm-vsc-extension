@@ -32,6 +32,8 @@ const ROOT_NAMESPACE_VALUE = '';
 const VERSION_LIST_LIMIT = 20;
 /** git 变更后自动刷新侧边栏工作区状态的去抖时长（issue #90） */
 const GIT_CHANGE_REFRESH_DEBOUNCE_MS = 1500;
+/** 手动刷新在线目录时 branch 子模块远端检测的有界并发数（review 修正） */
+const REMOTE_CHECK_CONCURRENCY = 5;
 
 function getWorkspaceInitPrompt(rootPath: string): string {
 	return t('workspaceInitPrompt', { rootPath });
@@ -242,8 +244,8 @@ export class ModuleManagerController {
 	private readonly selectedModuleKeys = new Set<string>();
 	/** 模块当前版本提交信息缓存（key=`owner/name`，issue #37） */
 	private versionCache: Record<string, ModuleVersionCacheEntry> = {};
-	/** 远端分支有新提交的模块（key=`owner/name`，issue #90，仅在手动刷新在线目录时检测） */
-	private remoteAheadKeys = new Set<string>();
+	/** 远端有新提交的检测结果（issue #90）：绑定检测时的 workspace 与本地 ref，避免过期误报 */
+	private remoteAheadRefs: { workspaceRoot: string; refs: Map<string, string> } | undefined;
 	private currentToken: string | undefined;
 	private currentAccountId: string | undefined;
 	private currentAccountLabel: string | undefined;
@@ -2568,7 +2570,8 @@ export class ModuleManagerController {
 		// 限流：每次最多补全 5 个模块，避免大量 API 请求
 		const toBackfill = needsBackfill.slice(0, 5);
 		let cacheChanged = false;
-		const nextRemoteAhead = new Set<string>();
+		// key=`owner/name`，value=检测时的本地 ref（透传时校验，避免过期误报）
+		const nextRemoteAhead = new Map<string, string>();
 
 		await Promise.all([
 			...toBackfill.map(async (entry) => {
@@ -2598,7 +2601,8 @@ export class ModuleManagerController {
 					this.logger.warn(`Failed to backfill version info for ${entry.owner}/${entry.name}: ${error instanceof Error ? error.message : String(error)}`);
 				}
 			}),
-			...branchEntries.map(async (entry) => {
+			// 远端检测同样使用有界并发（review 修正），避免同时启动大量 ls-remote 进程
+			this.mapWithConcurrency(branchEntries, REMOTE_CHECK_CONCURRENCY, async (entry) => {
 				try {
 					const branch = entry.branch || 'main';
 					const remoteRef = await this.workspaceModuleService.resolveRemoteBranchRef(
@@ -2607,8 +2611,13 @@ export class ModuleManagerController {
 						branch,
 						token,
 					);
-					if (remoteRef && remoteRef !== entry.ref) {
-						nextRemoteAhead.add(`${entry.owner}/${entry.name}`);
+					if (!remoteRef) {
+						return;
+					}
+					const targetPath = path.resolve(workspaceRoot, entry.path);
+					// SHA 不同 ≠ 远端有新提交（可能只是本地未推送提交），做本地领先排除后再标记（review 修正）
+					if (await this.workspaceModuleService.isRemoteAheadOfLocal(targetPath, branch, entry.ref, remoteRef)) {
+						nextRemoteAhead.set(`${entry.owner}/${entry.name}`, entry.ref);
 					}
 				} catch (error) {
 					this.logger.warn(`Failed to check remote branch for ${entry.owner}/${entry.name}: ${error instanceof Error ? error.message : String(error)}`);
@@ -2616,7 +2625,7 @@ export class ModuleManagerController {
 			}),
 		]);
 
-		const remoteAheadChanged = this.setsDiffer(this.remoteAheadKeys, nextRemoteAhead);
+		const remoteAheadChanged = this.remoteAheadStateDiffer(workspaceRoot, nextRemoteAhead);
 		if (!cacheChanged && !remoteAheadChanged) {
 			return;
 		}
@@ -2624,23 +2633,55 @@ export class ModuleManagerController {
 			await this.cacheStore.setModuleVersionCache(this.versionCache);
 		}
 		if (remoteAheadChanged) {
-			this.remoteAheadKeys = nextRemoteAhead;
+			this.remoteAheadRefs = {
+				workspaceRoot: this.normalizeWorkspacePath(workspaceRoot),
+				refs: nextRemoteAhead,
+			};
 		}
 		// 重新计算本地工作区状态，让已应用卡片读取到新的提交信息与远端提示
 		await this.refreshSidebarWorkspaceState();
 	}
 
-	/** 比较两个字符串集合是否内容一致（issue #90）。 */
-	private setsDiffer(left: Set<string>, right: Set<string>): boolean {
-		if (left.size !== right.size) {
+	/** 有界并发执行异步任务（review 修正：branch 远端检测限流用）。 */
+	private mapWithConcurrency<T, R>(items: T[], limit: number, task: (item: T) => Promise<R>): Promise<R[]> {
+		const results: R[] = new Array<R>(items.length);
+		let nextIndex = 0;
+		const workers = Array.from({ length: Math.max(1, Math.min(limit, items.length)) }, async () => {
+			while (nextIndex < items.length) {
+				const index = nextIndex;
+				nextIndex += 1;
+				results[index] = await task(items[index]);
+			}
+		});
+		return Promise.all(workers).then(() => results);
+	}
+
+	private normalizeWorkspacePath(value: string): string {
+		return path.resolve(value).replace(/\\/g, '/').toLowerCase();
+	}
+
+	/** 远端新提交检测结果是否有变化（比较 workspace 与逐模块 ref）。 */
+	private remoteAheadStateDiffer(workspaceRoot: string, next: Map<string, string>): boolean {
+		const normalizedRoot = this.normalizeWorkspacePath(workspaceRoot);
+		const current = this.remoteAheadRefs;
+		if (!current || current.workspaceRoot !== normalizedRoot || current.refs.size !== next.size) {
 			return true;
 		}
-		for (const value of left) {
-			if (!right.has(value)) {
+		for (const [key, ref] of next) {
+			if (current.refs.get(key) !== ref) {
 				return true;
 			}
 		}
 		return false;
+	}
+
+	/** 检测结果仅在与检测时的 workspace 和本地 ref 仍匹配时透传（review 修正，避免过期徽章）。 */
+	private isRemoteAheadMarked(workspaceRoot: string, entry: LocalModuleConfigEntry): boolean {
+		const state = this.remoteAheadRefs;
+		if (!state || state.workspaceRoot !== this.normalizeWorkspacePath(workspaceRoot)) {
+			return false;
+		}
+		return state.refs.get(`${entry.owner}/${entry.name}`) === entry.ref;
 	}
 
 	/**
@@ -3300,7 +3341,7 @@ export class ModuleManagerController {
 		const repoRoot = await this.workspaceModuleService.resolveGitRepositoryRoot(workspaceFolder.uri.fsPath);
 		const workspaceRoot = repoRoot ?? workspaceFolder.uri.fsPath;
 		// 确保 .git watcher 存在：本地提交后自动刷新侧边栏工作区状态（issue #90）
-		this.ensureGitWatcher(repoRoot);
+		await this.ensureGitWatcher(repoRoot);
 
 		let config = await this.tryLoadSidebarLocalModuleConfig(workspaceFolder, workspaceRoot);
 		if (config && repoRoot) {
@@ -3432,8 +3473,8 @@ export class ModuleManagerController {
 					releaseName: configEntry.releaseName,
 					commitInfo: cacheMatchesRef ? versionCacheEntry.commitInfo : undefined,
 					commitDate: cacheMatchesRef ? versionCacheEntry.date : undefined,
-					// 远端分支有新提交（issue #90，仅在手动刷新在线目录时检测）
-					remoteAhead: this.remoteAheadKeys.has(`${configEntry.owner}/${configEntry.name}`),
+					// 远端分支有新提交（issue #90，仅在手动刷新在线目录时检测；透传前校验 workspace 与 ref）
+					remoteAhead: this.isRemoteAheadMarked(workspaceRoot, configEntry),
 					locked: this.isLocalModuleLocked(configEntry),
 					repoUrl: moduleEntry.repoUrl,
 					description: moduleEntry.description,
@@ -3537,14 +3578,25 @@ export class ModuleManagerController {
 			try {
 				const targetPath = path.resolve(workspaceRoot, entry.path);
 				const headInfo = await this.workspaceModuleService.resolveSubmoduleHead(targetPath);
-				if (!headInfo?.head || headInfo.head === entry.ref) {
+				if (!headInfo?.head) {
 					continue;
 				}
-				entry.ref = headInfo.head;
-				updated += 1;
+				const cacheKey = `${entry.owner}/${entry.name}`;
+				const cacheEntry = this.versionCache[cacheKey];
+				const cacheMatches = Boolean(cacheEntry && cacheEntry.ref === headInfo.head && cacheEntry.commitInfo);
+				// 配置 ref 与缓存分别判断（review 修正）：
+				// - HEAD 与配置不一致：写回配置 ref；
+				// - 缓存缺失 / 与 HEAD 不匹配：无论 HEAD 是否变化都填充缓存（旧配置首次加载时
+				//   在线补全已排除 branch 条目，这里必须把提交信息补上）。
+				if (headInfo.head !== entry.ref) {
+					entry.ref = headInfo.head;
+					updated += 1;
+				} else if (cacheMatches) {
+					continue;
+				}
 				this.versionCache = {
 					...this.versionCache,
-					[`${entry.owner}/${entry.name}`]: {
+					[cacheKey]: {
 						ref: headInfo.head,
 						commitInfo: headInfo.commitInfo,
 						date: headInfo.date,
@@ -3565,27 +3617,33 @@ export class ModuleManagerController {
 	}
 
 	/**
-	 * 确保存在监听仓库 .git 目录的 watcher（issue #90）：
+	 * 确保存在监听仓库真实 git 目录的 watcher（issue #90）：
 	 * 用户在父仓库或子模块中提交 / pull / checkout 会改变 .git 下的 refs/index 等文件，
 	 * 去抖后自动重算侧边栏工作区状态；刷新时会同步 branch 模式 submodule 的实际 HEAD
 	 * 到配置与版本缓存，让卡片版本信息随其他 git 操作自动更新。
+	 * linked worktree / 子模块场景 `.git` 是指向真实 gitdir 的文件（review 修正），
+	 * 先经 `git rev-parse --absolute-git-dir` 解析真实 git 目录再创建 watcher。
 	 * repoRoot 变化时 dispose 旧 watcher 并重建；无 git 仓库时清理。
 	 */
-	private ensureGitWatcher(repoRoot: string | undefined): void {
+	private async ensureGitWatcher(repoRoot: string | undefined): Promise<void> {
 		if (!repoRoot) {
 			this.disposeGitWatcher();
 			return;
 		}
-		const normalizedRoot = path.resolve(repoRoot).replace(/\\/g, '/').toLowerCase();
-		if (this.gitWatcher && this.gitWatcherRoot === normalizedRoot) {
-			return;
-		}
-		this.disposeGitWatcher();
 		if (typeof vscode.workspace.createFileSystemWatcher !== 'function') {
 			return;
 		}
 		try {
-			const gitDir = path.join(repoRoot, '.git');
+			const gitDir = await this.workspaceModuleService.resolveGitDir(repoRoot);
+			if (!gitDir) {
+				this.disposeGitWatcher();
+				return;
+			}
+			const normalizedGitDir = this.normalizeWorkspacePath(gitDir);
+			if (this.gitWatcher && this.gitWatcherRoot === normalizedGitDir) {
+				return;
+			}
+			this.disposeGitWatcher();
 			const watcher = vscode.workspace.createFileSystemWatcher(
 				new vscode.RelativePattern(vscode.Uri.file(gitDir), '**'),
 			);
@@ -3593,7 +3651,7 @@ export class ModuleManagerController {
 			watcher.onDidCreate(() => this.scheduleGitWatcherRefresh());
 			watcher.onDidDelete(() => this.scheduleGitWatcherRefresh());
 			this.gitWatcher = watcher;
-			this.gitWatcherRoot = normalizedRoot;
+			this.gitWatcherRoot = normalizedGitDir;
 		} catch (error) {
 			this.logger.warn(`Failed to watch git directory for ${repoRoot}: ${error instanceof Error ? error.message : String(error)}`);
 		}

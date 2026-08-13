@@ -2895,6 +2895,60 @@ suite('ModuleManagerController Regression Tests', () => {
 		assert.strictEqual(writeConfigCalls, 0, 'HEAD 与配置一致时不写回');
 	});
 
+	test('branch 子模块 HEAD 与配置一致但缓存缺失时仍填充提交信息（issue #90 review 修正）', async () => {
+		const controller = createController(undefined, {
+			viewProvider: createViewProvider(),
+		}) as any;
+		const config: LocalModuleConfig = {
+			version: '2',
+			root: 'csm',
+			configPath: 'd:/repo/csm/csm-modules.yaml',
+			modules: {
+				org__module_a: {
+					key: 'org__module_a',
+					name: 'module-a',
+					owner: 'org',
+					source: 'https://github.com/org/module-a',
+					method: 'submodule',
+					path: 'csm/module-a',
+					ref: 'abc123',
+					branch: 'main',
+					versionKind: 'branch',
+					versionRef: 'main',
+					locked: false,
+				},
+			},
+		};
+		let writeConfigCalls = 0;
+		controller.versionCache = {};
+		controller.availableModules = [];
+		controller.treeDataProvider = createViewProvider();
+		controller.workspaceModuleService = {
+			resolveGitRepositoryRoot: async () => 'd:/repo',
+			resolveGitDir: async () => 'd:/repo/.git',
+			loadConfig: async () => config,
+			listModuleDirectories: async () => [],
+			syncSubmoduleEntriesToConfig: async (_repoRoot: string, cfg: LocalModuleConfig) => ({ config: cfg, addedCount: 0 }),
+			syncModuleLockStates: async () => undefined,
+			resolveSubmoduleHead: async () => ({ head: 'abc123', commitInfo: 'local commit', date: '2026-08-01T00:00:00Z' }),
+			writeConfig: async () => {
+				writeConfigCalls += 1;
+			},
+		};
+		controller.computeStaleModuleKeys = async () => [];
+		mocked.__setWorkspaceFolders([{ name: 'repo', uri: vscode.Uri.file('d:/repo') }]);
+		mocked.__setFindFilesResultForPattern(configSearchPattern, [vscode.Uri.file('d:/repo/csm/csm-modules.yaml')]);
+
+		await controller.refreshSidebarWorkspaceState();
+
+		assert.strictEqual(writeConfigCalls, 0, 'HEAD 与配置一致时不写回配置');
+		assert.deepStrictEqual(controller.versionCache['org/module-a'], {
+			ref: 'abc123',
+			commitInfo: 'local commit',
+			date: '2026-08-01T00:00:00Z',
+		}, '缓存缺失时仍填充提交信息');
+	});
+
 	test('backfillAppliedModuleVersionInfos 标记远端有新提交的 branch 子模块（issue #90）', async () => {
 		const controller = createController() as any;
 		controller.versionCache = {};
@@ -2939,6 +2993,7 @@ suite('ModuleManagerController Regression Tests', () => {
 				assert.strictEqual(branch, 'main');
 				return repoUrl.endsWith('module-branch') ? 'def456' : 'abc123';
 			},
+			isRemoteAheadOfLocal: async (_targetPath: string, _branch: string, _localRef: string, remoteRef: string) => remoteRef === 'def456',
 		};
 		controller.tryLoadSidebarLocalModuleConfig = async () => config;
 		controller.refreshSidebarWorkspaceState = async () => {
@@ -2949,7 +3004,12 @@ suite('ModuleManagerController Regression Tests', () => {
 		await controller.backfillAppliedModuleVersionInfos('token');
 
 		assert.strictEqual(sidebarRefreshed, true, '远端状态变化后重算侧边栏');
-		assert.deepStrictEqual([...controller.remoteAheadKeys], ['org/module-branch'], '仅标记远端前进的 branch 子模块');
+		// 检测结果绑定检测时的 workspace 与本地 ref（review 修正）
+		assert.deepStrictEqual(
+			[...(controller.remoteAheadRefs?.refs.entries() ?? [])],
+			[['org/module-branch', 'abc123']],
+			'仅标记远端领先的 branch 子模块',
+		);
 	});
 
 	test('mapManagedModules 将远端新提交状态透传到卡片条目（issue #90）', async () => {
@@ -2957,7 +3017,10 @@ suite('ModuleManagerController Regression Tests', () => {
 			viewProvider: createViewProvider(),
 		}) as any;
 		let capturedContext: Record<string, unknown> | undefined;
-		controller.remoteAheadKeys = new Set(['org/module-a']);
+		controller.remoteAheadRefs = {
+			workspaceRoot: 'd:/repo',
+			refs: new Map([['org/module-a', 'abc123']]),
+		};
 		controller.availableModules = [];
 		controller.treeDataProvider = createViewProvider({
 			setWorkspaceContext: (context) => {
@@ -3009,6 +3072,7 @@ suite('ModuleManagerController Regression Tests', () => {
 		controller.treeDataProvider = createViewProvider();
 		controller.workspaceModuleService = {
 			resolveGitRepositoryRoot: async () => 'd:/repo',
+			resolveGitDir: async () => 'd:/repo/.git',
 			loadConfig: async () => ({
 				version: '2',
 				root: 'csm',
@@ -3042,6 +3106,7 @@ suite('ModuleManagerController Regression Tests', () => {
 		controller.treeDataProvider = createViewProvider();
 		controller.workspaceModuleService = {
 			resolveGitRepositoryRoot: async () => 'd:/repo',
+			resolveGitDir: async () => 'd:/repo/.git',
 			loadConfig: async () => ({
 				version: '2',
 				root: 'csm',
@@ -3083,6 +3148,7 @@ suite('ModuleManagerController Regression Tests', () => {
 		controller.treeDataProvider = createViewProvider();
 		controller.workspaceModuleService = {
 			resolveGitRepositoryRoot: async () => 'd:/repo',
+			resolveGitDir: async () => 'd:/repo/.git',
 			loadConfig: async () => ({
 				version: '2',
 				root: 'csm',

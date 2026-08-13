@@ -192,9 +192,9 @@ extension.ts activate()
 
 ### 4.5 git 自动刷新与 submodule 版本同步（issue #90）
 
-`ModuleManagerController` 为当前仓库的 `.git` 目录创建递归 `FileSystemWatcher`（`RelativePattern(Uri.file(<repoRoot>/.git), '**')`），在父仓库或子模块中提交 / pull / checkout 后去抖 1.5s（`GIT_CHANGE_REFRESH_DEBOUNCE_MS`）自动重算侧边栏工作区状态；watcher 随 `repoRoot` 变化幂等重建，非 git 工作区不创建，扩展停用时通过 register 的 Disposable 清理。
+`ModuleManagerController` 为当前仓库的**真实 git 目录**（经 `git rev-parse --absolute-git-dir` 解析，兼容 linked worktree / 子模块中 `.git` 为文件的情况）创建递归 `FileSystemWatcher`，在父仓库或子模块中提交 / pull / checkout 后去抖 1.5s（`GIT_CHANGE_REFRESH_DEBOUNCE_MS`）自动重算侧边栏工作区状态；watcher 随 gitDir 变化幂等重建，非 git 工作区不创建，扩展停用时通过 register 的 Disposable 清理。
 
-重算时 `syncTrackedSubmoduleVersions` 对 `method=submodule` 且 `versionKind=branch` 的条目读取子模块实际 HEAD（本地 git log，无需网络），与配置 `ref` 不一致时写回 `csm-modules.yaml` 并更新版本缓存；`backfillAppliedModuleVersionInfos`（仅手动刷新在线目录时）对 branch 条目比较远端分支 HEAD（`git ls-remote`）与本地 HEAD，不一致时在卡片提示「远端有新提交」。
+重算时 `syncTrackedSubmoduleVersions` 对 `method=submodule` 且 `versionKind=branch` 的条目读取子模块实际 HEAD（本地 git log，无需网络），与配置 `ref` 不一致时写回 `csm-modules.yaml`；版本缓存无论 HEAD 是否变化都会在缺失时填充（本地提交信息，不依赖在线补全）。`backfillAppliedModuleVersionInfos`（仅手动刷新在线目录时）对有界并发（5）地对 branch 条目比较远端分支 HEAD（`git ls-remote`）与本地状态：仅当本地与远端跟踪引用一致且落后于远端时（`isRemoteAheadOfLocal`）才提示「远端有新提交」，本地未推送提交不会被误报；检测结果绑定检测时的 workspace 与本地 `ref`，两者仍匹配时才透传到卡片，避免过期徽章。
 
 ### 4.6 配置版本自动迁移
 
@@ -215,7 +215,7 @@ extension.ts activate()
 
 ### 测试统计
 
-- **438** 个独立单元测试（Mocha TDD）
+- **444** 个独立单元测试（Mocha TDD）
 - **2** 个集成测试（需 VS Code 宿主）
 - 纯函数覆盖 100%，核心算法有性能测试约束
 

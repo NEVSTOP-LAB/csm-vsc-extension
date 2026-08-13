@@ -450,6 +450,54 @@ export class WorkspaceModuleService {
 		}
 	}
 
+	/**
+	 * 解析仓库的真实 git 目录（issue #90 watcher 用）：
+	 * linked worktree / 工作区本身是 submodule 时 `.git` 是指向真实 gitdir 的文件，
+	 * `git rev-parse --absolute-git-dir` 返回真实目录，watcher 才能监听实际的 HEAD/refs。
+	 */
+	public async resolveGitDir(repoRoot: string): Promise<string | undefined> {
+		try {
+			const gitDir = (await this.runGit(repoRoot, ['rev-parse', '--absolute-git-dir'])).trim();
+			return gitDir || undefined;
+		} catch {
+			return undefined;
+		}
+	}
+
+	/**
+	 * 判断远端分支是否领先本地（issue #90「远端有新提交」提示）：
+	 * 仅凭 SHA 不同无法区分「远端领先」与「本地领先（未推送提交）」，因此：
+	 * - 取本地远端跟踪引用 `origin/<branch>`；
+	 * - 无法解析跟踪引用或本地与跟踪引用不一致（本地有未推送提交）时保守返回 false，避免误报；
+	 * - 本地与跟踪引用一致且跟踪引用落后于远端 → 远端确实有新提交。
+	 * 全程只读本地仓库，不联网、不改动 .git。
+	 */
+	public async isRemoteAheadOfLocal(
+		targetPath: string,
+		branch: string,
+		localRef: string,
+		remoteRef: string,
+	): Promise<boolean> {
+		if (!remoteRef || !localRef || remoteRef === localRef) {
+			return false;
+		}
+		let trackingRef: string | undefined;
+		try {
+			trackingRef = (await this.runGit(targetPath, ['rev-parse', '-q', `refs/remotes/origin/${branch}`])).trim() || undefined;
+		} catch {
+			trackingRef = undefined;
+		}
+		// 拿不到本地远端跟踪引用：无法验证本地相对远端的状态，保守不提示
+		if (!trackingRef) {
+			return false;
+		}
+		// 本地与跟踪引用不同（存在未推送的本地提交）：不提示「远端有新提交」
+		if (trackingRef !== localRef) {
+			return false;
+		}
+		return trackingRef !== remoteRef;
+	}
+
 	public withAppliedModule(config: LocalModuleConfig, entry: LocalModuleConfigEntry): LocalModuleConfig {
 		return configWithAppliedModule(config, entry);
 	}

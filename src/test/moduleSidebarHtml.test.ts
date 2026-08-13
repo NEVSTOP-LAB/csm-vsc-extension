@@ -296,6 +296,7 @@ suite('moduleSidebarHtml — 模块版本展示（issue #37 / #90）', () => {
         assert.ok(html.includes('badge module-version'), '应渲染版本徽章');
         assert.ok(html.includes('main'), '回退显示 entry.branch');
         assert.ok(html.includes('abc123'), '仍显示本地实际 HEAD 的短 SHA');
+        assert.ok(!html.includes('Branch: main'), 'branch 类型即使缺 versionRef 也不重复渲染分支徽章');
     });
 
     test('branch 版本来源远端有新提交时渲染提示徽章（issue #90）', () => {

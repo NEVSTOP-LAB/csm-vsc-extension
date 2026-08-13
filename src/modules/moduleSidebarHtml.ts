@@ -452,7 +452,7 @@ function renderLocalManagedCard(entry: LocalManagedModuleEntry, state: LocalWork
 		// 远端分支有新提交、本地尚未同步（issue #90，手动刷新在线目录时检测）
 		...(entry.remoteAhead ? [renderBadge(t('remoteHasNewCommits'), 'remote-update')] : []),
 		// release 引入方式不依赖分支；branch 版本来源的版本标签已包含分支名，均不重复展示“分支：xxx”徽章
-		...(entry.method === 'release' || (entry.versionKind === 'branch' && entry.versionRef)
+		...(entry.method === 'release' || entry.versionKind === 'branch'
 			? []
 			: [renderBadge(t('branchBadge', { branch: entry.branch }))]),
 		...topicBadges,

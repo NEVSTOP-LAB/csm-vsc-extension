@@ -1,6 +1,7 @@
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as yaml from 'js-yaml';
+import { lt, valid } from 'semver';
 import { LocalModuleConfig, LocalModuleConfigEntry } from './types';
 
 // ---------------------------------------------------------------------------
@@ -15,7 +16,6 @@ const SECTION_ROOT = 'csmModules';
  * `CONFIG_VERSION` 仅作为没有传入扩展版本信息时的兜底值（测试 / 旧代码），
  * 旧配置写入的非语义化版本（如 "1" / "2"）会被视为旧版，加载时自动迁移。
  */
-const SEMVER_PATTERN = /^\d+\.\d+\.\d+/;
 
 export const DEFAULT_LOCAL_MODULE_ROOT = 'csm';
 export const LOCAL_MODULE_CONFIG_FILE = 'csm-modules.yaml';
@@ -278,21 +278,7 @@ export interface ConfigMigrationStep {
 }
 
 function isSemverLikeVersion(value: string | undefined): boolean {
-	return Boolean(value && SEMVER_PATTERN.test(value.trim()));
-}
-
-function compareSemverParts(left: string, right: string): number {
-	const parse = (value: string) => value.split('.').map((part) => parseInt(part, 10) || 0);
-	const leftParts = parse(left);
-	const rightParts = parse(right);
-	for (let index = 0; index < 3; index += 1) {
-		const leftPart = leftParts[index] ?? 0;
-		const rightPart = rightParts[index] ?? 0;
-		if (leftPart !== rightPart) {
-			return leftPart < rightPart ? -1 : 1;
-		}
-	}
-	return 0;
+	return Boolean(value && valid(value.trim()) !== null);
 }
 
 /**
@@ -307,7 +293,7 @@ export function shouldMigrateConfig(oldVersion: string | undefined, currentVersi
 	if (!isSemverLikeVersion(trimmed)) {
 		return true;
 	}
-	return compareSemverParts(trimmed, currentVersion) < 0;
+	return lt(trimmed, currentVersion);
 }
 
 /**
