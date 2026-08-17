@@ -2163,21 +2163,38 @@ export class ModuleManagerController {
 				const synced = await this.workspaceModuleService.syncSubmoduleEntriesToConfig(repoRoot, config);
 				config = synced.config;
 				addedCount = synced.addedCount;
-				// branch 条目跟随本地实际 HEAD（写回配置 + 填充缓存）
-				await this.syncTrackedSubmoduleVersions(workspaceRoot, config);
-				// 固定版本条目以本地为准：HEAD 与配置不一致的切换为 branch 跟踪
+				// branch 条目跟随本地实际 HEAD（写回配置 + 填充缓存；含本地分支名同步，issue #96）
+				const tracked = await this.syncTrackedSubmoduleVersions(workspaceRoot, config);
+				// 全部 submodule 条目以本地为准检查匹配（issue #96）：
+				// - branch 条目：本地所在分支与配置 versionRef/branch 不一致（HEAD 可能恰好与 ref 相同）；
+				// - 固定版本（commit/tag/release）条目：HEAD 与配置 ref 不一致。
+				// 不一致的均切换为 branch 跟踪并写回配置。
 				const mismatches: Array<{ entry: LocalModuleConfigEntry; head: string; recommendFollow: boolean }> = [];
 				for (const entry of Object.values(config.modules)) {
-					if (entry.method !== 'submodule' || (entry.versionKind ?? 'commit') === 'branch' || !entry.ref) {
+					if (entry.method !== 'submodule' || !entry.ref) {
 						continue;
 					}
 					try {
-						const headInfo = await this.workspaceModuleService.resolveSubmoduleHead(path.resolve(workspaceRoot, entry.path));
-						if (headInfo?.head && headInfo.head !== entry.ref) {
+						const targetPath = path.resolve(workspaceRoot, entry.path);
+						const headInfo = await this.workspaceModuleService.resolveSubmoduleHead(targetPath);
+						if (!headInfo?.head) {
+							continue;
+						}
+						const isFixedVersion = (entry.versionKind ?? 'commit') !== 'branch';
+						if (isFixedVersion) {
+							if (headInfo.head !== entry.ref) {
+								mismatches.push({ entry, head: headInfo.head, recommendFollow: true });
+							}
+							continue;
+						}
+						// branch 条目：本地分支名与配置不一致，或 HEAD 与配置 ref 不一致（detached 等）
+						const localBranch = await this.workspaceModuleService.resolveSubmoduleLocalBranch?.(targetPath);
+						const configBranch = entry.versionRef || entry.branch;
+						if ((localBranch && configBranch && localBranch !== configBranch) || headInfo.head !== entry.ref) {
 							mismatches.push({ entry, head: headInfo.head, recommendFollow: true });
 						}
 					} catch (error) {
-						this.logger.warn(`Failed to inspect submodule HEAD for ${entry.owner}/${entry.name}: ${error instanceof Error ? error.message : String(error)}`);
+						this.logger.warn(`Failed to inspect submodule state for ${entry.owner}/${entry.name}: ${error instanceof Error ? error.message : String(error)}`);
 					}
 				}
 				if (mismatches.length > 0) {
@@ -2185,7 +2202,7 @@ export class ModuleManagerController {
 				}
 				void vscode.window.showInformationMessage(t('refreshSyncSubmodulesDone', {
 					added: String(addedCount),
-					followed: String(mismatches.length),
+					followed: String(mismatches.length + tracked.updated),
 				}));
 			}
 			await this.refreshSidebarWorkspaceState();
@@ -3659,6 +3676,14 @@ export class ModuleManagerController {
 				const cacheKey = `${entry.owner}/${entry.name}`;
 				const cacheEntry = this.versionCache[cacheKey];
 				const cacheMatches = Boolean(cacheEntry && cacheEntry.ref === headInfo.head && cacheEntry.commitInfo);
+				// 分支名同步（issue #96）：本地 submodule 所在分支与配置记录的 versionRef/branch 不一致时
+				// 写回配置（branch 语义 = 跟随本地）；detached HEAD 时保持原配置分支。
+				const localBranch = await this.workspaceModuleService.resolveSubmoduleLocalBranch?.(targetPath);
+				if (localBranch && entry.versionRef !== localBranch) {
+					entry.versionRef = localBranch;
+					entry.branch = localBranch;
+					updated += 1;
+				}
 				// 配置 ref 与缓存分别判断（review 修正）：
 				// - HEAD 与配置不一致：写回配置 ref；
 				// - 缓存缺失 / 与 HEAD 不匹配：无论 HEAD 是否变化都填充缓存（旧配置首次加载时
@@ -3666,7 +3691,7 @@ export class ModuleManagerController {
 				if (headInfo.head !== entry.ref) {
 					entry.ref = headInfo.head;
 					updated += 1;
-				} else if (cacheMatches) {
+				} else if (cacheMatches && (!localBranch || localBranch === entry.versionRef)) {
 					continue;
 				}
 				this.versionCache = {

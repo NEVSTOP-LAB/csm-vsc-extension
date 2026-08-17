@@ -3410,6 +3410,123 @@ suite('ModuleManagerController Regression Tests', () => {
 		assert.ok(infos.some((text) => text.includes('Config updated from local submodules')), '同步完成提示');
 	});
 
+	test('branch 子模块本地分支与配置不一致时同步分支名到配置（issue #96）', async () => {
+		const controller = createController(undefined, {
+			viewProvider: createViewProvider(),
+		}) as any;
+		const config: LocalModuleConfig = {
+			version: '2',
+			root: 'csm',
+			configPath: 'd:/repo/csm/csm-modules.yaml',
+			modules: {
+				org__module_a: {
+					key: 'org__module_a',
+					name: 'module-a',
+					owner: 'org',
+					source: 'https://github.com/org/module-a',
+					method: 'submodule',
+					path: 'csm/module-a',
+					ref: 'abc123',
+					branch: 'main',
+					versionKind: 'branch',
+					versionRef: 'main',
+					locked: false,
+				},
+			},
+		};
+		let writeConfigCalls = 0;
+		controller.availableModules = [];
+		controller.treeDataProvider = createViewProvider();
+		controller.workspaceModuleService = {
+			resolveGitRepositoryRoot: async () => 'd:/repo',
+			loadConfig: async () => config,
+			listModuleDirectories: async () => [],
+			syncSubmoduleEntriesToConfig: async (_repoRoot: string, cfg: LocalModuleConfig) => ({ config: cfg, addedCount: 0 }),
+			syncModuleLockStates: async () => undefined,
+			resolveSubmoduleHead: async () => ({ head: 'abc123', commitInfo: 'same head', date: '2026-08-01T00:00:00Z' }),
+			resolveSubmoduleLocalBranch: async () => 'dev/validate_on_kylin',
+			writeConfig: async () => {
+				writeConfigCalls += 1;
+			},
+			restoreSubmoduleToRef: async () => undefined,
+		};
+		controller.computeStaleModuleKeys = async () => [];
+		mocked.__setWorkspaceFolders([{ name: 'repo', uri: vscode.Uri.file('d:/repo') }]);
+		mocked.__setFindFilesResultForPattern(configSearchPattern, [vscode.Uri.file('d:/repo/csm/csm-modules.yaml')]);
+
+		await controller.refreshSidebarWorkspaceState();
+
+		const entry = config.modules.org__module_a;
+		assert.strictEqual(entry.versionRef, 'dev/validate_on_kylin', '本地分支与配置不一致时同步 versionRef');
+		assert.strictEqual(entry.branch, 'dev/validate_on_kylin', '同步 branch 字段');
+		assert.strictEqual(writeConfigCalls, 1, '分支名变化写回配置');
+	});
+
+	test('refresh 第三模式统计 branch 条目分支名同步数量并反馈（issue #96）', async () => {
+		const controller = createController(undefined, {
+			viewProvider: createViewProvider(),
+		}) as any;
+		const config: LocalModuleConfig = {
+			version: '2',
+			root: 'csm',
+			configPath: 'd:/repo/csm/csm-modules.yaml',
+			modules: {
+				org__module_a: {
+					key: 'org__module_a',
+					name: 'module-a',
+					owner: 'org',
+					source: 'https://github.com/org/module-a',
+					method: 'submodule',
+					path: 'csm/module-a',
+					ref: 'abc123',
+					branch: 'main',
+					versionKind: 'branch',
+					versionRef: 'main',
+					locked: false,
+				},
+			},
+		};
+		let followCalls = 0;
+		controller.availableModules = [];
+		controller.treeDataProvider = createViewProvider();
+		controller.workspaceModuleService = {
+			resolveGitRepositoryRoot: async () => 'd:/repo',
+			loadConfig: async () => config,
+			listModuleDirectories: async () => [],
+			syncSubmoduleEntriesToConfig: async (_repoRoot: string, cfg: LocalModuleConfig) => ({ config: cfg, addedCount: 0 }),
+			syncModuleLockStates: async () => undefined,
+			resolveSubmoduleHead: async () => ({ head: 'abc123', commitInfo: 'same head', date: '2026-08-01T00:00:00Z' }),
+			resolveSubmoduleLocalBranch: async () => 'dev/validate_on_kylin',
+			followSubmoduleLocalHead: async () => {
+				followCalls += 1;
+				return {
+					nextEntry: {
+						...config.modules.org__module_a,
+						versionRef: 'dev/validate_on_kylin',
+						branch: 'dev/validate_on_kylin',
+						ref: 'abc123',
+					},
+					head: 'abc123',
+					commitInfo: 'same head',
+					date: '2026-08-01T00:00:00Z',
+				};
+			},
+			writeConfig: async () => undefined,
+			restoreSubmoduleToRef: async () => undefined,
+		};
+		controller.computeStaleModuleKeys = async () => [];
+		mocked.__setWorkspaceFolders([{ name: 'repo', uri: vscode.Uri.file('d:/repo') }]);
+		mocked.__setFindFilesResultForPattern(configSearchPattern, [vscode.Uri.file('d:/repo/csm/csm-modules.yaml')]);
+		mocked.__setQuickPickResponse({ mode: 'sync-submodules' });
+
+		await controller.refreshCommand();
+
+		assert.strictEqual(config.modules.org__module_a.versionRef, 'dev/validate_on_kylin', '配置 versionRef 同步为本地分支');
+		assert.strictEqual(followCalls, 0, 'branch 条目分支名由 syncTrackedSubmoduleVersions 同步，无需 follow');
+		const infos = mocked.__getMessageLog().filter((m) => m.level === 'info').map((m) => m.text);
+		assert.ok(infos.some((text) => text.includes('0 added, 1 following')), '反馈统计了分支名同步数量');
+	});
+
 	test('branch 子模块 HEAD 与配置一致但缓存缺失时仍填充提交信息（issue #90 review 修正）', async () => {
 		const controller = createController(undefined, {
 			viewProvider: createViewProvider(),

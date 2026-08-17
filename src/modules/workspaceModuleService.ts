@@ -453,6 +453,19 @@ export class WorkspaceModuleService {
 	}
 
 	/**
+	 * 读取子模块工作目录当前所在的分支名（issue #96，纯本地只读）：
+	 * `git branch --show-current`；detached HEAD 或解析失败时返回 undefined。
+	 */
+	public async resolveSubmoduleLocalBranch(targetPath: string): Promise<string | undefined> {
+		try {
+			const branch = (await this.runGit(targetPath, ['branch', '--show-current'])).trim();
+			return branch || undefined;
+		} catch {
+			return undefined;
+		}
+	}
+
+	/**
 	 * 恢复 submodule 到配置记录的固定版本（issue #96，以配置为准）：
 	 * 先临时解锁（如配置为锁定），`submodule update --init` 确保工作树就绪，
 	 * 再 fetch（可能联网）并 checkout 到 `entry.ref`（detached HEAD）；
