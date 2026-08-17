@@ -1531,24 +1531,28 @@ const messages = {
 	},
 	// 固定版本子模块一致性恢复（issue #96）
 	fixedVersionDivergencePrompt: {
-		en: 'The local state of {count} module(s) differs from the version recorded in the config:\n{details}\n\nFollow Local Version: keep the current local HEAD and update the config record (switches to branch tracking, no more prompts).\nRestore from Config: keep the pinned version and restore the local checkout (may fetch from the network).',
-		zh: '{count} 个模块的本地状态与配置记录的版本不一致：\n{details}\n\n跟随本地版本：保留当前本地 HEAD 并更新配置记录（切换为分支跟踪，之后不再提示）。\n根据配置恢复：保持固定版本，将本地恢复到配置记录的提交（可能需要联网）。',
+		en: 'The local state of {count} module(s) differs from the version recorded in the config:\n{details}\n\nFollow Local Config: restore the local submodule to the recorded version (may fetch from the network).\nFollow Submodule Version: update the config record to the local submodule version (switches to branch tracking, no more prompts).',
+		zh: '{count} 个模块的本地状态与配置记录的版本不一致：\n{details}\n\n跟随本地配置文件：将本地 submodule 恢复到配置记录的版本（可能需要联网）。\n跟随 git submodule 版本：将配置记录更新为本地 submodule 的实际版本（切换为分支跟踪，之后不再提示）。',
 	},
 	recommendationFollowLocal: {
-		en: 'Recommended: follow local — the local HEAD is ahead of the recorded commit, likely updated by local git operations',
-		zh: '推荐：跟随本地 —— 本地 HEAD 领先配置记录的提交，疑似本地 git 操作更新',
+		en: 'Recommended: follow submodule — the local HEAD is ahead of the recorded commit, likely updated by local git operations',
+		zh: '推荐：跟随 git submodule 版本 —— 本地 HEAD 领先配置记录的提交，疑似本地 git 操作更新',
 	},
 	recommendationRestore: {
-		en: 'Recommended: restore from config — the local HEAD is not ahead of the recorded commit; keep the pinned version',
-		zh: '推荐：根据配置恢复 —— 本地 HEAD 未领先配置记录的提交，保持固定版本',
+		en: 'Recommended: follow local config — the local HEAD is not ahead of the recorded commit; keep the pinned version',
+		zh: '推荐：跟随本地配置文件 —— 本地 HEAD 未领先配置记录的提交，保持固定版本',
 	},
-	followLocalVersion: {
-		en: 'Follow Local Version',
-		zh: '跟随本地版本',
+	followConfigVersion: {
+		en: 'Follow Local Config',
+		zh: '跟随本地配置文件',
 	},
-	restoreConfigVersion: {
-		en: 'Restore from Config',
-		zh: '根据配置恢复',
+	followSubmoduleVersion: {
+		en: 'Follow Submodule Version',
+		zh: '跟随 git submodule 版本',
+	},
+	cancelAction: {
+		en: 'Cancel',
+		zh: '取消',
 	},
 	followLocalSuccess: {
 		en: 'Updated {count} module(s) to follow the local HEAD.',
@@ -1565,6 +1569,23 @@ const messages = {
 	restoreFixedVersionFailed: {
 		en: 'Failed to restore {name}: {message}',
 		zh: '恢复 {name} 失败：{message}',
+	},
+	// 刷新模式三：根据本地 submodule 情况更新配置文件（issue #96）
+	refreshSyncSubmodulesLabel: {
+		en: 'Update Config from Local Submodules',
+		zh: '根据本地 submodule 更新配置文件',
+	},
+	refreshSyncSubmodulesDetail: {
+		en: 'Scan local submodules and update the config to match their actual versions (local only, no network)',
+		zh: '扫描本地 submodule，将配置文件更新为与本地实际版本一致（纯本地，不联网）',
+	},
+	refreshSyncSubmodulesDone: {
+		en: 'Config updated from local submodules: {added} added, {followed} following the local HEAD.',
+		zh: '已根据本地 submodule 更新配置：新增 {added} 个，跟随本地 {followed} 个。',
+	},
+	refreshSyncSubmodulesFailed: {
+		en: 'Failed to update config from local submodules: {message}',
+		zh: '根据本地 submodule 更新配置失败：{message}',
 	},
 	// ------------------------------------------------------------------
 	// 输入校验 / 底层错误消息本地化（供 userFacingErrors 映射与 InputBox 校验）

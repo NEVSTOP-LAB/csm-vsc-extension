@@ -96,7 +96,7 @@ interface RepositoryOwnerCandidates {
 	orgs: GitHubOrganizationProfile[];
 }
 
-type RefreshMode = 'online' | 'local';
+type RefreshMode = 'online' | 'local' | 'sync-submodules';
 
 type RefreshModeQuickPickItem = vscode.QuickPickItem & {
 	mode: RefreshMode;
@@ -620,7 +620,7 @@ export class ModuleManagerController {
 		// 应用成功后清除勾选状态：残留选择会让已应用模块仍显示为选中，
 		// 且会连带影响下一次批量应用（把已应用模块再次纳入目标集合）。
 		this.setSelectedModuleKeys([]);
-		await this.refreshSidebarWorkspaceState();
+		await this.refreshSidebarWorkspaceState({ forceFixedVersionCheck: true });
 	}
 
 	public async removeModuleCommand(entry?: CsmModuleEntry | ModuleTreeItem): Promise<void> {
@@ -703,7 +703,7 @@ export class ModuleManagerController {
 				? t('removeSuccess', { module: targetLabel })
 				: t('removeSelectionSuccess', { count: targets.length }),
 		);
-		await this.refreshSidebarWorkspaceState();
+		await this.refreshSidebarWorkspaceState({ forceFixedVersionCheck: true });
 	}
 
 	public async updateModuleCommand(entry?: CsmModuleEntry | ModuleTreeItem): Promise<void> {
@@ -828,7 +828,7 @@ export class ModuleManagerController {
 			void vscode.window.showErrorMessage(t('updateFailed', { message }));
 			return;
 		}
-		await this.refreshSidebarWorkspaceState();
+		await this.refreshSidebarWorkspaceState({ forceFixedVersionCheck: true });
 	}
 
 	// ----------------------------------------------------------------------
@@ -1301,7 +1301,7 @@ export class ModuleManagerController {
 			return;
 		}
 
-		await this.refreshSidebarWorkspaceState();
+		await this.refreshSidebarWorkspaceState({ forceFixedVersionCheck: true });
 	}
 
 	private async promptSwitchMethod(current: ModuleApplyMethod): Promise<ModuleApplyMethod | undefined> {
@@ -1383,7 +1383,7 @@ export class ModuleManagerController {
 			return;
 		}
 
-		await this.refreshSidebarWorkspaceState();
+		await this.refreshSidebarWorkspaceState({ forceFixedVersionCheck: true });
 	}
 
 	/**
@@ -1473,7 +1473,7 @@ export class ModuleManagerController {
 			return;
 		}
 
-		await this.refreshSidebarWorkspaceState();
+		await this.refreshSidebarWorkspaceState({ forceFixedVersionCheck: true });
 	}
 
 	/**
@@ -1519,7 +1519,7 @@ export class ModuleManagerController {
 			return;
 		}
 
-		await this.refreshSidebarWorkspaceState();
+		await this.refreshSidebarWorkspaceState({ forceFixedVersionCheck: true });
 	}
 
 	public async createLocalFolderRepositoryCommand(folder: LocalUnmanagedFolderEntry): Promise<void> {
@@ -1636,7 +1636,7 @@ export class ModuleManagerController {
 			if (createdRepository && publishedHeadRef) {
 				try {
 					await this.syncPublishedLocalFolderState(workspaceFolder, workspaceRoot, repoRoot, targetFolder, createdRepository, publishedHeadRef, publishedBranch, token);
-					await this.refreshSidebarWorkspaceState();
+					await this.refreshSidebarWorkspaceState({ forceFixedVersionCheck: true });
 				} catch (error) {
 					localStateSyncFailed = true;
 					const message = getUserFacingErrorMessage(error, 'config');
@@ -1790,7 +1790,7 @@ export class ModuleManagerController {
 			return;
 		}
 
-		await this.refreshSidebarWorkspaceState();
+		await this.refreshSidebarWorkspaceState({ forceFixedVersionCheck: true });
 	}
 
 	private async syncPublishedLocalFolderState(
@@ -1983,7 +1983,7 @@ export class ModuleManagerController {
 					t('configAlreadyExists', { configPath: path.relative(repoRoot, existingConfig.configPath).replace(/\\/g, '/') }),
 				);
 			}
-			await this.refreshSidebarWorkspaceState();
+			await this.refreshSidebarWorkspaceState({ forceFixedVersionCheck: true });
 			return;
 		}
 
@@ -1993,13 +1993,13 @@ export class ModuleManagerController {
 			void vscode.window.showInformationMessage(
 				t('configInitializedFromSubmodules', { configPath: path.relative(repoRoot, recoveredConfig.configPath).replace(/\\/g, '/') }),
 			);
-			await this.refreshSidebarWorkspaceState();
+			await this.refreshSidebarWorkspaceState({ forceFixedVersionCheck: true });
 			await this.refreshWorkspaceInitializationState({ prompt: false });
 			return;
 		}
 
 		await this.initializeLocalModuleConfig(repoRoot, getWorkspaceInitPrompt(defaultRoot));
-		await this.refreshSidebarWorkspaceState();
+		await this.refreshSidebarWorkspaceState({ forceFixedVersionCheck: true });
 		await this.refreshWorkspaceInitializationState({ prompt: false });
 	}
 
@@ -2115,6 +2115,11 @@ export class ModuleManagerController {
 					detail: t('refreshLocalModulesDetail'),
 					mode: 'local',
 				},
+				{
+					label: t('refreshSyncSubmodulesLabel'),
+					detail: t('refreshSyncSubmodulesDetail'),
+					mode: 'sync-submodules',
+				},
 			],
 			{ placeHolder: t('refreshModePickPlaceholder') },
 		);
@@ -2125,7 +2130,70 @@ export class ModuleManagerController {
 			await this.refreshLocalModulesWithFeedback();
 			return;
 		}
+		if (pick.mode === 'sync-submodules') {
+			await this.syncConfigFromLocalSubmodules();
+			return;
+		}
 		await this.refreshOnlineCatalog();
+	}
+
+	/**
+	 * 根据本地 submodule 情况更新配置文件（issue #96，纯本地不联网，以本地为准）：
+	 * 1. 把未跟踪的 submodule 加入配置（复用 syncSubmoduleEntriesToConfig）；
+	 * 2. branch 条目同步本地实际 HEAD（syncTrackedSubmoduleVersions）；
+	 * 3. 固定版本条目若 HEAD 与配置 ref 不一致，全部切换为 branch 跟踪（跟随本地）。
+	 * 完成后反馈新增/跟随数量并刷新侧边栏。
+	 */
+	private async syncConfigFromLocalSubmodules(): Promise<void> {
+		try {
+			const workspaceFolder = this.getPreferredWorkspaceFolder();
+			if (!workspaceFolder) {
+				void vscode.window.showWarningMessage(t('openWorkspaceBeforeApply'));
+				return;
+			}
+			const repoRoot = await this.workspaceModuleService.resolveGitRepositoryRoot(workspaceFolder.uri.fsPath);
+			const workspaceRoot = repoRoot ?? workspaceFolder.uri.fsPath;
+			let config = await this.tryLoadSidebarLocalModuleConfig(workspaceFolder, workspaceRoot);
+			if (!config) {
+				void vscode.window.showWarningMessage(t('noWorkspaceConfig'));
+				return;
+			}
+			let addedCount = 0;
+			if (repoRoot) {
+				const synced = await this.workspaceModuleService.syncSubmoduleEntriesToConfig(repoRoot, config);
+				config = synced.config;
+				addedCount = synced.addedCount;
+				// branch 条目跟随本地实际 HEAD（写回配置 + 填充缓存）
+				await this.syncTrackedSubmoduleVersions(workspaceRoot, config);
+				// 固定版本条目以本地为准：HEAD 与配置不一致的切换为 branch 跟踪
+				const mismatches: Array<{ entry: LocalModuleConfigEntry; head: string; recommendFollow: boolean }> = [];
+				for (const entry of Object.values(config.modules)) {
+					if (entry.method !== 'submodule' || (entry.versionKind ?? 'commit') === 'branch' || !entry.ref) {
+						continue;
+					}
+					try {
+						const headInfo = await this.workspaceModuleService.resolveSubmoduleHead(path.resolve(workspaceRoot, entry.path));
+						if (headInfo?.head && headInfo.head !== entry.ref) {
+							mismatches.push({ entry, head: headInfo.head, recommendFollow: true });
+						}
+					} catch (error) {
+						this.logger.warn(`Failed to inspect submodule HEAD for ${entry.owner}/${entry.name}: ${error instanceof Error ? error.message : String(error)}`);
+					}
+				}
+				if (mismatches.length > 0) {
+					await this.followLocalForSubmodules(workspaceRoot, config, mismatches, { showFeedback: false });
+				}
+				void vscode.window.showInformationMessage(t('refreshSyncSubmodulesDone', {
+					added: String(addedCount),
+					followed: String(mismatches.length),
+				}));
+			}
+			await this.refreshSidebarWorkspaceState();
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			this.logger.error(`Failed to sync config from local submodules: ${message}`);
+			void vscode.window.showErrorMessage(t('refreshSyncSubmodulesFailed', { message }));
+		}
 	}
 
 	/**
@@ -3314,7 +3382,7 @@ export class ModuleManagerController {
 	/**
 	 * 重算侧边栏本地工作区状态，并返回当前发现的未管理模块数量。
 	 */
-	private async refreshSidebarWorkspaceState(): Promise<number> {
+	private async refreshSidebarWorkspaceState(options: { forceFixedVersionCheck?: boolean } = {}): Promise<number> {
 		const setContext = (context: SidebarWorkspaceContext): void => {
 			this.appliedModuleKeys.clear();
 			for (const moduleKey of context.appliedModuleKeys) {
@@ -3375,8 +3443,8 @@ export class ModuleManagerController {
 					this.logger.warn(`Failed to sync tracked submodule versions: ${error instanceof Error ? error.message : String(error)}`);
 				}
 				try {
-					// 校验固定版本（commit/tag/release）子模块与配置一致，不一致时询问用户恢复（issue #96）
-					await this.syncFixedVersionSubmodules(workspaceRoot, config);
+					// 校验固定版本（commit/tag/release）子模块与配置一致，不一致时询问用户（issue #96）
+					await this.syncFixedVersionSubmodules(workspaceRoot, config, options.forceFixedVersionCheck);
 				} catch (error) {
 					this.logger.warn(`Failed to sync fixed-version submodules: ${error instanceof Error ? error.message : String(error)}`);
 				}
@@ -3625,17 +3693,24 @@ export class ModuleManagerController {
 
 	/**
 	 * 校验固定版本（commit / tag / release）子模块的本地 HEAD 与配置 ref 是否一致（issue #96）：
-	 * 以配置为准——不一致时合并弹窗（modal）询问用户，确认后逐个恢复（fetch + checkout，可能联网），
-	 * 取消则将本次所有不一致模块加入会话内跳过集合，避免每次刷新重复弹窗。
+	 * 不一致时合并弹窗（modal）给出三个选项——
+	 * 1. 跟随本地配置文件：保持固定版本，恢复本地 submodule 到配置记录的提交（fetch + checkout，可能联网）；
+	 * 2. 跟随 git submodule 版本：以本地为准，更新配置记录并切换为 branch 跟踪（纯本地）；
+	 * 3. 取消：本会话内不再询问（forceCheck 时本次仍会检查，取消后跳过集合照常生效）。
 	 * branch 版本来源由 syncTrackedSubmoduleVersions 反向同步（跟随本地 HEAD），不在此处理；
 	 * copy / release 附件方式无 git HEAD 概念，跳过。
+	 * @param forceCheck 手动配置变更后的检查时机：本次检查忽略会话内跳过集合（用户在操作，可即时决策）
 	 */
-	private async syncFixedVersionSubmodules(workspaceRoot: string, config: LocalModuleConfig): Promise<void> {
+	private async syncFixedVersionSubmodules(
+		workspaceRoot: string,
+		config: LocalModuleConfig,
+		forceCheck = false,
+	): Promise<void> {
 		const candidates = Object.values(config.modules).filter(
 			(entry) => entry.method === 'submodule'
 				&& (entry.versionKind ?? 'commit') !== 'branch'
 				&& Boolean(entry.ref)
-				&& !this.skippedFixedVersionRestoreKeys.has(`${entry.owner}/${entry.name}`),
+				&& (forceCheck || !this.skippedFixedVersionRestoreKeys.has(`${entry.owner}/${entry.name}`)),
 		);
 		if (candidates.length === 0) {
 			return;
@@ -3664,7 +3739,7 @@ export class ModuleManagerController {
 			}
 
 			// 本地只读分析每个模块的分歧类型，得出推荐（issue #96）：
-			// 配置 commit 是本地 HEAD 的祖先 → 疑似本地 git 操作更新 → 推荐跟随本地；否则保守推荐恢复配置
+			// 配置 commit 是本地 HEAD 的祖先 → 疑似本地 git 操作更新 → 推荐跟随 submodule；否则保守推荐跟随配置文件
 			const analyzed: Array<{ entry: LocalModuleConfigEntry; head: string; recommendFollow: boolean }> = [];
 			for (const mismatch of mismatches) {
 				let recommendFollow = false;
@@ -3678,7 +3753,7 @@ export class ModuleManagerController {
 				analyzed.push({ ...mismatch, recommendFollow });
 			}
 
-			// 合并确认弹窗：两个选项 + 每个模块的推荐标注（用户根据推荐自行判断）
+			// 合并确认弹窗：三个选项 + 每个模块的推荐标注（用户根据推荐自行判断）
 			const details = analyzed
 				.map(({ entry, head, recommendFollow }) => {
 					const recommendation = recommendFollow
@@ -3687,19 +3762,21 @@ export class ModuleManagerController {
 					return `- ${entry.name}: ${this.formatShortSha(head)} → ${this.formatShortSha(entry.ref)}${recommendation}`;
 				})
 				.join('\n');
-			const followLabel = t('followLocalVersion');
-			const restoreLabel = t('restoreConfigVersion');
+			const followConfigLabel = t('followConfigVersion');
+			const followSubmoduleLabel = t('followSubmoduleVersion');
+			const cancelLabel = t('cancelAction');
 			const choice = await vscode.window.showWarningMessage(
 				t('fixedVersionDivergencePrompt', { count: String(analyzed.length), details }),
 				{ modal: true },
-				followLabel,
-				restoreLabel,
+				followConfigLabel,
+				followSubmoduleLabel,
+				cancelLabel,
 			);
-			if (choice === followLabel) {
+			if (choice === followSubmoduleLabel) {
 				await this.followLocalForSubmodules(workspaceRoot, config, analyzed);
 				return;
 			}
-			if (choice !== restoreLabel) {
+			if (choice !== followConfigLabel) {
 				// 取消：本会话不再询问这些模块
 				for (const { entry } of analyzed) {
 					this.skippedFixedVersionRestoreKeys.add(`${entry.owner}/${entry.name}`);
@@ -3707,7 +3784,7 @@ export class ModuleManagerController {
 				return;
 			}
 
-			// 确认后逐个恢复（fetch 可能联网；私库需要 token）
+			// 跟随本地配置文件：确认后逐个恢复（fetch 可能联网；私库需要 token）
 			const authToken = await this.ensureToken(false);
 			let restored = 0;
 			for (const { entry } of analyzed) {
@@ -3740,7 +3817,9 @@ export class ModuleManagerController {
 		workspaceRoot: string,
 		config: LocalModuleConfig,
 		analyzed: Array<{ entry: LocalModuleConfigEntry; head: string; recommendFollow: boolean }>,
+		options: { showFeedback?: boolean } = {},
 	): Promise<void> {
+		const showFeedback = options.showFeedback ?? true;
 		let followed = 0;
 		let cacheChanged = false;
 		for (const { entry } of analyzed) {
@@ -3769,7 +3848,9 @@ export class ModuleManagerController {
 			} catch (error) {
 				this.logger.warn(`Failed to persist followed local versions: ${error instanceof Error ? error.message : String(error)}`);
 			}
-			void vscode.window.showInformationMessage(t('followLocalSuccess', { count: String(followed) }));
+			if (showFeedback) {
+				void vscode.window.showInformationMessage(t('followLocalSuccess', { count: String(followed) }));
+			}
 		}
 		if (cacheChanged) {
 			await this.cacheStore.setModuleVersionCache(this.versionCache);
