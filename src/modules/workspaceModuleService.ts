@@ -453,6 +453,38 @@ export class WorkspaceModuleService {
 	}
 
 	/**
+	 * 恢复 submodule 到配置记录的固定版本（issue #96，以配置为准）：
+	 * 先临时解锁（如配置为锁定），`submodule update --init` 确保工作树就绪，
+	 * 再 fetch（可能联网）并 checkout 到 `entry.ref`（detached HEAD）；
+	 * 无论成功与否，最后恢复原锁定状态。
+	 */
+	public async restoreSubmoduleToRef(
+		workspaceRoot: string,
+		entry: LocalModuleConfigEntry,
+		authToken?: string,
+	): Promise<void> {
+		const targetRelativePath = this.normalizeRootPath(entry.path);
+		const targetAbsolute = this.toAbsoluteTargetPath(workspaceRoot, targetRelativePath);
+		if (!await this.pathExists(targetAbsolute)) {
+			throw new Error(`Submodule directory missing: ${targetRelativePath}`);
+		}
+		const wasLocked = isEntryLocked(entry);
+		if (wasLocked) {
+			await this.updatePathLockState(targetAbsolute, false);
+		}
+		try {
+			// 子模块未初始化（目录为空）时先 init；fetch 获取配置记录的提交对象（可能联网）
+			await this.runGit(workspaceRoot, ['submodule', 'update', '--init', '--', targetRelativePath], authToken, entry.source);
+			await this.runGit(targetAbsolute, ['fetch', '--tags', 'origin'], authToken, entry.source);
+			await this.runGit(targetAbsolute, ['checkout', entry.ref], authToken, entry.source);
+		} finally {
+			if (wasLocked) {
+				await this.updatePathLockState(targetAbsolute, true);
+			}
+		}
+	}
+
+	/**
 	 * 解析仓库的真实 git 目录（issue #90 watcher 用）：
 	 * linked worktree / 工作区本身是 submodule 时 `.git` 是指向真实 gitdir 的文件，
 	 * `git rev-parse --absolute-git-dir` 返回真实目录，watcher 才能监听实际的 HEAD/refs。

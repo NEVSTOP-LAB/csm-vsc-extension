@@ -2895,6 +2895,213 @@ suite('ModuleManagerController Regression Tests', () => {
 		assert.strictEqual(writeConfigCalls, 0, 'HEAD 与配置一致时不写回');
 	});
 
+	test('固定版本（commit）子模块 HEAD 与配置不一致时弹窗确认并恢复（issue #96）', async () => {
+		const controller = createController(undefined, {
+			viewProvider: createViewProvider(),
+		}) as any;
+		const config: LocalModuleConfig = {
+			version: '2',
+			root: 'csm',
+			configPath: 'd:/repo/csm/csm-modules.yaml',
+			modules: {
+				org__module_a: {
+					key: 'org__module_a',
+					name: 'module-a',
+					owner: 'org',
+					source: 'https://github.com/org/module-a',
+					method: 'submodule',
+					path: 'csm/module-a',
+					ref: 'abc123',
+					branch: 'main',
+					versionKind: 'commit',
+					versionRef: 'abc123',
+					locked: false,
+				},
+			},
+		};
+		let restoreCalls = 0;
+		controller.availableModules = [];
+		controller.treeDataProvider = createViewProvider();
+		controller.workspaceModuleService = {
+			resolveGitRepositoryRoot: async () => 'd:/repo',
+			loadConfig: async () => config,
+			listModuleDirectories: async () => [],
+			syncSubmoduleEntriesToConfig: async (_repoRoot: string, cfg: LocalModuleConfig) => ({ config: cfg, addedCount: 0 }),
+			syncModuleLockStates: async () => undefined,
+			resolveSubmoduleHead: async () => ({ head: 'def456', commitInfo: 'moved head', date: '2026-08-01T00:00:00Z' }),
+			writeConfig: async () => undefined,
+			restoreSubmoduleToRef: async () => {
+				restoreCalls += 1;
+			},
+		};
+		controller.computeStaleModuleKeys = async () => [];
+		mocked.__setWorkspaceFolders([{ name: 'repo', uri: vscode.Uri.file('d:/repo') }]);
+		mocked.__setFindFilesResultForPattern(configSearchPattern, [vscode.Uri.file('d:/repo/csm/csm-modules.yaml')]);
+		mocked.__setWarningMessageResponse('Restore All');
+
+		await controller.refreshSidebarWorkspaceState();
+
+		assert.strictEqual(restoreCalls, 1, '确认后恢复 submodule 到配置记录的 ref');
+		const prompt = mocked.__getLastWarningPrompt();
+		assert.ok(prompt?.message.includes('module-a'), '确认弹窗列出不一致模块名');
+		assert.ok(prompt?.message.includes('def456'), '确认弹窗展示当前 HEAD');
+		assert.ok(prompt?.message.includes('abc123'), '确认弹窗展示配置记录的 ref');
+		const infos = mocked.__getMessageLog().filter((m) => m.level === 'info').map((m) => m.text);
+		assert.ok(infos.some((text) => text.includes('Restored 1')), '恢复成功提示');
+	});
+
+	test('固定版本子模块不一致但用户取消后，本会话不再重复弹窗（issue #96）', async () => {
+		const controller = createController(undefined, {
+			viewProvider: createViewProvider(),
+		}) as any;
+		const config: LocalModuleConfig = {
+			version: '2',
+			root: 'csm',
+			configPath: 'd:/repo/csm/csm-modules.yaml',
+			modules: {
+				org__module_a: {
+					key: 'org__module_a',
+					name: 'module-a',
+					owner: 'org',
+					source: 'https://github.com/org/module-a',
+					method: 'submodule',
+					path: 'csm/module-a',
+					ref: 'abc123',
+					branch: 'main',
+					versionKind: 'tag',
+					versionRef: 'v1.0.0',
+					locked: false,
+				},
+			},
+		};
+		let restoreCalls = 0;
+		controller.availableModules = [];
+		controller.treeDataProvider = createViewProvider();
+		controller.workspaceModuleService = {
+			resolveGitRepositoryRoot: async () => 'd:/repo',
+			loadConfig: async () => config,
+			listModuleDirectories: async () => [],
+			syncSubmoduleEntriesToConfig: async (_repoRoot: string, cfg: LocalModuleConfig) => ({ config: cfg, addedCount: 0 }),
+			syncModuleLockStates: async () => undefined,
+			resolveSubmoduleHead: async () => ({ head: 'def456', commitInfo: 'moved head', date: '2026-08-01T00:00:00Z' }),
+			writeConfig: async () => undefined,
+			restoreSubmoduleToRef: async () => {
+				restoreCalls += 1;
+			},
+		};
+		controller.computeStaleModuleKeys = async () => [];
+		mocked.__setWorkspaceFolders([{ name: 'repo', uri: vscode.Uri.file('d:/repo') }]);
+		mocked.__setFindFilesResultForPattern(configSearchPattern, [vscode.Uri.file('d:/repo/csm/csm-modules.yaml')]);
+		mocked.__setWarningMessageResponse(undefined);
+
+		await controller.refreshSidebarWorkspaceState();
+		await controller.refreshSidebarWorkspaceState();
+
+		const prompts = mocked.__getMessageLog().filter((m) => m.level === 'warn' && m.text.includes('differs from the version'));
+		assert.strictEqual(prompts.length, 1, '取消后第二次刷新不再弹窗');
+		assert.strictEqual(restoreCalls, 0, '取消时不执行恢复');
+	});
+
+	test('branch 版本来源子模块不一致时不触发固定版本恢复弹窗（issue #96）', async () => {
+		const controller = createController(undefined, {
+			viewProvider: createViewProvider(),
+		}) as any;
+		const config: LocalModuleConfig = {
+			version: '2',
+			root: 'csm',
+			configPath: 'd:/repo/csm/csm-modules.yaml',
+			modules: {
+				org__module_a: {
+					key: 'org__module_a',
+					name: 'module-a',
+					owner: 'org',
+					source: 'https://github.com/org/module-a',
+					method: 'submodule',
+					path: 'csm/module-a',
+					ref: 'abc123',
+					branch: 'main',
+					versionKind: 'branch',
+					versionRef: 'main',
+					locked: false,
+				},
+			},
+		};
+		let restoreCalls = 0;
+		controller.availableModules = [];
+		controller.treeDataProvider = createViewProvider();
+		controller.workspaceModuleService = {
+			resolveGitRepositoryRoot: async () => 'd:/repo',
+			loadConfig: async () => config,
+			listModuleDirectories: async () => [],
+			syncSubmoduleEntriesToConfig: async (_repoRoot: string, cfg: LocalModuleConfig) => ({ config: cfg, addedCount: 0 }),
+			syncModuleLockStates: async () => undefined,
+			resolveSubmoduleHead: async () => ({ head: 'def456', commitInfo: 'moved head', date: '2026-08-01T00:00:00Z' }),
+			writeConfig: async () => undefined,
+			restoreSubmoduleToRef: async () => {
+				restoreCalls += 1;
+			},
+		};
+		controller.computeStaleModuleKeys = async () => [];
+		mocked.__setWorkspaceFolders([{ name: 'repo', uri: vscode.Uri.file('d:/repo') }]);
+		mocked.__setFindFilesResultForPattern(configSearchPattern, [vscode.Uri.file('d:/repo/csm/csm-modules.yaml')]);
+
+		await controller.refreshSidebarWorkspaceState();
+
+		const prompts = mocked.__getMessageLog().filter((m) => m.level === 'warn' && m.text.includes('differs from the version'));
+		assert.strictEqual(prompts.length, 0, 'branch 类型跟随本地 HEAD，不触发固定版本恢复弹窗');
+		assert.strictEqual(restoreCalls, 0, 'branch 类型不执行恢复');
+	});
+
+	test('copy 方式模块不触发固定版本恢复（issue #96）', async () => {
+		const controller = createController(undefined, {
+			viewProvider: createViewProvider(),
+		}) as any;
+		const config: LocalModuleConfig = {
+			version: '2',
+			root: 'csm',
+			configPath: 'd:/repo/csm/csm-modules.yaml',
+			modules: {
+				org__module_a: {
+					key: 'org__module_a',
+					name: 'module-a',
+					owner: 'org',
+					source: 'https://github.com/org/module-a',
+					method: 'copy',
+					path: 'csm/module-a',
+					ref: 'abc123',
+					branch: 'main',
+					versionKind: 'commit',
+					versionRef: 'abc123',
+					locked: false,
+				},
+			},
+		};
+		let restoreCalls = 0;
+		controller.availableModules = [];
+		controller.treeDataProvider = createViewProvider();
+		controller.workspaceModuleService = {
+			resolveGitRepositoryRoot: async () => 'd:/repo',
+			loadConfig: async () => config,
+			listModuleDirectories: async () => [],
+			syncSubmoduleEntriesToConfig: async (_repoRoot: string, cfg: LocalModuleConfig) => ({ config: cfg, addedCount: 0 }),
+			syncModuleLockStates: async () => undefined,
+			resolveSubmoduleHead: async () => ({ head: 'def456', commitInfo: 'moved head', date: '2026-08-01T00:00:00Z' }),
+			writeConfig: async () => undefined,
+			restoreSubmoduleToRef: async () => {
+				restoreCalls += 1;
+			},
+		};
+		controller.computeStaleModuleKeys = async () => [];
+		mocked.__setWorkspaceFolders([{ name: 'repo', uri: vscode.Uri.file('d:/repo') }]);
+		mocked.__setFindFilesResultForPattern(configSearchPattern, [vscode.Uri.file('d:/repo/csm/csm-modules.yaml')]);
+
+		await controller.refreshSidebarWorkspaceState();
+
+		const prompts = mocked.__getMessageLog().filter((m) => m.level === 'warn' && m.text.includes('differs from the version'));
+		assert.strictEqual(prompts.length, 0, 'copy 方式无 git HEAD 概念，不触发恢复弹窗');
+		assert.strictEqual(restoreCalls, 0, 'copy 方式不执行恢复');
+	});
+
 	test('branch 子模块 HEAD 与配置一致但缓存缺失时仍填充提交信息（issue #90 review 修正）', async () => {
 		const controller = createController(undefined, {
 			viewProvider: createViewProvider(),

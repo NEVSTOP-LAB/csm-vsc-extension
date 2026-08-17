@@ -256,6 +256,8 @@ export class ModuleManagerController {
 	private gitWatcher: vscode.FileSystemWatcher | undefined;
 	private gitWatcherRoot: string | undefined;
 	private gitWatcherDebounce: ReturnType<typeof setTimeout> | undefined;
+	/** 会话内用户已拒绝恢复的固定版本模块（key=`owner/name`，issue #96：避免每次刷新重复弹窗） */
+	private readonly skippedFixedVersionRestoreKeys = new Set<string>();
 	private static readonly TOKEN_VERIFY_INTERVAL_MS = 10 * 60 * 1000; // 10 minutes
 
 	constructor(private readonly context: vscode.ExtensionContext, deps: ModuleManagerControllerDeps = {}) {
@@ -3370,6 +3372,12 @@ export class ModuleManagerController {
 				} catch (error) {
 					this.logger.warn(`Failed to sync tracked submodule versions: ${error instanceof Error ? error.message : String(error)}`);
 				}
+				try {
+					// 校验固定版本（commit/tag/release）子模块与配置一致，不一致时询问用户恢复（issue #96）
+					await this.syncFixedVersionSubmodules(workspaceRoot, config);
+				} catch (error) {
+					this.logger.warn(`Failed to sync fixed-version submodules: ${error instanceof Error ? error.message : String(error)}`);
+				}
 			}
 		}
 		const moduleRoot = await this.resolveSidebarModuleRoot(workspaceRoot, config);
@@ -3611,6 +3619,77 @@ export class ModuleManagerController {
 			await this.cacheStore.setModuleVersionCache(this.versionCache);
 		}
 		return { updated };
+	}
+
+	/**
+	 * 校验固定版本（commit / tag / release）子模块的本地 HEAD 与配置 ref 是否一致（issue #96）：
+	 * 以配置为准——不一致时合并弹窗（modal）询问用户，确认后逐个恢复（fetch + checkout，可能联网），
+	 * 取消则将本次所有不一致模块加入会话内跳过集合，避免每次刷新重复弹窗。
+	 * branch 版本来源由 syncTrackedSubmoduleVersions 反向同步（跟随本地 HEAD），不在此处理；
+	 * copy / release 附件方式无 git HEAD 概念，跳过。
+	 */
+	private async syncFixedVersionSubmodules(workspaceRoot: string, config: LocalModuleConfig): Promise<void> {
+		const candidates = Object.values(config.modules).filter(
+			(entry) => entry.method === 'submodule'
+				&& (entry.versionKind ?? 'commit') !== 'branch'
+				&& Boolean(entry.ref)
+				&& !this.skippedFixedVersionRestoreKeys.has(`${entry.owner}/${entry.name}`),
+		);
+		if (candidates.length === 0) {
+			return;
+		}
+		// 逐个读取本地 HEAD（只读、不联网）
+		const mismatches: Array<{ entry: LocalModuleConfigEntry; head: string }> = [];
+		for (const entry of candidates) {
+			try {
+				const targetPath = path.resolve(workspaceRoot, entry.path);
+				const headInfo = await this.workspaceModuleService.resolveSubmoduleHead(targetPath);
+				if (headInfo?.head && headInfo.head !== entry.ref) {
+					mismatches.push({ entry, head: headInfo.head });
+				}
+			} catch (error) {
+				this.logger.warn(`Failed to inspect submodule HEAD for ${entry.owner}/${entry.name}: ${error instanceof Error ? error.message : String(error)}`);
+			}
+		}
+		if (mismatches.length === 0) {
+			return;
+		}
+
+		// 合并确认（列出全部不一致模块；用户需了解恢复可能触发联网 fetch）
+		const details = mismatches
+			.map(({ entry, head }) => `- ${entry.name}: ${this.formatShortSha(head)} → ${this.formatShortSha(entry.ref)}`)
+			.join('\n');
+		const confirmLabel = t('restoreFixedVersionConfirm');
+		const choice = await vscode.window.showWarningMessage(
+			t('restoreFixedVersionPrompt', { count: String(mismatches.length), details }),
+			{ modal: true },
+			confirmLabel,
+		);
+		if (choice !== confirmLabel) {
+			for (const { entry } of mismatches) {
+				this.skippedFixedVersionRestoreKeys.add(`${entry.owner}/${entry.name}`);
+			}
+			return;
+		}
+
+		// 确认后逐个恢复（fetch 可能联网；私库需要 token）
+		const authToken = await this.ensureToken(false);
+		let restored = 0;
+		for (const { entry } of mismatches) {
+			try {
+				await this.workspaceModuleService.restoreSubmoduleToRef(workspaceRoot, entry, authToken);
+				restored += 1;
+			} catch (error) {
+				this.logger.warn(`Failed to restore submodule ${entry.owner}/${entry.name} to ${entry.ref}: ${error instanceof Error ? error.message : String(error)}`);
+				void vscode.window.showWarningMessage(t('restoreFixedVersionFailed', {
+					name: entry.name,
+					message: error instanceof Error ? error.message : String(error),
+				}));
+			}
+		}
+		if (restored > 0) {
+			void vscode.window.showInformationMessage(t('restoreFixedVersionSuccess', { count: String(restored) }));
+		}
 	}
 
 	/**
