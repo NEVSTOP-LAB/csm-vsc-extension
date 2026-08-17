@@ -262,9 +262,18 @@ suite('moduleSidebarHtml — 本地模块卡片（method: local）', () => {
     });
 });
 
+/** 提取版本徽章 `<span class="badge module-version" ...>可见文本</span>` 的可见文本（不含 title 属性）。 */
+function getVersionBadgeText(html: string): string {
+    const badgeStart = html.indexOf('class="badge module-version"');
+    assert.ok(badgeStart >= 0, '应渲染版本徽章');
+    const textStart = html.indexOf('>', badgeStart) + 1;
+    const textEnd = html.indexOf('</span>', textStart);
+    return html.slice(textStart, textEnd);
+}
+
 suite('moduleSidebarHtml — 模块版本展示（issue #37 / #90）', () => {
 
-    test('branch 版本来源的模块卡片显示 分支名 · 短SHA · 提交信息', () => {
+    test('branch 版本来源的模块卡片显示 分支名 · 短SHA · 相对日期（message 移至 hover）', () => {
         const html = renderModuleSidebarHtml(makeState({
             managedModules: [makeManaged({
                 method: 'submodule',
@@ -275,10 +284,11 @@ suite('moduleSidebarHtml — 模块版本展示（issue #37 / #90）', () => {
                 commitDate: new Date().toISOString(),
             })],
         }));
-        assert.ok(html.includes('badge module-version'), '应渲染版本徽章');
-        assert.ok(html.includes('develop'), '版本徽章包含追踪的分支名');
-        assert.ok(html.includes('abc1234'), '版本徽章包含本地实际 HEAD 的短 SHA');
-        assert.ok(html.includes('local commit message'), '版本徽章包含提交信息');
+        const versionBadgeText = getVersionBadgeText(html);
+        assert.ok(versionBadgeText.includes('develop'), '版本徽章包含追踪的分支名');
+        assert.ok(versionBadgeText.includes('abc1234'), '版本徽章包含本地实际 HEAD 的短 SHA');
+        assert.ok(!versionBadgeText.includes('local commit message'), '徽章文字不再展示提交信息（issue #93）');
+        assert.ok(html.includes('title="' + 'Tracked branch: develop&#10;abc1234 · local commit message'), '提交信息移至 hover 提示');
         assert.ok(!html.includes('Branch: develop'), '不再重复渲染「分支」徽章');
         assert.ok(!html.includes('Remote has new commits'), '无远端更新时不渲染提示徽章');
     });
@@ -312,7 +322,7 @@ suite('moduleSidebarHtml — 模块版本展示（issue #37 / #90）', () => {
         assert.ok(html.includes('badge remote-update'), '徽章带 remote-update 样式');
     });
 
-    test('commit 版本来源仍显示 短SHA · 提交信息', () => {
+    test('commit 版本来源显示 短SHA · 相对日期（message 移至 hover）', () => {
         const html = renderModuleSidebarHtml(makeState({
             managedModules: [makeManaged({
                 method: 'submodule',
@@ -323,8 +333,10 @@ suite('moduleSidebarHtml — 模块版本展示（issue #37 / #90）', () => {
                 commitDate: new Date().toISOString(),
             })],
         }));
-        assert.ok(html.includes('abc1234'), 'commit 类型仍显示 SHA');
-        assert.ok(html.includes('pinned commit'), 'commit 类型仍显示提交信息');
+        const versionBadgeText = getVersionBadgeText(html);
+        assert.ok(versionBadgeText.includes('abc1234'), 'commit 类型仍显示 SHA');
+        assert.ok(!versionBadgeText.includes('pinned commit'), '徽章文字不再展示提交信息（issue #93）');
+        assert.ok(html.includes('title="' + 'Commit&#10;abc1234 · pinned commit'), '提交信息移至 hover 提示');
     });
 
     test('tag 版本来源仍显示 tag 名', () => {

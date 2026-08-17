@@ -2186,9 +2186,11 @@ function formatShortSha(sha: string | undefined): string {
 }
 
 /**
- * 构建本地管理模块的当前版本展示文本（issue #37 / #90）：
- * tag / release 优先显示来源名称；branch 显示 分支名 · 短SHA · 提交信息 · 相对日期
- * （跟随本地实际 HEAD，提交后由刷新同步）；其余显示 短SHA · 提交信息 · 相对日期（读本地缓存）。
+ * 构建本地管理模块的当前版本展示文本（issue #37 / #90 / #93）：
+ * tag / release 优先显示来源名称；branch 显示 分支名 · 短SHA · 相对日期
+ * （跟随本地实际 HEAD，提交后由刷新同步）；其余显示 短SHA · 相对日期。
+ * commit message 不再展示在徽章上——完整信息（短SHA · 提交信息 · 相对日期）
+ * 由版本徽章的 hover 提示提供（issue #93）。
  */
 function getLocalManagedVersionLabel(entry: LocalManagedModuleEntry): string {
 	if (entry.versionKind === 'release') {
@@ -2205,25 +2207,15 @@ function getLocalManagedVersionLabel(entry: LocalManagedModuleEntry): string {
 		if (entry.ref) {
 			parts.push(formatShortSha(entry.ref));
 		}
-		if (entry.commitInfo) {
-			parts.push(truncate(entry.commitInfo, 40));
-			const relative = formatRelativeDate(entry.commitDate);
-			if (relative) {
-				parts.push(relative);
-			}
-		}
-		return parts.join(' · ');
-	}
-	const ref = formatShortSha(entry.ref);
-	if (entry.commitInfo) {
-		const parts = [ref, truncate(entry.commitInfo, 40)];
 		const relative = formatRelativeDate(entry.commitDate);
 		if (relative) {
 			parts.push(relative);
 		}
 		return parts.join(' · ');
 	}
-	return ref;
+	const ref = formatShortSha(entry.ref);
+	const relative = formatRelativeDate(entry.commitDate);
+	return relative ? `${ref} · ${relative}` : ref;
 }
 
 /** 版本来源类型的中英文标签（第一行 hover 前缀，issue #93）。 */
