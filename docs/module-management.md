@@ -27,6 +27,9 @@
 - 卡片顶行将名称 / provider 与右上角紧凑操作组对齐；`README` 按钮保留在右上角，checkbox 仅在卡片 hover 或已选中时显示
 - 点击模块卡片正文可在侧边栏内直接展开 README 预览；public 模块的 README 在未登录时也可匿名加载，右上角 `README` 按钮仍可打开完整 README 面板，预览同时支持 Markdown 图片语法和常见的原生 `<img>` 标签
 - 本地（`Workspace`）与在线（`Catalog`）区域标题栏可点击折叠 / 展开，右侧 chevron 指示当前状态（hover 标题栏背景高亮提示可点击）（issue #80）；折叠为纯显示层优化，不影响搜索过滤、勾选状态与计数，`All` 与单区域范围下均可使用；折叠状态不跨会话保留，侧边栏重建后恢复展开
+- 操作按钮统一使用 VS Code 标准图标（实心风格），悬浮时提示用途（issue #92）
+- 所有徽章悬浮时解释含义：已管理 / 已锁定 / 引入方式（submodule / copy / release / local）/ 私有 / 已失效 / 远端有新提交 / LabVIEW 版本等（issue #92）
+- 本地已管理卡片的**版本徽章**（tag / release / branch / commit 全部版本来源）悬浮时展示提交信息：第一行标注版本来源（如 `Tag: v1.0` / `Tracked branch: main`），第二行 `短SHA · 提交信息 · 相对日期`（来自本地缓存，避免在线查询）；缓存缺失时提示暂无提交信息（issue #93）
 
 ### 模块操作
 
@@ -124,6 +127,7 @@
 - **本地模块**（issue #87）：`method: local` 的条目记录不需要复用的本地模块，`owner` / `source` / `ref` / `branch` 为空字符串，`key` 为模块名；默认 `locked: false`
 - **模块版本信息**（issue #37）：每个已应用模块额外记录 `versionKind`（`branch` / `commit` / `tag` / `release`，旧配置缺省视为 `commit`）与 `versionRef`（分支名 / tag 名 / release 名，commit 类型时为提交 SHA）；`ref` 始终指向实际应用的提交 SHA；`release` 方式还会记录 `releaseName`，`ref` 为空
 - **branch 版本的管理语义**（issue #90）：`versionKind: branch` 的模块以追踪的分支为准——卡片显示 `分支名 · 短SHA · 提交信息 · 相对日期`，`ref` 会随子模块实际 HEAD 自动同步写回配置（提交信息取自本地 git log）；`commit` / `tag` / `release` 是固定版本，不随本地提交漂移；远端分支有新提交时（手动刷新在线目录后检测）卡片提示 `远端有新提交`
+- **固定版本的一致性恢复**（issue #96）：`commit` / `tag` / `release` 版本来源的 submodule 以配置为准——插件启动或刷新时若发现本地实际 HEAD 与配置记录的 `ref` 不一致（例如外部手动 checkout 了其他提交），会弹窗列出全部不一致模块（`当前SHA → 配置SHA`）询问是否恢复；确认后逐个恢复（fetch 后 checkout 到配置记录的提交，此操作可能联网；锁定模块会先临时解锁再恢复锁定），取消则本次会话内不再重复询问
 
 ## 扩展设置
 
