@@ -258,6 +258,8 @@ export class ModuleManagerController {
 	private gitWatcherDebounce: ReturnType<typeof setTimeout> | undefined;
 	/** 会话内用户已拒绝恢复的固定版本模块（key=`owner/name`，issue #96：避免每次刷新重复弹窗） */
 	private readonly skippedFixedVersionRestoreKeys = new Set<string>();
+	/** 一致性检查 → 弹窗 → 执行期间的并发锁（issue #96：启动 / git watcher / 手动刷新重叠时只弹一次窗） */
+	private fixedVersionSyncInFlight = false;
 	private static readonly TOKEN_VERIFY_INTERVAL_MS = 10 * 60 * 1000; // 10 minutes
 
 	constructor(private readonly context: vscode.ExtensionContext, deps: ModuleManagerControllerDeps = {}) {
@@ -3638,57 +3640,139 @@ export class ModuleManagerController {
 		if (candidates.length === 0) {
 			return;
 		}
-		// 逐个读取本地 HEAD（只读、不联网）
-		const mismatches: Array<{ entry: LocalModuleConfigEntry; head: string }> = [];
-		for (const entry of candidates) {
+		// 并发锁：已有检查/弹窗/执行流程在跑时跳过本轮（启动 / git watcher / 手动刷新可能重叠）
+		if (this.fixedVersionSyncInFlight) {
+			return;
+		}
+		this.fixedVersionSyncInFlight = true;
+		try {
+			// 逐个读取本地 HEAD（只读、不联网）
+			const mismatches: Array<{ entry: LocalModuleConfigEntry; head: string }> = [];
+			for (const entry of candidates) {
+				try {
+					const targetPath = path.resolve(workspaceRoot, entry.path);
+					const headInfo = await this.workspaceModuleService.resolveSubmoduleHead(targetPath);
+					if (headInfo?.head && headInfo.head !== entry.ref) {
+						mismatches.push({ entry, head: headInfo.head });
+					}
+				} catch (error) {
+					this.logger.warn(`Failed to inspect submodule HEAD for ${entry.owner}/${entry.name}: ${error instanceof Error ? error.message : String(error)}`);
+				}
+			}
+			if (mismatches.length === 0) {
+				return;
+			}
+
+			// 本地只读分析每个模块的分歧类型，得出推荐（issue #96）：
+			// 配置 commit 是本地 HEAD 的祖先 → 疑似本地 git 操作更新 → 推荐跟随本地；否则保守推荐恢复配置
+			const analyzed: Array<{ entry: LocalModuleConfigEntry; head: string; recommendFollow: boolean }> = [];
+			for (const mismatch of mismatches) {
+				let recommendFollow = false;
+				try {
+					const targetPath = path.resolve(workspaceRoot, mismatch.entry.path);
+					const analysis = await this.workspaceModuleService.analyzeSubmoduleDivergence(targetPath, mismatch.entry.ref);
+					recommendFollow = analysis?.configIsAncestorOfHead === true;
+				} catch (error) {
+					this.logger.warn(`Failed to analyze submodule divergence for ${mismatch.entry.owner}/${mismatch.entry.name}: ${error instanceof Error ? error.message : String(error)}`);
+				}
+				analyzed.push({ ...mismatch, recommendFollow });
+			}
+
+			// 合并确认弹窗：两个选项 + 每个模块的推荐标注（用户根据推荐自行判断）
+			const details = analyzed
+				.map(({ entry, head, recommendFollow }) => {
+					const recommendation = recommendFollow
+						? `（${t('recommendationFollowLocal')}）`
+						: `（${t('recommendationRestore')}）`;
+					return `- ${entry.name}: ${this.formatShortSha(head)} → ${this.formatShortSha(entry.ref)}${recommendation}`;
+				})
+				.join('\n');
+			const followLabel = t('followLocalVersion');
+			const restoreLabel = t('restoreConfigVersion');
+			const choice = await vscode.window.showWarningMessage(
+				t('fixedVersionDivergencePrompt', { count: String(analyzed.length), details }),
+				{ modal: true },
+				followLabel,
+				restoreLabel,
+			);
+			if (choice === followLabel) {
+				await this.followLocalForSubmodules(workspaceRoot, config, analyzed);
+				return;
+			}
+			if (choice !== restoreLabel) {
+				// 取消：本会话不再询问这些模块
+				for (const { entry } of analyzed) {
+					this.skippedFixedVersionRestoreKeys.add(`${entry.owner}/${entry.name}`);
+				}
+				return;
+			}
+
+			// 确认后逐个恢复（fetch 可能联网；私库需要 token）
+			const authToken = await this.ensureToken(false);
+			let restored = 0;
+			for (const { entry } of analyzed) {
+				try {
+					await this.workspaceModuleService.restoreSubmoduleToRef(workspaceRoot, entry, authToken);
+					restored += 1;
+				} catch (error) {
+					this.logger.warn(`Failed to restore submodule ${entry.owner}/${entry.name} to ${entry.ref}: ${error instanceof Error ? error.message : String(error)}`);
+					void vscode.window.showWarningMessage(t('restoreFixedVersionFailed', {
+						name: entry.name,
+						message: error instanceof Error ? error.message : String(error),
+					}));
+				}
+			}
+			if (restored > 0) {
+				void vscode.window.showInformationMessage(t('restoreFixedVersionSuccess', { count: String(restored) }));
+			}
+		} finally {
+			this.fixedVersionSyncInFlight = false;
+		}
+	}
+
+	/**
+	 * 跟随本地：将不一致的固定版本模块切换为 branch 跟踪语义（issue #96）——
+	 * 配置条目（versionKind / versionRef / branch / ref）以本地实际 HEAD 为准原地更新并写回，
+	 * 版本缓存同步填充本地提交信息；之后这些模块由 syncTrackedSubmoduleVersions 自动跟随本地，
+	 * 不再触发一致性检查。config 原地更新，本轮回流（mapManagedModules）即可渲染最新状态。
+	 */
+	private async followLocalForSubmodules(
+		workspaceRoot: string,
+		config: LocalModuleConfig,
+		analyzed: Array<{ entry: LocalModuleConfigEntry; head: string; recommendFollow: boolean }>,
+	): Promise<void> {
+		let followed = 0;
+		let cacheChanged = false;
+		for (const { entry } of analyzed) {
 			try {
 				const targetPath = path.resolve(workspaceRoot, entry.path);
-				const headInfo = await this.workspaceModuleService.resolveSubmoduleHead(targetPath);
-				if (headInfo?.head && headInfo.head !== entry.ref) {
-					mismatches.push({ entry, head: headInfo.head });
-				}
+				const { nextEntry, head, commitInfo, date } = await this.workspaceModuleService.followSubmoduleLocalHead(targetPath, entry);
+				config.modules[entry.key] = nextEntry;
+				const cacheKey = `${entry.owner}/${entry.name}`;
+				this.versionCache = {
+					...this.versionCache,
+					[cacheKey]: { ref: head, commitInfo: commitInfo ?? '', date },
+				};
+				cacheChanged = true;
+				followed += 1;
 			} catch (error) {
-				this.logger.warn(`Failed to inspect submodule HEAD for ${entry.owner}/${entry.name}: ${error instanceof Error ? error.message : String(error)}`);
-			}
-		}
-		if (mismatches.length === 0) {
-			return;
-		}
-
-		// 合并确认（列出全部不一致模块；用户需了解恢复可能触发联网 fetch）
-		const details = mismatches
-			.map(({ entry, head }) => `- ${entry.name}: ${this.formatShortSha(head)} → ${this.formatShortSha(entry.ref)}`)
-			.join('\n');
-		const confirmLabel = t('restoreFixedVersionConfirm');
-		const choice = await vscode.window.showWarningMessage(
-			t('restoreFixedVersionPrompt', { count: String(mismatches.length), details }),
-			{ modal: true },
-			confirmLabel,
-		);
-		if (choice !== confirmLabel) {
-			for (const { entry } of mismatches) {
-				this.skippedFixedVersionRestoreKeys.add(`${entry.owner}/${entry.name}`);
-			}
-			return;
-		}
-
-		// 确认后逐个恢复（fetch 可能联网；私库需要 token）
-		const authToken = await this.ensureToken(false);
-		let restored = 0;
-		for (const { entry } of mismatches) {
-			try {
-				await this.workspaceModuleService.restoreSubmoduleToRef(workspaceRoot, entry, authToken);
-				restored += 1;
-			} catch (error) {
-				this.logger.warn(`Failed to restore submodule ${entry.owner}/${entry.name} to ${entry.ref}: ${error instanceof Error ? error.message : String(error)}`);
-				void vscode.window.showWarningMessage(t('restoreFixedVersionFailed', {
+				this.logger.warn(`Failed to follow local HEAD for ${entry.owner}/${entry.name}: ${error instanceof Error ? error.message : String(error)}`);
+				void vscode.window.showWarningMessage(t('followLocalFailed', {
 					name: entry.name,
 					message: error instanceof Error ? error.message : String(error),
 				}));
 			}
 		}
-		if (restored > 0) {
-			void vscode.window.showInformationMessage(t('restoreFixedVersionSuccess', { count: String(restored) }));
+		if (followed > 0) {
+			try {
+				await this.workspaceModuleService.writeConfig(config);
+			} catch (error) {
+				this.logger.warn(`Failed to persist followed local versions: ${error instanceof Error ? error.message : String(error)}`);
+			}
+			void vscode.window.showInformationMessage(t('followLocalSuccess', { count: String(followed) }));
+		}
+		if (cacheChanged) {
+			await this.cacheStore.setModuleVersionCache(this.versionCache);
 		}
 	}
 

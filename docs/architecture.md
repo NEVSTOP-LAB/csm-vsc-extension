@@ -168,7 +168,7 @@ extension.ts activate()
 
 **branch 版本来源展示**（issue #90）：`versionKind=branch` 的子模块卡片与更新确认对话框显示 `分支名 · 短SHA · 提交信息 · 相对日期`，跟随本地实际 HEAD——每次刷新时 `syncTrackedSubmoduleVersions` 读取子模块实际 HEAD（`git rev-parse` + `git log`），与配置 `ref` 不一致时写回配置并更新版本缓存；手动刷新在线目录时 `backfillAppliedModuleVersionInfos` 比较远端分支 HEAD 与本地 HEAD，标记「远端有新提交」；commit / tag / release 保持固定版本语义。
 
-**固定版本子模块一致性恢复**（issue #96）：commit / tag / release 版本来源的子模块以配置为准——刷新时 `syncFixedVersionSubmodules` 逐个读取本地 HEAD（只读、不联网），与配置 `ref` 不一致时合并弹窗（modal，列出全部模块与 `当前SHA → 配置SHA`）询问用户；确认后逐个 `restoreSubmoduleToRef`（先临时解锁 → `submodule update --init` → `fetch --tags origin`（可能联网）→ `checkout <ref>`（detached HEAD）→ 恢复锁定），取消则本会话内跳过不再重复弹窗。branch 来源由 `syncTrackedSubmoduleVersions` 反向同步（跟随本地 HEAD），copy / release 附件方式无 git HEAD 概念不校验。触发时机：插件启动（`register()` 后台刷新）与所有现有刷新路径（手动刷新、git watcher 去抖刷新）。
+**固定版本子模块一致性恢复**（issue #96）：commit / tag / release 版本来源的子模块——刷新时 `syncFixedVersionSubmodules` 逐个读取本地 HEAD（只读、不联网），与配置 `ref` 不一致时经 `analyzeSubmoduleDivergence`（`git merge-base --is-ancestor`，本地只读）分析分歧类型，合并弹窗（modal）列出全部模块（`当前SHA → 配置SHA`）并给出**两个选项**：「跟随本地版本」——`followSubmoduleLocalHead` 将模块切换为 branch 跟踪语义（`versionKind: branch` + 当前分支名 + HEAD 写回配置与版本缓存），之后由 `syncTrackedSubmoduleVersions` 自动跟随本地，不再触发检查；「根据配置恢复」——保持固定版本，逐个 `restoreSubmoduleToRef`（先临时解锁 → `submodule update --init` → `fetch --tags origin`（可能联网）→ `checkout <ref>`（detached HEAD）→ 恢复锁定）。弹窗为每个模块标注推荐：配置 commit 是本地 HEAD 祖先（疑似本地 git 操作更新）推荐跟随本地，否则推荐恢复配置。取消则本会话内跳过不再重复弹窗；检查 → 弹窗 → 执行全程由 `fixedVersionSyncInFlight` 并发锁保护，启动 / git watcher / 手动刷新重叠时只弹一次。branch 来源由 `syncTrackedSubmoduleVersions` 反向同步（跟随本地 HEAD），copy / release 附件方式无 git HEAD 概念不校验。触发时机：插件启动（`register()` 后台刷新）与所有现有刷新路径（手动刷新、git watcher 去抖刷新）。
 
 ---
 

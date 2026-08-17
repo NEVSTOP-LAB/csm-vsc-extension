@@ -127,7 +127,11 @@
 - **本地模块**（issue #87）：`method: local` 的条目记录不需要复用的本地模块，`owner` / `source` / `ref` / `branch` 为空字符串，`key` 为模块名；默认 `locked: false`
 - **模块版本信息**（issue #37）：每个已应用模块额外记录 `versionKind`（`branch` / `commit` / `tag` / `release`，旧配置缺省视为 `commit`）与 `versionRef`（分支名 / tag 名 / release 名，commit 类型时为提交 SHA）；`ref` 始终指向实际应用的提交 SHA；`release` 方式还会记录 `releaseName`，`ref` 为空
 - **branch 版本的管理语义**（issue #90）：`versionKind: branch` 的模块以追踪的分支为准——卡片显示 `分支名 · 短SHA · 提交信息 · 相对日期`，`ref` 会随子模块实际 HEAD 自动同步写回配置（提交信息取自本地 git log）；`commit` / `tag` / `release` 是固定版本，不随本地提交漂移；远端分支有新提交时（手动刷新在线目录后检测）卡片提示 `远端有新提交`
-- **固定版本的一致性恢复**（issue #96）：`commit` / `tag` / `release` 版本来源的 submodule 以配置为准——插件启动或刷新时若发现本地实际 HEAD 与配置记录的 `ref` 不一致（例如外部手动 checkout 了其他提交），会弹窗列出全部不一致模块（`当前SHA → 配置SHA`）询问是否恢复；确认后逐个恢复（fetch 后 checkout 到配置记录的提交，此操作可能联网；锁定模块会先临时解锁再恢复锁定），取消则本次会话内不再重复询问
+- **固定版本的一致性恢复**（issue #96）：`commit` / `tag` / `release` 版本来源的 submodule——插件启动或刷新时若发现本地实际 HEAD 与配置记录的 `ref` 不一致（例如外部手动 checkout 了其他提交），会合并弹窗列出全部不一致模块（`当前SHA → 配置SHA`），并给出**两个选项**：
+  - **跟随本地版本**：保留当前本地 HEAD，将该模块切换为分支跟踪（`branch`）语义并更新配置记录——之后模块自动跟随本地 git 操作，不再提示
+  - **根据配置恢复**：保持固定版本，将本地恢复到配置记录的提交（fetch 后 checkout，此操作可能联网；锁定模块会先临时解锁再恢复锁定）
+  - 弹窗会为每个模块标注**推荐**（本地只读分析）：配置 commit 是本地 HEAD 的祖先（疑似本地 git 操作更新）推荐「跟随本地版本」，否则推荐「根据配置恢复」
+  - 取消则本次会话内不再重复询问；检查/弹窗/执行全程有并发保护，多种刷新来源（启动 / git watcher / 手动）重叠时只弹一次
 
 ## 扩展设置
 

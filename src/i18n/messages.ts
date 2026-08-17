@@ -1530,13 +1530,33 @@ const messages = {
 		zh: '暂无提交信息缓存。',
 	},
 	// 固定版本子模块一致性恢复（issue #96）
-	restoreFixedVersionPrompt: {
-		en: 'The local state of {count} module(s) differs from the version recorded in the config:\n{details}\n\nRestore them to the recorded version? This may need to fetch from the network.',
-		zh: '{count} 个模块的本地状态与配置记录的版本不一致：\n{details}\n\n是否恢复为配置记录的版本？此操作可能需要联网获取提交。',
+	fixedVersionDivergencePrompt: {
+		en: 'The local state of {count} module(s) differs from the version recorded in the config:\n{details}\n\nFollow Local Version: keep the current local HEAD and update the config record (switches to branch tracking, no more prompts).\nRestore from Config: keep the pinned version and restore the local checkout (may fetch from the network).',
+		zh: '{count} 个模块的本地状态与配置记录的版本不一致：\n{details}\n\n跟随本地版本：保留当前本地 HEAD 并更新配置记录（切换为分支跟踪，之后不再提示）。\n根据配置恢复：保持固定版本，将本地恢复到配置记录的提交（可能需要联网）。',
 	},
-	restoreFixedVersionConfirm: {
-		en: 'Restore All',
-		zh: '全部恢复',
+	recommendationFollowLocal: {
+		en: 'Recommended: follow local — the local HEAD is ahead of the recorded commit, likely updated by local git operations',
+		zh: '推荐：跟随本地 —— 本地 HEAD 领先配置记录的提交，疑似本地 git 操作更新',
+	},
+	recommendationRestore: {
+		en: 'Recommended: restore from config — the local HEAD is not ahead of the recorded commit; keep the pinned version',
+		zh: '推荐：根据配置恢复 —— 本地 HEAD 未领先配置记录的提交，保持固定版本',
+	},
+	followLocalVersion: {
+		en: 'Follow Local Version',
+		zh: '跟随本地版本',
+	},
+	restoreConfigVersion: {
+		en: 'Restore from Config',
+		zh: '根据配置恢复',
+	},
+	followLocalSuccess: {
+		en: 'Updated {count} module(s) to follow the local HEAD.',
+		zh: '已让 {count} 个模块跟随本地 HEAD。',
+	},
+	followLocalFailed: {
+		en: 'Failed to follow the local version for {name}: {message}',
+		zh: '让 {name} 跟随本地版本失败：{message}',
 	},
 	restoreFixedVersionSuccess: {
 		en: 'Restored {count} module(s) to the recorded version.',

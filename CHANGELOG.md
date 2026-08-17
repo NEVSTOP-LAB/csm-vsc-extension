@@ -10,7 +10,7 @@
 
 - **版本徽章悬浮提示**（issue #93）：本地管理卡片版本徽章（tag / release / branch / commit 全部版本来源）hover 时展示 commit 信息（`短SHA · 提交信息 · 相对日期`，第一行标注版本来源，数据来自本地缓存），缓存缺失时提示暂无信息；同时版本徽章文字精简——commit / branch 徽章不再展示提交信息（保留 短SHA · 相对日期 / 分支名 · 短SHA · 相对日期），完整提交信息由 hover 提供
 - **徽章悬浮解释**（issue #92）：managed / locked / 引入方式 / private / stale / 远端有新提交 / Applied / LabVIEW 版本等全部徽章增加 tooltip 解释含义
-- **固定版本子模块一致性恢复**（issue #96）：插件启动与刷新时校验 commit / tag / release 版本来源的 submodule 实际 HEAD 与配置 `ref` 是否一致，不一致时合并弹窗（modal，列出全部模块与当前 → 配置版本）询问用户，确认后逐个恢复（先临时解锁，fetch 后 checkout 到配置记录的提交，恢复后重新锁定）；用户取消则本会话不再重复弹窗；branch 版本来源仍跟随本地 HEAD（issue #90 反向同步），copy / release 附件方式无 git HEAD 概念不校验
+- **固定版本子模块一致性恢复**（issue #96）：插件启动与刷新时校验 commit / tag / release 版本来源的 submodule 实际 HEAD 与配置 `ref` 是否一致，不一致时合并弹窗（modal，列出全部模块与 `当前SHA → 配置SHA`）给出**两个选项**：「跟随本地版本」（保留本地 HEAD，切换为 branch 跟踪语义并更新配置记录，之后不再提示）与「根据配置恢复」（保持固定版本，先临时解锁，fetch 后 checkout 到配置记录的提交（可能联网），恢复后重新锁定）；弹窗通过本地只读分析（`git merge-base --is-ancestor`）为每个模块标注推荐——配置 commit 是本地 HEAD 的祖先（疑似本地 git 操作更新）推荐「跟随本地」，否则推荐「根据配置恢复」；用户取消则本会话不再重复弹窗；检查 → 弹窗 → 执行全程有并发锁，启动 / git watcher / 手动刷新重叠时只弹一次；branch 版本来源仍跟随本地 HEAD（issue #90 反向同步），copy / release 附件方式无 git HEAD 概念不校验
 - **配置独立 schema 版本**（issue #94）：`csm-modules.yaml` 的 `version` 字段从"插件版本"改为配置格式自身的 schema 版本（非负整数），与插件版本彻底解耦——插件升级不再改写配置文件（避免无意义的 git 变更）；设计新配置时尽量向前兼容，仅当配置格式变更时递增版本号并在迁移步骤列表（`configService.DEFAULT_CONFIG_MIGRATIONS`）追加步骤；加载时发现旧版本（缺失 / 旧插件版本 / 低于当前 schema 版本）自动执行迁移步骤并静默写回当前版本，若旧配置无法兼容（迁移步骤失败）则自动备份旧文件（`csm-modules.yaml.bak-<版本>-<时间戳>`）并重建为新版本配置，并给出轻量提示（本地化）
 - **git 操作后自动同步与刷新侧边栏工作区状态**（issue #90）：监听当前仓库 `.git` 目录的变化，父仓库或子模块中提交 / pull / checkout 后去抖自动重算侧边栏，无需手动刷新
 
