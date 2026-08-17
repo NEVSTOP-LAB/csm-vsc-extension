@@ -5,7 +5,7 @@ import { truncate } from './utils';
 import { ViewState } from './moduleTreeTypes';
 import { sortModules } from './sort';
 import { getVisibleModuleTopics } from './topics';
-import { CsmModuleEntry, LocalManagedModuleEntry, LocalUnmanagedFolderEntry } from './types';
+import { CsmModuleEntry, LocalManagedModuleEntry, LocalUnmanagedFolderEntry, ModuleApplyMethod } from './types';
 
 export interface LocalWorkspaceRenderState {
 	signedIn: boolean;
@@ -332,8 +332,9 @@ function joinClassNames(...classNames: Array<string | false | null | undefined>)
 	return classNames.filter((className): className is string => Boolean(className)).join(' ');
 }
 
-function renderBadge(label: string, variant?: string): string {
-	return `<span class="badge${variant ? ` ${escapeHtml(variant)}` : ''}">${escapeHtml(label)}</span>`;
+function renderBadge(label: string, variant?: string, title?: string): string {
+	const titleAttribute = title ? ` title="${escapeHtml(title)}"` : '';
+	return `<span class="badge${variant ? ` ${escapeHtml(variant)}` : ''}"${titleAttribute}>${escapeHtml(label)}</span>`;
 }
 
 function renderActionToolbar(actions: string[]): string {
@@ -442,19 +443,28 @@ function renderLocalManagedCard(entry: LocalManagedModuleEntry, state: LocalWork
 		}),
 	]);
 	const metaBadges = [
-		...(entry.labviewVersion ? [renderBadge(entry.labviewVersion, 'lv-version')] : []),
-		renderBadge(t('managedBadge'), 'applied'),
-		renderBadge(locked ? t('lockedBadge') : t('unlockedBadge')),
-		renderBadge(getApplyMethodLabel(entry.method), entry.method),
-		...(entry.stale ? [renderBadge(t('staleDirectoryMissing'), 'stale')] : []),
-		renderBadge(getVisibilityLabel(entry.visibility), entry.visibility === 'private' ? 'private' : undefined),
-		renderBadge(getLocalManagedVersionLabel(entry), 'module-version'),
+		...(entry.labviewVersion ? [renderBadge(entry.labviewVersion, 'lv-version', t('badgeTooltipLvVersion'))] : []),
+		renderBadge(t('managedBadge'), 'applied', t('badgeTooltipManaged')),
+		renderBadge(
+			locked ? t('lockedBadge') : t('unlockedBadge'),
+			undefined,
+			locked ? t('badgeTooltipLocked') : t('badgeTooltipUnlocked'),
+		),
+		renderBadge(getApplyMethodLabel(entry.method), entry.method, getApplyMethodTooltip(entry.method)),
+		...(entry.stale ? [renderBadge(t('staleDirectoryMissing'), 'stale', t('badgeTooltipStale'))] : []),
+		renderBadge(
+			getVisibilityLabel(entry.visibility),
+			entry.visibility === 'private' ? 'private' : undefined,
+			entry.visibility === 'private' ? t('badgeTooltipPrivate') : undefined,
+		),
+		// 版本徽章 hover 展示 commit 信息（issue #93，数据来自本地缓存）
+		renderBadge(getLocalManagedVersionLabel(entry), 'module-version', getLocalManagedVersionTooltip(entry)),
 		// 远端分支有新提交、本地尚未同步（issue #90，手动刷新在线目录时检测）
-		...(entry.remoteAhead ? [renderBadge(t('remoteHasNewCommits'), 'remote-update')] : []),
+		...(entry.remoteAhead ? [renderBadge(t('remoteHasNewCommits'), 'remote-update', t('badgeTooltipRemoteAhead'))] : []),
 		// release 引入方式不依赖分支；branch 版本来源的版本标签已包含分支名，均不重复展示“分支：xxx”徽章
 		...(entry.method === 'release' || entry.versionKind === 'branch'
 			? []
-			: [renderBadge(t('branchBadge', { branch: entry.branch }))]),
+			: [renderBadge(t('branchBadge', { branch: entry.branch }), undefined, t('badgeTooltipBranch'))]),
 		...topicBadges,
 	];
 	return renderModuleCardShell({
@@ -510,11 +520,15 @@ function renderLocalLocalCard(entry: LocalManagedModuleEntry, state: LocalWorksp
 		}),
 	]);
 	const metaBadges = [
-		...(entry.labviewVersion ? [renderBadge(entry.labviewVersion, 'lv-version')] : []),
-		renderBadge(t('localBadge'), 'local'),
-		renderBadge(locked ? t('lockedBadge') : t('unlockedBadge')),
-		renderBadge(getApplyMethodLabel(entry.method), entry.method),
-		...(entry.stale ? [renderBadge(t('staleDirectoryMissing'), 'stale')] : []),
+		...(entry.labviewVersion ? [renderBadge(entry.labviewVersion, 'lv-version', t('badgeTooltipLvVersion'))] : []),
+		renderBadge(t('localBadge'), 'local', t('badgeTooltipLocal')),
+		renderBadge(
+			locked ? t('lockedBadge') : t('unlockedBadge'),
+			undefined,
+			locked ? t('badgeTooltipLocked') : t('badgeTooltipUnlocked'),
+		),
+		renderBadge(getApplyMethodLabel(entry.method), entry.method, getApplyMethodTooltip(entry.method)),
+		...(entry.stale ? [renderBadge(t('staleDirectoryMissing'), 'stale', t('badgeTooltipStale'))] : []),
 	];
 	return renderModuleCardShell({
 		articleClasses: ['local-module-card', 'managed'],
@@ -587,13 +601,41 @@ function renderLocalUnmanagedCard(entry: LocalUnmanagedFolderEntry, state: Local
 		summary: t('localUnmanagedSummary'),
 		bodyExtrasHtml: hint,
 		metaBadges: [
-			...(entry.labviewVersion ? [renderBadge(entry.labviewVersion, 'lv-version')] : []),
-			renderBadge(t('unmanagedBadge')),
+			...(entry.labviewVersion ? [renderBadge(entry.labviewVersion, 'lv-version', t('badgeTooltipLvVersion'))] : []),
+			renderBadge(t('unmanagedBadge'), undefined, t('badgeTooltipUnmanaged')),
 		],
 	});
 }
 
 type IconName = 'bookmark' | 'close' | 'external' | 'filter' | 'folder' | 'link' | 'plus' | 'readme' | 'search' | 'update' | 'remove' | 'switch' | 'lock' | 'unlock';
+
+/**
+ * 按钮图标统一采用 VS Code 标准 codicon 图形（issue #92）：
+ * 实心风格在小尺寸下辨识度更高，且与 VS Code 内置图标语义一致。
+ * 路径数据来自 @vscode/codicons（仅开发期提取，运行时零依赖）。
+ */
+const ICON_PATHS: Record<IconName, string> = {
+	bookmark: '<path d="M3.77942 13.9187C3.44716 14.1405 3.00177 13.9024 3.00177 13.5029V4.01167C3.00177 2.9085 3.89502 2.01365 4.99819 2.01168L10.9982 2.00092C12.1028 1.99895 12.9998 2.89277 13.0018 3.99734V13.5029C13.0018 13.9024 12.5564 14.1405 12.2241 13.9187L8.00177 11.0994L3.77942 13.9187ZM12.0018 4.00092L11.9948 3.88252C11.9362 3.38529 11.5128 3.00001 11 3.00092L4.99998 3.01168C4.44839 3.01266 4.00177 3.46009 4.00177 4.01167V12.5678L7.72412 10.0824C7.89221 9.97018 8.11133 9.97018 8.27942 10.0824L12.0018 12.5678V4.00092Z"/>',
+	close: '<path d="M8.70701 8.00001L12.353 4.35401C12.548 4.15901 12.548 3.84201 12.353 3.64701C12.158 3.45201 11.841 3.45201 11.646 3.64701L8.00001 7.29301L4.35401 3.64701C4.15901 3.45201 3.84201 3.45201 3.64701 3.64701C3.45201 3.84201 3.45201 4.15901 3.64701 4.35401L7.29301 8.00001L3.64701 11.646C3.45201 11.841 3.45201 12.158 3.64701 12.353C3.74501 12.451 3.87301 12.499 4.00101 12.499C4.12901 12.499 4.25701 12.45 4.35501 12.353L8.00101 8.70701L11.647 12.353C11.745 12.451 11.873 12.499 12.001 12.499C12.129 12.499 12.257 12.45 12.355 12.353C12.55 12.158 12.55 11.841 12.355 11.646L8.70901 8.00001H8.70701Z"/>',
+	// 在 GitHub 中打开（方框 + 右上箭头）
+	external: '<path d="M15 9.5V12.5C15 13.879 13.879 15 12.5 15H3.5C2.121 15 1 13.879 1 12.5V3.5C1 2.121 2.121 1 3.5 1H6.5C6.776 1 7 1.224 7 1.5C7 1.776 6.776 2 6.5 2H3.5C2.673 2 2 2.673 2 3.5V12.5C2 13.327 2.673 14 3.5 14H12.5C13.327 14 14 13.327 14 12.5V9.5C14 9.224 14.224 9 14.5 9C14.776 9 15 9.224 15 9.5ZM14.5 1H9.5C9.224 1 9 1.224 9 1.5C9 1.776 9.224 2 9.5 2H13.293L9.147 6.146C8.952 6.341 8.952 6.658 9.147 6.853C9.245 6.951 9.373 6.999 9.501 6.999C9.629 6.999 9.757 6.95 9.855 6.853L14.001 2.707V6.5C14.001 6.776 14.225 7 14.501 7C14.777 7 15.001 6.776 15.001 6.5V1.5C15.001 1.224 14.777 1 14.501 1H14.5Z"/>',
+	filter: '<path d="M9.5 14H6.5C6.224 14 6 13.776 6 13.5V9.329C6 8.928 5.844 8.552 5.561 8.268L1.561 4.268C1.205 3.911 1 3.418 1 2.914C1 1.858 1.858 1 2.914 1H13.086C14.142 1 15 1.858 15 2.914C15 3.417 14.796 3.911 14.439 4.267L10.439 8.267C10.156 8.551 10 8.927 10 9.328V13.499C10 13.775 9.776 13.999 9.5 13.999V14ZM7 13H9V9.329C9 8.661 9.26 8.033 9.732 7.561L13.732 3.561C13.902 3.391 14 3.155 14 2.915C14 2.411 13.59 2.001 13.086 2.001H2.914C2.41 2.001 2 2.411 2 2.915C2 3.155 2.098 3.391 2.268 3.562L6.268 7.562C6.741 8.034 7 8.662 7 9.33V13.001V13Z"/>',
+	// 打开本地目录（打开的文件夹）
+	folder: '<path d="M2 4.5V9.10022L2.92389 7.5C3.45979 6.5718 4.45017 6 5.52196 6L11.9146 6C11.7087 5.4174 11.1531 5 10.5 5H7C6.86739 5 6.74021 4.94732 6.64645 4.85355L4.93934 3.14645C4.84557 3.05268 4.71839 3 4.58579 3H3.5C2.67157 3 2 3.67157 2 4.5ZM7.06895 13.9953C7.04641 13.9984 7.02339 14 7 14H3.5C2.11929 14 1 12.8807 1 11.5V4.5C1 3.11929 2.11929 2 3.5 2H4.58579C4.98361 2 5.36514 2.15804 5.64645 2.43934L7.20711 4H10.5C11.724 4 12.7426 4.87965 12.958 6.04127C14.605 6.34148 15.5443 8.22106 14.6616 9.75L13.0766 12.4953C12.5407 13.4235 11.5503 13.9953 10.4785 13.9953H7.06895ZM5.52196 7C4.80743 7 4.14718 7.3812 3.78991 8L2.20492 10.7453C1.62757 11.7453 2.34926 12.9953 3.50396 12.9953L10.4785 12.9953C11.193 12.9953 11.8533 12.6141 12.2105 11.9953L13.7955 9.25C14.3729 8.25 13.6512 7 12.4965 7L5.52196 7Z"/>',
+	link: '<path d="M9.49999 4H10.5C12.433 4 14 5.567 14 7.5C14 9.36856 12.5357 10.8951 10.6941 10.9948L10.5023 11L9.5023 11.0046C9.22616 11.0059 9.00127 10.783 8.99999 10.5069C8.99888 10.2614 9.17481 10.0565 9.40787 10.0131L9.4977 10.0046L10.5 10C11.8807 10 13 8.88071 13 7.5C13 6.17452 11.9685 5.08996 10.6644 5.00532L10.5 5H9.49999C9.22386 5 8.99999 4.77614 8.99999 4.5C8.99999 4.25454 9.17687 4.05039 9.41012 4.00806L9.49999 4H10.5H9.49999ZM5.5 4H6.5C6.77614 4 7 4.22386 7 4.5C7 4.74546 6.82312 4.94961 6.58988 4.99194L6.5 5H5.5C4.11929 5 3 6.11929 3 7.5C3 8.82548 4.03154 9.91004 5.33562 9.99468L5.5 10H6.5C6.77614 10 7 10.2239 7 10.5C7 10.7455 6.82312 10.9496 6.58988 10.9919L6.5 11H5.5C3.567 11 2 9.433 2 7.5C2 5.63144 3.46428 4.10487 5.30796 4.00518L5.5 4H6.5H5.5ZM5.50023 7L10.5002 7.0023C10.7764 7.00242 11.0001 7.22638 11 7.50252C10.9999 7.74798 10.8229 7.95205 10.5897 7.99428L10.4998 8.0023L5.49977 8C5.22363 7.99987 4.99987 7.77591 5 7.49977C5.00011 7.25431 5.17708 7.05024 5.41035 7.00801L5.50023 7Z"/>',
+	// 创建 / 发布 GitHub 仓库（向上箭头进入仓库）
+	plus: '<path d="M4.85 4.85C4.755 4.95 4.627 5 4.5 5C4.372 5 4.245 4.95 4.15 4.85C4.05 4.755 4 4.627 4 4.5C4 4.373 4.05 4.245 4.15 4.15L7.15 1.15C7.245 1.05 7.372 1 7.5 1C7.628 1 7.755 1.05 7.85 1.15L10.85 4.15C10.95 4.245 11 4.372 11 4.5C11 4.628 10.95 4.755 10.85 4.85C10.755 4.95 10.627 5 10.5 5C10.373 5 10.245 4.95 10.15 4.85L8 2.71V9.5C8 9.78 7.78 10 7.5 10C7.22 10 7 9.78 7 9.5V2.71L4.85 4.85Z"/><path fill-rule="evenodd" clip-rule="evenodd" d="M9.95 13H12.5C12.78 13 13 13.22 13 13.5C13 13.78 12.78 14 12.5 14H9.95C9.72 15.14 8.71 16 7.5 16C6.29 16 5.28 15.14 5.05 14H2.5C2.22 14 2 13.78 2 13.5C2 13.22 2.22 13 2.5 13H5.05C5.28 11.86 6.29 11 7.5 11C8.71 11 9.72 11.86 9.95 13ZM6.09 14C6.29 14.58 6.85 15 7.5 15C8.15 15 8.71 14.58 8.91 14C8.97 13.84 9 13.68 9 13.5C9 13.32 8.97 13.16 8.91 13C8.71 12.42 8.15 12 7.5 12C6.85 12 6.29 12.42 6.09 13C6.03 13.16 6 13.32 6 13.5C6 13.68 6.03 13.84 6.09 14Z"/>',
+	// 打开 README（书本）
+	readme: '<path d="M2.5 2C1.67157 2 1 2.67157 1 3.5V12.5C1 13.3284 1.67157 14 2.5 14H6C6.8178 14 7.54389 13.6073 8 13.0002C8.45612 13.6073 9.1822 14 10 14H13.5C14.3284 14 15 13.3284 15 12.5V3.5C15 2.67157 14.3284 2 13.5 2H10C9.1822 2 8.45612 2.39267 8 2.99976C7.54389 2.39267 6.8178 2 6 2H2.5ZM7.5 4.5V11.5C7.5 12.3284 6.82843 13 6 13H2.5C2.22386 13 2 12.7761 2 12.5V3.5C2 3.22386 2.22386 3 2.5 3H6C6.82843 3 7.5 3.67157 7.5 4.5ZM8.5 11.5V4.5C8.5 3.67157 9.17157 3 10 3H13.5C13.7761 3 14 3.22386 14 3.5V12.5C14 12.7761 13.7761 13 13.5 13H10C9.17157 13 8.5 12.3284 8.5 11.5Z"/>',
+	search: '<path d="M10.0195 10.7266C9.06578 11.5217 7.83875 12 6.5 12C3.46243 12 1 9.53757 1 6.5C1 3.46243 3.46243 1 6.5 1C9.53757 1 12 3.46243 12 6.5C12 7.83875 11.5217 9.06578 10.7266 10.0195L13.8535 13.1464C14.0488 13.3417 14.0488 13.6583 13.8535 13.8536C13.6583 14.0488 13.3417 14.0488 13.1464 13.8536L10.0195 10.7266ZM11 6.5C11 4.01472 8.98528 2 6.5 2C4.01472 2 2 4.01472 2 6.5C2 8.98528 4.01472 11 6.5 11C8.98528 11 11 8.98528 11 6.5Z"/>',
+	// 更新模块（同步到最新：双向弧线箭头）
+	update: '<path d="M14 3.5V6.5C14 6.78 13.78 7 13.5 7H10.5C10.22 7 9.99999 6.78 9.99999 6.5C9.99999 6.22 10.22 6 10.5 6H12.58C11.78 4.17 10.01 3 7.99999 3C5.77999 3 3.79999 4.5 3.18999 6.64C3.12999 6.86 2.92999 7 2.70999 7C2.65999 7 2.61999 7 2.56999 6.98C2.29999 6.9 2.14999 6.63 2.22999 6.36C2.95999 3.79 5.32999 2 7.99999 2C10.05 2 11.91 3.02 13 4.69V3.5C13 3.22 13.22 3 13.5 3C13.78 3 14 3.22 14 3.5ZM13.42 9.02C13.16 8.95 12.88 9.1 12.8 9.37C12.19 11.51 10.22 13.01 7.98999 13.01C5.97999 13.01 4.20999 11.84 3.40999 10.01H5.48999C5.76999 10.01 5.98999 9.79 5.98999 9.51C5.98999 9.23 5.76999 9.01 5.48999 9.01H2.48999C2.20999 9.01 1.98999 9.23 1.98999 9.51V12.51C1.98999 12.79 2.20999 13.01 2.48999 13.01C2.76999 13.01 2.98999 12.79 2.98999 12.51V11.32C4.07999 12.98 5.93999 14.01 7.98999 14.01C10.66 14.01 13.03 12.22 13.76 9.65C13.84 9.38 13.68 9.11 13.41 9.03L13.42 9.02Z"/>',
+	remove: '<path d="M14 2H10C10 0.897 9.103 0 8 0C6.897 0 6 0.897 6 2H2C1.724 2 1.5 2.224 1.5 2.5C1.5 2.776 1.724 3 2 3H2.54L3.349 12.708C3.456 13.994 4.55 15 5.84 15H10.159C11.449 15 12.543 13.993 12.65 12.708L13.459 3H13.999C14.275 3 14.499 2.776 14.499 2.5C14.499 2.224 14.275 2 13.999 2H14ZM8 1C8.551 1 9 1.449 9 2H7C7 1.449 7.449 1 8 1ZM11.655 12.625C11.591 13.396 10.934 14 10.16 14H5.841C5.067 14 4.41 13.396 4.346 12.625L3.544 3H12.458L11.656 12.625H11.655ZM7 5.5V11.5C7 11.776 6.776 12 6.5 12C6.224 12 6 11.776 6 11.5V5.5C6 5.224 6.224 5 6.5 5C6.776 5 7 5.224 7 5.5ZM10 5.5V11.5C10 11.776 9.776 12 9.5 12C9.224 12 9 11.776 9 11.5V5.5C9 5.224 9.224 5 9.5 5C9.776 5 10 5.224 10 5.5Z"/>',
+	// 切换引入方式（上下箭头交换）
+	switch: '<path d="M11.3536 1.64645C11.1583 1.45118 10.8417 1.45118 10.6464 1.64645C10.4512 1.84171 10.4512 2.15829 10.6464 2.35355L12.2929 4H2.5C2.22386 4 2 4.22386 2 4.5C2 4.77614 2.22386 5 2.5 5H12.2929L10.6464 6.64645C10.4512 6.84171 10.4512 7.15829 10.6464 7.35355C10.8417 7.54882 11.1583 7.54882 11.3536 7.35355L13.8536 4.85355C14.0488 4.65829 14.0488 4.34171 13.8536 4.14645L11.3536 1.64645ZM5.35355 9.35355C5.54882 9.15829 5.54882 8.84171 5.35355 8.64645C5.15829 8.45118 4.84171 8.45118 4.64645 8.64645L2.14645 11.1464C1.95118 11.3417 1.95118 11.6583 2.14645 11.8536L4.64645 14.3536C4.84171 14.5488 5.15829 14.5488 5.35355 14.3536C5.54882 14.1583 5.54882 13.8417 5.35355 13.6464L3.70711 12H13.5C13.7761 12 14 11.7761 14 11.5C14 11.2239 13.7761 11 13.5 11H3.70711L5.35355 9.35355Z"/>',
+	lock: '<path d="M8 9C8.55228 9 9 9.44771 9 10C9 10.5523 8.55228 11 8 11C7.44772 11 7 10.5523 7 10C7 9.44771 7.44772 9 8 9Z"/><path fill-rule="evenodd" clip-rule="evenodd" d="M8 1C9.654 1 11 2.346 11 4V6H12C13.103 6 14 6.897 14 8V13C14 14.103 13.103 15 12 15H4C2.897 15 2 14.103 2 13V8C2 6.897 2.897 6 4 6H5V4C5 2.346 6.346 1 8 1ZM4 7C3.449 7 3 7.449 3 8V13C3 13.551 3.449 14 4 14H12C12.551 14 13 13.551 13 13V8C13 7.449 12.551 7 12 7H4ZM8 2C6.897 2 6 2.897 6 4V6H10V4C10 2.897 9.103 2 8 2Z"/>',
+	unlock: '<path d="M8 9C8.55228 9 9 9.44771 9 10C9 10.5523 8.55228 11 8 11C7.44772 11 7 10.5523 7 10C7 9.44771 7.44772 9 8 9Z"/><path fill-rule="evenodd" clip-rule="evenodd" d="M13 1C14.654 1 16 2.346 16 4V4.5C16 4.776 15.776 5 15.5 5C15.224 5 15 4.776 15 4.5V4C15 2.897 14.103 2 13 2C11.897 2 11 2.897 11 4V6H12C13.103 6 14 6.897 14 8V13C14 14.103 13.103 15 12 15H4C2.897 15 2 14.103 2 13V8C2 6.897 2.897 6 4 6H10V4C10 2.346 11.346 1 13 1ZM4 7C3.449 7 3 7.449 3 8V13C3 13.551 3.449 14 4 14H12C12.551 14 13 13.551 13 13V8C13 7.449 12.551 7 12 7H4Z"/>',
+};
 
 function renderIconActionButton(options: { action: string; title: string; icon: IconName; moduleKey?: string; localItemId?: string; disabled?: boolean }): string {
 	const moduleKeyAttribute = options.moduleKey ? ` data-module-key="${escapeHtml(options.moduleKey)}"` : '';
@@ -603,40 +645,14 @@ function renderIconActionButton(options: { action: string; title: string; icon: 
 }
 
 function renderIcon(name: IconName): string {
-	switch (name) {
-		case 'bookmark':
-			return '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 2.5h8v11L8 11l-4 2.5z"></path></svg>';
-		case 'close':
-			return '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" aria-hidden="true"><path d="M4 4l8 8"></path><path d="M12 4l-8 8"></path></svg>';
-		case 'external':
-			return '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9.5 3.5H12.5V6.5"></path><path d="M12.5 3.5 7.75 8.25"></path><path d="M6.5 4.5H4.75A1.75 1.75 0 0 0 3 6.25v5A1.75 1.75 0 0 0 4.75 13h5A1.75 1.75 0 0 0 11.5 11.25V9.5"></path></svg>';
-		case 'filter':
-			return '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 4h11"></path><path d="M4.75 8h6.5"></path><path d="M6.75 12h2.5"></path></svg>';
-		case 'folder':
-			return '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 4.5V12a1.5 1.5 0 0 0 1.5 1.5h9A1.5 1.5 0 0 0 14 12V6a1.5 1.5 0 0 0-1.5-1.5H8L6.5 3H3.5A1.5 1.5 0 0 0 2 4.5z"></path></svg>';
-		case 'link':
-			return '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6.75 9.25 9.25 6.75"></path><path d="M5.5 10.5 4 12a2.121 2.121 0 0 1-3-3l3-3a2.121 2.121 0 0 1 3 0"></path><path d="M10.5 5.5 12 4a2.121 2.121 0 0 1 3 3l-3 3a2.121 2.121 0 0 1-3 0"></path></svg>';
-		case 'plus':
-			return '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" aria-hidden="true"><path d="M8 3.5v9"></path><path d="M3.5 8h9"></path></svg>';
-		case 'readme':
-			return '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 2.5h4.5a2 2 0 0 1 2 2V13a2 2 0 0 0-2-2H3z"></path><path d="M13 2.5H8.5a2 2 0 0 0-2 2V13a2 2 0 0 1 2-2H13z"></path></svg>';
-		case 'search':
-			return '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="7" cy="7" r="4.5"></circle><path d="M10.5 10.5L14 14"></path></svg>';
-		case 'update':
-			return '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 6V3h-3"></path><path d="M13 3 9.75 6.25"></path><path d="M12 8.5a4.5 4.5 0 1 1-1.6-3.45"></path></svg>';
-		case 'remove':
-			return '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 4.5h9"></path><path d="M6 4.5v-1a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v1"></path><path d="M5 6.5v5"></path><path d="M8 6.5v5"></path><path d="M11 6.5v5"></path><path d="M4.5 4.5V13a1 1 0 0 0 1 1h5a1 1 0 0 0 1-1V4.5"></path></svg>';
-		case 'switch':
-			return '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 5h8"></path><path d="M9.5 2.5 12 5 9.5 7.5"></path><path d="M13 11H5"></path><path d="M6.5 8.5 4 11l2.5 2.5"></path></svg>';
-		case 'lock':
-			return '<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="3.5" y="7" width="9" height="6.5" rx="1.2" fill="currentColor" opacity="0.15" stroke="currentColor" stroke-width="1.35" stroke-linejoin="round"></rect><path d="M5.5 7V5a2.5 2.5 0 0 1 5 0V7" fill="none" stroke="currentColor" stroke-width="1.35" stroke-linecap="round"></path></svg>';
-		case 'unlock':
-			return '<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="3.5" y="7" width="9" height="6.5" rx="1.2" fill="none" stroke="currentColor" stroke-width="1.35" stroke-linejoin="round"></rect><path d="M10.5 7V5a2.5 2.5 0 0 0-2.5-2.5" fill="none" stroke="currentColor" stroke-width="1.35" stroke-linecap="round"></path></svg>';
-	}
+	return `<svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">${ICON_PATHS[name]}</svg>`;
 }
 
 function renderStarIcon(filled: boolean): string {
-	return `<svg viewBox="0 0 16 16" fill="${filled ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round" aria-hidden="true"><path d="M8 2.1l1.67 3.38 3.73.54-2.7 2.63.64 3.72L8 10.62 4.66 12.37l.64-3.72-2.7-2.63 3.73-.54L8 2.1z"></path></svg>`;
+	const path = filled
+		? '<path d="M15.022 7.25497L12.203 10.003L12.869 13.883C12.917 14.165 12.844 14.438 12.664 14.654C12.479 14.872 12.205 15.001 11.929 15.001C11.775 15.001 11.626 14.963 11.485 14.89L8.00101 13.057L4.51701 14.889C4.13401 15.093 3.62401 14.991 3.34001 14.657C3.15801 14.439 3.08501 14.165 3.13201 13.884L3.79801 10.004L0.979007 7.25597C0.714007 6.99797 0.624007 6.63297 0.737007 6.27997C0.853007 5.92497 1.14001 5.68197 1.50701 5.62797L5.40301 5.06197L7.14501 1.53197C7.47301 0.865971 8.52801 0.865971 8.85601 1.53197L10.598 5.06197L14.494 5.62797C14.862 5.68197 15.149 5.92397 15.264 6.27597C15.378 6.63197 15.286 6.99697 15.022 7.25497Z"/>'
+		: '<path d="M11.928 15C11.774 15 11.625 14.962 11.484 14.889L8 13.056L4.516 14.888C4.132 15.092 3.623 14.99 3.339 14.656C3.157 14.438 3.084 14.164 3.131 13.883L3.797 10.003L0.978 7.25499C0.713 6.99699 0.623 6.63199 0.736 6.27899C0.852 5.92399 1.139 5.68099 1.506 5.62699L5.402 5.06099L7.144 1.53099C7.472 0.864994 8.527 0.864994 8.855 1.53099L10.597 5.06099L14.493 5.62699C14.861 5.68099 15.148 5.92299 15.263 6.27499C15.377 6.63099 15.286 6.99599 15.022 7.25399L12.203 10.002L12.869 13.882C12.917 14.164 12.844 14.437 12.664 14.653C12.479 14.871 12.204 15 11.928 15ZM7.959 1.97399L6.066 5.97499L1.65 6.61599L4.871 9.65299L4.117 14.05L8 11.925L11.892 13.972L11.129 9.65299L14.324 6.53799L9.934 5.97499L7.959 1.97399Z"/>';
+	return `<svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">${path}</svg>`;
 }
 
 function getBaseVisibleModules(state: ModuleSidebarRenderState): CsmModuleEntry[] {
@@ -2210,6 +2226,52 @@ function getLocalManagedVersionLabel(entry: LocalManagedModuleEntry): string {
 	return ref;
 }
 
+/** 版本来源类型的中英文标签（第一行 hover 前缀，issue #93）。 */
+function getVersionKindLabel(entry: LocalManagedModuleEntry): string {
+	switch (entry.versionKind) {
+		case 'tag':
+			return t('versionKindLabelTag', { ref: entry.versionRef ?? formatShortSha(entry.ref) });
+		case 'release':
+			return t('versionKindLabelRelease', { ref: entry.versionRef ?? entry.releaseName ?? formatShortSha(entry.ref) });
+		case 'branch':
+			return t('versionKindLabelBranch', { ref: entry.versionRef ?? entry.branch ?? formatShortSha(entry.ref) });
+		default:
+			return t('versionKindLabelCommit');
+	}
+}
+
+/**
+ * 构建版本徽章的悬浮提示（issue #93）：
+ * 第一行说明版本来源（tag / release / branch / commit），
+ * 第二行展示 短SHA · 提交信息 · 相对日期（来自本地缓存，ref 匹配才填充）。
+ */
+function getLocalManagedVersionTooltip(entry: LocalManagedModuleEntry): string {
+	const kindLabel = getVersionKindLabel(entry);
+	if (!entry.commitInfo) {
+		return `${kindLabel}\n${t('versionTooltipNoInfo')}`;
+	}
+	const parts = [formatShortSha(entry.ref), truncate(entry.commitInfo, 60)];
+	const relative = formatRelativeDate(entry.commitDate);
+	if (relative) {
+		parts.push(relative);
+	}
+	return `${kindLabel}\n${parts.join(' · ')}`;
+}
+
+/** 引入方式徽章的悬浮提示（issue #92）。 */
+function getApplyMethodTooltip(method: ModuleApplyMethod): string {
+	switch (method) {
+		case 'submodule':
+			return t('badgeTooltipMethodSubmodule');
+		case 'copy':
+			return t('badgeTooltipMethodCopy');
+		case 'release':
+			return t('badgeTooltipMethodRelease');
+		case 'local':
+			return t('badgeTooltipMethodLocal');
+	}
+}
+
 function renderModuleCard(entry: CsmModuleEntry, state: ModuleSidebarRenderState): string {
 	const moduleKey = getModuleKey(entry);
 	const selected = state.selectedModuleKeys.has(moduleKey);
@@ -2242,7 +2304,7 @@ function renderModuleCard(entry: CsmModuleEntry, state: ModuleSidebarRenderState
 		articleAttributes: `data-module-key="${escapeHtml(moduleKey)}" data-module-applied="${applied ? 'true' : 'false'}" data-module-selected="${selected ? 'true' : 'false'}" data-card-scope="catalog" data-search-text="${searchText}" data-vscode-context="${vscodeContext}"`,
 		title: entry.name,
 		titleDisplay: truncate(entry.name, 44),
-		titleBadges: applied ? [renderBadge(t('appliedBadge'), 'applied')] : [],
+		titleBadges: applied ? [renderBadge(t('appliedBadge'), 'applied', t('badgeTooltipApplied'))] : [],
 		owner: `@${entry.owner}`,
 		headerToolsHtml: renderModuleHeaderTools([
 			`<label class="select-toolbar-item" title="${escapeHtml(t('selectModule'))}" aria-label="${escapeHtml(t('selectModule'))}"><input class="module-select" type="checkbox" data-role="select-toggle" data-action="toggleSelection" data-module-key="${escapeHtml(moduleKey)}" ${selected ? 'checked' : ''} aria-label="${escapeHtml(t('selectNamedModule', { name: entry.name }))}"></label>`,
@@ -2265,9 +2327,13 @@ function renderModuleCard(entry: CsmModuleEntry, state: ModuleSidebarRenderState
 		summary: truncate(summary, 132),
 		footerHtml: footerNote,
 		metaBadges: [
-			...(labviewVersion ? [renderBadge(labviewVersion, 'lv-version')] : []),
-			renderBadge(getVisibilityLabel(entry.visibility), entry.visibility === 'private' ? 'private' : undefined),
-			renderBadge(t('branchBadge', { branch: entry.defaultBranch })),
+			...(labviewVersion ? [renderBadge(labviewVersion, 'lv-version', t('badgeTooltipLvVersion'))] : []),
+			renderBadge(
+				getVisibilityLabel(entry.visibility),
+				entry.visibility === 'private' ? 'private' : undefined,
+				entry.visibility === 'private' ? t('badgeTooltipPrivate') : undefined,
+			),
+			renderBadge(t('branchBadge', { branch: entry.defaultBranch }), undefined, t('badgeTooltipBranch')),
 			...topics.map((topic) => renderBadge(topic)),
 		],
 	});

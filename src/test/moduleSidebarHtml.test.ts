@@ -339,4 +339,116 @@ suite('moduleSidebarHtml — 模块版本展示（issue #37 / #90）', () => {
         assert.ok(html.includes('>v1.0</span>'), 'tag 类型显示 tag 名');
         assert.ok(!html.includes('abc1234'), 'tag 类型不显示 SHA');
     });
+
+    test('tag 版本徽章 hover 展示 commit 信息（issue #93）', () => {
+        const html = renderModuleSidebarHtml(makeState({
+            managedModules: [makeManaged({
+                method: 'submodule',
+                versionKind: 'tag',
+                versionRef: 'v1.0',
+                ref: 'abc1234',
+                commitInfo: 'tagged commit',
+                commitDate: new Date().toISOString(),
+            })],
+        }));
+        const versionBadge = html.slice(html.indexOf('badge module-version'));
+        assert.ok(versionBadge.includes('Tag: v1.0'), 'hover 第一行展示版本来源');
+        assert.ok(versionBadge.includes('abc1234'), 'hover 展示短 SHA');
+        assert.ok(versionBadge.includes('tagged commit'), 'hover 展示提交信息');
+    });
+
+    test('release 版本徽章 hover 展示 commit 信息（issue #93）', () => {
+        const html = renderModuleSidebarHtml(makeState({
+            managedModules: [makeManaged({
+                method: 'release',
+                versionKind: 'release',
+                versionRef: 'v2.0',
+                releaseName: 'Release Two',
+                ref: 'def5678',
+                commitInfo: 'release commit',
+                commitDate: new Date().toISOString(),
+            })],
+        }));
+        const versionBadge = html.slice(html.indexOf('badge module-version'));
+        assert.ok(versionBadge.includes('Release: v2.0'), 'hover 第一行展示 release 来源');
+        assert.ok(versionBadge.includes('def5678'), 'hover 展示短 SHA');
+        assert.ok(versionBadge.includes('release commit'), 'hover 展示提交信息');
+    });
+
+    test('branch 版本徽章 hover 标注跟踪分支（issue #93）', () => {
+        const html = renderModuleSidebarHtml(makeState({
+            managedModules: [makeManaged({
+                method: 'submodule',
+                versionKind: 'branch',
+                versionRef: 'develop',
+                ref: 'abc1234',
+                commitInfo: 'local commit message',
+                commitDate: new Date().toISOString(),
+            })],
+        }));
+        const versionBadge = html.slice(html.indexOf('badge module-version'));
+        assert.ok(versionBadge.includes('Tracked branch: develop'), 'hover 标注跟踪分支');
+        assert.ok(versionBadge.includes('abc1234'), 'hover 展示短 SHA');
+        assert.ok(versionBadge.includes('local commit message'), 'hover 展示提交信息');
+    });
+
+    test('commit 版本徽章 hover 标注提交来源（issue #93）', () => {
+        const html = renderModuleSidebarHtml(makeState({
+            managedModules: [makeManaged({
+                method: 'submodule',
+                versionKind: 'commit',
+                versionRef: 'abc1234',
+                ref: 'abc1234',
+                commitInfo: 'pinned commit',
+                commitDate: new Date().toISOString(),
+            })],
+        }));
+        const versionBadge = html.slice(html.indexOf('badge module-version'));
+        assert.ok(versionBadge.includes('Commit&#10;'), 'hover 标注 commit 来源');
+        assert.ok(versionBadge.includes('pinned commit'), 'hover 展示提交信息');
+    });
+
+    test('版本徽章缓存缺失时 hover 提示暂无提交信息（issue #93）', () => {
+        const html = renderModuleSidebarHtml(makeState({
+            managedModules: [makeManaged({
+                method: 'copy',
+                versionKind: 'tag',
+                versionRef: 'v1.0',
+                ref: 'abc1234',
+            })],
+        }));
+        const versionBadge = html.slice(html.indexOf('badge module-version'));
+        assert.ok(versionBadge.includes('Tag: v1.0'), 'hover 仍展示版本来源');
+        assert.ok(versionBadge.includes('No commit information cached.'), '缓存缺失时提示暂无提交信息');
+    });
+
+    test('徽章悬浮提示解释含义（issue #92）', () => {
+        const html = renderModuleSidebarHtml(makeState({
+            managedModules: [makeManaged({
+                method: 'submodule',
+                visibility: 'private',
+                locked: true,
+                stale: true,
+                labviewVersion: 'lv2020',
+                remoteAhead: true,
+                versionKind: 'commit',
+            })],
+        }));
+        assert.ok(html.includes('title="' + 'Module files are locked to read-only to prevent accidental edits.'), 'locked 徽章有 tooltip');
+        assert.ok(html.includes('title="' + 'Introduced as a Git submodule.'), '引入方式徽章有 tooltip');
+        assert.ok(html.includes('title="' + 'Private repository, visible only to authorized users.'), 'private 徽章有 tooltip');
+        assert.ok(html.includes('title="' + 'The directory recorded in the config no longer exists on disk.'), 'stale 徽章有 tooltip');
+        assert.ok(html.includes('title="' + 'LabVIEW development version detected for this module.'), 'lv-version 徽章有 tooltip');
+        assert.ok(html.includes('title="' + 'The remote branch has new commits that are not applied locally.'), 'remote-update 徽章有 tooltip');
+        assert.ok(html.includes('title="' + 'This module is tracked by the CSM module config and can be updated or removed.'), 'managed 徽章有 tooltip');
+    });
+
+    test('在线卡片 Applied 徽章有 tooltip（issue #92）', () => {
+        const html = renderModuleSidebarHtml(makeState({
+            modules: [makeModule()],
+            includeAppliedModules: true,
+            appliedModuleKeys: new Set(['test-owner/test-module']),
+        }));
+        assert.ok(html.includes('title="' + 'This module is applied to the current workspace.'), 'Applied 徽章有 tooltip');
+    });
 });

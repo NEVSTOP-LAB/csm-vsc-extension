@@ -1446,6 +1446,107 @@ const messages = {
 		zh: 'README 预览',
 	},
 	// ------------------------------------------------------------------
+	// 徽章悬浮提示（issue #92 / #93）
+	// ------------------------------------------------------------------
+	badgeTooltipLvVersion: {
+		en: 'LabVIEW development version detected for this module.',
+		zh: '该模块检测到的 LabVIEW 开发版本。',
+	},
+	badgeTooltipManaged: {
+		en: 'This module is tracked by the CSM module config and can be updated or removed.',
+		zh: '该模块已被 CSM 模块配置管理，可更新或移除。',
+	},
+	badgeTooltipLocked: {
+		en: 'Module files are locked to read-only to prevent accidental edits.',
+		zh: '模块文件已锁定为只读，防止误修改。',
+	},
+	badgeTooltipUnlocked: {
+		en: 'Module files are not locked.',
+		zh: '模块文件未锁定。',
+	},
+	badgeTooltipMethodSubmodule: {
+		en: 'Introduced as a Git submodule.',
+		zh: '以 Git 子模块方式引入。',
+	},
+	badgeTooltipMethodCopy: {
+		en: 'Introduced by copying repository contents.',
+		zh: '以复制仓库内容的方式引入。',
+	},
+	badgeTooltipMethodRelease: {
+		en: 'Introduced by downloading a GitHub Release.',
+		zh: '以下载 GitHub Release 的方式引入。',
+	},
+	badgeTooltipMethodLocal: {
+		en: 'Recorded as a local module without a GitHub source.',
+		zh: '记录为本地模块，无 GitHub 来源。',
+	},
+	badgeTooltipPrivate: {
+		en: 'Private repository, visible only to authorized users.',
+		zh: '私有仓库，仅授权用户可见。',
+	},
+	badgeTooltipStale: {
+		en: 'The directory recorded in the config no longer exists on disk.',
+		zh: '配置记录的目录在磁盘上已不存在。',
+	},
+	badgeTooltipRemoteAhead: {
+		en: 'The remote branch has new commits that are not applied locally.',
+		zh: '远端分支有新提交，尚未应用到本地。',
+	},
+	badgeTooltipApplied: {
+		en: 'This module is applied to the current workspace.',
+		zh: '该模块已应用到当前工作区。',
+	},
+	badgeTooltipUnmanaged: {
+		en: 'This folder is not yet tracked by the CSM module config.',
+		zh: '该文件夹尚未被 CSM 模块配置管理。',
+	},
+	badgeTooltipLocal: {
+		en: 'Local module, not reused from GitHub.',
+		zh: '本地模块，不从 GitHub 复用。',
+	},
+	badgeTooltipBranch: {
+		en: 'The tracked branch of this module.',
+		zh: '该模块跟踪的分支。',
+	},
+	// 版本徽章悬浮提示（issue #93）：第一行版本来源，第二行 短SHA · 提交信息 · 相对日期
+	versionKindLabelTag: {
+		en: 'Tag: {ref}',
+		zh: '标签：{ref}',
+	},
+	versionKindLabelRelease: {
+		en: 'Release: {ref}',
+		zh: '发布：{ref}',
+	},
+	versionKindLabelBranch: {
+		en: 'Tracked branch: {ref}',
+		zh: '跟踪分支：{ref}',
+	},
+	versionKindLabelCommit: {
+		en: 'Commit',
+		zh: '提交',
+	},
+	versionTooltipNoInfo: {
+		en: 'No commit information cached.',
+		zh: '暂无提交信息缓存。',
+	},
+	// 固定版本子模块一致性恢复（issue #96）
+	restoreFixedVersionPrompt: {
+		en: 'The local state of {count} module(s) differs from the version recorded in the config:\n{details}\n\nRestore them to the recorded version? This may need to fetch from the network.',
+		zh: '{count} 个模块的本地状态与配置记录的版本不一致：\n{details}\n\n是否恢复为配置记录的版本？此操作可能需要联网获取提交。',
+	},
+	restoreFixedVersionConfirm: {
+		en: 'Restore All',
+		zh: '全部恢复',
+	},
+	restoreFixedVersionSuccess: {
+		en: 'Restored {count} module(s) to the recorded version.',
+		zh: '已将 {count} 个模块恢复到配置记录的版本。',
+	},
+	restoreFixedVersionFailed: {
+		en: 'Failed to restore {name}: {message}',
+		zh: '恢复 {name} 失败：{message}',
+	},
+	// ------------------------------------------------------------------
 	// 输入校验 / 底层错误消息本地化（供 userFacingErrors 映射与 InputBox 校验）
 	// ------------------------------------------------------------------
 	relativeDirectoryRequired: {
