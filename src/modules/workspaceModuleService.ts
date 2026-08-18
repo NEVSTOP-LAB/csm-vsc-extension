@@ -453,6 +453,110 @@ export class WorkspaceModuleService {
 	}
 
 	/**
+	 * 读取子模块工作目录当前所在的分支名（issue #96，纯本地只读）：
+	 * `git branch --show-current`；detached HEAD 或解析失败时返回 undefined。
+	 */
+	public async resolveSubmoduleLocalBranch(targetPath: string): Promise<string | undefined> {
+		try {
+			const branch = (await this.runGit(targetPath, ['branch', '--show-current'])).trim();
+			return branch || undefined;
+		} catch {
+			return undefined;
+		}
+	}
+
+	/**
+	 * 恢复 submodule 到配置记录的固定版本（issue #96，以配置为准）：
+	 * 先临时解锁（如配置为锁定），`submodule update --init` 确保工作树就绪，
+	 * 再 fetch（可能联网）并 checkout 到 `entry.ref`（detached HEAD）；
+	 * 无论成功与否，最后恢复原锁定状态。
+	 */
+	public async restoreSubmoduleToRef(
+		workspaceRoot: string,
+		entry: LocalModuleConfigEntry,
+		authToken?: string,
+	): Promise<void> {
+		const targetRelativePath = this.normalizeRootPath(entry.path);
+		const targetAbsolute = this.toAbsoluteTargetPath(workspaceRoot, targetRelativePath);
+		if (!await this.pathExists(targetAbsolute)) {
+			throw new Error(`Submodule directory missing: ${targetRelativePath}`);
+		}
+		const wasLocked = isEntryLocked(entry);
+		if (wasLocked) {
+			await this.updatePathLockState(targetAbsolute, false);
+		}
+		try {
+			// 子模块未初始化（目录为空）时先 init；fetch 获取配置记录的提交对象（可能联网）
+			await this.runGit(workspaceRoot, ['submodule', 'update', '--init', '--', targetRelativePath], authToken, entry.source);
+			await this.runGit(targetAbsolute, ['fetch', '--tags', 'origin'], authToken, entry.source);
+			await this.runGit(targetAbsolute, ['checkout', entry.ref], authToken, entry.source);
+		} finally {
+			if (wasLocked) {
+				await this.updatePathLockState(targetAbsolute, true);
+			}
+		}
+	}
+
+	/**
+	 * 分析固定版本 submodule 的分歧类型（issue #96，纯本地只读、不联网）：
+	 * 配置记录的 commit 是否为本地 HEAD 的祖先（`git merge-base --is-ancestor`）。
+	 * - 是：本地 HEAD 是基于配置版本的更新提交（典型本地 pull / checkout / commit 导致），
+	 *   推荐「跟随本地」；
+	 * - 否（或无法判断）：本地 HEAD 更旧或与配置无关（回退 / 切到其他提交），
+	 *   推荐「根据配置恢复」（保持固定版本语义）。
+	 * 返回 undefined 表示无法获取 HEAD（目录缺失 / 非 git 仓库）。
+	 */
+	public async analyzeSubmoduleDivergence(
+		targetPath: string,
+		configRef: string,
+	): Promise<{ configIsAncestorOfHead: boolean } | undefined> {
+		try {
+			await this.runGit(targetPath, ['merge-base', '--is-ancestor', configRef, 'HEAD']);
+			return { configIsAncestorOfHead: true };
+		} catch (error) {
+			// 退出码非 0 = 不是祖先；其余错误（命令失败等）按「无法判断」处理（视为不是祖先，保守恢复）
+			const message = error instanceof Error ? error.message : String(error);
+			if (message.includes('fatal: not a git repository') || message.includes('does not exist')) {
+				return undefined;
+			}
+			return { configIsAncestorOfHead: false };
+		}
+	}
+
+	/**
+	 * 跟随本地：将固定版本 submodule 切换为 branch 跟踪语义（issue #96）——
+	 * 返回以本地实际 HEAD 为准的配置条目（`versionKind: branch` + 当前分支名 + HEAD），
+	 * 之后该模块与其他 branch 模块一样由刷新路径自动跟随本地 HEAD，不再触发一致性检查。
+	 * 分支名解析失败（detached HEAD）时回退到原配置的分支。
+	 */
+	public async followSubmoduleLocalHead(
+		targetPath: string,
+		entry: LocalModuleConfigEntry,
+	): Promise<{ nextEntry: LocalModuleConfigEntry; head: string; commitInfo?: string; date?: string }> {
+		const headInfo = await this.resolveSubmoduleHead(targetPath);
+		if (!headInfo?.head) {
+			throw new Error(`Unable to resolve the local HEAD of the submodule at ${entry.path}.`);
+		}
+		let branchName = entry.branch;
+		try {
+			const currentBranch = (await this.runGit(targetPath, ['branch', '--show-current'])).trim();
+			if (currentBranch) {
+				branchName = currentBranch;
+			}
+		} catch {
+			// detached HEAD 或读取失败：回退到原配置分支
+		}
+		const nextEntry: LocalModuleConfigEntry = {
+			...entry,
+			versionKind: 'branch',
+			versionRef: branchName,
+			branch: branchName ?? entry.branch,
+			ref: headInfo.head,
+		};
+		return { nextEntry, head: headInfo.head, commitInfo: headInfo.commitInfo, date: headInfo.date };
+	}
+
+	/**
 	 * 解析仓库的真实 git 目录（issue #90 watcher 用）：
 	 * linked worktree / 工作区本身是 submodule 时 `.git` 是指向真实 gitdir 的文件，
 	 * `git rev-parse --absolute-git-dir` 返回真实目录，watcher 才能监听实际的 HEAD/refs。
