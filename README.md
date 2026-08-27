@@ -8,42 +8,38 @@
 
 ## 功能概览
 
-| 功能                        | 说明                                                                                                       |
-|-----------------------------|------------------------------------------------------------------------------------------------------------|
-| `.csmlog` 日志支持          | 语法高亮、Hover 悬停提示、Outline 大纲、**智能重复折叠**、自动编码识别                                         |
-| `.lvcsm` 配置文件支持       | 语法高亮、Outline 大纲、自动编码识别                                                                         |
-| `CSM Modules` 模块管理      | 侧边栏浏览、搜索、引入、更新、移除 CSM 模块，支持 GitHub 登录、批量操作，以及将模块放置到模块根目录或嵌套命名空间 |
-| 文件装饰 (File Decorations) | 为 `.csmlog` (C) 与 `.lvcsm` (L) 添加 Badge 标记，可与任意图标主题共存                                      |
-| 本地化                      | 中文 / 英文界面切换                                                                                        |
+| 功能                        | 说明                                             |
+| --------------------------- | ------------------------------------------------ |
+| `.csmlog` 日志支持          | 语法高亮、悬停提示、大纲视图、重复折叠和编码识别 |
+| `.lvcsm` 配置文件支持       | 语法高亮、大纲视图和编码识别                     |
+| `CSM Modules` 模块管理      | 浏览、搜索、创建、引入、更新和移除 CSM 模块      |
+| 文件装饰 (File Decorations) | 为 `.csmlog` 和 `.lvcsm` 文件添加 Badge 标记     |
+| 本地化                      | 中文和英文界面                                   |
 
 ## 快速入口
 
-- 打开任意 `.csmlog` 或 `.lvcsm` 文件即可自动激活扩展功能
-- `.csmlog` 文件中的重复日志行会自动检测并折叠，可配置阈值与样式
-- 打开侧边栏 **CSM Modules** 视图即可浏览和管理模块
-- 本地与在线模块区域标题栏可点击折叠 / 展开，方便快速收起不关注的一侧
-- 应用模块时可选择直接放到模块根目录，或放入已有/新的嵌套命名空间路径
-- 更新模块时可选择更新到分支最新，或从提交记录 / 标签 / Release / 分支中选择指定版本（含回退到旧版本）
-- 已确认管理的模块目录不会参与后续递归扫描，避免其内部内容被误识别为候选
-- 扩展自动为 `.csmlog` / `.lvcsm` 文件添加 Badge 标记，无需手动设置
-- 模块卡片上的版本徽章（tag / release / branch / commit）鼠标悬浮可查看提交信息（短 SHA · 提交信息 · 日期，来自本地缓存）
-- 所有徽章（已管理 / 锁定 / 引入方式 / 私有 / 版本等）悬浮时均有含义解释；操作按钮使用 VS Code 标准图标，悬浮提示用途
-- 插件启动或刷新时，若固定版本（commit / tag / release）子模块的实际 HEAD 与配置记录不一致，会弹窗给出三个选择：「跟随本地配置文件」（恢复本地到配置版本，可能联网）、「跟随 git submodule 版本」（更新配置记录为本地版本）或「取消」，并附推荐理由
-- 刷新命令支持三种模式：在线目录刷新 / 重新搜索本地模块 / **根据本地 submodule 更新配置文件**（以本地为准，纯本地不联网）
+- 打开任意 `.csmlog` 或 `.lvcsm` 文件即可自动激活文件支持
+- 重复日志行会自动折叠，可调整阈值和样式
+- 在侧边栏 **CSM Modules** 中浏览和管理模块
+- 引入模块时可选择根目录或嵌套命名空间
+- 更新模块时可选择最新或指定版本
+- 引导发布模块流程
+
+- 文件自动显示 C 或 L Badge 标记
 
 ## 扩展设置
 
-| 设置项                                         | 默认值                                                                  | 说明                                                                              |
-|------------------------------------------------|-------------------------------------------------------------------------|-----------------------------------------------------------------------------------|
-| `csmModules.defaultModuleRoot`                 | `csm`                                                                   | 首次引入模块时预填的默认目录名                                                    |
-| `csmModules.moduleScanMaxDepth`                | `3`                                                                     | 递归发现本地模块候选目录时允许的最大深度                                          |
-| `csmModules.moduleScanIncludeReadmeWeakSignal` | `true`                                                                  | 启用 README 弱信号后，包含 README 且至少有一个非文档文件的目录也可被识别为模块候选 |
-| `csmModules.moduleScanExcludedDirectories`     | `.git`, `node_modules`, `dist`, `build`, `out`, `tmp`, `docs`, `images` | 递归发现本地模块候选时跳过的目录名（大小写不敏感）                                  |
-| `csmModules.hiddenTopics`                      | `csm-modsets`, `lv-csm-app`, `labview-csm`, `labview`                   | 侧边栏中默认隐藏的 topic                                                          |
-| `csmlog.folding.minRepeatCount`                | `3`                                                                     | 最少连续重复几次触发折叠                                                          |
-| `csmlog.folding.maxBlockLines`                 | `20`                                                                    | 多行块匹配的最大行数                                                              |
-| `csmlog.folding.smartParams`                   | `true`                                                                  | 启用参数归一化，消息模板相同仅参数不同的行也折叠                                   |
-| `csmlog.folding.decorationStyle`               | `compact`                                                               | 折叠概要标签样式（compact: ×42 / detailed: 含时间）                                 |
+| 设置项                                         | 默认值                                                                  | 说明                       |
+| ---------------------------------------------- | ----------------------------------------------------------------------- | -------------------------- |
+| `csmModules.defaultModuleRoot`                 | `csm`                                                                   | 默认模块目录名             |
+| `csmModules.moduleScanMaxDepth`                | `3`                                                                     | 本地模块扫描深度           |
+| `csmModules.moduleScanIncludeReadmeWeakSignal` | `true`                                                                  | 将 README 作为模块识别线索 |
+| `csmModules.moduleScanExcludedDirectories`     | `.git`, `node_modules`, `dist`, `build`, `out`, `tmp`, `docs`, `images` | 扫描时跳过的目录           |
+| `csmModules.hiddenTopics`                      | `csm-modsets`, `lv-csm-app`, `labview-csm`, `labview`                   | 默认隐藏的主题             |
+| `csmlog.folding.minRepeatCount`                | `3`                                                                     | 触发折叠的最少重复次数     |
+| `csmlog.folding.maxBlockLines`                 | `20`                                                                    | 多行块的最大匹配行数       |
+| `csmlog.folding.smartParams`                   | `true`                                                                  | 忽略参数差异以匹配相似日志 |
+| `csmlog.folding.decorationStyle`               | `compact`                                                               | 折叠标签样式               |
 
 ## 更多文档
 
