@@ -1226,6 +1226,47 @@ suite('Module Manager Tests', () => {
 		}
 	});
 
+	test('loadConfig keeps the config file it read from and never rewrites it to another folder (issue #99)', async () => {
+		const workspaceRoot = await fs.mkdtemp(path.join(getTempRoot(), 'csm-modules-foreign-config-'));
+		const service = new WorkspaceModuleService();
+		try {
+			// 工作区打开在父目录、配置属于子目录 / 子仓库的场景：root 声明的是子仓库内的模块根
+			const foreignConfigPath = path.join(workspaceRoot, 'child-repo', 'csm', LOCAL_MODULE_CONFIG_FILE);
+			await fs.mkdir(path.dirname(foreignConfigPath), { recursive: true });
+			await fs.writeFile(foreignConfigPath, [
+				'version: "2"',
+				'root: csm',
+				'modules:',
+				'  org__module_a:',
+				'    name: module-a',
+				'    owner: org',
+				'    source: https://github.com/org/module-a',
+				'    method: copy',
+				'    path: csm/module-a',
+				'    ref: abc123',
+				'    branch: main',
+				'',
+			].join('\n'), 'utf8');
+
+			const config = await service.loadConfig(workspaceRoot, foreignConfigPath);
+
+			assert.strictEqual(config.configPath, foreignConfigPath, '写回路径必须就是被读取的那个文件');
+			// 迁移写回必须落在原文件上，而不是工作区根目录下重算出来的 csm/csm-modules.yaml
+			const migrated = await fs.readFile(foreignConfigPath, 'utf8');
+			assert.ok(migrated.includes(`version: "${CONFIG_VERSION}"`), '迁移写回原文件');
+			assert.ok(migrated.includes('locked: true'), '迁移步骤补齐 locked 字段');
+			let strayConfigExists = true;
+			try {
+				await fs.stat(path.join(workspaceRoot, 'csm', LOCAL_MODULE_CONFIG_FILE));
+			} catch {
+				strayConfigExists = false;
+			}
+			assert.strictEqual(strayConfigExists, false, '不得在工作区根目录凭空生成 csm/csm-modules.yaml');
+		} finally {
+			await removeWritableTree(workspaceRoot);
+		}
+	});
+
 	test('WorkspaceModuleService migrates a legacy extension-version config to the current schema version on load (issue #94)', async () => {
 		const repoRoot = await fs.mkdtemp(path.join(getTempRoot(), 'csm-modules-ver-plugin-'));
 		const service = new WorkspaceModuleService();

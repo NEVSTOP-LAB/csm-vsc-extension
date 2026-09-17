@@ -410,6 +410,13 @@ export async function initializeConfig(repoRoot: string, rootRelativePath: strin
  * 加载时比较配置 schema 版本（issue #94）：旧版本（缺失 / 旧插件版本 / 低于当前 schema 版本）
  * 自动执行迁移步骤并写回当前版本；若迁移步骤失败（旧配置无法兼容），备份旧文件并自动重建为
  * 新版本的空配置。`onMigration` 可选回调上报迁移 / 重建结果，供调用方记录日志与提示用户。
+ *
+ * 写回路径（`config.configPath`）必须就是被读取的那个文件（issue #99）：
+ * `config.root` 表达的是「模块根目录」语义，当它与文件实际所在目录不一致时
+ * （典型场景：工作区打开在父目录，找到的是子仓库自己的配置），用
+ * `getConfigPath(repoRoot, root)` 重算会把配置写到工作区里另一个原本不存在的路径上，
+ * 于是「打开侧边栏」就凭空生成了 `csm/csm-modules.yaml`。
+ * 旧格式 `.lvcsm` 是唯一的例外：按既有约定迁移到同目录下的 `csm-modules.yaml`。
  */
 export async function loadConfig(
 	repoRoot: string,
@@ -419,13 +426,14 @@ export async function loadConfig(
 	steps: ConfigMigrationStep[] = DEFAULT_CONFIG_MIGRATIONS,
 ): Promise<LocalModuleConfig> {
 	const raw = await fs.readFile(configPath, 'utf8');
-	const parsed = isLegacyConfigPath(configPath) ? parseLegacyConfig(raw) : parseYamlConfig(raw);
+	const legacyConfig = isLegacyConfigPath(configPath);
+	const parsed = legacyConfig ? parseLegacyConfig(raw) : parseYamlConfig(raw);
 	const derivedRoot = toPosixPath(path.relative(repoRoot, path.dirname(configPath)));
 	const root = parsed.root ? normalizeRootPath(parsed.root) : normalizeRootPath(derivedRoot || DEFAULT_LOCAL_MODULE_ROOT);
 	const config: LocalModuleConfig = {
 		version: parsed.version ?? CONFIG_VERSION,
 		root,
-		configPath: getConfigPath(repoRoot, root),
+		configPath: legacyConfig ? getConfigPath(repoRoot, root) : configPath,
 		modules: parsed.modules,
 	};
 	const needsMigration = shouldMigrateConfig(parsed.version, currentVersion);
