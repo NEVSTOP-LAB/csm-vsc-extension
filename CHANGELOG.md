@@ -49,6 +49,10 @@
 - custom agents 5 → 2 个（`vscode-ext-dev` 开发、`vscode-ext-review` 审查），并精简 `AGENTS.md`
 - 清理 `.vscode/settings.json` 中失效的 `chat.tools.terminal.autoApprove` 配置
 
+### 修复
+
+- **配置文件不再凭空生成**（issue #99）：`csm-modules.yaml` 只在首次应用模块（或其他显式操作：点击初始化提示、记录本地模块、创建 / 关联仓库）时创建。此前把「包含仓库的父目录」作为工作区打开、再点击侧边栏入口时，扩展会递归找到子仓库自己的配置并采用它，加载 / 迁移时的写回又按配置声明的 `root` 重算路径，于是在工作区根目录凭空生成了 `csm/csm-modules.yaml`。现在：① 递归找到的配置文件只有「所在目录（相对工作区根）与配置声明的 `root` 一致」时才属于当前工作区，子目录 / 子仓库自己的配置一律忽略，当前工作区按**未初始化**处理；② 加载后的写回路径始终是被读取的那个文件（旧 `.lvcsm` 仍按既有约定迁移到同目录的 `csm-modules.yaml`），不再重算到其它路径
+
 ### 新增
 
 - `CSM Modules` 支持多选与批量 `Apply to Current Repository`；首次应用可初始化本地模块目录（默认 `csm/csm-modules.yaml`，支持自定义相对目录）

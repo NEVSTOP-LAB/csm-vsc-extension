@@ -7,6 +7,7 @@ import { DEFAULT_LOCAL_MODULE_ROOT, IModuleViewProvider, LEGACY_LOCAL_MODULE_CON
 import { ModuleManagerController, ModuleManagerControllerDeps } from '../modules/moduleManagerController';
 import { ModuleTreeItem } from '../modules/moduleTreeTypes';
 import { CsmModuleEntry, LocalManagedModuleEntry, LocalModuleConfig, LocalUnmanagedFolderEntry, ModuleApplyMethod, ModuleCacheSnapshot } from '../modules/types';
+import { WorkspaceModuleService } from '../modules/workspaceModuleService';
 
 type VscodeMock = typeof vscode & {
 	__getMessageLog: () => Array<{ level: 'info' | 'warn' | 'error'; text: string }>;
@@ -4309,6 +4310,95 @@ suite('ModuleManagerController Regression Tests', () => {
 		const infos = mocked.__getMessageLog().filter((message) => message.level === 'info').map((message) => message.text);
 		assert.ok(infos.some((text) => text.includes('Initialized local CSM module config from existing git module folders')));
 		assert.strictEqual(mocked.__getContextValue('csmModules.canInitializeWorkspace'), false);
+	});
+
+	test('local config discovery ignores config files that belong to a nested folder (issue #99)', async () => {
+		const workspaceRoot = fs.mkdtempSync(path.join(getTempRoot(), 'csm-nested-config-'));
+		const ownConfigDir = path.join(workspaceRoot, 'csm');
+		fs.mkdirSync(ownConfigDir, { recursive: true });
+		const ownConfig = path.join(ownConfigDir, LOCAL_MODULE_CONFIG_FILE);
+		fs.writeFileSync(ownConfig, ['version: "3"', 'root: "csm"', 'modules: {}', ''].join('\n'), 'utf8');
+		const nestedConfigDir = path.join(workspaceRoot, 'child-repo', 'csm');
+		fs.mkdirSync(nestedConfigDir, { recursive: true });
+		const nestedConfig = path.join(nestedConfigDir, LOCAL_MODULE_CONFIG_FILE);
+		// 子仓库自己的配置：root 声明的是子仓库内的模块根，与它在当前工作区中的位置不一致
+		fs.writeFileSync(nestedConfig, ['version: "3"', 'root: "csm"', 'modules: {}', ''].join('\n'), 'utf8');
+
+		mocked.__setFindFilesResult([vscode.Uri.file(nestedConfig), vscode.Uri.file(ownConfig)]);
+		const controller = createController() as any;
+
+		const matches = await controller.findLocalModuleConfigFiles({
+			name: 'parent',
+			uri: vscode.Uri.file(workspaceRoot),
+		});
+
+		assert.deepStrictEqual(
+			matches.map((uri: vscode.Uri) => uri.fsPath),
+			[ownConfig],
+			'只保留属于当前工作区自身的配置文件',
+		);
+	});
+
+	test('local config discovery keeps a config directly at the workspace root (issue #99)', async () => {
+		const workspaceRoot = fs.mkdtempSync(path.join(getTempRoot(), 'csm-root-config-'));
+		const rootConfig = path.join(workspaceRoot, LOCAL_MODULE_CONFIG_FILE);
+		fs.writeFileSync(rootConfig, ['version: "3"', 'root: "csm"', 'modules: {}', ''].join('\n'), 'utf8');
+
+		mocked.__setFindFilesResult([vscode.Uri.file(rootConfig)]);
+		const controller = createController() as any;
+
+		const matches = await controller.findLocalModuleConfigFiles({
+			name: 'repo',
+			uri: vscode.Uri.file(workspaceRoot),
+		});
+
+		assert.deepStrictEqual(matches.map((uri: vscode.Uri) => uri.fsPath), [rootConfig]);
+	});
+
+	test('opening the sidebar in a parent folder never creates csm/csm-modules.yaml (issue #99)', async () => {
+		// 工作区 = 包含子仓库的父目录；子仓库里已有自己的 csm/csm-modules.yaml（旧 schema，加载即会写回）
+		const workspaceRoot = fs.mkdtempSync(path.join(getTempRoot(), 'csm-parent-workspace-'));
+		const nestedConfigDir = path.join(workspaceRoot, 'child-repo', 'csm');
+		fs.mkdirSync(nestedConfigDir, { recursive: true });
+		const nestedConfig = path.join(nestedConfigDir, LOCAL_MODULE_CONFIG_FILE);
+		const nestedConfigRaw = [
+			'version: "2"',
+			'root: csm',
+			'modules:',
+			'  org__module_a:',
+			'    name: module-a',
+			'    owner: org',
+			'    source: https://github.com/org/module-a',
+			'    method: copy',
+			'    path: csm/module-a',
+			'    ref: abc123',
+			'    branch: main',
+			'',
+		].join('\n');
+		fs.writeFileSync(nestedConfig, nestedConfigRaw, 'utf8');
+
+		// 父目录不是 git 仓库：拿不到仓库根，扩展应把当前工作区当作未初始化
+		class NoGitWorkspaceModuleService extends WorkspaceModuleService {
+			public async resolveGitRepositoryRoot(): Promise<string | undefined> {
+				return undefined;
+			}
+		}
+		const controller = createController(new FakeMemento(), {
+			workspaceModuleService: new NoGitWorkspaceModuleService(),
+			viewProvider: createViewProvider(),
+		}) as any;
+
+		mocked.__setWorkspaceFolders([{ name: 'parent', uri: vscode.Uri.file(workspaceRoot) }]);
+		mocked.__setFindFilesResultForPattern(configSearchPattern, [vscode.Uri.file(nestedConfig)]);
+
+		await controller.refreshSidebarWorkspaceState();
+
+		assert.strictEqual(
+			fs.existsSync(path.join(workspaceRoot, 'csm', LOCAL_MODULE_CONFIG_FILE)),
+			false,
+			'不得在工作区根目录凭空生成 csm/csm-modules.yaml',
+		);
+		assert.strictEqual(fs.readFileSync(nestedConfig, 'utf8'), nestedConfigRaw, '子仓库自己的配置不应被改写');
 	});
 
 	test('apply initializes config and writes module record', async () => {

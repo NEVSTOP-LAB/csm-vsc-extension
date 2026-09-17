@@ -10,7 +10,7 @@ import { ModuleSidebarViewProvider } from './moduleSidebarViewProvider';
 import { IModuleViewProvider, ModuleSortField, ModuleSortState, SidebarWorkspaceContext } from './types';
 import { ReadmeAssetCache } from './readmeAssetCache';
 import { DEFAULT_EXCLUDED_DIRECTORY_NAMES, DEFAULT_LOCAL_MODULE_ROOT, GitIdentity, LEGACY_LOCAL_MODULE_CONFIG_FILE, LOCAL_MODULE_CONFIG_FILE, UpdateModuleOptions, WorkspaceModuleService } from './workspaceModuleService';
-import { CONFIG_VERSION, ConfigMigrationOutcome } from './configService';
+import { CONFIG_VERSION, ConfigMigrationOutcome, isLegacyConfigPath, normalizeRootPath, parseLegacyConfig, parseYamlConfig } from './configService';
 import { COMMAND_IDS, CONFIG_KEYS, CONFIG_SECTIONS, CONTEXT_KEYS, GITHUB, VIEW_IDS } from './constants';
 import { Logger, getLogger, wrapCommand } from './logger';
 import { formatRelativeDate, getApplyMethodLabel, t } from '../i18n';
@@ -38,6 +38,26 @@ const REMOTE_CHECK_CONCURRENCY = 5;
 
 function getWorkspaceInitPrompt(rootPath: string): string {
 	return t('workspaceInitPrompt', { rootPath });
+}
+
+/** 把 `path.relative` 的结果规范化为 posix 相对路径（空串表示就是工作区根目录本身）。 */
+function toPosixRelativePath(value: string): string {
+	if (!value || value === '.') {
+		return '';
+	}
+	return value.replace(/\\/g, '/').replace(/^\.\//, '').replace(/^\/+|\/+$/g, '');
+}
+
+/** 规范化配置声明的模块根目录；缺失 / 非法（绝对路径、越出仓库）时返回 undefined。 */
+function tryNormalizeRootPath(value: string | undefined): string | undefined {
+	if (!value) {
+		return undefined;
+	}
+	try {
+		return normalizeRootPath(value);
+	} catch {
+		return undefined;
+	}
 }
 
 interface PendingWorkspaceInitialization {
@@ -4214,11 +4234,59 @@ export class ModuleManagerController {
 	}
 
 	private async findLocalModuleConfigFiles(workspaceFolder: vscode.WorkspaceFolder): Promise<vscode.Uri[]> {
-		return vscode.workspace.findFiles(
+		const matches = await vscode.workspace.findFiles(
 			new vscode.RelativePattern(workspaceFolder, LOCAL_MODULE_CONFIG_GLOB),
 			'**/{.git,node_modules,out,dist,.vscode-test}/**',
 			20,
 		);
+		return this.filterWorkspaceOwnedConfigFiles(workspaceFolder, matches);
+	}
+
+	/**
+	 * 只保留属于当前工作区自身的本地模块配置文件（issue #99）。
+	 *
+	 * 搜索是从工作区根目录递归进行的，所以会连带找到工作区里更深层子目录 / 子仓库自己的配置
+	 * （典型场景：把「包含多个仓库的父目录」作为工作区打开，子仓库里已有 `csm/csm-modules.yaml`）。
+	 * 这类文件不属于当前工作区：采用它会让扩展把当前工作区当作「已初始化」，并把写回落到
+	 * 工作区里另一个原本不存在的路径上，于是打开侧边栏就凭空生成了 `csm/csm-modules.yaml`。
+	 * 正确语义是把当前工作区视为未初始化（配置文件只在首次 Apply 等显式操作时创建）。
+	 *
+	 * 判定规则：配置文件所在目录（相对工作区根）必须与配置声明的 `root` 一致；
+	 * 未声明 `root` 的旧 / 手写配置按所在目录推断，天然一致；
+	 * 配置直接放在工作区根目录时同样视为当前工作区的配置。
+	 * 文件读取 / 解析失败时保持原有行为（交由后续加载流程报错），不在这里吞掉错误。
+	 */
+	private async filterWorkspaceOwnedConfigFiles(
+		workspaceFolder: vscode.WorkspaceFolder,
+		matches: vscode.Uri[],
+	): Promise<vscode.Uri[]> {
+		if (matches.length === 0) {
+			return matches;
+		}
+		const workspacePath = path.resolve(workspaceFolder.uri.fsPath);
+		const owned: vscode.Uri[] = [];
+		for (const match of matches) {
+			let parsed: { root?: string };
+			try {
+				const raw = await fs.readFile(match.fsPath, 'utf8');
+				parsed = isLegacyConfigPath(match.fsPath) ? parseLegacyConfig(raw) : parseYamlConfig(raw);
+			} catch (error) {
+				// 读取 / 解析失败：保持原有行为，交由后续加载流程报错
+				this.logger.warn(`Failed to inspect local CSM module config at ${match.fsPath}: ${error instanceof Error ? error.message : String(error)}`);
+				owned.push(match);
+				continue;
+			}
+			const relativeDirectory = toPosixRelativePath(path.relative(workspacePath, path.dirname(match.fsPath)));
+			const declaredRoot = tryNormalizeRootPath(parsed.root);
+			if (!declaredRoot || !relativeDirectory || declaredRoot.toLowerCase() === relativeDirectory.toLowerCase()) {
+				owned.push(match);
+				continue;
+			}
+			this.logger.info(
+				`Ignoring local CSM module config at ${match.fsPath}: declared root "${declaredRoot}" does not match its location "${relativeDirectory}" under the workspace root.`,
+			);
+		}
+		return owned;
 	}
 
 	private sortLocalModuleConfigMatches(matches: vscode.Uri[]): vscode.Uri[] {

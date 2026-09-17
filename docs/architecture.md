@@ -206,6 +206,12 @@ extension.ts activate()
 
 `configService.loadConfig` 每次加载时比较 schema 版本：旧版本（缺失 / 旧插件版本如 `"0.0.26"` / 无法解析为整数 / 低于当前版本）时按 `DEFAULT_CONFIG_MIGRATIONS` 步骤列表就地迁移（如 `normalize-module-entries` 补齐默认字段）并静默写回当前版本；若迁移步骤失败（旧配置无法兼容），自动备份旧文件（`<configPath>.bak-<版本>-<时间戳>`）并重建为新版本的空配置（保留 `root`），通过 `onMigration` 回调上报结果。同版本加载不改写文件。`ModuleManagerController.loadLocalModuleConfig` 统一处理迁移上报：向前兼容的迁移仅记录日志，不兼容重建记录警告并弹轻量提示（本地化文案）。
 
+### 4.7 配置文件归属判定（issue #99）
+
+`ModuleManagerController.findLocalModuleConfigFiles` 是从工作区根目录递归搜索 `csm-modules.yaml` / `csm-modules.lvcsm` 的，因此会连带找到工作区里更深层子目录 / 子仓库自己的配置（典型场景：把「包含多个仓库的父目录」作为工作区打开）。`filterWorkspaceOwnedConfigFiles` 只保留**属于当前工作区自身**的配置：文件所在目录（相对工作区根）必须与配置声明的 `root` 一致（未声明 `root` 的旧 / 手写配置按所在目录推断，天然一致；配置直接位于工作区根目录时同样成立）。不满足的配置一律忽略，当前工作区按**未初始化**处理，配置文件只在首次 `Apply` 等显式操作时创建。
+
+写回路径方面，`loadConfig` 返回的 `config.configPath` 始终是**被读取的那个文件**（旧 `.lvcsm` 例外：按既有约定迁移到同目录的 `csm-modules.yaml`）。`config.root` 是「模块根目录」语义，若用它重算写回路径，就会在工作区里另一个原本不存在的位置生成配置文件——这正是「打开侧边栏就凭空生成 `csm/csm-modules.yaml`」的成因。
+
 ---
 
 ## 5. 构建与测试
