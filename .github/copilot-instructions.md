@@ -10,12 +10,23 @@
 
 ## 本地化完整性（每次修改必须检查）
 
-新增/改动的用户可见内容必须本地化完整：
-
-- **唯一入口 `src/i18n/`**：`core.ts`（基础设施）/ `messages.ts`（模块管理文案，`t()`）/ `logFold.ts`（折叠文案）/ `language.ts`（语言功能文案）
-- **清单级**：`package.nls.json` + `package.nls.zh-cn.json`，两文件键集合必须一一对应
-- **详细检查清单与禁止项**见 `.github/instructions/i18n.instructions.md`
+- 详细检查清单与禁止项见 `.github/instructions/i18n.instructions.md`
 
 ## 临时文件
 
 - 统一用 `src/common/tempPaths.ts` 的 `getTempRoot()`，**禁止**直接 `os.tmpdir()`；开发环境落在项目根 `tmp/`（已 gitignore）
+
+## 版本号铁律
+
+`engines.vscode` 是运行时最低版本唯一权威来源；`@types/vscode` 只是类型声明版本、不代表运行时要求；文档版本引用一律以 `engines.vscode` 为准，禁止用 `@types/vscode` 版本号。
+
+## 文档同步（强制）
+
+| 源文件变更                   | 必须检查的文档                                  |
+| ---------------------------- | ----------------------------------------------- |
+| `engines.vscode`             | README.md（安装要求）、CHANGELOG.md（技术栈）   |
+| `version`                    | CHANGELOG.md（版本号章节）                      |
+| `contributes` 新增           | README.md（功能列表）、CHANGELOG.md（变更记录） |
+| `src/` 新功能                | README.md（功能列表）、CHANGELOG.md（变更记录） |
+| `src/language/logFold/` 变更 | README.md（设置表格）、CHANGELOG.md（新增章节） |
+| `syntaxes/` 变更             | README.md、`docs/` 相关设计文档                 |

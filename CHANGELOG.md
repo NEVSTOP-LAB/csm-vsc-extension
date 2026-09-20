@@ -48,6 +48,7 @@
 - 简化 AI 开发设施：Copilot 自动 hook 收敛为单个 `Stop` hook（会话结束执行 `npm run compile`，不再自动打包安装 VSIX），删除 `hook:finish`、`vsix:package`、`vsix:verify-local` 等手动脚本
 - custom agents 5 → 2 个（`vscode-ext-dev` 开发、`vscode-ext-review` 审查），并精简 `AGENTS.md`
 - 清理 `.vscode/settings.json` 中失效的 `chat.tools.terminal.autoApprove` 配置
+- 指令规则去重：`AGENTS.md` 与用户级 `copilot-instructions.md` 的重复条目各归一处；本地化规则收敛到 `i18n.instructions.md`，版本号铁律与文档同步表收敛到 `.github/copilot-instructions.md`；修正两个 agent 文件中已废弃的源码目录（`src/logFold/`、`src/moduleManager/`、`src/hoverData/`）
 
 ### 修复
 
