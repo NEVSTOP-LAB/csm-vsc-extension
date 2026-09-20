@@ -13,17 +13,15 @@ argument-hint: "描述需要开发的 VS Code 扩展功能或要解决的问题"
 - TypeScript（strict，Node16 模块，ES2022），esbuild 打包，Mocha 测试
 - VS Code 最低版本 `^1.63.0`（`engines.vscode`，非 `@types/vscode`）
 - 扩展名：`.csmlog`（日志）、`.lvcsm`（配置）
-- 源码模块：`src/logFold/`（日志折叠）、`src/moduleManager/`（模块管理）、`src/hoverData/`（Hover 数据）、`src/common/`（共享工具）
+- 源码模块：语言功能 `src/language/`（含 `hoverData/`、`logFold/`）、模块管理 `src/modules/`、共享工具 `src/common/`、本地化 `src/i18n/`
 
 ## 编码规范
 
 - **先思考再编码**：不确定时查 VS Code API 文档，不猜签名
 - **简洁优先**：最少代码解决问题，不做无根据抽象
 - **外科手术式修改**：只改必须改的
-- **中文注释**：注释与回复用中文
 - 所有 disposable 用 `context.subscriptions.push()` 注册（防内存泄漏）
 - Snippet 用 `vscode.SnippetString` 包装；`main` 指向 `./dist/extension.js`
-- **临时文件**用 `getTempRoot()`（`../common/tempPaths`），禁 `os.tmpdir()`
 
 ## 源码开发（src/）
 
@@ -41,17 +39,6 @@ context.subscriptions.push(
 - **装饰器**：`createTextEditorDecorationType` 创建并经 `push` 注册 dispose，`editor.setDecorations()` 应用，更新加 200ms 去抖
 
 ## 扩展清单（package.json）
-
-**文档同步（强制）**：
-
-| 修改字段                      | 同步文档                            |
-| ----------------------------- | ----------------------------------- |
-| `engines.vscode`              | README.md、CHANGELOG.md             |
-| `version`                     | CHANGELOG.md（新增版本条目）        |
-| `contributes.commands`        | README.md（功能列表）、CHANGELOG.md |
-| `contributes.views` / `menus` | README.md（功能列表）               |
-
-**版本号铁律**：`engines.vscode` 是运行时最低版本唯一权威来源；`@types/vscode` 只是类型声明版本；文档版本引用一律以 `engines.vscode` 为准。
 
 **国际化**：用户可见字符串用 `%key%` 引用；英文 `package.nls.json`、中文 `package.nls.zh-cn.json`。
 
